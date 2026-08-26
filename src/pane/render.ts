@@ -12,7 +12,7 @@
  */
 import { STEPS, STEP_TITLE, blockedReason, orangeHolder, primary, statusOf, unmatchedFields } from "./steps.js";
 import type { OrangeHolder, PaneState, StepId } from "./steps.js";
-import { blockSummary, mergeArithmetic, mergeSummary } from "./summary.js";
+import { blockSummary, mergeArithmetic, mergeSummary, plural } from "./summary.js";
 
 function el<K extends keyof HTMLElementTagNameMap>(
   doc: Document,
@@ -86,7 +86,11 @@ function headline(state: PaneState, current: StepId): string {
     case "template":
       return state.block ? blockSummary(state.block, state.rows) : "Which slides repeat?";
     case "fields":
-      return state.fields.length === 0 ? "No placeholders found" : `${state.fields.length} placeholders`;
+      // plural(), not a template literal. The zero case was special-cased and
+      // the ONE case was not, so a name badge or certificate template holding a
+      // single {{Name}} announced "1 placeholders" — and the screenshot script
+      // only ever renders three, so nothing showed it either.
+      return state.fields.length === 0 ? "No placeholders found" : plural(state.fields.length, "placeholder");
     case "preview":
       return "See one row on the slide";
     case "merge":

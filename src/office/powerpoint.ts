@@ -197,28 +197,40 @@ export async function undoInsert(deckAtStart: number, added: number): Promise<Un
   if (!plan) {
     return { removed: 0, detail: `nothing to take back (deck was ${deckAtStart}, is ${deckNow})` };
   }
-  await withTimeout(
-    PowerPoint.run(async (context) => {
-      // Highest index first: removing a slide shifts every index after it, so
-      // walking upward would delete the wrong slides after the first.
-      for (let i = plan.from + plan.count - 1; i >= plan.from; i--) {
-        context.presentation.slides.getItemAt(i).delete();
-      }
-      await context.sync();
-    }),
-    BUDGET.undo,
-    "removing the slides this run added",
-  );
+  let error: string | undefined;
+  try {
+    await withTimeout(
+      PowerPoint.run(async (context) => {
+        // Highest index first: removing a slide shifts every index after it, so
+        // walking upward would delete the wrong slides after the first.
+        for (let i = plan.from + plan.count - 1; i >= plan.from; i--) {
+          context.presentation.slides.getItemAt(i).delete();
+        }
+        await context.sync();
+      }),
+      BUDGET.undo,
+      "removing the slides this run added",
+    );
+  } catch (e) {
+    // Caught, exactly as insertDeck catches its own. A call on this host can
+    // raise and still have done the work — the probe's third sheet timed out on
+    // an insert whose deck delta showed both slides had landed. Letting the
+    // rejection escape skipped the re-count below and told the caller the undo
+    // had failed while the user's slides were already gone, with no count of
+    // what went. The DELTA is the evidence, never the absence of an error.
+    error = e instanceof Error ? e.message : String(e);
+  }
   // A queued delete that raised nothing has not necessarily happened. Adds,
   // inserts and tag writes have all been accepted here and not performed, so
   // the deck is counted again rather than the call being believed.
   const deckAfter = await slideCount();
   const removed = deckNow - deckAfter;
+  const note = error === undefined ? "" : ` (the call raised: ${error})`;
   return {
     removed,
     detail:
       removed === plan.count
-        ? `removed ${removed} slide(s) from index ${plan.from}`
-        : `asked for ${plan.count} slide(s) from index ${plan.from} and the deck shrank by ${removed}`,
+        ? `removed ${removed} slide(s) from index ${plan.from}${note}`
+        : `asked for ${plan.count} slide(s) from index ${plan.from} and the deck shrank by ${removed}${note}`,
   };
 }

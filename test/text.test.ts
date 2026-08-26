@@ -114,3 +114,40 @@ describe("fieldsIn", () => {
     expect(fieldsIn(doc)).toEqual(["FirstName"]);
   });
 });
+
+describe("a placeholder that is not written in English", () => {
+  it("merges a field name with Danish letters in it", () => {
+    // `[\w.]` is ASCII-only, and stays ASCII-only under the `u` flag, so
+    // `{{Beløb}}` and `{{Måned}}` were INVISIBLE: fieldsIn never reported them,
+    // the pane could not flag them as unmatched either, and the literal braces
+    // were printed on every merged slide. On a product whose first users write
+    // Danish that is most of a template.
+    const { doc, p } = paragraph("{{Navn}} skylder {{Beløb}} i {{Måned}}");
+    expect(fieldsIn(doc)).toEqual(["Navn", "Beløb", "Måned"]);
+
+    const row: Record<string, string> = { Navn: "Ada", Beløb: "1500", Måned: "Marts" };
+    mergeParagraph(p, (name) => row[name] ?? null);
+    expect(text(p)).toBe("Ada skylder 1500 i Marts");
+  });
+
+  it("merges names in other scripts too, and still splits on the format pipe", () => {
+    const { doc, p } = paragraph("{{Größe}} {{Πλήθος}} {{Имя|upper}}");
+    expect(fieldsIn(doc)).toEqual(["Größe", "Πλήθος", "Имя"]);
+    const seen: [string, string | undefined][] = [];
+    mergeParagraph(p, (name, format) => {
+      seen.push([name, format]);
+      return name;
+    });
+    expect(seen).toEqual([
+      ["Größe", undefined],
+      ["Πλήθος", undefined],
+      ["Имя", "upper"],
+    ]);
+  });
+
+  it("still refuses a name made of punctuation or spaces, which is not a field", () => {
+    // The widening must not turn every brace pair into a placeholder.
+    const { doc } = paragraph("{{ }} {{!!}} {{a b}}");
+    expect(fieldsIn(doc)).toEqual([]);
+  });
+});

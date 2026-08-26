@@ -7,6 +7,51 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — data, text and the pane
+
+The rest of the bug hunt's confirmed findings. Every one produced silently wrong
+output rather than a failure anybody would see.
+
+- **A placeholder whose name is not English never merged.** The field pattern
+  was `[\w.]`, which is ASCII-only and stays ASCII-only under the `u` flag, so
+  `{{Beløb}}` and `{{Måned}}` were invisible: `fieldsIn` never reported them,
+  the pane could not flag them as unmatched, and the literal braces printed on
+  every merged slide. On a product whose first users write Danish that is most
+  of a template.
+- **An impossible date was rolled into a real one.** `Date.UTC` normalises
+  rather than rejecting, so `29/02/2025` rendered as "1 Mar 2025" and
+  `31/04/2026` as "1 May 2026" — dates a reader believes. The components are
+  read back now and the cell is returned untouched unless it survived.
+- **Every named or ISO date was a day early east of UTC.** They were parsed in
+  the local zone and printed from UTC fields, so in Europe/Copenhagen — this
+  project's own locale — `1 Mar 2026` rendered as `28 Feb 2026`. CI runs in UTC
+  and the only date assertion used the form the spec parses as UTC, so nothing
+  caught it.
+- **`numericValue` could not read a number with more than one thousands group.**
+  `replace` without `/g` changed only the first separator, so `1,234,567` became
+  NaN while `detectType` still called the column a number — half a column
+  rendered formatted and half rendered raw.
+- **A format asking for impossible decimals killed the merge.** `number:-1` is
+  natural to write (Excel's ROUND takes negative digits) and `toFixed` throws
+  outside 0..100, on a path whose own contract is to return the value unchanged.
+- **An invented column name could steal one a real header owns.**
+  `["Name", "Name", "Name 2"]` produced `Name, "Name 2", "Name 2 2"`, so a
+  template's `{{Name 2}}` bound to the second `Name` and printed the wrong
+  column on every slide.
+- **`undoInsert` let a timed-out delete escape**, skipping the confirming
+  re-count that `insertDeck` thirty lines above always did. The caller was told
+  the undo failed while the user's slides were already gone, with no count of
+  what went — on a host `CLAUDE.md` records as answering late on work it had
+  actually done.
+- **The pane said "1 placeholders".** The zero case was special-cased and the
+  one case was not, and the screenshot script only ever renders three.
+
+One guard written for the undo fix was DISCARDED as decoration: it re-asserted
+`sweepPlan`, which is already covered, and would have passed against the unfixed
+file. `src/office` cannot run in the suite, so the rule is held by a source scan
+instead — every host call that changes the deck sits inside a `try` and counts
+the deck again afterwards.
+
 ### Fixed — the package layer
 
 A bug hunt across the engine found six defects here, every one reproduced before

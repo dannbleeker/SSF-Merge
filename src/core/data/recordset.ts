@@ -108,12 +108,33 @@ export function toRecordSet(table: string[][], opts: { header?: boolean } = {}):
   const first = table[0] ?? [];
   const width = table.reduce((w, r) => Math.max(w, r.length), 0);
 
+  // Dedup against every header the sheet declares, not just the ones already
+  // taken. Counting forward alone let a made-up name STEAL one a later column
+  // really owns: ["Name", "Name", "Name 2"] produced Name, "Name 2",
+  // "Name 2 2", so a template's {{Name 2}} bound to the second "Name" and
+  // printed the wrong column on every slide, silently. The same happened with
+  // an empty header ahead of a real "Column 1".
+  const declared = new Set<string>();
+  for (let i = 0; i < width; i++) {
+    const raw = (header ? (first[i] ?? "") : "").trim();
+    if (raw !== "") declared.add(raw);
+  }
+
   const names: string[] = [];
   for (let i = 0; i < width; i++) {
     const raw = (header ? (first[i] ?? "") : "").trim();
-    let name = raw === "" ? `Column ${i + 1}` : raw;
+    const invented = raw === "";
+    const base = invented ? `Column ${i + 1}` : raw;
+    let name = base;
     let n = 2;
-    while (names.includes(name)) name = `${raw || `Column ${i + 1}`} ${n++}`;
+    // A candidate is free when nothing earlier has taken it AND it is not a
+    // name some other column really declares. Its own header is the one
+    // exception: that name IS this column's, so a real "Name" keeps "Name".
+    // An INVENTED name has no such claim, which is why the empty-header case
+    // must clear `declared` from the very first candidate — otherwise the
+    // unnamed first column takes "Column 1" from the real one beside it.
+    const owned = (candidate: string) => !invented && candidate === base;
+    while (names.includes(name) || (!owned(name) && declared.has(name))) name = `${base} ${n++}`;
     names.push(name);
   }
 

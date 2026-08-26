@@ -14,8 +14,22 @@
  */
 import { A_NS, elements } from "../pptx/xml.js";
 
-/** `{{Field}}` or `{{Field|format}}`. Field names are word characters and dots, so `{{a.b}}` works. */
-export const FIELD = /\{\{\s*([\w.]+)\s*(?:\|\s*([^{}]+?)\s*)?\}\}/g;
+/**
+ * `{{Field}}` or `{{Field|format}}`.
+ *
+ * A field name is any letter, mark, digit, underscore or dot — Unicode, not
+ * ASCII. `[\w.]` matched none of `ø`, `å`, `é`, `ü`, Greek or Cyrillic, so
+ * `{{Beløb}}` and `{{Måned}}` were INVISIBLE to the engine: `fieldsIn` never
+ * reported them, so the pane could not flag them as unmatched either, and the
+ * literal braces were printed on every merged slide. On a product whose first
+ * users write Danish, that is most of a template.
+ *
+ * `\p{L}\p{M}\p{N}` rather than `\w` with the `u` flag, because `\w` stays
+ * ASCII-only under `u`; the flag alone would have changed nothing. A column
+ * name arrives verbatim from the header and the resolver already answers for
+ * it, so the pattern was the only thing in the way.
+ */
+export const FIELD = /\{\{\s*([\p{L}\p{M}\p{N}_.]+)\s*(?:\|\s*([^{}]+?)\s*)?\}\}/gu;
 
 /** Answers the value for a field, or null to leave the placeholder visible. */
 export type Resolve = (name: string, format?: string) => string | null;

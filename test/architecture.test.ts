@@ -83,6 +83,30 @@ describe("src/core", () => {
     expect(offenders).toEqual([]);
   });
 
+  it("never lets a host call that CHANGES the deck escape without a re-count", () => {
+    // src/office cannot run in the suite, so this is a source scan — the same
+    // shape PowerChart uses for lockstep it cannot execute.
+    //
+    // On this host a call can raise and still have done the work: the probe's
+    // third sheet timed out on an insert whose deck delta showed both slides
+    // had landed. `undoInsert` let that rejection escape, so the confirming
+    // re-count never ran and the caller was told the undo had failed while the
+    // user's slides were already gone, with no count of what went. `insertDeck`
+    // thirty lines above had always caught its own.
+    //
+    // The rule: a `withTimeout` around a mutating batch sits inside a `try`,
+    // and the deck is counted again afterwards.
+    const src = readFileSync("src/office/powerpoint.ts", "utf8");
+    for (const fn of ["insertDeck", "undoInsert"]) {
+      const start = src.indexOf(`export async function ${fn}`);
+      expect(start, fn).toBeGreaterThan(-1);
+      const next = src.indexOf("\nexport ", start + 1);
+      const body = src.slice(start, next === -1 ? undefined : next);
+      expect(body, `${fn} catches its own raise`).toMatch(/}\s*catch\s*\(/);
+      expect(body, `${fn} counts the deck again afterwards`).toContain("await slideCount()");
+    }
+  });
+
   it("looks values up without walking the prototype chain", () => {
     // A field called __proto__ or constructor is a legal spreadsheet header and
     // arrives from a file the user pasted.
