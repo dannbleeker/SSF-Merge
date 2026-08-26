@@ -8,3 +8,6 @@ package-lock.json
 # hand-written HTML page are formatted by whoever edits them.
 *.md
 public/*.html
+
+# Generated for Script Lab, and asserted by test/probe.test.ts.
+probe/

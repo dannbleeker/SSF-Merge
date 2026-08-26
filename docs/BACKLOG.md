@@ -11,22 +11,11 @@ is to build.
 ## Next
 
 ### Host layer
-**Priority: blocking, and it is next.** Feasibility: medium; the risk is the host, not the code.
+**Priority: blocking, and it is next once the probe has been run.** Feasibility: medium; the risk is the host, not the code.
 Reading the template out of the open deck (`exportAsBase64Presentation` 1.10,
 `slide.exportAsBase64` 1.8, `getFileAsync` as the floor), the one-call insert
 with a `targetSlideId`, and positional undo with the clamps. Every rule it must
 obey is in `CLAUDE.md`.
-
-### Host probe — the four unanswered questions
-**Priority: blocking, and it comes first.** Feasibility: high, one session in a
-real PowerPoint.
-1. Does a cloned slide with a fresh creation id insert cleanly, or does
-   office-js#6105 bite anyway?
-2. Does `getSubstring(start, len).text = v` keep the run's font and bullet?
-3. Within one batch, do substring writes shift later offsets?
-4. Does `fill.setImage` stretch or preserve aspect ratio?
-
-Nothing that depends on an answer gets built before the answer exists.
 
 ### Task pane
 **Priority: blocking.** Feasibility: high; the design is settled.

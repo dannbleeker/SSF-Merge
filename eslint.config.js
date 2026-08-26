@@ -13,7 +13,10 @@ import tseslint from "typescript-eslint";
  * information to see it at all, so the cost of the slower lint is the point.
  */
 export default tseslint.config(
-  { ignores: ["dist/", "dist-lib/", "coverage/", "public/"] },
+  // `probe/` is generated for Script Lab, not for this project: it has no
+  // imports, targets a runtime with its own globals, and is asserted by
+  // test/probe.test.ts rather than by the linter.
+  { ignores: ["dist/", "dist-lib/", "coverage/", "public/", "probe/"] },
   js.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
   {

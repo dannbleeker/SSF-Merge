@@ -13,7 +13,9 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "coverage": "vitest run --coverage",
-    "build:lib": "tsc -p tsconfig.lib.json"
+    "build:lib": "tsc -p tsconfig.lib.json",
+    "probe": "node scripts/build-probe.mjs",
+    "answers": "node scripts/read-answers.mjs"
   },
   "dependencies": {
     "@xmldom/xmldom": "^0.9.8",
@@ -22,6 +24,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/node": "^22.10.2",
+    "@types/office-js": "^1.0.607",
     "@vitest/coverage-v8": "^4.1.11",
     "eslint": "^10.9.1",
     "globals": "^17.11.0",
