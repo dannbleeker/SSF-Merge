@@ -104,8 +104,19 @@ Any feature change updates, in the same PR:
   explaining why the engine avoids it, and failed on four correct files.
 - **Test files are named by topic, never by increment.**
 - **All sample data is invented.** The repo is public.
+- **Merging to `main` is authorized.** Once CI is green on the exact pushed
+  commit — verify the run's `head_sha` matches the branch head, because a
+  force-push leaves older runs attached to the PR and they are not evidence
+  about the head — squash-merge without asking. Granted by the owner on
+  2026-08-26. It does not extend to merging somebody else's PR, to changing
+  what `main` requires, or to a red or conflicted head.
 - Branch flow: develop on the session's designated `claude/*` branch, one PR per
-  increment, reset onto `origin/main` after each merge.
+  increment. `main` requires a pull request and a passing `test` check, and the
+  branch is deleted on merge, so the next increment starts with
+  `git checkout -B <branch> origin/main` rather than reusing what is there.
+  Reusing a branch across a squash merge is what forced a force-push once: the
+  old commits survive, `git log` calls them unmerged because squashing hides
+  ancestry, and only a content diff against `main` proves otherwise.
 
 ## Open questions for the real host
 
