@@ -1,0 +1,133 @@
+/**
+ * The one shape every data source answers with.
+ *
+ * A pasted range, a parsed .xlsx, a Graph-read table and a JSON endpoint all
+ * end here, and the engine cannot tell them apart. Values are kept as strings
+ * plus a detected type rather than coerced on the way in: the merged output is
+ * text, and a number that has been through a float is a number that has lost
+ * its thousands separator and sometimes its last digit.
+ */
+export type ColumnType = "text" | "number" | "date";
+
+export interface Column {
+  name: string;
+  type: ColumnType;
+}
+
+export interface RecordSet {
+  columns: Column[];
+  /** One entry per row, keyed by column name. Missing and blank are both "". */
+  rows: Record<string, string>[];
+}
+
+/** A European "1.234,5" and an American "1,234.5" both mean the same thing, and only one of them parses. */
+const NUMBER = /^-?\d{1,3}(?:[ .,]\d{3})*(?:[.,]\d+)?$|^-?\d+(?:[.,]\d+)?$/;
+/** Deliberately narrow. See `looksLikeDate`. */
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}(?:[T ].*)?$/;
+const NAMED_DATE = /^\d{1,2}[ .\-/][A-Za-zÆØÅæøå]{3,}[ .\-/]\d{2,4}$/;
+
+/**
+ * Whether a cell is a date we are willing to claim.
+ *
+ * `03/01/2026` is 3 January in Copenhagen and 1 March in Chicago, and nothing
+ * in the cell says which. A slash date whose first two numbers could both be a
+ * month is refused rather than guessed: a merged deck that draws perfectly and
+ * is two months wrong is worse than one that shows the cell untouched. An
+ * unambiguous slash date still parses.
+ */
+export function looksLikeDate(value: string): boolean {
+  const v = value.trim();
+  if (ISO_DATE.test(v) || NAMED_DATE.test(v)) return true;
+  const slash = /^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/.exec(v);
+  if (!slash) return false;
+  const a = Number(slash[1]);
+  const b = Number(slash[2]);
+  return !(a <= 12 && b <= 12 && a !== b);
+}
+
+export function detectType(values: string[]): ColumnType {
+  const filled = values.filter((v) => v.trim() !== "");
+  if (!filled.length) return "text";
+  if (filled.every((v) => NUMBER.test(v.trim()))) return "number";
+  if (filled.every((v) => looksLikeDate(v))) return "date";
+  return "text";
+}
+
+/**
+ * Parse a pasted or uploaded table.
+ *
+ * Tab first, because the commonest input by far is a range copied out of Excel
+ * and pasted into the pane, and that arrives tab-separated. Quoted fields are
+ * honoured so a comma inside a company name does not split a row.
+ */
+export function parseDelimited(text: string, delimiter?: string): string[][] {
+  const src = text.replace(/\r\n?/g, "\n").replace(/\n$/, "");
+  const d = delimiter ?? (src.slice(0, src.indexOf("\n") + 1 || undefined).includes("\t") ? "\t" : ",");
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let quoted = false;
+
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    if (quoted) {
+      if (c === '"') {
+        if (src[i + 1] === '"') {
+          cell += '"';
+          i++;
+        } else quoted = false;
+      } else cell += c;
+      continue;
+    }
+    if (c === '"' && cell === "") quoted = true;
+    else if (c === d) {
+      row.push(cell);
+      cell = "";
+    } else if (c === "\n") {
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = "";
+    } else cell += c ?? "";
+  }
+  row.push(cell);
+  rows.push(row);
+  return rows;
+}
+
+/**
+ * Build a RecordSet from a parsed table.
+ *
+ * An unnamed column gets a positional name rather than being dropped, because a
+ * template may already bind to it and silently losing a column is the failure
+ * this whole layer exists to avoid. Duplicate headers are suffixed for the same
+ * reason.
+ */
+export function toRecordSet(table: string[][], opts: { header?: boolean } = {}): RecordSet {
+  const header = opts.header ?? true;
+  const first = table[0] ?? [];
+  const width = table.reduce((w, r) => Math.max(w, r.length), 0);
+
+  const names: string[] = [];
+  for (let i = 0; i < width; i++) {
+    const raw = (header ? (first[i] ?? "") : "").trim();
+    let name = raw === "" ? `Column ${i + 1}` : raw;
+    let n = 2;
+    while (names.includes(name)) name = `${raw || `Column ${i + 1}`} ${n++}`;
+    names.push(name);
+  }
+
+  const body = header ? table.slice(1) : table;
+  const rows = body
+    .filter((r) => r.some((c) => c.trim() !== ""))
+    .map((r) => {
+      const rec: Record<string, string> = Object.create(null);
+      names.forEach((name, i) => {
+        rec[name] = r[i] ?? "";
+      });
+      return rec;
+    });
+
+  const columns = names.map((name) => ({ name, type: detectType(rows.map((r) => r[name] ?? "")) }));
+  return { columns, rows };
+}
