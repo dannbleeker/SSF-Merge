@@ -12,7 +12,14 @@
  *   node scripts/read-answers.mjs sheet.json --save
  */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { creationIdReading, insertVerdict, offsetVerdict, substringVerdict } from "../dist-lib/host/verdicts.js";
+import {
+  creationIdReading,
+  insertionBlame,
+  insertVerdict,
+  offsetVerdict,
+  substringVerdict,
+  tagVerdict,
+} from "../dist-lib/host/verdicts.js";
 
 const file = process.argv[2];
 if (!file) {
@@ -36,25 +43,34 @@ line("deck", `${sheet.deckAtStart} slides at start, ${sheet.deckAtEnd} at end`);
 
 const fresh = insertVerdict({ ...sheet.insertFresh, expected: 2 });
 const collision = insertVerdict({ ...sheet.insertCollision, expected: 2 });
+const destTheme = sheet.insertFreshDestTheme
+  ? insertVerdict({ ...sheet.insertFreshDestTheme, expected: 2 })
+  : { verdict: "unknown", detail: "not asked — this sheet predates the arm", landed: 0 };
+// The control's own deck is the presentation, so its size is what it inserts.
+const self = sheet.insertSelf
+  ? insertVerdict({ ...sheet.insertSelf, expected: sheet.deckAtStart })
+  : { verdict: "unknown", detail: "not asked — this sheet predates the control arm", landed: 0 };
 
 console.log("\n1. Does a cloned slide with a FRESH creation id insert?");
+line("control: own deck", `${self.verdict} — ${self.detail}`);
 line("fresh arm", `${fresh.verdict} — ${fresh.detail}`);
+line("fresh, dest theme", `${destTheme.verdict} — ${destTheme.detail}`);
 line("collision arm", `${collision.verdict} — ${collision.detail}`);
-console.log(`\n  => ${creationIdReading(fresh, collision)}`);
+console.log(`\n  => ${insertionBlame(fresh.verdict, self.verdict)}`);
+console.log(`  => ${creationIdReading(fresh, collision)}`);
+if (fresh.verdict !== "yes" && destTheme.verdict === "yes") {
+  console.log("  => and the THEME is the difference: the same package lands under UseDestinationTheme.");
+}
 
 console.log("\n2. Does a tag written into the PACKAGE read back through Office.js?");
-const tag = sheet.tagReadBack ?? {};
-if (tag.error) line("verdict", `threw — ${tag.error}`);
-else if (tag.value === "probe-run")
-  line("verdict", "yes — the whole metadata scheme works, and no tag write is needed in the host");
-else if (tag.value === undefined)
-  line("verdict", "NO — the host did not find the tag. The metadata scheme needs rethinking before the pane is built.");
-else line("verdict", `unexpected value ${JSON.stringify(tag.value)}`);
+const tag = tagVerdict({ ...(sheet.tagReadBack ?? {}), insertLanded: fresh.landed });
+line("verdict", `${tag.verdict} — ${tag.detail}`);
 
 const sub = sheet.substring ?? {};
 console.log("\n3. Does a targeted substring write keep the formatting around it?");
 if (sub.error) {
   line("verdict", `threw — ${sub.error}`);
+  line("threw at", sub.failedAt ?? "unknown — this sheet predates the step labels");
 } else {
   const v = substringVerdict({
     before: sub.textBefore,

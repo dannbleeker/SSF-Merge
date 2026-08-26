@@ -84,6 +84,81 @@ export function creationIdReading(fresh: InsertVerdict, collision: InsertVerdict
   return "Unexpected: the duplicated id landed and the fresh one did not. Do not build on either reading; re-run before drawing any conclusion.";
 }
 
+/** The value the probe writes into the fixture decks' package tags. */
+export const PROBE_RUN_TAG = "probe-run";
+
+export interface TagObservation {
+  /** What the host said the tag holds, if it found one. */
+  value?: string;
+  error?: string;
+  /**
+   * How many slides the insert that was supposed to carry this tag landed.
+   *
+   * Load-bearing, and the reason this function exists. The probe reads the tag
+   * off the LAST slide in the deck, which is the inserted one only if the
+   * insert worked. When it did not, that read lands on a slide the user owns,
+   * which has never carried our tag and never will.
+   */
+  insertLanded: number;
+}
+
+/**
+ * Whether a tag written into the package survives into the host's object model.
+ *
+ * A never-asked question is not an answer, and reporting one as `no` is worse
+ * than reporting nothing: the first sheet this probe took said "the metadata
+ * scheme needs rethinking" on the strength of a read that had fallen on the
+ * user's own title slide, because the insert in front of it had thrown. The
+ * scheme was never tested. That is the same mistake a sibling project's
+ * contract gate made with `no-scratch-slide`, and it is guarded here rather
+ * than left to the reader to notice.
+ */
+export function tagVerdict(o: TagObservation): { verdict: Verdict; detail: string } {
+  if (!(o.insertLanded > 0)) {
+    return {
+      verdict: "unknown",
+      detail:
+        "NOT ASKED — the slide that would carry the tag never landed, so this read fell on a slide the probe did not write. An absent tag here is evidence about nothing.",
+    };
+  }
+  if (o.error !== undefined) return { verdict: "threw", detail: `the read threw: ${o.error}` };
+  if (o.value === PROBE_RUN_TAG) {
+    return { verdict: "yes", detail: "the whole metadata scheme works, and no tag write is needed in the host" };
+  }
+  if (o.value === undefined) {
+    return {
+      verdict: "no",
+      detail: "the slide landed and the host did not find the tag, so the metadata scheme needs rethinking",
+    };
+  }
+  return { verdict: "unknown", detail: `the tag is there holding ${JSON.stringify(o.value)}, which nothing wrote` };
+}
+
+/**
+ * Whose fault a refused insert is.
+ *
+ * `insertSlidesFromBase64` answering `InvalidArgument` admits two readings that
+ * matter in opposite directions: this repo generates a package PowerPoint will
+ * not take, or this host takes no package at all. One is a morning's work and
+ * the other ends the package path.
+ *
+ * The control arm is the presentation's OWN bytes, read back through
+ * `getFileAsync`. That deck is a package PowerPoint wrote seconds earlier, so
+ * it cannot be malformed, and a host that refuses it is refusing insertion
+ * itself. This is the partner-question rule: do not reason about which of two
+ * readings holds, ask a question only one of them survives.
+ */
+export function insertionBlame(ours: Verdict, self: Verdict): string {
+  if (ours === "yes") return "The insert path works. Whose package it is does not arise.";
+  if (self === "yes") {
+    return "OURS: this host inserted a deck PowerPoint itself wrote and refused the one we generate. The package writer is at fault; nothing in the failing arms is a fact about the host.";
+  }
+  if (self === "unknown") {
+    return "CANNOT TELL: the control arm never ran, so a refused insert is equally our package or this host. Re-run before concluding anything.";
+  }
+  return "THE HOST: it refused a deck it wrote itself, so nothing can be inserted here and the package path is blocked for reasons no change in this repo can reach.";
+}
+
 export interface SubstringObservation {
   /** Text of the shape before the write. */
   before: string;

@@ -7,7 +7,37 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- The probe reported a verdict on a question it had not asked. The tag read
+  lands on the last slide in the deck, which is the inserted one only if the
+  insert worked; the first real sheet had every insert throw, so that read fell
+  on the user's own title slide and the reader announced that the metadata
+  scheme needed rethinking. The scheme had never been tested. `tagVerdict` now
+  answers "not asked" whenever the slide carrying the tag did not land.
+- The probe's fixture deck carried `<a:themeElements/>`, which is
+  schema-invalid: `CT_BaseStyles` requires clrScheme, fontScheme and fmtScheme,
+  all three mandatory, and `KeepSourceFormatting` is precisely the path that has
+  to import the source theme. Checked against a deck PowerPoint itself accepts.
+  The fixture also gained the docProps parts and a real `xfrm` on its text box,
+  so a rejection has fewer places to hide.
+- Four separate host calls in the substring probe shared one `catch`, so a throw
+  named none of them and the sheet said `InvalidArgument` about a statement
+  nobody could identify. Each call now stamps what it is doing, and the error
+  carries it.
+
 ### Added
+
+- A control arm on question one, and the rule that reads it. Inserting the
+  presentation's own bytes asks a question only one of the two readings of
+  `InvalidArgument` survives: a deck PowerPoint saved seconds ago cannot be a
+  malformed package, so a host that refuses it is refusing insertion itself.
+  `insertionBlame` says OURS, THE HOST, or CANNOT TELL, and never guesses.
+- A second insert of the same package under `UseDestinationTheme`, which does
+  not import the source theme where `KeepSourceFormatting` must.
+- The generated snippet is typechecked against the real Office.js types in CI.
+  It sits outside tsconfig's include and is pasted into an editor that runs it
+  before anyone reads it, so nothing else would catch a misspelled option key.
 
 - The host probe: a Script Lab snippet that asks the four questions only a real
   PowerPoint can answer, and a reader that interprets the sheet it produces.

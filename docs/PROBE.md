@@ -63,22 +63,48 @@ node scripts/read-answers.mjs sheet.json --save
 It prints what each answer means and files the sheet under
 `docs/host-answers/`, stamped with when it was taken.
 
+**A question the probe could not put is reported as unknown, never as no.** The
+tag read lands on the last slide in the deck, which is the inserted one only if
+the insert worked; when it did not, that read falls on a slide the user owns and
+has never carried our tag. The first sheet reported "the metadata scheme needs
+rethinking" on exactly that read, about a scheme that had not been tested at
+all. `tagVerdict` guards it now.
+
 ## What it asks
 
 | # | Question | What turns on it |
 | --- | --- | --- |
+| 0 | **Control:** does this host insert the deck it just saved itself? | Whose fault a refusal is. Without it, `InvalidArgument` is equally our package and this host, and those are opposite conclusions |
 | 1 | Does a cloned slide with a **fresh creation id** insert cleanly? | The entire package path. If inserting fails, merged slides can only ever be delivered as a separate presentation |
 | 2 | Does a tag written into the **package** read back through Office.js? | Undo, re-run, and every piece of merge metadata |
 | 3 | Does `getSubstring(a, n).text = v` keep the run's formatting? | Whether live preview can be targeted, or has to redraw whole shapes |
 | 4 | Do two writes queued in one batch interfere? | Whether replacements can be queued in any order or must go right to left |
 | 5 | Does `fill.setImage` stretch or preserve aspect? | Image fields, and only those. **Nothing reads this back**, so it is a look-at-the-slide question for later |
 
-Question 1 has **two arms**, and that is the point. One deck carries two slides
+Question 1 has **four arms**, and that is the point. One deck carries two slides
 with different creation ids, which is what the engine produces; the other
 carries the same two slides sharing one id, which is the shape
 [office-js#6105](https://github.com/officedev/office-js/issues/6105) reports
 failing. Asking only the first cannot tell "the bug is absent here" from "this
 host refuses every insert".
+
+The first real sheet made that concrete, and needed two more arms. Every insert
+came back `InvalidArgument`, which admits two readings pointing opposite ways:
+this repo generates a package PowerPoint will not take, or this host takes no
+package at all. One is a morning's work; the other ends the package path. So:
+
+- a **control arm** inserts the bytes of the presentation the probe is running
+  in, read back through `getFileAsync`. That deck is a package PowerPoint wrote
+  seconds earlier, so it cannot be malformed — a host that refuses it is
+  refusing insertion itself. It runs first, while the deck is still only the
+  user's own;
+- a **theme arm** inserts the same package under `UseDestinationTheme` instead
+  of `KeepSourceFormatting`. Only the latter has to import the source theme, so
+  the pair separates a theme this host will not read from a package it will not
+  read.
+
+`insertionBlame` is the reading, and it says CANNOT TELL rather than guessing
+when the control did not run.
 
 ## What it does to your deck
 
