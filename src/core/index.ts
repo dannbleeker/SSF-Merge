@@ -5,7 +5,7 @@
  * holds that. The host layer, the CLI and the task pane are all callers.
  */
 export { Pkg, resolveTarget } from "./pptx/pkg.js";
-export { cloneSlide, creationIdOf, setCreationId } from "./pptx/clone.js";
+export { cloneSlide, creationIdOf, notesPathFor, setCreationId } from "./pptx/clone.js";
 export type { CloneOptions } from "./pptx/clone.js";
 export {
   TAG_BLOCK,
@@ -19,7 +19,19 @@ export {
   tagPartXml,
   writeSlideTags,
 } from "./pptx/tags.js";
-export { A_NS, CT_NS, PKG_REL_NS, P_NS, R_NS, element, elements, parseXml, serializeXml } from "./pptx/xml.js";
+export {
+  A_NS,
+  CT_NS,
+  PKG_REL_NS,
+  P_NS,
+  R_NS,
+  child,
+  children,
+  element,
+  elements,
+  parseXml,
+  serializeXml,
+} from "./pptx/xml.js";
 export { FIELD, fieldsIn, mergeDocument, mergeParagraph } from "./merge/text.js";
 export { buildPlan, isTruthy, recordCount, slideCount } from "./merge/plan.js";
 export type { Block, BlockSlide, MergePlan, PlanOptions, PlanStep, SkippedSlide } from "./merge/plan.js";

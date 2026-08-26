@@ -9,7 +9,7 @@
  * at all.
  */
 import type { RecordSet } from "../data/recordset.js";
-import { cloneSlide, type CloneOptions } from "../pptx/clone.js";
+import { cloneSlide, notesPathFor, type CloneOptions } from "../pptx/clone.js";
 import type { Pkg } from "../pptx/pkg.js";
 import { writeSlideTags } from "../pptx/tags.js";
 import type { MergePlan } from "./plan.js";
@@ -54,7 +54,14 @@ export async function runPlan(
     // would leave the template holding one record's values, which is the
     // template destroyed rather than used.
     const target = await cloneSlide(pkg, step.source, opts.clone ?? {});
-    paragraphsMerged += mergeDocument(await pkg.doc(target), makeResolver(row, { onEmpty: opts.onEmpty }));
+    const resolve = makeResolver(row, { onEmpty: opts.onEmpty });
+    paragraphsMerged += mergeDocument(await pkg.doc(target), resolve);
+    // The notes page too. It is per-copy content — cloneSlide gives each copy
+    // its own precisely so they can differ — and a template whose speaker notes
+    // read "Call {{Name}} afterwards" otherwise ships that text verbatim on
+    // every merged slide, in the presenter view and on every printed handout.
+    const notes = await notesPathFor(pkg, target);
+    if (notes) paragraphsMerged += mergeDocument(await pkg.doc(notes), resolve);
     await writeSlideTags(pkg, target, step.tags);
     slides.push(target);
   }

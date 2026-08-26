@@ -20,8 +20,13 @@ const REL = 'xmlns="http://schemas.openxmlformats.org/package/2006/relationships
 export interface SlideSpec {
   /** Paragraphs, each given as the runs it is split into. Split a placeholder to reproduce the real thing. */
   paragraphs: string[][];
-  notes?: boolean;
+  /** true for stock notes text, or the text itself — a placeholder in it is the point. */
+  notes?: boolean | string;
   creationId?: number;
+}
+
+function escapeText(t: string): string {
+  return t.replace(/&/g, "&amp;").replace(/</g, "&lt;");
 }
 
 function runs(parts: string[]): string {
@@ -167,7 +172,7 @@ export async function makeDeck(slides: SlideSpec[]): Promise<Uint8Array> {
         `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n<p:notes ${P} ${A} ${R}>` +
           `<p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>` +
           `<p:sp><p:nvSpPr><p:cNvPr id="2" name="Notes"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr/>` +
-          `<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang="en-US"/><a:t>notes for slide ${n}</a:t></a:r></a:p></p:txBody>` +
+          `<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang="en-US"/><a:t>${typeof spec.notes === "string" ? escapeText(spec.notes) : `notes for slide ${n}`}</a:t></a:r></a:p></p:txBody>` +
           `</p:sp></p:spTree></p:cSld></p:notes>`,
       );
       zip.file(
