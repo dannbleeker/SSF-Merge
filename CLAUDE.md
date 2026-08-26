@@ -24,7 +24,20 @@ is what lets it run in the pane, in a CLI and in the suite with no PowerPoint.
 | `src/core/pptx/` | `pkg.ts` (the zip, parts, rels, content types, slide ids), `clone.ts` (slide cloning), `tags.ts` (tags written into the file), `xml.ts` (one parser everywhere) |
 | `src/core/merge/` | `text.ts` (run-aware replacement) |
 | `src/core/data/` | `recordset.ts` (parsing, type detection), `format.ts` (numbers, dates, case) |
+| `src/host/` | the DECISIONS about talking to a host, all pure and all tested: `capability.ts` (version floor, where the template's bytes come from), `verdicts.ts` (what an observation means), `undo.ts` (which slides a run may take back), `timeout.ts` (what each call is allowed to cost) |
+| `src/office/` | the Office.js CALLS, and nothing else. Every judgement is imported from `src/host` |
 | `test/fixtures/` | `deck.ts` builds a minimal .pptx in memory, so no test depends on a committed binary |
+
+**`src/host` decides, `src/office` calls, and `test/architecture.test.ts` holds
+both directions.** An Office.js import in `src/host` makes a rule untestable; a
+rule reimplemented inline in `src/office` looks tidier and rots quietly, so every
+file there must import from `src/host`. This is the probe's split — dumb snippet,
+tested verdicts — applied to the product, and it is why three sheets could be
+read at all.
+
+`src/office` is **not** in the coverage include list, deliberately. Pooling a
+well-tested engine with untestable host calls produces one number that hides
+both.
 
 ## What THIS host answered
 
