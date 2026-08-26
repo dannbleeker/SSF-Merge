@@ -14,14 +14,44 @@ months learning that by inference. This probe asks directly instead.
 
 ## Running it
 
-1. Open PowerPoint with a deck you do not mind four slides being added to and
-   removed from. **Save it first anyway.**
-2. Install [Script Lab](https://appsource.microsoft.com/product/office/wa104380862)
-   if you do not have it: **Insert → Get Add-ins → search "Script Lab"**.
-3. **Script Lab → Code → new snippet**, delete what is there, and paste the whole
-   of [`probe/probe-snippet.ts`](../probe/probe-snippet.ts).
-4. Press **Run**, then open the console pane at the bottom.
-5. Copy everything between `=== SSF MERGE ANSWER SHEET ===` and `=== END ===`.
+**Work on a throwaway copy of a deck, not a real one.** The probe adds four
+slides and removes them again, and on the web that is not undoable in the way
+you would expect: PowerPoint for the web has AutoSave permanently on, so every
+step is written to OneDrive as it happens. "Save it first" is desktop advice and
+does not protect anything here. Any deck with at least one slide will do.
+
+### PowerPoint for the web
+
+1. Open your throwaway deck in PowerPoint for the web, in the **editor**, not the
+   read-only viewer. Script Lab cannot load in the viewer.
+2. **Home → Add-ins** (or **Insert → Add-ins**), search for
+   [Script Lab](https://appsource.microsoft.com/product/office/wa104380862),
+   and **Add** it. A **Script Lab** tab appears on the ribbon.
+3. **Script Lab → Code**. The editor opens in the task pane on the right,
+   showing whatever snippet was last open.
+4. Open the pane's menu (top left of the editor) and choose **New Snippet**, so
+   nothing of a previous one is left behind.
+5. Make sure the **Script** tab is selected — not HTML, CSS or Libraries —
+   select everything in it, and replace it with the whole of
+   [`probe/probe-snippet.ts`](../probe/probe-snippet.ts). It is about 24 KB; the
+   [raw file](https://raw.githubusercontent.com/dannbleeker/SSF-Merge/main/probe/probe-snippet.ts)
+   is the easiest thing to select-all and copy. Leave the other three tabs alone;
+   the snippet needs no libraries beyond the Office.js a blank snippet already
+   carries.
+6. **Script Lab → Run**. The pane switches to the runner. It takes under a
+   minute; you will see slides appear at the end of the deck and disappear again.
+7. Expand the **console** strip at the bottom of the runner pane.
+8. Copy everything between `=== SSF MERGE ANSWER SHEET ===` and `=== END ===`.
+
+If the console shows `the probe itself failed:` instead of an answer sheet, send
+that line too — it is an answer about the host as well.
+
+### Desktop
+
+Same steps, with **Insert → Get Add-ins** to install and the runner opening in
+its own pane. Desktop is the friendlier host and the less interesting one: the
+web is where the ids are refused and the collections come back empty, so run the
+web first.
 
 Then, in this repository:
 
