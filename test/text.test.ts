@@ -10,7 +10,7 @@ function paragraph(...parts: string[]): { doc: Document; p: Element } {
     .map((t, i) => `<a:r><a:rPr lang="en-US" b="${i}" sz="${1200 + i}"/><a:t>${t}</a:t></a:r>`)
     .join("");
   const doc = parseXml(`<a:p ${A}>${runs}</a:p>`);
-  return { doc, p: doc.documentElement as unknown as Element };
+  return { doc, p: doc.documentElement };
 }
 
 function text(p: Element): string {
@@ -103,9 +103,7 @@ describe("mergeDocument", () => {
 
 describe("fieldsIn", () => {
   it("lists each field once, in the order it first appears", () => {
-    const doc = parseXml(
-      `<p:sld xmlns:p="x" ${A}><a:p><a:r><a:t>{{B}} {{A}} {{B}}</a:t></a:r></a:p></p:sld>`,
-    );
+    const doc = parseXml(`<p:sld xmlns:p="x" ${A}><a:p><a:r><a:t>{{B}} {{A}} {{B}}</a:t></a:r></a:p></p:sld>`);
     expect(fieldsIn(doc)).toEqual(["B", "A"]);
   });
 

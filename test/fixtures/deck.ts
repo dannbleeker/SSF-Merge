@@ -99,9 +99,7 @@ export async function makeDeck(slides: SlideSpec[]): Promise<Uint8Array> {
       `<Relationship Id="rId1" Type="${REL_TYPE.doc}" Target="ppt/presentation.xml"/></Relationships>`,
   );
 
-  const sldIds = slides
-    .map((_, i) => `<p:sldId id="${256 + i}" r:id="rId${i + 2}"/>`)
-    .join("");
+  const sldIds = slides.map((_, i) => `<p:sldId id="${256 + i}" r:id="rId${i + 2}"/>`).join("");
   zip.file(
     "ppt/presentation.xml",
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n<p:presentation ${P} ${A} ${R}>` +

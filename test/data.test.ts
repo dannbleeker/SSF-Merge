@@ -24,18 +24,28 @@ describe("parseDelimited", () => {
 
 describe("toRecordSet", () => {
   it("names an unnamed column instead of dropping it", () => {
-    const rs = toRecordSet([["Name", ""], ["Ada", "x"]]);
+    const rs = toRecordSet([
+      ["Name", ""],
+      ["Ada", "x"],
+    ]);
     expect(rs.columns.map((c) => c.name)).toEqual(["Name", "Column 2"]);
     expect(rs.rows[0]?.["Column 2"]).toBe("x");
   });
 
   it("keeps both of two columns with the same header", () => {
-    const rs = toRecordSet([["Name", "Name"], ["a", "b"]]);
+    const rs = toRecordSet([
+      ["Name", "Name"],
+      ["a", "b"],
+    ]);
     expect(rs.columns.map((c) => c.name)).toEqual(["Name", "Name 2"]);
   });
 
   it("drops a wholly blank row and keeps a partly filled one", () => {
-    const rs = toRecordSet([["A", "B"], ["", ""], ["x", ""]]);
+    const rs = toRecordSet([
+      ["A", "B"],
+      ["", ""],
+      ["x", ""],
+    ]);
     expect(rs.rows).toHaveLength(1);
   });
 
