@@ -7,10 +7,11 @@
  * that migrates into this file becomes untestable the moment it arrives.
  */
 import { ready as hostReady } from "../office/powerpoint.js";
+import { runMerge, type MergeOutcome } from "../office/merge.js";
 import { render } from "./render.js";
 import { EMPTY, type PaneState, type StepId } from "./steps.js";
 
-const state: PaneState = EMPTY;
+let state: PaneState = EMPTY;
 let step: StepId = "template";
 
 function root(): HTMLElement {
@@ -56,9 +57,51 @@ function onClick(event: Event): void {
   if (!(target instanceof HTMLElement)) return;
   const action = target.closest("[data-action]")?.getAttribute("data-action");
   if (!action) return;
-  // Wiring each step to the host is the next increment. The pane renders and
-  // gates correctly now; nothing here pretends to have merged anything.
+  if (action === "merge") {
+    void merge();
+    return;
+  }
   advance(action as StepId);
+}
+
+/**
+ * The merge, and the one thing this file adds to it: telling the user.
+ *
+ * Every decision is `runMerge`'s. The button is disabled unless the step is
+ * reachable, so this does not re-check what `steps.ts` already answered — two
+ * copies of that rule is how they come apart.
+ *
+ * `outcome.deckAtStart` and `outcome.added` are kept because undo is positional
+ * and clamped against them. A run whose numbers are lost cannot be taken back
+ * safely, so they are held before anything is shown.
+ */
+async function merge(): Promise<void> {
+  if (!state.block || !state.rows || !state.records) return;
+  const button = root().querySelector("button.primary");
+  if (button instanceof HTMLButtonElement) {
+    button.disabled = true;
+    button.textContent = "Merging…";
+  }
+  const outcome = await runMerge({
+    from: state.block.from,
+    to: state.block.to,
+    records: state.records,
+    ...(state.conditions ? { conditions: state.conditions } : {}),
+  });
+  last = outcome;
+  state = { ...state, deckSize: outcome.deckAtStart + outcome.added };
+  draw();
+  say(outcome.detail);
+}
+
+/** The last run, so an undo has the numbers it is clamped against. */
+let last: MergeOutcome | undefined;
+
+function say(message: string): void {
+  const node = document.createElement("p");
+  node.className = "blocked";
+  node.textContent = message;
+  root().append(node);
 }
 
 function advance(from: StepId): void {
@@ -67,6 +110,8 @@ function advance(from: StepId): void {
   if (next) step = next;
   draw();
 }
+
+export { last as lastRun };
 
 void Office.onReady(() => {
   applyTheme();

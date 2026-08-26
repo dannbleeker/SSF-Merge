@@ -203,9 +203,12 @@ something is temporarily untrue on the slide — a preview showing, a placeholde
 with no column — the orange moves there and the tick goes away. Two oranges in
 one glance and neither means anything.
 
-*Planned:* the pane renders and gates correctly, and steps 1 to 4 are not yet
-wired to the deck. Choosing a block, reading fields from real slides, previewing
-and merging arrive with the merge run.
+*Partly planned.* The merge itself is built and wired: pressing the button reads
+the template out of the open deck, does the whole merge inside the file, and
+hands PowerPoint one deck in one call, anchored after your last slide. What is
+not built yet are the CONTROLS in front of it — picking the block by clicking
+slides, and attaching data — so nothing in the pane can set those yet. Until they
+land the merge is reachable from the engine and from tests, not from the screen.
 
 The pane follows PowerPoint's theme, read once when it opens. There is no
 theme-change event for a PowerPoint task pane — the one in the Office typings

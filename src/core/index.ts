@@ -38,6 +38,8 @@ export type { Block, BlockSlide, MergePlan, PlanOptions, PlanStep, SkippedSlide 
 export { makeResolver } from "./merge/resolve.js";
 export type { EmptyPolicy, ResolveOptions } from "./merge/resolve.js";
 export { runPlan } from "./merge/run.js";
+export { prepareBlock } from "./merge/prepare.js";
+export type { BlockRequest, Prepared } from "./merge/prepare.js";
 export type { RunOptions, RunResult } from "./merge/run.js";
 export type { Resolve } from "./merge/text.js";
 export { detectType, looksLikeDate, parseDelimited, toRecordSet } from "./data/recordset.js";

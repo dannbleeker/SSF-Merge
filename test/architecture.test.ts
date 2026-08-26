@@ -58,16 +58,21 @@ describe("src/core", () => {
   it("keeps the decisions out of src/office, so none of them hide in a callback", () => {
     // The other direction, and the one that rots quietly: a rule reimplemented
     // inline next to the call it guards looks tidier and is untestable. Every
-    // judgement src/office needs is imported from src/host — the version floor,
-    // the source choice, the insert reading, the sweep plan — so a file here
-    // with no such import is either trivial or has started deciding for itself.
+    // judgement src/office needs is imported — the version floor, the source
+    // choice, the insert reading and the sweep plan from src/host, the plan and
+    // the block preparation from src/core — so a file here importing neither is
+    // either trivial or has started deciding for itself.
+    //
+    // This said `src/host` alone until the merge run arrived, and refused it
+    // for taking its decisions from `src/core` instead. That was the guard
+    // being narrower than its own reason, not the file being wrong.
     const office = filesUnder("src/office");
     expect(office.length).toBeGreaterThan(0);
     for (const file of office) {
       // The RAW source, not codeOf: an import specifier IS a string literal,
       // and codeOf strips those so the Office.js check above cannot trip over
       // prose. Two questions, two readings of the same file.
-      expect(readFileSync(file, "utf8"), `${file} decides nothing on its own`).toMatch(/from "\.\.\/host\//);
+      expect(readFileSync(file, "utf8"), `${file} decides nothing on its own`).toMatch(/from "\.\.\/(host|core)\//);
     }
   });
 
