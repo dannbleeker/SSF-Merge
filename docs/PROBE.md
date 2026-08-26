@@ -132,11 +132,17 @@ that could have thrown, and its fixture deck was malformed. The second, once the
 fixture was fixed and the control arm added, landed every insert and read the
 package tag back.
 
-So the package path is measured, not assumed: cloned slides insert, and merge
-metadata written into the file survives into the host's object model. What is
-still open is question three and four, which the second sheet could not reach —
-a shape proxy does not survive a `context.sync()` on this host, so the
-experiments are queued in one batch now.
+The third answered the last two. A targeted substring write keeps the formatting
+around it, so live preview can target a substring rather than redrawing whole
+shapes. And two writes queued in one batch **do** interfere — the second sees the
+first one's result — so Office.js replacements must be queued right to left.
+
+It also caught the reader believing an error over a measurement: an insert timed
+out and had landed both its slides anyway, and reading the error as decisive
+produced three false statements in one run. The delta is the evidence.
+
+So all five questions are answered, and the package path is measured rather than
+assumed.
 
 ## One answer is not evidence about your host
 

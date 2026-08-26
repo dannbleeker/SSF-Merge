@@ -142,7 +142,11 @@ async function insertDeck(
         context.presentation.insertSlidesFromBase64(base64, { formatting, targetSlideId: last.id });
         await context.sync();
       }),
-      30000,
+      // 30s was not enough once: the third sheet timed out on an insert whose
+      // deck delta showed both slides had landed. A budget that expires on a
+      // call that worked produces a false refusal, which is the more expensive
+      // direction here.
+      60000,
       "inserting a deck",
     );
   } catch (e) {

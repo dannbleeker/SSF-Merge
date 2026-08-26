@@ -11,3 +11,8 @@ public/*.html
 
 # Generated for Script Lab, and asserted by test/probe.test.ts.
 probe/
+
+# Answer sheets are recordings of what a real PowerPoint said. Reformatting one
+# is editing evidence, and it fails CI for anyone who saves a sheet and commits
+# it without running the formatter afterwards.
+docs/host-answers/

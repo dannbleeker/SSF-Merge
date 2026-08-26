@@ -50,6 +50,26 @@ Measured on PowerPoint for the web, 2026-08-26, two sheets under
   write against a shape in the batch that created it.** There is no way round
   it by name: `ShapeCollection.getItem` is documented in the typings as taking
   an ID, not a name, whatever the docs article's example suggests.
+- **A targeted substring write keeps the formatting around it.** `getSubstring(a,
+  n).text = v` replaced a placeholder and the bold on that run survived. Live
+  preview can target a substring; it does not have to redraw whole shapes.
+- **Two writes queued in one batch DO interfere: the second sees the first
+  one's result.** Writing five characters over `AAA` in `AAA-BBB` and then three
+  at the original offset of `BBB` gave `XXXX2BB`, not `XXXXX-2`. **So Office.js
+  replacements must be queued RIGHT TO LEFT**, highest offset first, or every
+  placeholder after the first lands in the wrong place — and it lands in a way
+  that reads as a data bug rather than an ordering bug.
+
+  This constrains the host/preview layer only. `mergeParagraph` writes character
+  buffers built from the original joined text and applies every hit against
+  those, so the package path is immune by construction. Do not "fix" it to match
+  this finding.
+- **A call can raise and still have done the work.** The third sheet's 30-second
+  budget expired on an insert whose deck delta was exactly the two slides asked
+  for. Read the DELTA, never the presence of an error: reading the error as
+  decisive turned one late answer into three false statements in the same run.
+  This is the opposite direction from PowerChart's "a stall is death, not
+  slowness", and it is this host's own evidence rather than that one's.
 - **The first sheet said none of this**, and the reason is worth keeping. Every
   insert answered `InvalidArgument` because our own fixture was malformed — an
   empty `<a:themeElements/>` where `CT_BaseStyles` requires three children. Two

@@ -9,6 +9,18 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- `insertVerdict` read the presence of an error as decisive and ignored the deck
+  delta, so an insert that timed out having landed both its slides was reported
+  as a refusal. One misread arm then produced three false statements in the same
+  run: that our package had been refused, that the collision arm disagreed with
+  the fresh one, and that the theme was the difference. Its own docstring
+  already said the delta is the evidence; the code agrees with it now. A raise
+  that landed nothing, or only part of what was asked, is still a throw, and the
+  partial count is reported rather than hidden.
+- The probe's insert budget was 30 seconds, which expired once on a call that
+  worked. It is 60 now: a budget that fires on a successful call produces a
+  false refusal, which is the more expensive direction.
+
 - Questions three and four could not be reached: a shape proxy does not survive
   a `context.sync()` on PowerPoint for the web, which answers `5010:
   InvalidParam passed to GetItem(id)` the first time a shape created a sync
