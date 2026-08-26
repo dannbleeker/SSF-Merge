@@ -103,6 +103,15 @@ Any feature change updates, in the same PR:
   no-Office-imports test first matched the word "Office.js" in the comments
   explaining why the engine avoids it, and failed on four correct files.
 - **Test files are named by topic, never by increment.**
+- **A check whose answer depends on a build artifact is not a check.**
+  `dist-lib/` is compiled output and is absent on a fresh checkout, so the two
+  scripts that import it (`build-probe.mjs`, `read-answers.mjs`) type-resolve to
+  `error` in CI and to real types on a machine that has run `npm run build:lib`.
+  Type-aware lint therefore passed locally and failed on the same source in CI.
+  The fix is to scope the affected rule off for exactly those files, not to make
+  CI build first: building would only hide the non-determinism behind whichever
+  order the steps happen to run in. Before trusting any local run of a check that
+  reads `dist-lib/`, delete it and run again.
 - **All sample data is invented.** The repo is public.
 - **Merging to `main` is authorized.** Once CI is green on the exact pushed
   commit — verify the run's `head_sha` matches the branch head, because a
