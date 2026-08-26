@@ -11,6 +11,23 @@ updates:
       # vitest bump reviewed together is one CI run and one decision.
       dev-tooling:
         dependency-type: development
+    ignore:
+      # @types/node's major tracks the Node major it describes, and this repo
+      # pins Node 22 in three places: .nvmrc, the engines field, and the Pages
+      # workflow. Types ahead of the runtime are the dangerous direction — they
+      # typecheck an API the runtime may not have, so the failure lands at run
+      # time with a green build behind it.
+      #
+      # Honest limit on that claim: when Dependabot proposed 22 -> 26, the whole
+      # gate passed under the newer types and five candidate Node-26 APIs all
+      # turned out to exist in Node 22.22 as well. No break was reproduced. The
+      # major is pinned because the alignment is free and the risk is
+      # asymmetric, not because a failure was demonstrated.
+      #
+      # Raise this deliberately, together with .nvmrc, when the repo moves to a
+      # newer Node.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: "deps"
   - package-ecosystem: github-actions
