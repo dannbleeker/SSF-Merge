@@ -30,10 +30,11 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      # No pane to build yet. `public/` carries the CNAME that binds the custom
-      # domain, so the site exists and the certificate is issued before there is
-      # anything to serve. Swap this for the real build when the pane lands.
-      - run: mkdir -p dist && cp -r public/. dist/
+      # Builds the task pane to dist/taskpane.html and copies public/ — the
+      # landing page and the CNAME that binds the custom domain — alongside it.
+      # A pane change therefore ships through main with no re-sideload; only a
+      # manifest change costs the owner that.
+      - run: npm run build
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:

@@ -26,6 +26,7 @@ is what lets it run in the pane, in a CLI and in the suite with no PowerPoint.
 | `src/core/data/` | `recordset.ts` (parsing, type detection), `format.ts` (numbers, dates, case) |
 | `src/host/` | the DECISIONS about talking to a host, all pure and all tested: `capability.ts` (version floor, where the template's bytes come from), `verdicts.ts` (what an observation means), `undo.ts` (which slides a run may take back), `timeout.ts` (what each call is allowed to cost) |
 | `src/office/` | the Office.js CALLS, and nothing else. Every judgement is imported from `src/host` |
+| `src/pane/` | `steps.ts` (which step is reachable, what the one button says), `summary.ts` (the sentences numbers go into), `render.ts` (the DOM), `main.ts` (**the only file here allowed to touch Office.js**), plus the HTML and the SSF stylesheet |
 | `test/fixtures/` | `deck.ts` builds a minimal .pptx in memory, so no test depends on a committed binary |
 
 **`src/host` decides, `src/office` calls, and `test/architecture.test.ts` holds
@@ -38,6 +39,32 @@ read at all.
 `src/office` is **not** in the coverage include list, deliberately. Pooling a
 well-tested engine with untestable host calls produces one number that hides
 both.
+
+**The pane is the one surface the suite cannot judge.** `pane-render.test.ts`
+pins its behaviour in jsdom, which has no layout and no colour, so a rule about
+how it LOOKS is invisible there unless somebody turns it into something
+countable. `scripts/pane-shots.mjs` renders every state at 320 and 512 — the ends
+of the width a task pane is dragged between — and looking at the output is part
+of done:
+
+```bash
+npx vite --port 5199 --strictPort &
+node scripts/pane-shots.mjs          # PNGs in /tmp/pane-shots
+```
+
+Its first run found a real defect no test had: the fields step drew the orange
+tick AND an orange-bordered chip, breaking the **orange budget** the layout was
+approved on — one orange element per view. The fix was to make the budget a
+single function (`orangeHolder`) rather than a condition at each call site, and
+the finding is now a test that counts orange-carrying classes across every state
+and step. **A rule enforced in one place can be tested; one enforced in three
+cannot.**
+
+Proving that guard took two attempts, and the first is the lesson: removing the
+`unmatched` branch turned a different assertion red, because it stopped the chip
+being orange rather than putting a second orange on screen. Only a faithful
+revert of the RENDER change reproduced the defect. Check which assertion goes
+red, not just that one does.
 
 ## What THIS host answered
 

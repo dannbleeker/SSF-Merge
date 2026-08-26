@@ -17,6 +17,7 @@ placeholders where the data goes, and SSF Merge produces one copy per row.
 - [Your data](#your-data)
 - [Where the merged slides go](#where-the-merged-slides-go) *(planned)*
 - [What happens to the template](#what-happens-to-the-template) *(planned)*
+- [The pane](#the-pane) *(partly planned)*
 - [Tags SSF Merge writes](#tags-ssf-merge-writes)
 - [Limits](#limits)
 
@@ -169,6 +170,42 @@ PowerPoint tags.
 
 Tags that other tools wrote are kept. SSF Merge merges its own keys into an
 existing tag list rather than replacing it.
+
+## The pane
+
+Four steps, and the step number is shown throughout — "Step 2 of 4" states how
+much is left, which is the question a first-time user actually has.
+
+| step | what you do |
+| --- | --- |
+| 1 · Template | Name the first and last slide of the set that repeats. They must be next to each other. |
+| 2 · Fields | See the placeholders found in those slides, and which ones have no column behind them. |
+| 3 · Preview | Put one row's values on the real slide, then put the template back. |
+| 4 · Merge | Add the slides, with the count on the button. |
+
+Three things about it are deliberate and worth knowing.
+
+**Exactly one filled button per screen, always last, and it names what it does
+with the number in it.** "Add 720 slides" is a statement you can check against
+the deck in front of you; "Merge" is only a promise.
+
+**Every slide is named by the number in the thumbnail rail.** Never an id — this
+host refuses ids for slides a run has just added — and never a zero-based index,
+which is a number you have no way to see.
+
+**One orange thing per screen.** Normally the small tick above the heading. When
+something is temporarily untrue on the slide — a preview showing, a placeholder
+with no column — the orange moves there and the tick goes away. Two oranges in
+one glance and neither means anything.
+
+*Planned:* the pane renders and gates correctly, and steps 1 to 4 are not yet
+wired to the deck. Choosing a block, reading fields from real slides, previewing
+and merging arrive with the merge run.
+
+The pane follows PowerPoint's theme, read once when it opens. There is no
+theme-change event for a PowerPoint task pane — the one in the Office typings
+belongs to Outlook — so switching PowerPoint between light and dark while the
+pane is open needs the pane reopened.
 
 ## Limits
 

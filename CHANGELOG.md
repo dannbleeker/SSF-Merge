@@ -9,6 +9,17 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 
+- The task pane: four steps, the SSF visual system, English, at the width a task
+  pane is actually dragged between. The step machine, every label and the
+  renderer are checked in the suite; `main.ts` is the only file that touches
+  Office.js and `test/architecture.test.ts` holds that.
+- `scripts/pane-shots.mjs` renders every pane state at 320 and 512 px. The pane
+  is the one surface the suite cannot judge — jsdom has no layout and no colour
+  — and its first run found a defect no test had.
+- `npm run dev` and `npm run build`, and the Pages workflow now builds the pane
+  instead of copying a placeholder. A pane change ships through main with no
+  re-sideload; only a manifest change costs that.
+
 - The host layer, split the way the probe was: `src/host` holds the decisions as
   pure functions the suite checks, `src/office` holds the Office.js calls and
   decides nothing. `test/architecture.test.ts` holds both directions — an

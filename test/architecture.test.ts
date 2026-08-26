@@ -71,6 +71,18 @@ describe("src/core", () => {
     }
   });
 
+  it("lets only the pane's entry point touch Office.js", () => {
+    // steps.ts, summary.ts and render.ts are the pane's decisions and its
+    // screen, and all three are checked in the suite without a PowerPoint. The
+    // moment one of them reads Office.context the labels a user acts on become
+    // untestable — and the pane is the surface where a wrong label is the thing
+    // that gets pressed.
+    const offenders = filesUnder("src/pane")
+      .filter((f) => !f.endsWith("main.ts"))
+      .filter((f) => codeOf(f).match(/\bOffice\.|\bPowerPoint\./));
+    expect(offenders).toEqual([]);
+  });
+
   it("looks values up without walking the prototype chain", () => {
     // A field called __proto__ or constructor is a legal spreadsheet header and
     // arrives from a file the user pasted.
