@@ -92,14 +92,25 @@ merged as a date.
 
 ## What repeats
 
-*Planned.* A template is one or more **contiguous** slides, marked as a block.
-Three slides per customer is the ordinary case.
+A template is one or more **contiguous** slides, marked as a block. Three slides
+per customer is the ordinary case. The engine does all of this today; the pane
+that lets you *choose* the block is still planned, so for now a block is
+described in code.
 
 - The deck's own order is the order each record gets.
 - Slides must sit next to each other. Reorder them in the thumbnail pane first.
 - Records are emitted whole: all of record 1's slides, then all of record 2's.
 - A slide can be conditional, so a record gets two slides or three. Its position
   never changes; it is skipped in place.
+- A condition names a column. The slide is emitted when that column's cell has
+  content. **A blank cell is false, and so are the words `false`, `falsk`, `no`,
+  `nej`, `off` and `0`**, whatever their capitalisation. That short list exists
+  because a spreadsheet boolean does not arrive as a boolean: Excel writes it
+  out as a localised word, and treating `FALSK` as content would emit every
+  slide it was told to leave out. Anything not on the list is content.
+- A condition naming a column your data does not have **emits the slide anyway**
+  and reports the problem. Dropping it would hide an authoring mistake behind
+  output that looks finished.
 - One deck can hold several blocks over different data. Slides 4 to 6 over
   customers while slides 9 to 10 repeat over products is an ordinary report.
 

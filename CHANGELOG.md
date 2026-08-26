@@ -9,6 +9,12 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 
+- The merge plan: a block of contiguous slides repeated once per record,
+  record-major so a record's slides stay together, with conditional slides
+  skipped in place and a policy for what an empty cell means.
+- The runner that carries a plan out against a package: clone the template
+  slide, merge the copy, tag the copy. The template is never touched, so it can
+  be merged again.
 - The package layer: reading and writing a .pptx as parts, relationships,
   content types and the slide id list, with base64 in and out.
 - Slide cloning, with its own relationships, content type, presentation

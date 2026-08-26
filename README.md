@@ -18,7 +18,8 @@ are not written yet.
 | Tags written into the file (`ppt/tags/tagN.xml`) | done |
 | Run-aware text replacement | done |
 | Data parsing, type detection, formatting | done |
-| Merge plan (blocks, records, conditional slides) | next |
+| Merge plan (blocks, records, conditional slides) | done |
+| Running a plan against a package, end to end | done |
 | Office.js host layer, task pane, manifests | not started |
 
 ## How it works
