@@ -1,0 +1,42 @@
+name: Pages
+
+# The add-in is hosted from GitHub Pages, so a code or task-pane change ships
+# through main with no re-install in PowerPoint. Only a change to the MANIFEST
+# needs the owner to re-sideload.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # No pane to build yet. `public/` carries the CNAME that binds the custom
+      # domain, so the site exists and the certificate is issued before there is
+      # anything to serve. Swap this for the real build when the pane lands.
+      - run: mkdir -p dist && cp -r public/. dist/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+      - id: deploy
+        uses: actions/deploy-pages@v4
