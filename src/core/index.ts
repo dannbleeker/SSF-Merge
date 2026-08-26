@@ -21,6 +21,12 @@ export {
 } from "./pptx/tags.js";
 export { A_NS, CT_NS, PKG_REL_NS, P_NS, R_NS, element, elements, parseXml, serializeXml } from "./pptx/xml.js";
 export { FIELD, fieldsIn, mergeDocument, mergeParagraph } from "./merge/text.js";
+export { buildPlan, isTruthy, recordCount, slideCount } from "./merge/plan.js";
+export type { Block, BlockSlide, MergePlan, PlanOptions, PlanStep, SkippedSlide } from "./merge/plan.js";
+export { makeResolver } from "./merge/resolve.js";
+export type { EmptyPolicy, ResolveOptions } from "./merge/resolve.js";
+export { runPlan } from "./merge/run.js";
+export type { RunOptions, RunResult } from "./merge/run.js";
 export type { Resolve } from "./merge/text.js";
 export { detectType, looksLikeDate, parseDelimited, toRecordSet } from "./data/recordset.js";
 export type { Column, ColumnType, RecordSet } from "./data/recordset.js";

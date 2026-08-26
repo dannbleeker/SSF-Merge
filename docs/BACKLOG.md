@@ -10,15 +10,8 @@ is to build.
 
 ## Next
 
-### Merge plan — blocks, records, conditional slides
-**Priority: blocking.** Feasibility: high, pure engine work.
-Turns a template block and a record set into an ordered list of clone
-operations. Record-major, conditional slides skipped in place, several blocks
-per deck. The data model must carry N blocks from day one even if the pane ships
-one: retrofitting a second block later means re-cutting every stored job.
-
 ### Host layer
-**Priority: blocking.** Feasibility: medium; the risk is the host, not the code.
+**Priority: blocking, and it is next.** Feasibility: medium; the risk is the host, not the code.
 Reading the template out of the open deck (`exportAsBase64Presentation` 1.10,
 `slide.exportAsBase64` 1.8, `getFileAsync` as the floor), the one-call insert
 with a `targetSlideId`, and positional undo with the clamps. Every rule it must
