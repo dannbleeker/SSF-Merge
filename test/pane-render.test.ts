@@ -132,3 +132,18 @@ describe("re-rendering", () => {
     expect(root.querySelector("button.primary")?.textContent).toBe("Add 30 slides");
   });
 });
+
+describe("counting placeholders", () => {
+  it("says 1 placeholder, not 1 placeholders", () => {
+    // The zero case was special-cased and the ONE case was not, so a name badge
+    // or certificate template holding a single {{Name}} announced
+    // "1 placeholders". The screenshot script only ever renders three, so
+    // nothing showed it either.
+    expect(paneFor({ ...ready, fields: ["Name"] }, "fields").querySelector("h1")?.textContent).toBe("1 placeholder");
+  });
+
+  it("still says the plural for two and the sentence for none", () => {
+    expect(paneFor({ ...ready, fields: ["A", "B"] }, "fields").querySelector("h1")?.textContent).toBe("2 placeholders");
+    expect(paneFor({ ...ready, fields: [] }, "fields").querySelector("h1")?.textContent).toBe("No placeholders found");
+  });
+});

@@ -51,6 +51,11 @@ when a merged value comes out looking wrong.
 `{{Territory}}` on the slide rather than a blank space. A blank slide looks
 finished; a visible placeholder does not, which is the point.
 
+A field name may be written in any language — `{{Beløb}}`, `{{Größe}}`,
+`{{Πλήθος}}` — and matches the column header exactly as the sheet spells it.
+Letters, digits, underscores and dots; a name made only of spaces or punctuation
+is not a field.
+
 ## Formats
 
 Add a format after a pipe:
@@ -206,6 +211,22 @@ The pane follows PowerPoint's theme, read once when it opens. There is no
 theme-change event for a PowerPoint task pane — the one in the Office typings
 belongs to Outlook — so switching PowerPoint between light and dark while the
 pane is open needs the pane reopened.
+
+## When a cell is not what its format expects
+
+The rule throughout is that a cell the engine cannot read is **printed as it
+stands**, never guessed at and never blanked. A merged deck that draws perfectly
+and is two months wrong is worse than one showing the cell untouched, because
+nobody checks the first one.
+
+So: an impossible date — `29/02/2025`, `31/04/2026`, `13/13/2026` — is left
+alone rather than rolled forward into the real date that follows it. An
+ambiguous slash date like `03/01/2026` is left alone for the same reason. A
+`number:` format asking for impossible decimals leaves the cell alone rather
+than failing the merge.
+
+Dates are read and written in the same zone, so `1 Mar 2026` prints as
+`01 Mar 2026` wherever you are.
 
 ## Limits
 
