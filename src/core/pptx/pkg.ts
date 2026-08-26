@@ -210,6 +210,41 @@ export class Pkg {
 
   // ---- output --------------------------------------------------------------
 
+  /**
+   * Write a part back into the zip and drop its parsed copy.
+   *
+   * The cache is also the dirty-part set — `flush` writes every document handed
+   * out by `doc` — so nothing ever left it, and a merge held one live xmldom
+   * Document per output slide on top of JSZip's copy of the same bytes. Measured
+   * at 300 clones of a 124 KB slide: 1697 MB of heap against 93 MB with the
+   * documents released, and 400 records died outright under a 2 GB limit, which
+   * is the size a task-pane WebView is working in.
+   *
+   * Releasing is behaviour-neutral: every PART is byte-identical either way,
+   * which is asserted rather than assumed. The ZIP is not, and that is not a
+   * difference in output — JSZip stamps an entry time whenever a file is
+   * written, so any two builds differ. Compare parts, never the archive.
+   *
+   * Call it for a part nothing will read again; parts the
+   * run keeps amending, `[Content_Types].xml` and `ppt/presentation.xml` among
+   * them, must NOT be released or every clone reparses them.
+   */
+  release(path: string): void {
+    const doc = this.docs.get(path);
+    if (doc) this.setText(path, serializeXml(doc));
+  }
+
+  /**
+   * How many parts are parsed and held right now.
+   *
+   * A diagnostic, and the only way to state the property `release` exists for:
+   * that a merge's held-document count does not grow with the number of records.
+   * A memory assertion would be flaky; this one is exact.
+   */
+  cachedParts(): number {
+    return this.docs.size;
+  }
+
   private flush(): void {
     for (const [path, doc] of this.docs) this.zip.file(path, serializeXml(doc));
   }

@@ -7,6 +7,32 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a merge held every slide it produced
+
+The last of the bug hunt. `Pkg`'s document cache is also its dirty-part set, so
+nothing ever left it: a run kept one live xmldom Document per output slide on top
+of the zip's own copy of the same bytes. Measured on a 300-paragraph slide, 300
+clones held **440 MB** of heap and 400 clones **591 MB**, against **54 MB** either
+way once released — flat rather than growing with the record count, which is the
+property that matters inside a task-pane WebView.
+
+`Pkg.release` writes a part back and drops it; `runPlan` releases each slide, its
+relationships, its notes page and the notes page's own relationships once nothing
+will read them again. Parts the run keeps amending — `[Content_Types].xml`,
+`ppt/presentation.xml` — are deliberately not released.
+
+The guard counts held parts rather than heap, because a memory assertion would be
+flaky and what is actually claimed is that the count does not track the record
+count. **It caught the first fix being incomplete**: releasing the slide, its rels
+and the notes page still left one document per record, because `cloneNotesSlide`
+also edits the notes page's `.rels`.
+
+Two numbers in the hunt's report are not repeated here because this repo could not
+reproduce them: it claimed 17-18x and an out-of-memory kill at 400 records under a
+2 GB cap. Measured here it is 8x at 300 and 11x at 400, and 400 completed. The
+direction was right and the magnitude was not, so the magnitude measured here is
+what is written down.
+
 ### Fixed — data, text and the pane
 
 The rest of the bug hunt's confirmed findings. Every one produced silently wrong

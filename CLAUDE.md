@@ -205,6 +205,12 @@ Any feature change updates, in the same PR:
   no-Office-imports test first matched the word "Office.js" in the comments
   explaining why the engine avoids it, and failed on four correct files.
 - **Test files are named by topic, never by increment.**
+- **Compare a .pptx by its PARTS, never by the archive's bytes.** JSZip stamps an
+  entry time whenever a file is written, so two builds of identical content hash
+  differently — and the order writes happen in changes those stamps. Releasing a
+  parsed part mid-run produced a different zip hash and identical contents
+  across all 66 parts, which for ten minutes looked like the change altering
+  output. Load both, walk the part names, hash name plus content.
 - **A check whose answer depends on a build artifact is not a check.**
   `dist-lib/` is compiled output and is absent on a fresh checkout, so the two
   scripts that import it (`build-probe.mjs`, `read-answers.mjs`) type-resolve to
