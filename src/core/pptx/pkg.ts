@@ -25,7 +25,7 @@ export class Pkg {
   private constructor(private readonly zip: JSZip) {}
 
   static async open(input: Uint8Array | ArrayBuffer | string): Promise<Pkg> {
-    const zip = await JSZip.loadAsync(input as never, typeof input === "string" ? { base64: true } : undefined);
+    const zip = await JSZip.loadAsync(input, typeof input === "string" ? { base64: true } : undefined);
     return new Pkg(zip);
   }
 

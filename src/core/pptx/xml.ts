@@ -32,7 +32,7 @@ export function serializeXml(doc: Document): string {
 
 /** Every descendant with this local name in the given namespace, in document order. */
 export function elements(root: Document | Element, ns: string, local: string): Element[] {
-  return Array.from(root.getElementsByTagNameNS(ns, local)) as Element[];
+  return Array.from(root.getElementsByTagNameNS(ns, local));
 }
 
 /** The first such descendant, or undefined. Never null, so callers can `??`. */

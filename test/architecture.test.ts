@@ -9,7 +9,6 @@ function filesUnder(dir: string): string[] {
   });
 }
 
-
 /**
  * The file with its prose removed.
  *

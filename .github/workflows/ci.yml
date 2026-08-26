@@ -10,6 +10,9 @@ on:
   # head can sit untested behind a green parent.
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -17,8 +20,19 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - run: npm run typecheck
-      - run: npm test
+
+      # Ordered cheapest and most specific first, so a run that is going to fail
+      # says why in seconds rather than after the whole suite.
+      - name: Format
+        run: npm run format:check
+      - name: Lint
+        run: npm run lint
+      - name: Types
+        run: npm run typecheck
+      - name: Tests and coverage
+        run: npm run coverage
+      - name: Test count
+        run: npm run test:count

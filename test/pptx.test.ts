@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { cloneSlide, creationIdOf, setCreationId } from "../src/core/pptx/clone.js";
 import { Pkg } from "../src/core/pptx/pkg.js";
-import { TAG_BLOCK, TAG_RUN, mergeTagPart, nextTagNumber, readSlideTags, writeSlideTags } from "../src/core/pptx/tags.js";
+import {
+  TAG_BLOCK,
+  TAG_RUN,
+  mergeTagPart,
+  nextTagNumber,
+  readSlideTags,
+  writeSlideTags,
+} from "../src/core/pptx/tags.js";
 import { P_NS, elements } from "../src/core/pptx/xml.js";
 import { makeDeck } from "./fixtures/deck.js";
 
@@ -51,9 +58,7 @@ describe("cloneSlide", () => {
     await cloneSlide(pkg, "ppt/slides/slide1.xml", { creationId: () => ++n });
     await cloneSlide(pkg, "ppt/slides/slide1.xml", { creationId: () => ++n });
 
-    const ids = await Promise.all(
-      ["slide1", "slide2", "slide3"].map((s) => creationIdOf(pkg, `ppt/slides/${s}.xml`)),
-    );
+    const ids = await Promise.all(["slide1", "slide2", "slide3"].map((s) => creationIdOf(pkg, `ppt/slides/${s}.xml`)));
     expect(new Set(ids).size).toBe(3);
   });
 
@@ -129,10 +134,9 @@ describe("tags", () => {
   });
 
   it("replaces our own key rather than duplicating it", () => {
-    const merged = mergeTagPart(
-      `<p:tagLst><p:tag name="A" val="1"/><p:tag name="B" val="2"/></p:tagLst>`,
-      [["A", "9"]],
-    );
+    const merged = mergeTagPart(`<p:tagLst><p:tag name="A" val="1"/><p:tag name="B" val="2"/></p:tagLst>`, [
+      ["A", "9"],
+    ]);
     expect(merged).toContain('name="B" val="2"');
     expect(merged).toContain('name="A" val="9"');
     expect(merged.match(/name="A"/g)).toHaveLength(1);

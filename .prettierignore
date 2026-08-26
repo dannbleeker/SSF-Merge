@@ -1,0 +1,10 @@
+dist/
+dist-lib/
+coverage/
+package-lock.json
+
+# Prose is written to be read in a diff, and a formatter that reflows a
+# paragraph turns a one-word change into a rewritten page. Markdown and the
+# hand-written HTML page are formatted by whoever edits them.
+*.md
+public/*.html

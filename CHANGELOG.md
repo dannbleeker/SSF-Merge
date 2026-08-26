@@ -25,10 +25,25 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 - A manual trigger on the CI workflow, so a commit whose push event was lost can
   still be tested.
 
+- Prettier and type-aware ESLint, both run in CI. `no-floating-promises` is on,
+  because the engine is async throughout and a missed `await` there merges the
+  wrong thing quietly rather than throwing.
+- Coverage floors on `src/core`, and a floor under the number of tests so a
+  reorganisation cannot delete cases silently.
+- Dependabot, with a log in `docs/DEPENDENCY-ALERTS.md` where every alert gets a
+  written reading, "no exposure" included.
+- Contributing guide, security policy, pull request template and code owners.
+
+### Changed
+
+- Vitest moved to 4.x, so the repository does not start two majors behind.
+
 ### Fixed
 
 - `Pkg.text` and `Pkg.copyPart` read edits that had not yet been written back to
   the zip. Three tests were passing on the version from disk.
+- Five unnecessary type assertions in the package and XML layers, found by the
+  new linter.
 - The no-Office-imports guard matched the words "Office.js" and "PowerPoint.run"
   in the comments explaining why the engine avoids them, and failed on four
   correct files.

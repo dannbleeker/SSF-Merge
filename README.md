@@ -78,9 +78,17 @@ up. A feature and its documentation land in the same change or neither does.
 
 ```bash
 npm install
-npm test          # the suite
-npm run typecheck
+
+npm test           # the suite
+npm run typecheck  # types
+npm run lint       # type-aware ESLint
+npm run format     # Prettier, on code only
+npm run coverage   # the suite with coverage floors on src/core
+npm run test:count # a floor under the number of tests
 ```
+
+CI runs all of these. [CONTRIBUTING.md](CONTRIBUTING.md) explains the rules they
+hold.
 
 ## Licence
 

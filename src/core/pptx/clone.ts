@@ -108,7 +108,7 @@ export async function setCreationId(pkg: Pkg, slidePath: string, value: number):
   if (!cSld) throw new Error(`ssf-merge: ${slidePath} has no <p:cSld>`);
 
   for (const id of Array.from(doc.getElementsByTagNameNS(P14_NS, "creationId"))) {
-    (id as Element).setAttribute("val", String(value));
+    id.setAttribute("val", String(value));
     return;
   }
 
@@ -129,7 +129,7 @@ export async function setCreationId(pkg: Pkg, slidePath: string, value: number):
 /** Read a slide's creation id, for tests and for the pane's diagnostics. */
 export async function creationIdOf(pkg: Pkg, slidePath: string): Promise<number | undefined> {
   const doc = await pkg.doc(slidePath);
-  const id = Array.from(doc.getElementsByTagNameNS(P14_NS, "creationId"))[0] as Element | undefined;
+  const id = Array.from(doc.getElementsByTagNameNS(P14_NS, "creationId"))[0];
   const val = id?.getAttribute("val");
   return val === undefined || val === null ? undefined : Number(val);
 }
