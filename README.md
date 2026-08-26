@@ -20,6 +20,7 @@ are not written yet.
 | Data parsing, type detection, formatting | done |
 | Merge plan (blocks, records, conditional slides) | done |
 | Running a plan against a package, end to end | done |
+| Host probe, for the questions only a real PowerPoint answers | done, [not yet run](docs/PROBE.md) |
 | Office.js host layer, task pane, manifests | not started |
 
 ## How it works
@@ -69,6 +70,7 @@ slide looks finished; `{{Territory}}` does not, and that is the point.
 | [docs/MANUAL.md](docs/MANUAL.md) | How to use it: placeholders, formats, blocks, data, limits |
 | [docs/BACKLOG.md](docs/BACKLOG.md) | What is open, what it would cost, and what has been rejected |
 | [CHANGELOG.md](CHANGELOG.md) | What changed, newest first |
+| [docs/PROBE.md](docs/PROBE.md) | How to run the host probe, and what each answer decides |
 | [CLAUDE.md](CLAUDE.md) | Project memory: architecture, host rules, conventions |
 
 These are kept in step with the code by `test/docs.test.ts`, which reads the
@@ -86,6 +88,10 @@ npm run lint       # type-aware ESLint
 npm run format     # Prettier, on code only
 npm run coverage   # the suite with coverage floors on src/core
 npm run test:count # a floor under the number of tests
+
+npm run build:lib  # compile the engine, which the scripts below import
+npm run probe      # regenerate the Script Lab probe in probe/
+npm run answers -- sheet.json --save   # read an answer sheet the probe produced
 ```
 
 CI runs all of these. [CONTRIBUTING.md](CONTRIBUTING.md) explains the rules they

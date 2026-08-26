@@ -13,7 +13,10 @@ import tseslint from "typescript-eslint";
  * information to see it at all, so the cost of the slower lint is the point.
  */
 export default tseslint.config(
-  { ignores: ["dist/", "dist-lib/", "coverage/", "public/"] },
+  // `probe/` is generated for Script Lab, not for this project: it has no
+  // imports, targets a runtime with its own globals, and is asserted by
+  // test/probe.test.ts rather than by the linter.
+  { ignores: ["dist/", "dist-lib/", "coverage/", "public/", "probe/"] },
   js.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
   {
@@ -43,6 +46,17 @@ export default tseslint.config(
     // The build scripts run under Node, not in a pane.
     files: ["scripts/**", "*.config.{js,ts}"],
     languageOptions: { globals: globals.node },
+  },
+  {
+    // These two import `dist-lib/`, which is a BUILD ARTIFACT and is absent on
+    // a fresh checkout. Type-aware linting resolves those imports to `error`
+    // when it is not there and to real types when it is, so the verdict is a
+    // fact about whether somebody has run `npm run build:lib` — green locally,
+    // red in CI, and back again on the next build. A rule that answers
+    // differently on the same source is not a rule. The scripts are covered by
+    // `test/probe.test.ts` and by running them.
+    files: ["scripts/build-probe.mjs", "scripts/read-answers.mjs"],
+    rules: { "@typescript-eslint/no-unsafe-return": "off" },
   },
   {
     // The fixture builder and the tests reach into XML shapes on purpose.

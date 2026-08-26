@@ -9,6 +9,10 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 
+- The host probe: a Script Lab snippet that asks the four questions only a real
+  PowerPoint can answer, and a reader that interprets the sheet it produces.
+  The snippet collects observations and makes no judgements; every reading
+  happens in the repository, where it is tested.
 - The merge plan: a block of contiguous slides repeated once per record,
   record-major so a record's slides stay together, with conditional slides
   skipped in place and a policy for what an empty cell means.
