@@ -9,6 +9,18 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- Questions three and four could not be reached: a shape proxy does not survive
+  a `context.sync()` on PowerPoint for the web, which answers `5010:
+  InvalidParam passed to GetItem(id)` the first time a shape created a sync
+  earlier is touched again. Both experiments are queued in the batch that
+  creates their shape now, which is also the shape a real merge has. They draw
+  on a slide the probe inserted, so the positional sweep removes them, and they
+  do not draw at all when no insert landed.
+- The reader scored question four against `"Hello Ada here and 1-2".replace("2",
+  "BBB")`, a string neither offset model produces. Both experiments' text and
+  both predictions are single-sourced now, and a guard checks each prediction is
+  what applying that model by hand actually gives.
+
 - The probe reported a verdict on a question it had not asked. The tag read
   lands on the last slide in the deck, which is the inserted one only if the
   insert worked; the first real sheet had every insert throw, so that read fell

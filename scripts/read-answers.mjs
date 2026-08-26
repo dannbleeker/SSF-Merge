@@ -17,6 +17,8 @@ import {
   insertionBlame,
   insertVerdict,
   offsetVerdict,
+  Q3,
+  Q4,
   substringVerdict,
   tagVerdict,
 } from "../dist-lib/host/verdicts.js";
@@ -68,14 +70,16 @@ line("verdict", `${tag.verdict} — ${tag.detail}`);
 
 const sub = sheet.substring ?? {};
 console.log("\n3. Does a targeted substring write keep the formatting around it?");
-if (sub.error) {
+if (sub.skipped) {
+  line("verdict", `not asked — ${sub.skipped}`);
+} else if (sub.error) {
   line("verdict", `threw — ${sub.error}`);
   line("threw at", sub.failedAt ?? "unknown — this sheet predates the step labels");
 } else {
   const v = substringVerdict({
     before: sub.textBefore,
     after: sub.textAfterOne,
-    want: "Hello Ada here and AAA-BBB",
+    want: Q3.want,
     boldAfter: sub.boldAfter,
   });
   line("verdict", `${v.verdict} — ${v.detail}`);
@@ -83,10 +87,12 @@ if (sub.error) {
 }
 
 console.log("\n4. Do two writes queued in one batch interfere?");
-if (sub.error || !sub.twoWrites) {
+if (sub.skipped) {
+  line("verdict", `not asked — ${sub.skipped}`);
+} else if (sub.error || !sub.twoWrites) {
   line("verdict", "not reached");
 } else {
-  const v = offsetVerdict(sub.twoWrites.after, "Hello Ada here and 1-2", "Hello Ada here and 1-2".replace("2", "BBB"));
+  const v = offsetVerdict(sub.twoWrites.after, Q4.independent, Q4.shifted);
   line("verdict", `${v.verdict} — ${v.detail}`);
   line("text", JSON.stringify(sub.twoWrites.after));
 }
