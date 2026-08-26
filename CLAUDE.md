@@ -26,6 +26,41 @@ is what lets it run in the pane, in a CLI and in the suite with no PowerPoint.
 | `src/core/data/` | `recordset.ts` (parsing, type detection), `format.ts` (numbers, dates, case) |
 | `test/fixtures/` | `deck.ts` builds a minimal .pptx in memory, so no test depends on a committed binary |
 
+## What THIS host answered
+
+Measured on PowerPoint for the web, 2026-08-26, two sheets under
+`docs/host-answers/`. Recordings, not opinions.
+
+- **The package path works.** A cloned slide with a fresh creation id inserts.
+  So does the presentation's own bytes, so does the same package under
+  `UseDestinationTheme`. This was the assumption the whole architecture rested
+  on and it is now measured rather than hoped for.
+- **A tag written into `ppt/tags/tagN.xml` reads back through
+  `slide.tags.getItemOrNullObject`.** It came back holding `probe-run`. Merge
+  metadata can go into the file before the insert and be read from the host
+  afterwards, which is the single largest risk this project had.
+- **office-js#6105 does not reproduce here.** The collision arm — two slides
+  deliberately sharing one creation id — inserted cleanly. Keep the rewrite
+  anyway: the hosts that need it are the ones nobody here can test.
+- **A shape proxy does not survive a `context.sync()`.** `5010: InvalidParam
+  passed to GetItem(id)`, raised the first time a shape created a sync earlier
+  was touched again. Office.js rewrites a created shape's object path to
+  `shapes.getItem(id)` once it has been through a sync, and this host refuses
+  that id — the shape is there, it just will not be named again. **Queue every
+  write against a shape in the batch that created it.** There is no way round
+  it by name: `ShapeCollection.getItem` is documented in the typings as taking
+  an ID, not a name, whatever the docs article's example suggests.
+- **The first sheet said none of this**, and the reason is worth keeping. Every
+  insert answered `InvalidArgument` because our own fixture was malformed — an
+  empty `<a:themeElements/>` where `CT_BaseStyles` requires three children. Two
+  arms were added rather than reasoned about, and the second sheet answered
+  everything. The blame arm is what turned "InvalidArgument" from a fact about
+  the host into a fact about us.
+
+  Three things changed between the sheets — the theme, the `docProps` parts and
+  the text box's `xfrm` — so **the theme is not proven to be the whole cause**,
+  only the one that violated a schema. Do not write it down as settled.
+
 ## Host rules, learned the expensive way
 
 These come from PowerChart's field rounds against PowerPoint on the web. They

@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { creationIdOf } from "../src/core/pptx/clone.js";
 import { Pkg } from "../src/core/pptx/pkg.js";
 import { TAG_RUN, readSlideTags } from "../src/core/pptx/tags.js";
+import { Q3, Q4 } from "../src/host/verdicts.js";
 
 /**
  * These read the ARTIFACT, not a recipe for it.
@@ -145,6 +146,52 @@ describe("the generated snippet", () => {
     // Four calls shared one catch, so the first real sheet said
     // "InvalidArgument" about a statement nobody could identify.
     expect(snippet).toContain("failedAt: step");
-    expect(snippet).toMatch(/step = "adding a text box"/);
+    // Every step the probe can be inside names the batch it is in, so the sheet
+    // says which one raised. The second real sheet named its own failure this
+    // way on the first outing.
+    const steps = [...snippet.matchAll(/step = "([^"]+)"/g)].map((m) => m[1]);
+    expect(steps.length).toBeGreaterThan(2);
+    expect(steps).toContain("question 3: create, style and write in one batch");
+  });
+});
+
+describe("the substring experiments", () => {
+  it("uses the strings the reader scores against", () => {
+    // The reader once expected "Hello Ada here and 1-2".replace("2", "BBB") —
+    // a string neither model produces. Both sides read one constant now, and
+    // this fails when the snippet has not been regenerated after a change.
+    expect(snippet).toContain(`const Q3_TEXT = "${Q3.text}"`);
+    expect(snippet).toContain(`const Q4_TEXT = "${Q4.text}"`);
+  });
+
+  it("predicts two DIFFERENT strings for the two offset models", () => {
+    // A guard against the pair silently collapsing: if a change made the
+    // independent and shifted answers equal, question four would report "yes"
+    // whatever the host did.
+    expect(Q4.independent).not.toBe(Q4.shifted);
+  });
+
+  it("predicts answers both models can actually produce", () => {
+    // Applying each model to the text by hand. If neither prediction is what
+    // the arithmetic gives, the question is scored against fiction.
+    const both = Q4.text.slice(0, 0) + "XXXXX" + Q4.text.slice(3);
+    expect(both.slice(0, 4) + "2" + both.slice(7)).toBe(Q4.shifted);
+    expect(Q4.text.slice(0, 0) + "XXXXX" + Q4.text.slice(3, 4) + "2").toBe(Q4.independent);
+  });
+
+  it("touches no shape proxy across a sync", () => {
+    // The defect the second real sheet named: Office.js rewrites a created
+    // shape's path to shapes.getItem(id) once it has been through a sync, and
+    // this host answers 5010 InvalidParam for that id. Every write is queued in
+    // the batch that created the shape.
+    const body = snippet.slice(snippet.indexOf("async function substringProbe"), snippet.indexOf("/** Positional"));
+    expect(body.match(/await context\.sync\(\)/g) ?? []).toHaveLength(2);
+    expect(body).not.toContain("shape.delete()");
+  });
+
+  it("refuses to draw when the probe has no slide of its own", () => {
+    // Otherwise a run whose inserts all failed leaves two text boxes on the
+    // user's own slide, which is the deck it was told it could not damage.
+    expect(snippet).toContain("if (!deckGrew)");
   });
 });

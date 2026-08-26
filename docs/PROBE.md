@@ -121,6 +121,23 @@ removing it and watching the tests go red.
 If the deck ends larger than it started, the reader says so rather than
 pretending it is clean.
 
+## What it has answered so far
+
+Two sheets, both PowerPoint for the web, 2026-08-26, filed under
+`docs/host-answers/`.
+
+The first answered nothing about the host and three things about the probe: it
+gave a verdict on a question it had not asked, it named none of the four calls
+that could have thrown, and its fixture deck was malformed. The second, once the
+fixture was fixed and the control arm added, landed every insert and read the
+package tag back.
+
+So the package path is measured, not assumed: cloned slides insert, and merge
+metadata written into the file survives into the host's object model. What is
+still open is question three and four, which the second sheet could not reach —
+a shape proxy does not survive a `context.sync()` on this host, so the
+experiments are queued in one batch now.
+
 ## One answer is not evidence about your host
 
 It is evidence about your host **in that minute**. A sibling project has

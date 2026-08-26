@@ -20,6 +20,7 @@ import { writeFileSync } from "node:fs";
 import { Pkg } from "../dist-lib/core/pptx/pkg.js";
 import { cloneSlide } from "../dist-lib/core/pptx/clone.js";
 import { writeSlideTags, TAG_RUN } from "../dist-lib/core/pptx/tags.js";
+import { Q3, Q4 } from "../dist-lib/host/verdicts.js";
 import { makeDeck } from "./probe-fixture.mjs";
 
 const RUN_TAG = "probe-run";
@@ -169,11 +170,41 @@ async function readTagBack(index: number): Promise<{ value?: string; error?: str
   }
 }
 
-/** Questions 3 and 4: substring writes, formatting and offsets. */
-async function substringProbe(): Promise<Record<string, unknown>> {
-  // Four separate calls used to share one catch, so a throw named none of them
-  // and a sheet reported "InvalidArgument" about an unknown statement. The step
-  // is written before each call, so the error carries the call that raised it.
+/**
+ * Questions 3 and 4, each in ONE batch.
+ *
+ * The first sheet that got this far answered
+ * \`5010: InvalidParam passed to GetItem(id)\` at "styling a substring of a shape
+ * added a sync ago". Office.js rewrites a created shape's object path to
+ * \`shapes.getItem(id)\` once it has been through a sync, and this host refuses
+ * that id — the shape exists, it just will not be named again. So nothing here
+ * touches a shape proxy across a \`context.sync()\`: every write is queued in the
+ * same batch that created the shape, and the only sync is the one that reads
+ * the answers back.
+ *
+ * That is also the shape a real merge has, which makes it the more honest test:
+ * a run queues its replacements and syncs once.
+ *
+ * Two shapes rather than one, because the two questions want different text. A
+ * single shape would make question four's expected answers depend on question
+ * three's write, and the point of question four is that those two models must
+ * be told apart cleanly.
+ */
+const Q3_TEXT = "${Q3.text}";
+// "AAA-BBB": write five characters over AAA, then three over what WAS BBB.
+// Independent offsets give "XXXXX-2"; a second write that saw the first one's
+// result is three characters to the left and gives "XXXX2BB". Neither model
+// runs off the end of the string, so a throw here means something else.
+const Q4_TEXT = "${Q4.text}";
+
+async function substringProbe(deckGrew: boolean): Promise<Record<string, unknown>> {
+  // The shapes land on the LAST slide, which is one this run inserted — so the
+  // positional sweep takes them away with it and nothing has to delete a shape
+  // through a proxy this host will not name. When no insert landed, that slide
+  // is the user's own, and the question is skipped rather than drawn on it.
+  if (!deckGrew) {
+    return { skipped: "no slide of the probe's own to draw on, so this was not asked" };
+  }
   let step = "starting";
   try {
     return await withTimeout(
@@ -183,63 +214,31 @@ async function substringProbe(): Promise<Record<string, unknown>> {
         await context.sync();
         const slide = slides.getItemAt(count.value - 1);
 
-        step = "adding a text box";
-        const shape = slide.shapes.addTextBox("Hello NAME here and AAA-BBB", {
-          left: 40,
-          top: 40,
-          width: 400,
-          height: 60,
-        });
-        await context.sync();
-
+        step = "question 3: create, style and write in one batch";
+        const three = slide.shapes.addTextBox(Q3_TEXT, { left: 40, top: 40, width: 400, height: 60 });
         // Style just the placeholder, so a flattened run is visible afterwards.
-        step = "styling a substring of a shape added a sync ago";
-        shape.textFrame.textRange.getSubstring(6, 4).font.bold = true;
-        await context.sync();
+        three.textFrame.textRange.getSubstring(6, 4).font.bold = true;
+        three.textFrame.textRange.getSubstring(6, 4).text = "Ada";
+        const threeText = three.textFrame.textRange;
+        threeText.load("text");
+        const threeFont = three.textFrame.textRange.getSubstring(6, 3).font;
+        threeFont.load("bold");
 
-        step = "reading the text back";
-        const before = shape.textFrame.textRange;
-        before.load("text");
-        await context.sync();
-        const textBefore = before.text;
+        step = "question 4: create and queue two writes in one batch";
+        const four = slide.shapes.addTextBox(Q4_TEXT, { left: 40, top: 120, width: 400, height: 60 });
+        four.textFrame.textRange.getSubstring(0, 3).text = "XXXXX";
+        four.textFrame.textRange.getSubstring(4, 3).text = "2";
+        const fourText = four.textFrame.textRange;
+        fourText.load("text");
 
-        // Q3: one targeted write.
-        step = "writing one substring";
-        shape.textFrame.textRange.getSubstring(6, 4).text = "Ada";
-        await context.sync();
-
-        const mid = shape.textFrame.textRange;
-        mid.load("text");
-        const styled = shape.textFrame.textRange.getSubstring(6, 3).font;
-        styled.load("bold");
-        await context.sync();
-
-        // Q4: two writes queued in ONE batch, at offsets taken from the text as
-        // it stands now. If they are independent the later one lands where the
-        // caller meant; if the first shifts the second, it does not.
-        const text = mid.text;
-        const a = text.indexOf("AAA");
-        const b = text.indexOf("BBB");
-        step = "queuing two substring writes in one batch";
-        shape.textFrame.textRange.getSubstring(a, 3).text = "1";
-        shape.textFrame.textRange.getSubstring(b, 3).text = "2";
-        await context.sync();
-
-        const end = shape.textFrame.textRange;
-        end.load("text");
-        await context.sync();
-
-        step = "deleting the probe text box";
-        const name = shape.name;
-        shape.delete();
+        step = "reading both back";
         await context.sync();
 
         return {
-          textBefore,
-          textAfterOne: text,
-          boldAfter: styled.bold,
-          twoWrites: { offsets: [a, b], after: end.text },
-          shape: name,
+          textBefore: Q3_TEXT,
+          textAfterOne: threeText.text,
+          boldAfter: threeFont.bold,
+          twoWrites: { offsets: [0, 4], after: fourText.text },
         };
       }),
       30000,
@@ -298,7 +297,8 @@ async function main() {
   // theme this host will not read from a package it will not read.
   answers.insertFreshDestTheme = await insertDeck(FRESH_DECK, "UseDestinationTheme");
   answers.insertCollision = await insertDeck(COLLISION_DECK);
-  answers.substring = await substringProbe();
+  // Only draws if this run has a slide of its own to draw on.
+  answers.substring = await substringProbe((await slideCount()) > deckAtStart);
 
   const deckNow = await slideCount();
   answers.sweep = await sweep(deckAtStart, deckNow - deckAtStart);

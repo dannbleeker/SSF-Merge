@@ -159,6 +159,33 @@ export function insertionBlame(ours: Verdict, self: Verdict): string {
   return "THE HOST: it refused a deck it wrote itself, so nothing can be inserted here and the package path is blocked for reasons no change in this repo can reach.";
 }
 
+/**
+ * The two experiments questions three and four run, and what each model
+ * predicts. Here rather than in the snippet builder so the reader cannot come
+ * to expect a string the probe stopped producing: a guard in
+ * `test/probe.test.ts` asserts the generated snippet carries these.
+ */
+export const Q3 = {
+  text: "Hello NAME here",
+  /** The one targeted write replaces NAME with Ada. */
+  want: "Hello Ada here",
+} as const;
+
+export const Q4 = {
+  text: "AAA-BBB",
+  /**
+   * Five characters over AAA, then three over what WAS BBB, both queued in one
+   * batch at offsets taken from the ORIGINAL string.
+   *
+   * If the host evaluates both against the text as it was, the second write
+   * lands on BBB. If it evaluates the second against the first one's result,
+   * the same offset is three characters to the left. Neither model runs off the
+   * end, so a throw here is about something other than the offsets.
+   */
+  independent: "XXXXX-2",
+  shifted: "XXXX2BB",
+} as const;
+
 export interface SubstringObservation {
   /** Text of the shape before the write. */
   before: string;
