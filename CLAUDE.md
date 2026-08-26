@@ -75,6 +75,20 @@ are recordings, not opinions. Do not re-derive them.
   (office-js#1511). Output goes into the deck, into a new presentation, or
   through `Office.context.ui.openBrowserWindow`.
 
+## The lockstep rule (CI-enforced)
+
+Any feature change updates, in the same PR:
+
+1. **`docs/MANUAL.md`** — `test/docs.test.ts` fails on a format or tag key the
+   manual does not mention, and on a manual that stops marking unbuilt sections
+   as planned.
+2. **`CHANGELOG.md`** — under `## [Unreleased]`, in the language a user would
+   use, not the language of the diff.
+3. **`docs/BACKLOG.md`** — an item that shipped is REMOVED, not ticked. Anything
+   still listed is genuinely not done. A rejected idea moves to the rejected
+   list with the reason, so nobody re-proposes it.
+4. **`README.md`** feature table.
+
 ## Conventions
 
 - **Answer in caveman style** (the `caveman` skill, `full` level) from the first
