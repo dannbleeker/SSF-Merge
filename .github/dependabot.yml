@@ -17,5 +17,12 @@ updates:
     directory: "/"
     schedule:
       interval: monthly
+    groups:
+      # One pull request for the whole workflow toolchain. Ungrouped, the first
+      # run opened five: checkout, setup-node, configure-pages,
+      # upload-pages-artifact and deploy-pages, each its own branch and its own
+      # CI run, for a change nobody reviews line by line anyway.
+      actions:
+        patterns: ["*"]
     commit-message:
       prefix: "ci"
