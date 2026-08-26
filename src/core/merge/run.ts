@@ -10,7 +10,7 @@
  */
 import type { RecordSet } from "../data/recordset.js";
 import { cloneSlide, notesPathFor, type CloneOptions } from "../pptx/clone.js";
-import type { Pkg } from "../pptx/pkg.js";
+import { Pkg } from "../pptx/pkg.js";
 import { writeSlideTags } from "../pptx/tags.js";
 import type { MergePlan } from "./plan.js";
 import { makeResolver, type EmptyPolicy } from "./resolve.js";
@@ -63,6 +63,24 @@ export async function runPlan(
     const notes = await notesPathFor(pkg, target);
     if (notes) paragraphsMerged += mergeDocument(await pkg.doc(notes), resolve);
     await writeSlideTags(pkg, target, step.tags);
+
+    // Nothing reads this slide again, so its parsed copy is written back and
+    // dropped. Held, one live document per output slide accumulates on top of
+    // the zip's own bytes: 300 clones of an ordinary content slide measured
+    // 300 clones of a 300-paragraph slide measured 440 MB of heap held against
+    // 54 MB released, and 400 clones 591 MB against 54 — flat rather than
+    // growing with the record count, which is the property that matters on a
+    // task-pane WebView. Every part is byte-identical either way.
+    if (notes) {
+      pkg.release(notes);
+      // Its own .rels too: cloneNotesSlide edits that part to repoint the copy's
+      // back-reference at the new slide, so it is parsed and held as well. The
+      // guard below caught this one — releasing the slide, its rels and the
+      // notes page still left one document per record behind.
+      pkg.release(Pkg.relsPathFor(notes));
+    }
+    pkg.release(Pkg.relsPathFor(target));
+    pkg.release(target);
     slides.push(target);
   }
 

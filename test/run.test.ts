@@ -155,3 +155,46 @@ describe("what a merged copy carries", () => {
     expect(notes.join(" | ")).not.toContain("{{Name}}");
   });
 });
+
+describe("what a long merge holds in memory", () => {
+  it("does not keep one parsed document per output slide", async () => {
+    // The cache is also the dirty-part set, so nothing ever left it: a run held
+    // one live xmldom Document per output slide on top of the zip's own copy of
+    // the same bytes. Measured on a 300-paragraph slide, 300 clones held 440 MB
+    // of heap against 54 MB released and 400 clones held 591 MB against 54 —
+    // flat rather than growing, which is the property that matters inside a
+    // task-pane WebView.
+    //
+    // Counted rather than measured: a heap assertion would be flaky, and what
+    // is actually being claimed is that the held count does not track the
+    // record count.
+    const held = async (n: number) => {
+      const pkg = await Pkg.open(await makeDeck([{ paragraphs: [["Hello {{Name}}"]], notes: "Notes {{Name}}" }]));
+      const rows = toRecordSet([["Name"], ...Array.from({ length: n }, (_, i) => [`R${i}`])]);
+      const block: Block = { id: "b", slides: [{ path: "ppt/slides/slide1.xml", seq: 1 }] };
+      let id = 0;
+      await runPlan(pkg, buildPlan(block, rows, { runId: "r" }), rows, { clone: { creationId: () => 900 + ++id } });
+      return pkg.cachedParts();
+    };
+    expect(await held(20)).toBe(await held(2));
+  });
+
+  it("still writes every part it released", async () => {
+    // Releasing serialises back into the zip first. If it did not, the whole
+    // merge would come out as the untouched template with nothing to show for
+    // it — which is the one outcome worse than being slow.
+    const pkg = await Pkg.open(await makeDeck([{ paragraphs: [["Hello {{Name}}"]], notes: "Notes {{Name}}" }]));
+    const rows = toRecordSet([["Name"], ["Ada"]]);
+    const block: Block = { id: "b", slides: [{ path: "ppt/slides/slide1.xml", seq: 1 }] };
+    const result = await runPlan(pkg, buildPlan(block, rows, { runId: "r" }), rows, {
+      clone: { creationId: () => 900 },
+    });
+    const slide = result.slides[0] ?? "";
+    // Read through text(), which goes to the zip for a part no longer cached.
+    expect(await pkg.text(slide)).toContain("Hello Ada");
+    const notes = await notesPathFor(pkg, slide);
+    expect(await pkg.text(notes ?? "")).toContain("Notes Ada");
+    // And the tags written after the merge survived the release too.
+    expect((await readSlideTags(pkg, slide)).get(TAG_RUN)).toBe("r");
+  });
+});
