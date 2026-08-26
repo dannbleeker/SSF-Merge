@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { creationIdOf } from "../src/core/pptx/clone.js";
@@ -76,5 +77,74 @@ describe("the probe snippet", () => {
 
   it("carries a floor that stops the sweep reaching the user's own slides", () => {
     expect(snippet).toContain("from < deckAtStart");
+  });
+});
+
+describe("the probe's fixture package", () => {
+  it("carries a theme with all three of its required children", async () => {
+    // CT_BaseStyles requires clrScheme, fontScheme and fmtScheme, every one
+    // mandatory. This part was `<a:themeElements/>` when the first real sheet
+    // came back InvalidArgument from every insert, and KeepSourceFormatting is
+    // exactly the path that has to import the source theme. Checked against a
+    // deck PowerPoint itself accepts, which carries all three.
+    const pkg = await Pkg.open(deckFromSnippet("FRESH_DECK"));
+    const theme = await pkg.text("ppt/theme/theme1.xml");
+    for (const child of ["clrScheme", "fontScheme", "fmtScheme"]) {
+      expect(theme).toContain(`<a:${child} `);
+    }
+  });
+
+  it("names every part it declares a content type for", async () => {
+    // A content-type Override for a part that is not in the zip is a package
+    // no reader will open, and it is the easy mistake when adding parts.
+    const pkg = await Pkg.open(deckFromSnippet("FRESH_DECK"));
+    const types = await pkg.text("[Content_Types].xml");
+    const parts = [...types.matchAll(/<Override PartName="\/([^"]+)"/g)].map((m) => m[1] ?? "");
+    expect(parts.length).toBeGreaterThan(4);
+    for (const part of parts) {
+      await expect(pkg.text(part)).resolves.toBeTypeOf("string");
+    }
+  });
+});
+
+describe("the generated snippet", () => {
+  it("typechecks against the real Office.js types", () => {
+    // The snippet is outside tsconfig's include and is pasted into an editor
+    // that will run it before anyone reads it, so nothing else here would catch
+    // a misspelled option key or a call that does not exist. Proven non-vacuous
+    // by adding an unknown key to InsertSlideOptions: tsc names it.
+    expect(() =>
+      execFileSync(
+        process.execPath,
+        [
+          "./node_modules/typescript/bin/tsc",
+          "--noEmit",
+          "--lib",
+          "es2020,dom",
+          "--types",
+          "office-js",
+          "--skipLibCheck",
+          "probe/probe-snippet.ts",
+        ],
+        { encoding: "utf8", stdio: "pipe" },
+      ),
+    ).not.toThrow();
+  }, 60000);
+
+  it("asks its control arm BEFORE it adds anything of its own", () => {
+    // The control inserts the presentation's own bytes. Run later it would be
+    // inserting the probe's slides back too, which grows the deck by whatever
+    // the earlier arms happened to land and makes its own reading unreadable.
+    const control = snippet.indexOf("answers.insertSelf");
+    const first = snippet.indexOf("answers.insertFresh");
+    expect(control).toBeGreaterThan(-1);
+    expect(control).toBeLessThan(first);
+  });
+
+  it("names the call that threw rather than the whole probe", () => {
+    // Four calls shared one catch, so the first real sheet said
+    // "InvalidArgument" about a statement nobody could identify.
+    expect(snippet).toContain("failedAt: step");
+    expect(snippet).toMatch(/step = "adding a text box"/);
   });
 });

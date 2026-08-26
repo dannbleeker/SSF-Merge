@@ -50,7 +50,7 @@ const snippet = `/*
  * SSF Merge — host probe
  *
  * Paste this whole file into a blank Script Lab snippet in PowerPoint and press
- * Run. It adds four slides to the end of the current deck, asks five questions,
+ * Run. It appends slides to the end of the current deck, asks five questions,
  * removes what it added, and prints a JSON block.
  *
  * COPY THAT JSON BACK. It is the answer sheet, and nothing in the add-in should
@@ -79,7 +79,53 @@ async function slideCount(): Promise<number> {
   });
 }
 
-async function insertDeck(base64: string): Promise<{ before: number; after: number; error?: string }> {
+/**
+ * The bytes of the presentation this is running in.
+ *
+ * The control arm for question one. A deck PowerPoint saved seconds ago cannot
+ * be a malformed package, so a host that refuses it is refusing insertion
+ * itself rather than judging our writer.
+ */
+function currentDeckBase64(): Promise<string> {
+  return new Promise((resolve, reject) => {
+    Office.context.document.getFileAsync(Office.FileType.Compressed, { sliceSize: 4194304 }, (res) => {
+      if (res.status !== Office.AsyncResultStatus.Succeeded) {
+        reject(new Error(res.error ? res.error.message : "getFileAsync would not open the file"));
+        return;
+      }
+      const file = res.value;
+      const chunks: string[] = [];
+      const next = (i: number): void => {
+        if (i >= file.sliceCount) {
+          file.closeAsync();
+          resolve(btoa(chunks.join("")));
+          return;
+        }
+        file.getSliceAsync(i, (sl) => {
+          if (sl.status !== Office.AsyncResultStatus.Succeeded) {
+            file.closeAsync();
+            reject(new Error(sl.error ? sl.error.message : "getSliceAsync refused a slice"));
+            return;
+          }
+          const bytes = sl.value.data as number[];
+          // Chunked, because apply() on a whole slice blows the argument limit.
+          let s = "";
+          for (let j = 0; j < bytes.length; j += 0x8000) {
+            s += String.fromCharCode.apply(null, bytes.slice(j, j + 0x8000));
+          }
+          chunks.push(s);
+          next(i + 1);
+        });
+      };
+      next(0);
+    });
+  });
+}
+
+async function insertDeck(
+  base64: string,
+  formatting: PowerPoint.InsertSlideFormatting | "KeepSourceFormatting" | "UseDestinationTheme" = "KeepSourceFormatting",
+): Promise<{ before: number; after: number; error?: string }> {
   const before = await slideCount();
   let error: string | undefined;
   try {
@@ -90,14 +136,13 @@ async function insertDeck(base64: string): Promise<{ before: number; after: numb
         const last = context.presentation.slides.getItemAt(before - 1);
         last.load("id");
         await context.sync();
-        (context.presentation as any).insertSlidesFromBase64(base64, {
-          formatting: "KeepSourceFormatting",
-          targetSlideId: last.id,
-        });
+        // A bad targetSlideId throws SlideNotFound, not InvalidArgument, so the
+        // options are not what a rejection here is about.
+        context.presentation.insertSlidesFromBase64(base64, { formatting, targetSlideId: last.id });
         await context.sync();
       }),
       30000,
-      "inserting a two-slide deck",
+      "inserting a deck",
     );
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
@@ -126,6 +171,10 @@ async function readTagBack(index: number): Promise<{ value?: string; error?: str
 
 /** Questions 3 and 4: substring writes, formatting and offsets. */
 async function substringProbe(): Promise<Record<string, unknown>> {
+  // Four separate calls used to share one catch, so a throw named none of them
+  // and a sheet reported "InvalidArgument" about an unknown statement. The step
+  // is written before each call, so the error carries the call that raised it.
+  let step = "starting";
   try {
     return await withTimeout(
       PowerPoint.run(async (context) => {
@@ -134,6 +183,7 @@ async function substringProbe(): Promise<Record<string, unknown>> {
         await context.sync();
         const slide = slides.getItemAt(count.value - 1);
 
+        step = "adding a text box";
         const shape = slide.shapes.addTextBox("Hello NAME here and AAA-BBB", {
           left: 40,
           top: 40,
@@ -143,15 +193,18 @@ async function substringProbe(): Promise<Record<string, unknown>> {
         await context.sync();
 
         // Style just the placeholder, so a flattened run is visible afterwards.
+        step = "styling a substring of a shape added a sync ago";
         shape.textFrame.textRange.getSubstring(6, 4).font.bold = true;
         await context.sync();
 
+        step = "reading the text back";
         const before = shape.textFrame.textRange;
         before.load("text");
         await context.sync();
         const textBefore = before.text;
 
         // Q3: one targeted write.
+        step = "writing one substring";
         shape.textFrame.textRange.getSubstring(6, 4).text = "Ada";
         await context.sync();
 
@@ -167,6 +220,7 @@ async function substringProbe(): Promise<Record<string, unknown>> {
         const text = mid.text;
         const a = text.indexOf("AAA");
         const b = text.indexOf("BBB");
+        step = "queuing two substring writes in one batch";
         shape.textFrame.textRange.getSubstring(a, 3).text = "1";
         shape.textFrame.textRange.getSubstring(b, 3).text = "2";
         await context.sync();
@@ -175,6 +229,7 @@ async function substringProbe(): Promise<Record<string, unknown>> {
         end.load("text");
         await context.sync();
 
+        step = "deleting the probe text box";
         const name = shape.name;
         shape.delete();
         await context.sync();
@@ -191,7 +246,7 @@ async function substringProbe(): Promise<Record<string, unknown>> {
       "probing substring writes",
     );
   } catch (e) {
-    return { error: e instanceof Error ? e.message : String(e) };
+    return { error: e instanceof Error ? e.message : String(e), failedAt: step };
   }
 }
 
@@ -227,8 +282,21 @@ async function main() {
     deckAtStart,
   };
 
+  // The control runs FIRST, while the deck is still only the user's own, so it
+  // inserts exactly what was there and nothing this run has added.
+  try {
+    const own = await withTimeout(currentDeckBase64(), 30000, "reading this presentation's own bytes");
+    answers.insertSelf = await insertDeck(own);
+  } catch (e) {
+    answers.insertSelf = { before: -1, after: -1, error: e instanceof Error ? e.message : String(e) };
+  }
+
   answers.insertFresh = await insertDeck(FRESH_DECK);
   answers.tagReadBack = await readTagBack((await slideCount()) - 1);
+  // Same package, the other formatting mode. KeepSourceFormatting has to import
+  // the source theme and UseDestinationTheme does not, so the pair separates a
+  // theme this host will not read from a package it will not read.
+  answers.insertFreshDestTheme = await insertDeck(FRESH_DECK, "UseDestinationTheme");
   answers.insertCollision = await insertDeck(COLLISION_DECK);
   answers.substring = await substringProbe();
 

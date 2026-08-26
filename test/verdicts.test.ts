@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { creationIdReading, insertVerdict, offsetVerdict, substringVerdict, sweepPlan } from "../src/host/verdicts.js";
+import {
+  PROBE_RUN_TAG,
+  creationIdReading,
+  insertVerdict,
+  insertionBlame,
+  offsetVerdict,
+  substringVerdict,
+  sweepPlan,
+  tagVerdict,
+} from "../src/host/verdicts.js";
 
 describe("insertVerdict", () => {
   it("reads a matching delta as success", () => {
@@ -135,6 +144,64 @@ describe("sweepPlan", () => {
           }
         }
       }
+    }
+  });
+});
+
+describe("reading back a tag written into the package", () => {
+  const landed = { insertLanded: 2 };
+
+  it("says NOT ASKED when the slide that would carry the tag never landed", () => {
+    // The defect this function was written for. The probe reads the tag off the
+    // LAST slide in the deck; when the insert threw, that is a slide the user
+    // owns and has never carried our tag. The first real sheet reported
+    // "the metadata scheme needs rethinking" on exactly that read.
+    const v = tagVerdict({ insertLanded: 0 });
+    expect(v.verdict).toBe("unknown");
+    expect(v.detail).toContain("NOT ASKED");
+  });
+
+  it("still says NOT ASKED when the read ALSO threw", () => {
+    // Order matters: a throw on a question that was never put is not a fact
+    // about the host either.
+    expect(tagVerdict({ insertLanded: 0, error: "InvalidArgument" }).verdict).toBe("unknown");
+  });
+
+  it("reports a missing tag as NO once the slide really did land", () => {
+    expect(tagVerdict({ ...landed }).verdict).toBe("no");
+  });
+
+  it("reports the tag the probe writes as yes", () => {
+    expect(tagVerdict({ ...landed, value: PROBE_RUN_TAG }).verdict).toBe("yes");
+  });
+
+  it("refuses to call a value nothing wrote an answer", () => {
+    expect(tagVerdict({ ...landed, value: "something else" }).verdict).toBe("unknown");
+  });
+
+  it("reports a throw as a throw", () => {
+    expect(tagVerdict({ ...landed, error: "GeneralException" }).verdict).toBe("threw");
+  });
+});
+
+describe("whose fault a refused insert is", () => {
+  it("blames US when the host took its own deck and refused ours", () => {
+    expect(insertionBlame("threw", "yes")).toContain("OURS");
+  });
+
+  it("blames THE HOST when it refused the deck it wrote itself", () => {
+    expect(insertionBlame("threw", "threw")).toContain("THE HOST");
+  });
+
+  it("refuses to blame anyone when the control never ran", () => {
+    // The state the first real sheet was in. Without the control, InvalidArgument
+    // is equally our package and this host, and those are opposite conclusions.
+    expect(insertionBlame("threw", "unknown")).toContain("CANNOT TELL");
+  });
+
+  it("does not ask the question at all once our own insert worked", () => {
+    for (const self of ["yes", "no", "threw", "unknown"] as const) {
+      expect(insertionBlame("yes", self)).toContain("works");
     }
   });
 });
