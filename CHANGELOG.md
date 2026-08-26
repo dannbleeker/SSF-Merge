@@ -7,7 +7,40 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- The host layer, split the way the probe was: `src/host` holds the decisions as
+  pure functions the suite checks, `src/office` holds the Office.js calls and
+  decides nothing. `test/architecture.test.ts` holds both directions — an
+  Office.js import in `src/host` makes a rule untestable, and a rule
+  reimplemented inline in `src/office` looks tidier and rots quietly.
+- `capability.ts`: the version floor and where the template's bytes come from.
+  The floor is **1.3**, read off the calls the add-in makes rather than picked,
+  and checked at runtime rather than declared in the manifest — a declared
+  requirement set the host does not meet makes the add-in vanish from the ribbon
+  with no diagnostic at all.
+- `timeout.ts`: a budget per call rather than one number. An insert gets sixty
+  seconds because thirty was measured too short; a count gets fifteen.
+- `powerpoint.ts`: reading the template, inserting after a `targetSlideId`, and
+  positional undo that counts the deck again afterwards rather than believing a
+  delete that raised nothing.
+
+### Changed
+
+- `sweepPlan` moved from `verdicts.ts` to `undo.ts`. It is the real undo's rule
+  as much as the probe's, and a file about what a probe answer MEANS is the
+  wrong home for the one that authorises deleting somebody's slides. The test
+  count was pinned across the move: 132 before, 132 after.
+- `docs/BACKLOG.md` said the requirement floor was 1.4, that image fields were
+  blocked on probe question 4, and nothing about how a per-call budget differs
+  from waiting longer on a dead call. All three corrected.
+
 ### Fixed
+
+- The architecture guard matched Office.js inside STRING LITERALS, so a verdict
+  whose text names office-js#6105 failed a file with no imports at all. Literals
+  are stripped now, as comments already were. The import check reads the raw
+  source instead, because an import specifier is itself a string.
 
 - `insertVerdict` read the presence of an error as decisive and ignored the deck
   delta, so an insert that timed out having landed both its slides was reported
