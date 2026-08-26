@@ -7,6 +7,47 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added — the merge run
+
+The seam where the pane, the host layer and the engine meet. `runMerge` counts
+the deck first (undo is clamped against that number), reads the template's bytes,
+does the whole merge inside the package where nothing can be refused, hands
+PowerPoint one deck in one call anchored after the last slide, and reads the
+DELTA rather than the absence of an error.
+
+- `prepareBlock` turns slide NUMBERS — the only numbering a user can see — into
+  package paths, and refuses in sentences the pane shows as they stand: a block
+  that runs off the end, one that ends before it starts, slide 0, and a block
+  with no placeholders at all, which the engine would clone happily into N
+  identical copies.
+- `Pkg.removeSlide` takes the template slides out of the produced package.
+  Inserted whole it would put the user's own placeholder slides back into their
+  deck after every run. All five references go — the id list entry, the
+  presentation relationship, the content-type override, the slide's own
+  relationships and the part — plus the notes page, which belongs to exactly one
+  slide.
+
+  The alternative was to insert everything and name only the copies through
+  `insertSlidesFromBase64`'s `sourceSlideIds`. That needs ids in the host's own
+  `256#3561048925` spelling CONSTRUCTED for a package not yet in the
+  presentation — an assumption no round in a real host has tested, whose failure
+  mode is `SlideNotFound` and nothing inserted.
+- The pane's merge button calls it. The controls that set the block and attach
+  the data are the next increment, so the button cannot enable from the screen
+  yet; the manual says so rather than implying otherwise.
+
+Writing the `removeSlide` guard found the guard itself incomplete: with the
+id-list line removed every assertion still passed, because `slidePaths` resolves
+each relationship and SKIPS the ones that answer nothing — so a dangling
+`<p:sldId>` reads as a tidy deck while `presentation.xml` references a
+relationship that is gone, which PowerPoint refuses. The test walks the id list
+directly now.
+
+The architecture guard widened with it. It required every `src/office` file to
+import from `src/host` and refused the merge run for taking its decisions from
+`src/core` instead — the guard being narrower than its own reason, not the file
+being wrong.
+
 ### Fixed — a merge held every slide it produced
 
 The last of the bug hunt. `Pkg`'s document cache is also its dirty-part set, so

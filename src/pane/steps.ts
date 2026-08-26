@@ -12,6 +12,8 @@
  * cheap to render. That was settled with the owner when the layout was.
  */
 
+import type { RecordSet } from "../core/data/recordset.js";
+
 export type StepId = "template" | "fields" | "preview" | "merge";
 
 /** In order. The pane never renders these in any other sequence. */
@@ -45,6 +47,10 @@ export interface PaneState {
   previewing: boolean;
   /** Slides in the deck right now, so the pane can say where the new ones land. */
   deckSize?: number;
+  /** The parsed data, once attached. `rows` is its length, kept for the labels. */
+  records?: RecordSet;
+  /** Conditions the user set, keyed by SLIDE NUMBER — the numbering they can see. */
+  conditions?: Record<number, string>;
 }
 
 export const EMPTY: PaneState = { fields: [], previewing: false };

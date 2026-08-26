@@ -10,13 +10,18 @@ is to build.
 
 ## Next
 
-### Host layer — the merge run
-**Priority: blocking.** Feasibility: high; the host questions are answered.
-The reading, inserting and undoing are built (`src/office/powerpoint.ts`, with
-every decision in `src/host`). What is left is the piece that joins them to the
-engine: take the template block, hand it to `runPlan`, insert what comes back,
-and record enough to undo it. Needs the pane to say which slides are the
-template, so it lands with or just after that.
+### Pane controls — picking the block and attaching data
+**Priority: blocking.** Feasibility: high.
+The merge run is built (`src/office/merge.ts`): it reads the template, merges in
+the package, strips the template slides so they are not re-inserted, hands
+PowerPoint one deck, and reads the delta. Undo is positional and clamped from the
+count taken before the run.
+
+What is missing is the two controls in front of it — choosing the block by
+clicking slides in the deck, and attaching data (paste, then file). Until they
+exist `PaneState.block` and `PaneState.records` are never set, so the merge
+button can never enable. That is the next increment and it is the last thing
+between the repo and a working add-in.
 
 ### Task pane — wiring it to the deck
 **Priority: blocking.** Feasibility: high.

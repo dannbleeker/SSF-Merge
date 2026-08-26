@@ -5,7 +5,7 @@ import { runPlan } from "../src/core/merge/run.js";
 import { creationIdOf, notesPathFor } from "../src/core/pptx/clone.js";
 import { Pkg } from "../src/core/pptx/pkg.js";
 import { TAG_RECORD, TAG_RUN, readSlideTags } from "../src/core/pptx/tags.js";
-import { A_NS, elements } from "../src/core/pptx/xml.js";
+import { A_NS, P_NS, R_NS, element, elements } from "../src/core/pptx/xml.js";
 import { makeDeck } from "./fixtures/deck.js";
 
 /** Every character the slide draws, in order. */
@@ -196,5 +196,74 @@ describe("what a long merge holds in memory", () => {
     expect(await pkg.text(notes ?? "")).toContain("Notes Ada");
     // And the tags written after the merge survived the release too.
     expect((await readSlideTags(pkg, slide)).get(TAG_RUN)).toBe("r");
+  });
+});
+
+describe("the package a merge hands to PowerPoint", () => {
+  it("carries the copies and NOT the template it cloned from", async () => {
+    // The run clones inside the package, so the package holds both. Inserted
+    // whole, it would put the user's own placeholder slides back into their
+    // deck after every merge. Removing them is ours to get right — the
+    // alternative, naming only the copies through insertSlidesFromBase64's
+    // sourceSlideIds, needs ids in the host's own spelling CONSTRUCTED for a
+    // package not yet in the presentation, which no round has tested.
+    const pkg = await Pkg.open(await makeDeck([{ paragraphs: [["Hello {{Name}}"]] }]));
+    const rows = toRecordSet([["Name"], ["Ada"], ["Grace"]]);
+    const block: Block = { id: "b", slides: [{ path: "ppt/slides/slide1.xml", seq: 1 }] };
+    const result = await runPlan(pkg, buildPlan(block, rows, { runId: "r" }), rows, {
+      clone: { creationId: () => 900 },
+    });
+    expect(result.slides).toHaveLength(2);
+
+    await pkg.removeSlide("ppt/slides/slide1.xml");
+
+    const left = await pkg.slidePaths();
+    expect(left).toEqual(result.slides);
+    expect(pkg.has("ppt/slides/slide1.xml")).toBe(false);
+
+    // And it survives the round trip, which is what PowerPoint actually gets.
+    const back = await Pkg.open(await pkg.toBase64());
+    expect(await back.slidePaths()).toHaveLength(2);
+    const texts = await Promise.all((await back.slidePaths()).map((s) => textOf(back, s)));
+    expect(texts.sort()).toEqual(["Hello Ada", "Hello Grace"]);
+  });
+
+  it("leaves nothing behind that points at the slide it removed", async () => {
+    // A dangling relationship or a content-type override for a part that is not
+    // there is a package no reader will open, and it is the easy half to forget.
+    const pkg = await Pkg.open(await makeDeck([{ paragraphs: [["a"]], notes: true }, { paragraphs: [["b"]] }]));
+    await pkg.removeSlide("ppt/slides/slide1.xml");
+
+    const back = await Pkg.open(await pkg.toBytes());
+    expect(back.has("ppt/slides/slide1.xml")).toBe(false);
+    expect(back.has("ppt/slides/_rels/slide1.xml.rels")).toBe(false);
+    // Its notes page belonged to it and is unreachable now.
+    expect(back.has("ppt/notesSlides/notesSlide1.xml")).toBe(false);
+
+    const types = await back.text("[Content_Types].xml");
+    expect(types).not.toContain("/ppt/slides/slide1.xml");
+    expect(types).not.toContain("/ppt/notesSlides/notesSlide1.xml");
+
+    const rels = await back.text(Pkg.relsPathFor("ppt/presentation.xml"));
+    expect(rels).not.toContain("slides/slide1.xml");
+    // The slide that stayed is untouched.
+    expect(await back.slidePaths()).toEqual(["ppt/slides/slide2.xml"]);
+
+    // And no <p:sldId> is left pointing at a relationship that is gone.
+    //
+    // slidePaths() cannot see this: it resolves each rId and SKIPS the ones
+    // that answer nothing, so a dangling entry reads as a tidy deck while
+    // presentation.xml references a relationship that does not exist — which
+    // PowerPoint refuses. Proven by removing the id-list line from
+    // `removeSlide`: without this assertion every other check still passed.
+    const pres = await back.doc("ppt/presentation.xml");
+    const list = element(pres, P_NS, "sldIdLst");
+    const ids = list ? elements(list, P_NS, "sldId") : [];
+    expect(ids).toHaveLength(1);
+    for (const sldId of ids) {
+      const rId = sldId.getAttributeNS(R_NS, "id") ?? sldId.getAttribute("r:id");
+      expect(rId, "every sldId names a relationship").toBeTruthy();
+      expect(await back.relTarget("ppt/presentation.xml", rId ?? ""), `${rId ?? ""} resolves`).toBeTruthy();
+    }
   });
 });

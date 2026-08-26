@@ -13,6 +13,7 @@ import { CT_NS, PKG_REL_NS, P_NS, R_NS, element, elements, parseXml, serializeXm
 
 const CONTENT_TYPES = "[Content_Types].xml";
 const PRESENTATION = "ppt/presentation.xml";
+const NOTES_REL_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide";
 
 /** The highest value PowerPoint accepts in `<p:sldId id="…">`; the format caps ids below 2^31. */
 const MAX_SLIDE_ID = 2_147_483_647;
@@ -171,6 +172,73 @@ export class Pkg {
       if (target) out.push(target);
     }
     return out;
+  }
+
+  /**
+   * Take a slide out of the deck entirely.
+   *
+   * Written for the merge run, which produces a package holding the TEMPLATE
+   * slides and the copies made from them and must hand PowerPoint only the
+   * copies. Inserting the template block again would put the user's own
+   * placeholder slides back into their deck, right after the merged ones, on
+   * every run.
+   *
+   * The alternative was to insert everything and name only the copies through
+   * `insertSlidesFromBase64`'s `sourceSlideIds`. That takes ids in the host's
+   * own `256#3561048925` spelling, which for a package not yet in the
+   * presentation would have to be CONSTRUCTED rather than read from a Slide —
+   * an assumption no round in a real host has tested, and one whose failure
+   * mode is `SlideNotFound` and nothing inserted. Removing the slides here is
+   * ours to get right and the suite can check it.
+   *
+   * Five things reference a slide and all five go: the id list entry, the
+   * presentation relationship, the content-type override, its own
+   * relationships, and the part. A notes page belongs to exactly one slide, so
+   * it goes with it.
+   */
+  async removeSlide(slidePath: string): Promise<void> {
+    const pres = await this.doc(PRESENTATION);
+    const list = element(pres, P_NS, "sldIdLst");
+    for (const sldId of list ? elements(list, P_NS, "sldId") : []) {
+      const rId = sldId.getAttributeNS(R_NS, "id") ?? sldId.getAttribute("r:id");
+      if (!rId) continue;
+      if ((await this.relTarget(PRESENTATION, rId)) !== slidePath) continue;
+      sldId.parentNode?.removeChild(sldId);
+      const rels = await this.doc(Pkg.relsPathFor(PRESENTATION));
+      for (const rel of elements(rels, PKG_REL_NS, "Relationship")) {
+        if (rel.getAttribute("Id") === rId) rel.parentNode?.removeChild(rel);
+      }
+    }
+
+    // Its notes page, if it has one. A notes slide belongs to one slide and is
+    // unreachable once that slide is gone, so leaving it behind would ship a
+    // part nothing relates to.
+    const relsPath = Pkg.relsPathFor(slidePath);
+    if (this.has(relsPath)) {
+      const rels = await this.doc(relsPath);
+      for (const rel of elements(rels, PKG_REL_NS, "Relationship")) {
+        if (rel.getAttribute("Type") !== NOTES_REL_TYPE) continue;
+        const target = rel.getAttribute("Target");
+        if (target) await this.removePart(resolveTarget(slidePath, target));
+      }
+      await this.removePart(relsPath);
+    }
+    await this.removePart(slidePath);
+  }
+
+  /** Drop a part, its own relationships and its content-type override. */
+  private async removePart(path: string): Promise<void> {
+    const relsPath = Pkg.relsPathFor(path);
+    if (this.has(relsPath)) {
+      this.docs.delete(relsPath);
+      this.zip.remove(relsPath);
+    }
+    const types = await this.doc(CONTENT_TYPES);
+    for (const override of elements(types, CT_NS, "Override")) {
+      if (override.getAttribute("PartName") === `/${path}`) override.parentNode?.removeChild(override);
+    }
+    this.docs.delete(path);
+    this.zip.remove(path);
   }
 
   /** The next free `ppt/slides/slideN.xml` number. Never reuses a gap. */
