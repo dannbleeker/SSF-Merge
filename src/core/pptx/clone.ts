@@ -14,11 +14,12 @@
  * `InvalidArgument` on Windows desktop. Every copy gets a fresh one.
  */
 import { Pkg } from "./pkg.js";
-import { P_NS, element, elements } from "./xml.js";
+import { P_NS, child, element, elements } from "./xml.js";
 
 const SLIDE_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.presentationml.slide+xml";
 const SLIDE_REL_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide";
 const NOTES_REL_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide";
+const TAGS_REL_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/tags";
 const PKG_REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships";
 const P14_NS = "http://schemas.microsoft.com/office/powerpoint/2010/main";
 /** The extension slot PowerPoint keeps a slide's creation id in. */
@@ -54,6 +55,7 @@ export async function cloneSlide(pkg: Pkg, sourcePath: string, opts: CloneOption
   await pkg.appendSldId(rId);
 
   await cloneNotesSlide(pkg, target, n);
+  await dropInheritedTags(pkg, target);
   await setCreationId(pkg, target, (opts.creationId ?? randomCreationId)());
 
   return target;
@@ -112,15 +114,24 @@ export async function setCreationId(pkg: Pkg, slidePath: string, value: number):
     return;
   }
 
-  let extLst = element(cSld, P_NS, "extLst");
+  // A direct child of cSld. `element` walks descendants, so a slide whose shape
+  // tree ends in its own <p:extLst> had the creation id appended THERE, where
+  // PowerPoint does not look for one — so it invented an id on open and two
+  // copies were indistinguishable again, which is the collision this file
+  // exists to avoid.
+  let extLst = child(cSld, P_NS, "extLst");
   if (!extLst) {
     extLst = doc.createElementNS(P_NS, "p:extLst");
     cSld.appendChild(extLst);
   }
   const ext = doc.createElementNS(P_NS, "p:ext");
   ext.setAttribute("uri", CREATION_ID_URI);
+  // No manual xmlns:p14. `createElementNS` binds the prefix and the serializer
+  // emits the declaration itself, so setting it by hand produced
+  // `<p14:creationId xmlns:p14="…" val="…" xmlns:p14="…"/>` — a duplicate
+  // attribute, which XML forbids outright (WFC: Unique Att Spec). PowerPoint
+  // rejects the whole package for it, and says nothing about which part.
   const creationId = doc.createElementNS(P14_NS, "p14:creationId");
-  creationId.setAttribute("xmlns:p14", P14_NS);
   creationId.setAttribute("val", String(value));
   ext.appendChild(creationId);
   extLst.appendChild(ext);
@@ -142,4 +153,59 @@ function resolve(ownerPart: string, target: string): string {
     else if (seg !== ".") parts.push(seg);
   }
   return parts.join("/");
+}
+
+/**
+ * A copy starts with no tags of its own.
+ *
+ * The .rels are copied verbatim, so a template that already carries a tag part
+ * hands the clone a relationship pointing at the TEMPLATE's `ppt/tags/tagN.xml`
+ * — and `writeSlideTags` then appends the copy's metadata there, because from
+ * its side the slide plainly has a tag reference. Every merged slide ends up
+ * sharing one part, so all but the last record's tags are overwritten, and the
+ * user's own template is stamped as merge output and matched by undo.
+ *
+ * A template with tags is not exotic: `docs/MANUAL.md` records BLOCK and SEQ as
+ * living on "a template or merged slide", so a block picked out of an earlier
+ * merge has them, and any other add-in's tags do the same.
+ *
+ * The relationship and the reference both go. The template's own tag part is
+ * left exactly as it was — it belongs to the template.
+ */
+async function dropInheritedTags(pkg: Pkg, slidePath: string): Promise<void> {
+  const doc = await pkg.doc(slidePath);
+  const cSld = element(doc, P_NS, "cSld");
+  const custData = cSld ? child(cSld, P_NS, "custDataLst") : undefined;
+  const tags = custData ? child(custData, P_NS, "tags") : undefined;
+  if (custData && tags) {
+    custData.removeChild(tags);
+    // An empty <p:custDataLst> is schema-invalid: it requires at least one
+    // child. Drop the list when the tag reference was all it held.
+    if (!custData.firstChild) custData.parentNode?.removeChild(custData);
+  }
+
+  const relsPath = Pkg.relsPathFor(slidePath);
+  if (!pkg.has(relsPath)) return;
+  const rels = await pkg.doc(relsPath);
+  for (const rel of elements(rels, PKG_REL_NS, "Relationship")) {
+    if (rel.getAttribute("Type") === TAGS_REL_TYPE) rel.parentNode?.removeChild(rel);
+  }
+}
+
+/**
+ * The notes page a slide owns, if it has one.
+ *
+ * Exported because the merge has to reach it: a copy gets its own notes slide
+ * precisely so the copies can differ, and that only pays if the placeholders in
+ * it are merged too.
+ */
+export async function notesPathFor(pkg: Pkg, slidePath: string): Promise<string | undefined> {
+  const relsPath = Pkg.relsPathFor(slidePath);
+  if (!pkg.has(relsPath)) return undefined;
+  const rels = await pkg.doc(relsPath);
+  const rel = elements(rels, PKG_REL_NS, "Relationship").find((r) => r.getAttribute("Type") === NOTES_REL_TYPE);
+  const target = rel?.getAttribute("Target");
+  if (!target) return undefined;
+  const path = resolve(slidePath, target);
+  return pkg.has(path) ? path : undefined;
 }

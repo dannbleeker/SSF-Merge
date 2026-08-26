@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { toRecordSet } from "../src/core/data/recordset.js";
 import { buildPlan, type Block } from "../src/core/merge/plan.js";
 import { runPlan } from "../src/core/merge/run.js";
-import { creationIdOf } from "../src/core/pptx/clone.js";
+import { creationIdOf, notesPathFor } from "../src/core/pptx/clone.js";
 import { Pkg } from "../src/core/pptx/pkg.js";
 import { TAG_RECORD, TAG_RUN, readSlideTags } from "../src/core/pptx/tags.js";
 import { A_NS, elements } from "../src/core/pptx/xml.js";
@@ -127,5 +127,31 @@ describe("runPlan", () => {
     const result = await runPlan(pkg, plan, records, { onEmpty: "blank" });
 
     expect(await textOf(pkg, result.slides[0]!)).toBe("Notes for Grace Hopper: ");
+  });
+});
+
+describe("what a merged copy carries", () => {
+  it("merges the notes page too, not just the slide", async () => {
+    // A copy gets its own notes slide precisely so the copies can differ. Left
+    // unmerged, a template whose speaker notes read "Call {{Name}} afterwards"
+    // ships that text verbatim on every merged slide — in the presenter view
+    // and on every printed handout. text.ts declares charts and SmartArt as the
+    // deliberate exclusions; notes were never one of them.
+    const pkg = await Pkg.open(
+      await makeDeck([{ paragraphs: [["Hello {{Name}}"]], notes: "Call {{Name}} afterwards" }]),
+    );
+    const rows = toRecordSet([["Name"], ["Ada"], ["Grace"]]);
+    const block: Block = { id: "b", slides: [{ path: "ppt/slides/slide1.xml", seq: 1 }] };
+    const plan = buildPlan(block, rows, { runId: "run-1" });
+    const result = await runPlan(pkg, plan, rows, { clone: { creationId: () => 900 } });
+
+    const notes: string[] = [];
+    for (const slide of result.slides) {
+      const path = await notesPathFor(pkg, slide);
+      notes.push(path ? await textOf(pkg, path) : "");
+    }
+    expect(notes.join(" | ")).toContain("Call Ada afterwards");
+    expect(notes.join(" | ")).toContain("Call Grace afterwards");
+    expect(notes.join(" | ")).not.toContain("{{Name}}");
   });
 });

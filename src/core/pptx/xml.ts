@@ -39,3 +39,28 @@ export function elements(root: Document | Element, ns: string, local: string): E
 export function element(root: Document | Element, ns: string, local: string): Element | undefined {
   return elements(root, ns, local)[0];
 }
+
+/**
+ * Direct children with this local name, never deeper.
+ *
+ * `elements` walks DESCENDANTS, which is right for "find every tag in this part"
+ * and catastrophically wrong for "what does this element own". A slide's
+ * `<p:cSld>` contains the whole shape tree, so `element(cSld, P_NS, "tags")`
+ * finds a SHAPE's tag reference and calls it the slide's, and
+ * `element(cSld, P_NS, "extLst")` finds one inside `<p:spTree>` and appends the
+ * slide's creation id into it. Both shipped. Ask for children when the parent
+ * is the point.
+ */
+export function children(parent: Element, ns: string, local: string): Element[] {
+  const out: Element[] = [];
+  for (let n = parent.firstChild; n; n = n.nextSibling) {
+    const el = n as Element;
+    if (el.nodeType === 1 && el.localName === local && el.namespaceURI === ns) out.push(el);
+  }
+  return out;
+}
+
+/** The first direct child with this local name, or undefined. */
+export function child(parent: Element, ns: string, local: string): Element | undefined {
+  return children(parent, ns, local)[0];
+}

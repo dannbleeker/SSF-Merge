@@ -13,7 +13,7 @@
  * part, and referenced from the owner's `<p:custDataLst><p:tags r:id="…"/>`.
  */
 import { Pkg } from "./pkg.js";
-import { P_NS, R_NS, element, elements } from "./xml.js";
+import { P_NS, R_NS, child, element, elements, parseXml } from "./xml.js";
 
 const TAGS_REL_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/tags";
 const TAGS_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.presentationml.tags+xml";
@@ -65,7 +65,12 @@ export async function writeSlideTags(pkg: Pkg, slidePath: string, entries: [stri
   const cSld = element(doc, P_NS, "cSld");
   if (!cSld) throw new Error(`ssf-merge: ${slidePath} has no <p:cSld>`);
 
-  const existing = element(cSld, P_NS, "tags");
+  // The slide's OWN reference. `element` walks descendants, so this used to
+  // find a <p:tags> inside a shape's <p:nvPr> and append the slide's merge
+  // metadata to that shape's tag part — leaving the slide with no slide-level
+  // tags at all, which is the exact read undo depends on.
+  const custData = child(cSld, P_NS, "custDataLst");
+  const existing = custData ? child(custData, P_NS, "tags") : undefined;
   if (existing) {
     const rId = existing.getAttributeNS(R_NS, "id") ?? existing.getAttribute("r:id");
     const target = rId ? await pkg.relTarget(slidePath, rId) : undefined;
@@ -83,23 +88,44 @@ export async function writeSlideTags(pkg: Pkg, slidePath: string, entries: [stri
 
   // `CT_CommonSlideData` orders its children `bg?, spTree, custDataLst?,
   // controls?, extLst?`, so the list goes immediately after the shape tree.
-  const custDataLst = doc.createElementNS(P_NS, "p:custDataLst");
   const tags = doc.createElementNS(P_NS, "p:tags");
   tags.setAttributeNS(R_NS, "r:id", rId);
+  const already = custData;
+  if (already) {
+    // CT_CustomerDataList allows one <p:tags>, and we established above there
+    // is none; a list holding only <p:custData> children is legal and common.
+    already.appendChild(tags);
+    return;
+  }
+  const custDataLst = doc.createElementNS(P_NS, "p:custDataLst");
   custDataLst.appendChild(tags);
-  const spTree = element(cSld, P_NS, "spTree");
+  const spTree = child(cSld, P_NS, "spTree");
   if (!spTree) throw new Error(`ssf-merge: ${slidePath} has no <p:spTree>`);
   spTree.parentNode?.insertBefore(custDataLst, spTree.nextSibling);
 }
 
-/** Append or replace entries in an existing tag part, keeping the ones we do not own. */
+/**
+ * Append or replace entries in an existing tag part, keeping the ones we do not
+ * own.
+ *
+ * Parsed, not pattern-matched. The regex this replaces read attribute VALUES as
+ * raw source, so `val="Ben &amp; Jerry"` came back with the entity intact and
+ * was escaped a second time on write: one merge turned it into `Ben &amp;amp;
+ * Jerry`, two into `Ben &amp;amp;amp; Jerry`, and a reader saw the literal
+ * `&amp;` on screen. It also insisted on one attribute order and a self-closing
+ * tag, so PowerPoint's own perfectly legal spellings — `val` before `name`,
+ * single quotes, a separate closing tag — matched nothing and the foreign tag
+ * was DROPPED. `docs/MANUAL.md` promises those survive.
+ *
+ * The parser decodes; `tagPartXml` encodes exactly once. That round trip is
+ * what makes repeated merges stable.
+ */
 export function mergeTagPart(xml: string, entries: [string, string][]): string {
   const kept: [string, string][] = [];
-  const re = /<p:tag\s+name="([^"]*)"\s+val="([^"]*)"\s*\/>/g;
   const incoming = new Set(entries.map(([k]) => k));
-  for (const m of xml.matchAll(re)) {
-    const name = m[1] ?? "";
-    if (!incoming.has(name)) kept.push([name, m[2] ?? ""]);
+  for (const tag of elements(parseXml(xml), P_NS, "tag")) {
+    const name = tag.getAttribute("name");
+    if (name && !incoming.has(name)) kept.push([name, tag.getAttribute("val") ?? ""]);
   }
   return tagPartXml([...kept, ...entries]);
 }
@@ -109,7 +135,8 @@ export async function readSlideTags(pkg: Pkg, slidePath: string): Promise<Map<st
   const out = new Map<string, string>();
   const doc = await pkg.doc(slidePath);
   const cSld = element(doc, P_NS, "cSld");
-  const ref = cSld ? element(cSld, P_NS, "tags") : undefined;
+  const custData = cSld ? child(cSld, P_NS, "custDataLst") : undefined;
+  const ref = custData ? child(custData, P_NS, "tags") : undefined;
   const rId = ref?.getAttributeNS(R_NS, "id") ?? ref?.getAttribute("r:id");
   if (!rId) return out;
   const target = await pkg.relTarget(slidePath, rId);

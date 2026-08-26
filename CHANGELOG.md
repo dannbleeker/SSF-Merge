@@ -7,6 +7,41 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — the package layer
+
+A bug hunt across the engine found six defects here, every one reproduced before
+it was fixed and none visible from the engine's own output: the merge looked
+like it had worked.
+
+- **`element()` searched DESCENDANTS where callers meant children**, which is
+  one root cause behind two shipped defects. A slide's `<p:cSld>` contains the
+  whole shape tree, so `element(cSld, "tags")` found a SHAPE's tag reference and
+  wrote the slide's merge metadata into that shape's part — leaving the slide
+  with no slide-level tags, which is the exact read undo depends on — and
+  `element(cSld, "extLst")` appended the creation id inside `<p:spTree>`, where
+  PowerPoint does not look for one. `child()` and `children()` are the fix.
+- **A clone inherited the template's tag relationship.** The `.rels` are copied
+  verbatim, so every merged slide wrote into the TEMPLATE's `tagN.xml`: all but
+  the last record's tags were overwritten, and the user's own template was
+  stamped as merge output and matched by undo. A copy starts with no tags now.
+- **`setCreationId` emitted `xmlns:p14` twice**, which XML forbids outright, so
+  PowerPoint rejected the whole package without saying which part was wrong.
+  `createElementNS` already binds the prefix.
+- **`mergeTagPart` re-escaped the foreign tags it kept**, turning `Ben & Jerry`
+  into `Ben &amp; Jerry` on screen after one merge and `Ben &amp;amp; Jerry`
+  after two — and it insisted on one attribute order and a self-closing tag, so
+  PowerPoint's own legal spellings matched nothing and the foreign tag was
+  silently DROPPED. It parses now instead of pattern-matching.
+- **Notes pages were never merged.** A copy gets its own notes slide precisely
+  so the copies can differ; unmerged, a template whose notes read
+  `Call {{Name}} afterwards` shipped that verbatim on every merged slide, in the
+  presenter view and on every printed handout.
+
+One guard among these was written and found to be DECORATION: the shape-tags
+test invented a relationship id that resolved to nothing, so the old code fell
+through to the right answer by accident and the test passed against the unfixed
+file. It reproduces properly now.
+
 ### Added
 
 - The task pane: four steps, the SSF visual system, English, at the width a task
