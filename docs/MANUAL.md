@@ -1,0 +1,171 @@
+# SSF Merge — manual
+
+Mail merge for PowerPoint. You build one slide, or one block of slides, put
+placeholders where the data goes, and SSF Merge produces one copy per row.
+
+> **Status.** The engine is built and tested; the task pane is not written yet.
+> Sections marked *planned* describe behaviour that is designed and agreed but
+> not yet shipped. Nothing here is aspirational: a section moves out of
+> *planned* in the same change that makes it true.
+
+## Contents
+
+- [The idea](#the-idea)
+- [Placeholders](#placeholders)
+- [Formats](#formats)
+- [What repeats](#what-repeats)
+- [Your data](#your-data)
+- [Where the merged slides go](#where-the-merged-slides-go) *(planned)*
+- [What happens to the template](#what-happens-to-the-template) *(planned)*
+- [Tags SSF Merge writes](#tags-ssf-merge-writes)
+- [Limits](#limits)
+
+## The idea
+
+A .pptx file is a zip of XML parts. SSF Merge does the whole merge inside that
+file and hands PowerPoint the finished deck in one operation. Your formatting
+survives because nothing re-authors it: each piece of text keeps the exact run
+properties the designer gave it, and only the characters change.
+
+## Placeholders
+
+Write a field where the value should appear:
+
+```
+{{Name}}
+```
+
+Field names may contain letters, digits, underscores and dots, so `{{Customer.Name}}`
+works if your columns are named that way.
+
+**A placeholder split across formatting still works.** PowerPoint constantly
+stores `{{FirstName}}` as `{{Fir` + `stName}}` after an edit or a spellcheck
+pass. SSF Merge matches against the whole paragraph, not one piece at a time.
+
+**The value takes the formatting of the run the placeholder starts in.** If you
+want the merged name bold, make `{{` bold. This is the one rule worth knowing
+when a merged value comes out looking wrong.
+
+**A field with no matching column is left visible.** You will see
+`{{Territory}}` on the slide rather than a blank space. A blank slide looks
+finished; a visible placeholder does not, which is the point.
+
+## Formats
+
+Add a format after a pipe:
+
+```
+{{Revenue|number:2}}      1 234 567,89
+{{Revenue|number}}        1 234 568
+{{Start|date:dd MMM yyyy}} 01 Mar 2026
+{{Start|date}}            01-03-2026
+{{Region|upper}}          NORDICS
+{{Region|lower}}          nordics
+```
+
+| Format | Argument | Notes |
+| --- | --- | --- |
+| `number` | decimal places, default 0 | Space for thousands, comma for decimals |
+| `date` | a pattern, default `dd-MM-yyyy` | `yyyy` `yy` `MMM` `MM` `dd` `d` |
+| `upper` | none | Locale-aware, so `måned` becomes `MÅNED` |
+| `lower` | none | Locale-aware |
+
+**A value that does not match its format is printed unchanged.** `{{Note|number}}`
+on the text "n/a" gives you "n/a", not a blank and not an error marker. The cell
+is what you typed, and showing it is more useful than hiding it.
+
+### Numbers
+
+Both European and American forms are read. `1,5` is one and a half; `1,500` is
+one thousand five hundred; `1.234,56` and `1,234.56` are the same number.
+
+### Dates
+
+`2026-03-01` and `3 March 2026` are read. So is `15/01/2026`, because only one
+reading fits.
+
+**`03/01/2026` is refused.** It is 3 January in Copenhagen and 1 March in
+Chicago, and nothing in the cell says which. The value is printed as it stands
+rather than guessed at. A deck that draws perfectly and is two months wrong is
+the worse outcome. Write the date as `2026-03-01` in your source if you want it
+merged as a date.
+
+## What repeats
+
+*Planned.* A template is one or more **contiguous** slides, marked as a block.
+Three slides per customer is the ordinary case.
+
+- The deck's own order is the order each record gets.
+- Slides must sit next to each other. Reorder them in the thumbnail pane first.
+- Records are emitted whole: all of record 1's slides, then all of record 2's.
+- A slide can be conditional, so a record gets two slides or three. Its position
+  never changes; it is skipped in place.
+- One deck can hold several blocks over different data. Slides 4 to 6 over
+  customers while slides 9 to 10 repeat over products is an ordinary report.
+
+## Your data
+
+*Partly planned.* The engine reads a table; the pane will offer several ways to
+give it one.
+
+| Source | State |
+| --- | --- |
+| Paste a range copied from Excel | engine reads it, pane planned |
+| A .csv or .xlsx file | planned |
+| An Excel table on OneDrive or SharePoint via Microsoft Graph | planned |
+
+The first row is the header. A column with no header is named `Column 3` rather
+than dropped, and two columns with the same header become `Name` and `Name 2`,
+because silently losing a column is worse than an ugly name. Rows that are
+entirely blank are skipped.
+
+Each column's type is detected from its values: a column is a number only if
+every filled cell is one, and a date only if every filled cell is an
+unambiguous date. One "n/a" makes the column text, which is the safe answer.
+
+## Where the merged slides go
+
+*Planned.* Three choices:
+
+1. **Into this deck**, after the template block.
+2. **Into a new presentation**, which opens beside the current one. Better for
+   large merges, because a very long deck is slow to edit.
+3. **One file per row**, saved to OneDrive. Requires signing in.
+
+## What happens to the template
+
+*Planned.* When merging into the same deck, the template block can:
+
+- **stay where it is** (default) — you can run the merge again later;
+- **move to the end** — out of the way, still re-runnable. PowerPoint's add-in
+  API cannot hide a slide, so this is as close as it gets;
+- **be deleted** — one way. Deleting ends re-run for that deck, and it happens
+  only after the merge is confirmed to have landed.
+
+## Tags SSF Merge writes
+
+Merged slides carry metadata inside the file. You never need to touch it, but it
+is what makes undo and re-run possible, and it is visible to any tool that reads
+PowerPoint tags.
+
+| Tag | On | Meaning |
+| --- | --- | --- |
+| `SSF_MERGE_RUN` | a merged slide | Which merge produced it |
+| `SSF_MERGE_BLOCK` | a template or merged slide | Which template block it belongs to |
+| `SSF_MERGE_SEQ` | a template or merged slide | Its position within the block |
+| `SSF_MERGE_RECORD` | a merged slide | Which row it was made from |
+| `SSF_MERGE_TEMPLATE` | a shape, during preview | The text to put back when preview ends |
+
+Tags that other tools wrote are kept. SSF Merge merges its own keys into an
+existing tag list rather than replacing it.
+
+## Limits
+
+- **Charts and SmartArt are not merged.** Their text lives in separate parts
+  with their own embedded workbooks. Placeholders inside them are left alone.
+- **Cut and paste on PowerPoint for the web loses shape tags**
+  ([office-js#3784](https://github.com/OfficeDev/office-js/issues/3784)). A
+  merged slide cut and pasted into another deck loses its run tag, so undo will
+  no longer find it.
+- **A very long deck is slow to edit**, which is PowerPoint's behaviour and not
+  something an add-in can fix. Merging into a separate presentation avoids it.

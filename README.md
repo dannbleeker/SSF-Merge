@@ -61,6 +61,19 @@ brace the way you want the merged value to look.
 A field with no matching column is left visible rather than blanked. A blank
 slide looks finished; `{{Territory}}` does not, and that is the point.
 
+## Documentation
+
+| Document | What it is for |
+| --- | --- |
+| [docs/MANUAL.md](docs/MANUAL.md) | How to use it: placeholders, formats, blocks, data, limits |
+| [docs/BACKLOG.md](docs/BACKLOG.md) | What is open, what it would cost, and what has been rejected |
+| [CHANGELOG.md](CHANGELOG.md) | What changed, newest first |
+| [CLAUDE.md](CLAUDE.md) | Project memory: architecture, host rules, conventions |
+
+These are kept in step with the code by `test/docs.test.ts`, which reads the
+formats and tag keys out of the source and fails when the manual has not caught
+up. A feature and its documentation land in the same change or neither does.
+
 ## Commands
 
 ```bash

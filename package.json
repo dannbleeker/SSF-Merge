@@ -1,0 +1,22 @@
+{
+  "name": "ssf-merge",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Mail merge for PowerPoint: one template block, one slide set per row, formatting preserved.",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "build:lib": "tsc -p tsconfig.lib.json"
+  },
+  "dependencies": {
+    "@xmldom/xmldom": "^0.9.8",
+    "jszip": "^3.10.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
