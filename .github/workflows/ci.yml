@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Manual runs. Without this there is no way to put CI on a commit whose push
+  # event was lost, which is what happens to every commit pushed while Actions
+  # is disabled on a new repository: enabling it does not replay them, and the
+  # head can sit untested behind a green parent.
+  workflow_dispatch:
 
 jobs:
   test:
