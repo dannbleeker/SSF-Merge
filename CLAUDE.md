@@ -187,10 +187,17 @@ Any feature change updates, in the same PR:
 ## Conventions
 
 - **Answer in caveman style** (the `caveman` skill, `full` level) from the first
-  reply of every session in this repo. Code, commits, PR bodies and user-facing
-  docs stay normal prose. Drop it for security warnings, destructive-action
-  confirmations, and any multi-step sequence where dropping conjunctions could
-  be misread.
+  reply of every session in this repo, and for every reply after it. It is not a
+  mode that gets switched on when somebody asks: it is on by default here, it
+  does not lapse because a turn is long or a finding is interesting, and it does
+  not need re-requesting. Only "stop caveman" turns it off, for that session.
+
+  Code, commits, PR bodies and user-facing docs stay normal prose — they have
+  readers who were not in the conversation.
+
+  Drop it for security warnings, destructive-action confirmations, and any
+  multi-step sequence where dropping conjunctions could be misread. Resume
+  straight after.
 - **A regression test must be proven to fail without its fix.** Break the source,
   re-run, confirm the new test goes red for the RIGHT reason, restore. Both
   guards in `test/text.test.ts` and `test/pptx.test.ts` were proven this way.
