@@ -1,0 +1,39 @@
+{
+  "probe": "ssf-merge",
+  "takenAt": "2026-08-26T18:38:55.133Z",
+  "platform": "OfficeOnline",
+  "host": "0.0.0.0",
+  "requirementSets": ["1.2", "1.3", "1.4", "1.5", "1.6", "1.7", "1.8", "1.9", "1.10"],
+  "deckAtStart": 1,
+  "insertSelf": {
+    "before": 1,
+    "after": 2
+  },
+  "insertFresh": {
+    "before": 2,
+    "after": 4,
+    "error": "gave up waiting for: inserting a deck"
+  },
+  "tagReadBack": {
+    "value": "probe-run"
+  },
+  "insertFreshDestTheme": {
+    "before": 4,
+    "after": 6
+  },
+  "insertCollision": {
+    "before": 6,
+    "after": 8
+  },
+  "substring": {
+    "textBefore": "Hello NAME here",
+    "textAfterOne": "Hello Ada here",
+    "boldAfter": true,
+    "twoWrites": {
+      "offsets": [0, 4],
+      "after": "XXXX2BB"
+    }
+  },
+  "sweep": "removed 7 slide(s) from index 1",
+  "deckAtEnd": 1
+}

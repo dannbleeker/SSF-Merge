@@ -205,3 +205,43 @@ describe("whose fault a refused insert is", () => {
     }
   });
 });
+
+describe("an insert that raised and landed anyway", () => {
+  it("reads the DELTA, not the error, when everything asked for arrived", () => {
+    // The third real sheet: a 30-second budget expired on an insert whose deck
+    // delta was exactly the two slides requested. Reading the error as decisive
+    // produced three false statements downstream — that our package was
+    // refused, that the collision arm disagreed with the fresh one, and that
+    // the theme was the difference.
+    const v = insertVerdict({ before: 2, after: 4, expected: 2, error: "gave up waiting for: inserting a deck" });
+    expect(v.verdict).toBe("yes");
+    expect(v.landed).toBe(2);
+    expect(v.detail).toContain("stopped waiting");
+  });
+
+  it("keeps a late landing out of the blame arm", () => {
+    // The cascade is the point: one misread arm made insertionBlame accuse the
+    // package writer of a refusal that never happened.
+    const fresh = insertVerdict({ before: 2, after: 4, expected: 2, error: "gave up waiting" });
+    expect(insertionBlame(fresh.verdict, "yes")).toContain("works");
+  });
+
+  it("lets a late landing carry the tag question, which depends on it", () => {
+    const fresh = insertVerdict({ before: 2, after: 4, expected: 2, error: "gave up waiting" });
+    expect(tagVerdict({ value: PROBE_RUN_TAG, insertLanded: fresh.landed }).verdict).toBe("yes");
+  });
+
+  it("still calls a raise that landed NOTHING a throw", () => {
+    const v = insertVerdict({ before: 2, after: 2, expected: 2, error: "InvalidArgument" });
+    expect(v.verdict).toBe("threw");
+    expect(v.landed).toBe(0);
+  });
+
+  it("still calls a raise that landed SOME of it a throw, and says how many", () => {
+    // A partial landing after a raise is not a success, and hiding the count
+    // would make it look like nothing happened when a slide is really there.
+    const v = insertVerdict({ before: 2, after: 3, expected: 2, error: "InvalidArgument" });
+    expect(v.verdict).toBe("threw");
+    expect(v.detail).toContain("1 slide(s) landed anyway");
+  });
+});

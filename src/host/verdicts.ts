@@ -41,10 +41,28 @@ export interface InsertVerdict {
  * because they point at different things.
  */
 export function insertVerdict(o: InsertObservation): InsertVerdict {
-  if (o.error !== undefined) {
-    return { verdict: "threw", landed: 0, detail: `the call threw: ${o.error}` };
-  }
   const landed = o.after - o.before;
+  if (o.error !== undefined) {
+    // A call can raise and still have done the work. The third real sheet timed
+    // out on an insert whose deck delta was exactly the two slides it was
+    // asked for, and reading the error as decisive turned one late answer into
+    // three false statements: that our package was refused, that the collision
+    // arm disagreed with the fresh one, and that the theme was the difference.
+    // The docstring above already said the delta is the evidence; this is the
+    // code finally agreeing with it.
+    if (landed === o.expected) {
+      return {
+        verdict: "yes",
+        landed,
+        detail: `all ${o.expected} slide(s) landed, but not before the probe stopped waiting (${o.error}). That is our budget being short, not the host refusing.`,
+      };
+    }
+    return {
+      verdict: "threw",
+      landed,
+      detail: `the call threw: ${o.error}${landed === 0 ? "" : `, and ${landed} slide(s) landed anyway`}`,
+    };
+  }
   if (landed === o.expected) {
     return { verdict: "yes", landed, detail: `all ${o.expected} slide(s) landed` };
   }
