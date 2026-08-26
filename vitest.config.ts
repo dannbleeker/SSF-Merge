@@ -12,7 +12,13 @@ export default defineConfig({
       // the Office.js-touching code, because a well-tested engine hiding behind
       // an untestable pane, or the reverse, is exactly what a pooled number
       // lets happen.
-      include: ["src/core/**", "src/host/**"],
+      include: ["src/core/**", "src/host/**", "src/pane/**"],
+      // The pane's entry point is the one file there that touches Office.js and
+      // cannot run in the suite. Everything else in src/pane — the step
+      // machine, the copy, the renderer — is checked in jsdom and earns the
+      // same floor as the engine. Counting main.ts would drag the number down
+      // for a reason nobody can act on, which is how a threshold gets deleted.
+      exclude: ["src/pane/main.ts", "src/pane/*.html", "src/pane/*.css"],
       reporter: ["text", "lcov"],
       // Floors sit a little under what the suite achieves today, so an ordinary
       // change does not go red, and they are raised deliberately rather than

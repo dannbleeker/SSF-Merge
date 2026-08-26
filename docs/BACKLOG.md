@@ -18,11 +18,14 @@ engine: take the template block, hand it to `runPlan`, insert what comes back,
 and record enough to undo it. Needs the pane to say which slides are the
 template, so it lands with or just after that.
 
-### Task pane
-**Priority: blocking.** Feasibility: high; the design is settled.
-Four steps, SSF visual system, English. Layout and copy are approved and drawn
-at true width. Preview writes to the real slide and restores from
-`SSF_MERGE_TEMPLATE`.
+### Task pane — wiring it to the deck
+**Priority: blocking.** Feasibility: high.
+The pane is built and shipped: four steps, the SSF visual system, English, the
+step machine and every label under test, and a screenshot script that renders
+every state at 320 and 512. What is left is the wiring — choosing a block from
+the real deck, reading fields out of the real slides, a preview that writes to
+the slide and restores from `SSF_MERGE_TEMPLATE`, and the merge itself. It lands
+with the merge run, because they are the same seam from two sides.
 
 ### Manifests
 **Priority: blocking.** Feasibility: high.

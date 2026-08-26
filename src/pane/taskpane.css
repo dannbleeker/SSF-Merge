@@ -1,0 +1,257 @@
+/*
+ * The SSF visual system at task-pane width.
+ *
+ * Rules the layout was approved on, and the reasons they are rules:
+ *
+ * ORANGE BUDGET — one per view. Normally the tick above the heading. When
+ * something is temporarily untrue on the slide (a preview is showing) the
+ * orange moves to that warning and the tick goes away. Two oranges in one
+ * glance and neither means anything.
+ * BLUE IS CHROME — header, primary button, links, field tags, list markers.
+ * NAVY is headings and numbers the user is meant to read as facts.
+ * ONE COLUMN at every width. The pane is 320 to 512 and never two columns.
+ * ONE PRIMARY per screen, always last, always naming what it does.
+ */
+:root {
+  --navy: #00254c;
+  --blue: #2b6cb0;
+  --orange: #ed8936;
+  --calm: #edf2f7;
+  --lightblue: #ddebf7;
+  --peach: #fdebdc;
+
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --sunk: #edf2f7;
+  --text: #1a202c;
+  --muted: #5b6672;
+  --hair: #cbd5e0;
+  --head: var(--navy);
+  --link: var(--blue);
+  --disabled: #a0aec0;
+}
+
+/*
+ * Office themes, not the browser's.
+ *
+ * `prefers-color-scheme` is what a browser offers and it is NOT what the pane
+ * lives in: PowerPoint can be dark while the OS is light, and the pane is
+ * inside PowerPoint. `main.ts` reads `Office.context.officeTheme` and stamps
+ * `data-theme`, so this block is what that stamp selects. The media query is
+ * kept as the fallback for the case Office never answers — a pane opened in a
+ * browser, which is exactly how it is inspected during development.
+ */
+:root[data-theme="dark"],
+:root:not([data-theme="light"]) {
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0a1420;
+    --surface: #12202f;
+    --sunk: #0d1a27;
+    --text: #dce9f7;
+    --muted: #93a7bc;
+    --hair: #20364b;
+    --head: #dce9f7;
+    --link: #7fb0e0;
+    --calm: #12202f;
+    --lightblue: #122a40;
+    --peach: #2e1f13;
+    --disabled: #4a5a6b;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0a1420;
+  --surface: #12202f;
+  --sunk: #0d1a27;
+  --text: #dce9f7;
+  --muted: #93a7bc;
+  --hair: #20364b;
+  --head: #dce9f7;
+  --link: #7fb0e0;
+  --calm: #12202f;
+  --lightblue: #122a40;
+  --peach: #2e1f13;
+  --disabled: #4a5a6b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    "Segoe UI",
+    system-ui,
+    -apple-system,
+    Arial,
+    sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  /* Tabular figures so a count does not jitter as it changes. */
+  font-variant-numeric: tabular-nums;
+}
+
+header {
+  background: var(--navy);
+  color: #fff;
+  padding: 10px 16px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+header b {
+  font-size: 13px;
+  font-weight: 600;
+}
+header span {
+  color: #a8c4e0;
+  font-size: 12.5px;
+}
+
+main {
+  padding: 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.tick {
+  display: block;
+  width: 26px;
+  height: 3px;
+  background: var(--orange);
+  border-radius: 1px;
+  margin-bottom: 8px;
+}
+
+h1 {
+  color: var(--head);
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.step-of {
+  color: var(--muted);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0 0 2px;
+}
+
+.rail {
+  display: flex;
+  gap: 4px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.rail li {
+  flex: 1;
+  height: 3px;
+  border-radius: 1px;
+  background: var(--hair);
+}
+.rail li[data-status="done"] {
+  background: var(--blue);
+}
+.rail li[data-status="current"] {
+  background: var(--navy);
+}
+:root[data-theme="dark"] .rail li[data-status="current"] {
+  background: #dce9f7;
+}
+
+p {
+  margin: 0;
+  color: var(--text);
+}
+p.muted {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.card {
+  background: var(--calm);
+  border-radius: 6px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.card.summary {
+  background: var(--lightblue);
+  border: 1px solid var(--blue);
+}
+/* A state the user must undo. Takes the orange budget; the tick goes away. */
+.card.undo {
+  background: var(--peach);
+  border: 1px solid var(--orange);
+}
+
+.facts {
+  color: var(--head);
+  font-weight: 600;
+}
+
+.fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.fields li {
+  background: var(--sunk);
+  border: 1px solid var(--hair);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 12.5px;
+  color: var(--blue);
+}
+.fields li[data-matched="no"] {
+  border-color: var(--orange);
+  color: var(--text);
+}
+
+button {
+  font: inherit;
+  border-radius: 4px;
+  padding: 7px 12px;
+  cursor: pointer;
+  border: 1px solid var(--blue);
+  background: transparent;
+  color: var(--blue);
+}
+button.primary {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+  font-weight: 600;
+}
+button[disabled] {
+  cursor: not-allowed;
+  border-color: var(--hair);
+  color: var(--disabled);
+  background: transparent;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.row .grow {
+  flex: 1;
+}
+
+.blocked {
+  color: var(--muted);
+  font-size: 12.5px;
+}

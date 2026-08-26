@@ -48,6 +48,12 @@ export default tseslint.config(
     languageOptions: { globals: globals.node },
   },
   {
+    // ...except this one, which is a Node script whose page.evaluate callbacks
+    // are serialised and run inside the browser. `document` there is real.
+    files: ["scripts/pane-shots.mjs"],
+    languageOptions: { globals: { ...globals.node, ...globals.browser } },
+  },
+  {
     // These two import `dist-lib/`, which is a BUILD ARTIFACT and is absent on
     // a fresh checkout. Type-aware linting resolves those imports to `error`
     // when it is not there and to real types when it is, so the verdict is a
