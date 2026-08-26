@@ -10,27 +10,19 @@ is to build.
 
 ## Next
 
-### Pane controls — picking the block and attaching data
-**Priority: blocking.** Feasibility: high.
-The merge run is built (`src/office/merge.ts`): it reads the template, merges in
-the package, strips the template slides so they are not re-inserted, hands
-PowerPoint one deck, and reads the delta. Undo is positional and clamped from the
-count taken before the run.
+### The preview step — one row on the real slide
+**Priority: high.** Feasibility: medium.
+Step 3 of the pane is the one thing in the wizard that is not built. It has to
+write one record's values onto the real template slide, store what was there in
+a `SSF_MERGE_TEMPLATE` shape tag, and put it back — which means editing shapes
+through Office.js rather than in the package, the one place this project does
+that. The screen says so out loud today and its button carries the user past it;
+the merge does not need it.
 
-What is missing is the two controls in front of it — choosing the block by
-clicking slides in the deck, and attaching data (paste, then file). Until they
-exist `PaneState.block` and `PaneState.records` are never set, so the merge
-button can never enable. That is the next increment and it is the last thing
-between the repo and a working add-in.
-
-### Task pane — wiring it to the deck
-**Priority: blocking.** Feasibility: high.
-The pane is built and shipped: four steps, the SSF visual system, English, the
-step machine and every label under test, and a screenshot script that renders
-every state at 320 and 512. What is left is the wiring — choosing a block from
-the real deck, reading fields out of the real slides, a preview that writes to
-the slide and restores from `SSF_MERGE_TEMPLATE`, and the merge itself. It lands
-with the merge run, because they are the same seam from two sides.
+The other half is picking the block by CLICKING slides rather than typing two
+numbers. `getSelectedSlides` is the obvious route and this host is documented to
+wedge its whole selection subsystem after `setSelectedShapes`, so it needs a
+probe question before it needs code.
 
 ### Manifests
 **Priority: blocking.** Feasibility: high.

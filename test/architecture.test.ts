@@ -112,6 +112,36 @@ describe("src/core", () => {
     }
   });
 
+  it("never builds a slide id, it asks the host for one", () => {
+    // A slide id on this host looks like "256#3561048925". The first merge run
+    // counted instead — `for (let n = from; n <= to; n++) ids.push(String(n))`
+    // — and handed `["4", "5", "6"]` to `exportAsBase64Presentation`, whose
+    // typings say it throws InvalidArgument for an id not in the collection.
+    // Both sides were `string`, so tsc saw nothing and all three answer sheets
+    // report PowerPointApi 1.10, which means `chooseDeckSource` returns
+    // `subset` on the owner's own host and the first press of the merge button
+    // would have thrown.
+    //
+    // The signature is the main guard: `readTemplate` takes slide NUMBERS, so
+    // no caller can pass ids and tsc refuses the old call outright. This is the
+    // other half — the ids it uses have to come off a loaded collection and
+    // through `blockIds`, which is where the checking lives.
+    const src = readFileSync("src/office/powerpoint.ts", "utf8");
+    const start = src.indexOf("export async function readTemplate");
+    expect(start).toBeGreaterThan(-1);
+    const body = src.slice(start, src.indexOf("\n/**", start + 1));
+    expect(body, "asks the host for the ids").toContain('load("items/id")');
+    expect(body, "checks them in src/host rather than here").toContain("blockIds(");
+    // `exportAsBase64Presentation` is handed what `blockIds` returned and
+    // nothing else. Anything built locally is the defect coming back.
+    expect(body).toMatch(/exportAsBase64Presentation\(chosen\.ids\)/);
+    // Scoped to this function, not the file. `String(e)` is how the two
+    // mutating calls coerce a raise they caught, and a check wide enough to
+    // catch that is a check that goes red for the wrong reason — which this
+    // file already has a paragraph about.
+    expect(body, "builds no id of its own").not.toContain("String(");
+  });
+
   it("looks values up without walking the prototype chain", () => {
     // A field called __proto__ or constructor is a legal spreadsheet header and
     // arrives from a file the user pasted.

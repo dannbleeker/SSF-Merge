@@ -6,10 +6,10 @@
  * PowerPoint anywhere. `test/architecture.test.ts` holds that seam: a decision
  * that migrates into this file becomes untestable the moment it arrives.
  */
-import { ready as hostReady } from "../office/powerpoint.js";
-import { runMerge, type MergeOutcome } from "../office/merge.js";
+import { ready as hostReady, slideCount } from "../office/powerpoint.js";
+import { inspectBlock, runMerge, type MergeOutcome } from "../office/merge.js";
 import { render } from "./render.js";
-import { EMPTY, type PaneState, type StepId } from "./steps.js";
+import { EMPTY, EMPTY_DRAFT, chosenBlock, nextStep, readPastedTable, type PaneState, type StepId } from "./steps.js";
 
 let state: PaneState = EMPTY;
 let step: StepId = "template";
@@ -55,13 +55,104 @@ function applyTheme(): void {
 function onClick(event: Event): void {
   const target = event.target;
   if (!(target instanceof HTMLElement)) return;
+
+  const back = target.closest("[data-back]")?.getAttribute("data-back");
+  if (back) {
+    // Straight there, with no reachability check: a step the user has already
+    // been through is one they may go back and change, and that is the whole
+    // point of the link. Forward is what `nextStep` gates.
+    step = back as StepId;
+    state = { ...state, notice: undefined };
+    draw();
+    return;
+  }
+
   const action = target.closest("[data-action]")?.getAttribute("data-action");
   if (!action) return;
   if (action === "merge") {
     void merge();
     return;
   }
+  if (action === "template") {
+    void useBlock();
+    return;
+  }
   advance(action as StepId);
+}
+
+/**
+ * What the boxes hold, on every keystroke.
+ *
+ * The draft is stored as TYPED and read by `readBlockDraft`, so a box the user
+ * is halfway through is a state the pane can hold rather than a number it has
+ * to guess at. The data box is parsed the same way, on input, so the columns
+ * appear as the paste lands: `readPastedTable` is the only parse, and what the
+ * merge runs on is what those labels were counted from.
+ */
+function onInput(event: Event): void {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement) && !(target instanceof HTMLTextAreaElement)) return;
+  const field = target.getAttribute("data-field");
+  if (!field) return;
+
+  if (field === "from" || field === "to") {
+    const draft = { ...(state.draft ?? EMPTY_DRAFT), [field]: target.value };
+    // The committed block goes, because it is now stale: leaving it would let
+    // `chosenBlock` fall back to slides the boxes no longer name. The fields
+    // read off it go with it for the same reason.
+    state = { ...state, draft, block: undefined, fields: [], notice: undefined };
+    draw();
+    // The caret. `render` rebuilds the pane, so the box that was being typed
+    // in is a different element by the time this returns.
+    focusField(field);
+    return;
+  }
+
+  if (field === "paste") {
+    const read = readPastedTable(target.value);
+    state = {
+      ...state,
+      paste: target.value,
+      notice: undefined,
+      ...(read.records
+        ? { records: read.records, columns: read.columns, rows: read.rows }
+        : { records: undefined, columns: undefined, rows: undefined }),
+    };
+    draw();
+    focusField(field);
+  }
+}
+
+/** Put the caret back where it was, at the end of what is there. */
+function focusField(field: string): void {
+  const node = root().querySelector(`[data-field="${field}"]`);
+  if (!(node instanceof HTMLInputElement) && !(node instanceof HTMLTextAreaElement)) return;
+  node.focus();
+  const end = node.value.length;
+  // A number input throws on setSelectionRange, which is why this is guarded
+  // rather than called on both.
+  if (node instanceof HTMLTextAreaElement) node.setSelectionRange(end, end);
+}
+
+/**
+ * Commit the block, and find out what is actually in it.
+ *
+ * One template read per press, not per keystroke. `inspectBlock` does the same
+ * read and the same preparation the merge does and stops before the plan, so
+ * the placeholders the fields step lists are the ones the merge will bind —
+ * not a guess, and not a second parser that can disagree with the first.
+ */
+async function useBlock(): Promise<void> {
+  const block = chosenBlock(state);
+  if (!block) return;
+  state = { ...state, notice: "Reading the slides…" };
+  draw();
+  const report = await inspectBlock({ from: block.from, to: block.to });
+  state = report.ok
+    ? { ...state, block, fields: report.fields, notice: undefined }
+    : { ...state, block: undefined, fields: [], notice: report.detail };
+  if (report.ok) advance("template");
+  else draw();
 }
 
 /**
@@ -76,37 +167,36 @@ function onClick(event: Event): void {
  * safely, so they are held before anything is shown.
  */
 async function merge(): Promise<void> {
-  if (!state.block || !state.rows || !state.records) return;
+  const block = chosenBlock(state);
+  if (!block || !state.rows || !state.records) return;
   const button = root().querySelector("button.primary");
   if (button instanceof HTMLButtonElement) {
     button.disabled = true;
     button.textContent = "Merging…";
   }
   const outcome = await runMerge({
-    from: state.block.from,
-    to: state.block.to,
+    from: block.from,
+    to: block.to,
     records: state.records,
     ...(state.conditions ? { conditions: state.conditions } : {}),
   });
   last = outcome;
-  state = { ...state, deckSize: outcome.deckAtStart + outcome.added };
+  // The fields the RUN found, which is the authority: `inspectBlock` read them
+  // before the merge and this is the same read after it.
+  state = {
+    ...state,
+    deckSize: outcome.deckAtStart + outcome.added,
+    ...(outcome.fields.length > 0 ? { fields: outcome.fields } : {}),
+    notice: outcome.detail,
+  };
   draw();
-  say(outcome.detail);
 }
 
 /** The last run, so an undo has the numbers it is clamped against. */
 let last: MergeOutcome | undefined;
 
-function say(message: string): void {
-  const node = document.createElement("p");
-  node.className = "blocked";
-  node.textContent = message;
-  root().append(node);
-}
-
 function advance(from: StepId): void {
-  const order: StepId[] = ["template", "fields", "preview", "merge"];
-  const next = order[order.indexOf(from) + 1];
+  const next = nextStep(from);
   if (next) step = next;
   draw();
 }
@@ -127,8 +217,20 @@ void Office.onReady(() => {
     node.append(p);
     return;
   }
-  root().addEventListener("click", onClick);
+  const node = root();
+  node.addEventListener("click", onClick);
+  node.addEventListener("input", onInput);
   draw();
+  // The deck's size, so the template boxes can refuse a block that runs past
+  // the end before a template read is spent on it. Failing is not fatal: the
+  // check is skipped and `prepareBlock` still catches it later.
+  void slideCount().then(
+    (deckSize) => {
+      state = { ...state, deckSize };
+      draw();
+    },
+    () => undefined,
+  );
 });
 
 export { applyTheme, advance };

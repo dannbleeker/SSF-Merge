@@ -22,7 +22,14 @@
  * - every call is bounded, because a call that stops answering here never
  *   comes back.
  */
-import { chooseDeckSource, checkFloor, templateOffset, type DeckSource, type Supports } from "../host/capability.js";
+import {
+  blockIds,
+  chooseDeckSource,
+  checkFloor,
+  templateOffset,
+  type DeckSource,
+  type Supports,
+} from "../host/capability.js";
 import { insertVerdict, type InsertVerdict } from "../host/verdicts.js";
 import { sweepPlan } from "../host/undo.js";
 import { BUDGET, withTimeout } from "../host/timeout.js";
@@ -74,18 +81,40 @@ export interface TemplateBytes {
 /**
  * The template block's bytes.
  *
- * `slideIds` are the template slides in deck order and `blockStartInDeck` is
- * where the first of them sits, because the two routes return packages of
- * different shapes and only the caller knows which slides it wants.
- * `templateOffset` is what reconciles them.
+ * Takes SLIDE NUMBERS — 1-based, the numbering the thumbnail rail shows —
+ * because the two routes need different things and only one of them needs ids
+ * at all. Deliberately NOT a list of ids: the first version of this signature
+ * accepted one, and its only caller built it by counting, so
+ * `exportAsBase64Presentation` was handed `["4", "5", "6"]` on a host whose
+ * slide ids look like `256#3561048925`. Both sides were `string`, so nothing
+ * failed until PowerPoint did. See `blockIds`.
+ *
+ * The subset route therefore asks the host what the ids ARE, in the same batch
+ * it exports with. The whole-deck route needs no ids: the block is still
+ * wherever it was, which is what `templateOffset` carries.
  */
-export async function readTemplate(slideIds: string[], blockStartInDeck: number): Promise<TemplateBytes> {
+export async function readTemplate(block: { from: number; to: number }): Promise<TemplateBytes> {
   const choice = chooseDeckSource(hostSupports);
-  const offset = templateOffset(choice.source, blockStartInDeck);
+  const offset = templateOffset(choice.source, block.from - 1);
   if (choice.source === "subset") {
     const base64 = await withTimeout(
       PowerPoint.run(async (context) => {
-        const bytes = context.presentation.slides.exportAsBase64Presentation(slideIds);
+        const slides = context.presentation.slides;
+        // "items" alone does not load the items' properties — Microsoft says
+        // so, and a sibling project spent a session on a collection read that
+        // named none. `id` is the only thing wanted here.
+        slides.load("items/id");
+        await context.sync();
+        const chosen = blockIds(
+          slides.items.map((s) => s.id),
+          block.from,
+          block.to,
+        );
+        // Thrown rather than returned: this is a call, and the decision it
+        // reports on was made in `src/host` where the suite can check it. The
+        // message is already a sentence the pane shows as it stands.
+        if (!chosen.ok) throw new Error(chosen.why);
+        const bytes = slides.exportAsBase64Presentation(chosen.ids);
         await context.sync();
         return bytes.value;
       }),

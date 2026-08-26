@@ -29,13 +29,45 @@ const full = {
   deckSize: 12,
 };
 
+const PASTE = "First\tLast\tEmail\nAda\tLovelace\tada@example.com\nGrace\tHopper\tgrace@example.com";
+
 const STATES = [
   { name: "1-template-empty", step: "template", state: { fields: [], previewing: false } },
+  {
+    name: "1-template-typing",
+    step: "template",
+    state: { fields: [], previewing: false, draft: { from: "4", to: "6" }, deckSize: 12 },
+  },
+  {
+    name: "1-template-wrong-way-round",
+    step: "template",
+    state: { fields: [], previewing: false, draft: { from: "6", to: "4" }, deckSize: 12 },
+  },
   { name: "1-template-chosen", step: "template", state: full },
-  { name: "2-fields", step: "fields", state: { ...full, fields: ["First", "Last", "Nickname"] } },
+  { name: "2-fields-empty", step: "fields", state: { ...full, columns: undefined, rows: undefined, paste: "" } },
+  {
+    // Self-consistent on purpose: the paste, the columns and the row count are
+    // what `readPastedTable` answers for PASTE. A fixture whose label and whose
+    // box disagree teaches the reader a bug that is not there.
+    name: "2-fields",
+    step: "fields",
+    state: {
+      ...full,
+      fields: ["First", "Last", "Nickname"],
+      paste: PASTE,
+      columns: ["First", "Last", "Email"],
+      rows: 2,
+    },
+  },
   { name: "3-preview", step: "preview", state: { ...full, previewing: true } },
+  { name: "3-preview-idle", step: "preview", state: full },
   { name: "4-merge", step: "merge", state: full },
   { name: "4-merge-blocked", step: "merge", state: { fields: [], previewing: false } },
+  {
+    name: "4-merge-host-said",
+    step: "merge",
+    state: { ...full, notice: "PowerPoint would not name every slide between 4 and 6." },
+  },
 ];
 
 // The bundled browser and the installed playwright can disagree on build

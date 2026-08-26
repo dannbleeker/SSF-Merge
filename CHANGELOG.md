@@ -7,6 +7,76 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — the merge run built its own slide ids, and PowerPoint would have refused every one
+
+`runMerge` turned the template block into ids by counting —
+`for (let n = from; n <= to; n++) ids.push(String(n))` — and handed
+`["4", "5", "6"]` to `SlideCollection.exportAsBase64Presentation`, whose typings
+say it *throws an `InvalidArgument` exception if provided slide IDs or `Slide`
+objects are not found in this collection*. A slide id on this host looks like
+`256#3561048925`. `tsc` could not see it: both sides are `string`.
+
+All three answer sheets under `docs/host-answers/` report PowerPointApi up to
+1.10, so `chooseDeckSource` returns `subset` on the owner's own host and the
+first press of the merge button would have thrown.
+
+- `readTemplate` takes slide NUMBERS now, so no caller can pass ids at all —
+  the signature is the guard, and `tsc` rejects the old call outright.
+- Its subset branch asks the host, loading `items/id` and passing what came
+  back. `blockIds` in `src/host` is where that is checked: a block running past
+  what the host listed, or an id the host would not name, is a sentence rather
+  than an `InvalidArgument` from inside a callback.
+- `test/architecture.test.ts` holds the shape in source, since `src/office`
+  cannot run in the suite.
+
+### Added — the pane's controls
+
+The two things in front of the merge button. Steps 1, 2 and 4 are now reachable
+from the screen.
+
+- **Step 1 — the block.** Two slide-number boxes, read by `readBlockDraft` and
+  checked as they are typed: a block that ends before it starts, a slide 0, a
+  fraction, or one running past the end of the deck is refused in a sentence
+  naming both numbers. Nothing is said while a box is still EMPTY — the boxes
+  are filled one at a time, so a half-typed entry is not a mistake, and a form
+  that turns red on the first keystroke is wrong more often than its user is.
+  The draft is held as STRINGS, because `""`, `"-"` and `"0"` are all states a
+  box passes through and a number type has nowhere to put them.
+- **Step 2 — the data.** A paste box, read by `readPastedTable`. ONE parse, so
+  the columns listed, the row count, the number on the button and the records
+  the merge runs on cannot disagree. What it shows under the box is the COLUMNS,
+  not just a count: a copy that came through as plain text parses into one
+  column and a row count alone looks healthy when that happens. A header row
+  with nothing under it is refused rather than counted as zero rows.
+- **The fields step stopped guessing.** `inspectBlock` does the same read and
+  the same `prepareBlock` the merge does and stops before the plan, so pressing
+  "Use slides N to M" lists the placeholders actually in those slides. One
+  template read per press, not per keystroke — which is why the block is
+  committed on the button rather than as the boxes are typed.
+- **A link back on every screen but the first**, rendered before the primary so
+  the primary stays the last thing on the screen.
+- `nextStep` bounds the walk. `advance` was `order[order.indexOf(from) + 1]`,
+  and `indexOf` answers -1 for anything that is not a step — so a stray
+  `data-action` sent the user to step 1 with their block and their data still in
+  state, a wizard that resets itself and looks like it lost the lot.
+
+Two labels were promises the code does not keep, and both were changed rather
+than left to be pressed. The preview step's button said "Preview the first row"
+and its heading "See one row on the slide" while nothing writes to a slide; the
+screen now says the preview is not built, in the heading and the body, and its
+button carries the user on to the merge. The fields step's button said "Attach
+data" after the data was attached, which reads as a step that did not take.
+
+An input's `value` is set as the PROPERTY, never the attribute: `setAttribute`
+sets the default an input reverts to, and this pane re-renders on every
+keystroke, so the box would have snapped back to what it held before the key
+that caused the render.
+
+`scripts/pane-shots.mjs` renders eleven states now — including the two the
+controls added and the one where the host refused — and the orange-budget test
+sweeps them too. A budget checked over the states that existed when it was
+written stops covering the pane the first time the pane grows.
+
 ### Added — the merge run
 
 The seam where the pane, the host layer and the engine meet. `runMerge` counts

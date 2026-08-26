@@ -255,3 +255,67 @@ button[disabled] {
   color: var(--muted);
   font-size: 12.5px;
 }
+
+/*
+ * The two controls.
+ *
+ * One column at every width, like everything else here: the pane is 320 to 512
+ * and the two slide-number boxes are the only place anything sits side by side,
+ * because "first" and "last" are one question asked twice and reading them
+ * stacked makes them look like two.
+ */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.caption {
+  color: var(--muted);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+input,
+textarea {
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  width: 100%;
+  border: 1px solid var(--hair);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 6px 8px;
+}
+textarea {
+  /* A pasted range is wide and must not wrap: a wrapped row reads as two rows
+     and the count under the box is then the only thing saying otherwise. */
+  white-space: pre;
+  overflow-x: auto;
+  resize: vertical;
+  font-family: "Consolas", "SF Mono", ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+}
+input:focus,
+textarea:focus {
+  outline: 2px solid var(--blue);
+  outline-offset: -1px;
+  border-color: var(--blue);
+}
+
+/* A link, not a second button: one thing to press per screen stays the rule. */
+button.back {
+  align-self: flex-start;
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--link);
+  text-decoration: underline;
+  font-size: 12.5px;
+}
+
+/* What the host said, as opposed to what the step needs. */
+.notice {
+  color: var(--text);
+}

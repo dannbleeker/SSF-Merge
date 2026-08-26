@@ -54,6 +54,14 @@ describe("the orange budget", () => {
       { ...ready, fields: ["First", "Nickname"] },
       { ...ready, fields: ["First", "Nickname"], previewing: true },
       { ...ready, rows: 1, block: { from: 4, to: 4 } },
+      // The states the controls added. A budget checked over the states that
+      // existed when it was written is a budget that stops covering the pane
+      // the first time the pane grows.
+      { ...ready, draft: { from: "6", to: "4" } },
+      { ...ready, draft: { from: "6", to: "4" }, previewing: true },
+      { ...ready, paste: "First\tLast", rows: 0, columns: undefined },
+      { ...ready, notice: "PowerPoint would not name every slide." },
+      { ...ready, notice: "PowerPoint would not name every slide.", previewing: true },
     ];
     for (const state of states) {
       for (const step of ["template", "fields", "preview", "merge"] as const) {
@@ -145,5 +153,119 @@ describe("counting placeholders", () => {
   it("still says the plural for two and the sentence for none", () => {
     expect(paneFor({ ...ready, fields: ["A", "B"] }, "fields").querySelector("h1")?.textContent).toBe("2 placeholders");
     expect(paneFor({ ...ready, fields: [] }, "fields").querySelector("h1")?.textContent).toBe("No placeholders found");
+  });
+});
+
+describe("the two slide-number boxes", () => {
+  it("puts both on the template step, named for main.ts to read", () => {
+    const pane = paneFor({ fields: [], previewing: false }, "template");
+    expect(pane.querySelector('input[data-field="from"]')).not.toBeNull();
+    expect(pane.querySelector('input[data-field="to"]')).not.toBeNull();
+  });
+
+  it("sets the box's VALUE, not its value attribute", () => {
+    // setAttribute("value", …) sets the default an input reverts to. The pane
+    // re-renders on every keystroke, so with the attribute the box would snap
+    // back to what it held before the key that caused the render.
+    const pane = paneFor({ fields: [], previewing: false, draft: { from: "4", to: "6" } }, "template");
+    const from = pane.querySelector('input[data-field="from"]');
+    expect(from).toBeInstanceOf(HTMLInputElement);
+    expect((from as HTMLInputElement).value).toBe("4");
+  });
+
+  it("shows what is wrong with the boxes, and only once there is something", () => {
+    const half = paneFor({ fields: [], previewing: false, draft: { from: "4", to: "" } }, "template");
+    expect(half.querySelectorAll(".blocked")).toHaveLength(0);
+    const wrong = paneFor({ fields: [], previewing: false, draft: { from: "6", to: "4" } }, "template");
+    expect(wrong.querySelector(".blocked")?.textContent).toContain("ends before it starts");
+  });
+
+  it("carries the typed numbers into the heading and the button", () => {
+    const pane = paneFor({ fields: [], previewing: false, draft: { from: "2", to: "5" } }, "template");
+    expect(pane.querySelector("h1")?.textContent).toContain("Slides 2 to 5");
+    expect(pane.querySelector("button.primary")?.textContent).toBe("Use slides 2 to 5");
+  });
+});
+
+describe("the paste box", () => {
+  it("is on the fields step, named for main.ts to read", () => {
+    expect(paneFor(ready, "fields").querySelector('textarea[data-field="paste"]')).not.toBeNull();
+  });
+
+  it("holds what was pasted as its VALUE, so a re-render does not empty it", () => {
+    const pane = paneFor({ ...ready, paste: "First\tLast\nAda\tLovelace" }, "fields");
+    const box = pane.querySelector("textarea");
+    expect((box as HTMLTextAreaElement).value).toContain("Ada");
+  });
+
+  it("names the COLUMNS it found, not just a row count", () => {
+    // A paste that came through as plain text parses into one column, and a
+    // row count alone looks perfectly healthy when that happens.
+    const text = paneFor({ ...ready, columns: ["First", "Last"], rows: 240 }, "fields").textContent ?? "";
+    expect(text).toContain("240 rows");
+    expect(text).toContain("First, Last");
+  });
+
+  it("says a header row with no data under it is not data", () => {
+    expect(paneFor({ ...ready, paste: "First\tLast", rows: 0 }, "fields").textContent).toContain("header");
+  });
+
+  it("writes a pasted cell as TEXT, never as markup", () => {
+    // Same rule as the field chips: this is a file somebody pasted, and
+    // innerHTML here runs a script tag with the add-in's own privileges.
+    const nasty = "<img src=x onerror=alert(1)>";
+    const pane = paneFor({ ...ready, paste: `Name\n${nasty}`, columns: [nasty], rows: 1 }, "fields");
+    expect(pane.querySelectorAll("img")).toHaveLength(0);
+    expect((pane.querySelector("textarea") as HTMLTextAreaElement).value).toContain(nasty);
+  });
+});
+
+describe("going back", () => {
+  it("offers the previous step on every screen but the first", () => {
+    expect(paneFor(ready, "template").querySelector("[data-back]")).toBeNull();
+    for (const step of ["fields", "preview", "merge"] as const) {
+      expect(paneFor(ready, step).querySelector("[data-back]"), step).not.toBeNull();
+    }
+  });
+
+  it("names the step it goes to", () => {
+    expect(paneFor(ready, "merge").querySelector("[data-back]")?.getAttribute("data-back")).toBe("preview");
+  });
+
+  it("never takes the last place on the screen from the primary", () => {
+    // ONE PRIMARY per screen, always last. A back link that lands after it
+    // makes two things to press and neither is obviously the one.
+    for (const step of ["fields", "preview", "merge"] as const) {
+      const main = paneFor(ready, step).querySelector("main");
+      expect(main?.lastElementChild?.className, step).toBe("primary");
+    }
+  });
+});
+
+describe("what the host said", () => {
+  it("is shown, and kept apart from what the step needs", () => {
+    // "PowerPoint would not name every slide between 4 and 6" is not something
+    // the user did wrong, and filing it under the same sentence as "Attach
+    // your data first" makes both read as nagging.
+    const pane = paneFor({ ...ready, notice: "PowerPoint would not name every slide." }, "merge");
+    expect(pane.querySelector(".notice")?.textContent).toContain("PowerPoint");
+  });
+});
+
+describe("the preview step", () => {
+  it("says the preview is not built rather than offering it, in the HEADING too", () => {
+    // The heading was the last thing on this screen still promising a preview
+    // after the button stopped. A screen whose heading and whose button
+    // disagree is one the user trusts neither half of.
+    const pane = paneFor(ready, "preview");
+    expect(pane.querySelector("h1")?.textContent).toBe("Preview is not built yet");
+    expect(pane.textContent).toContain("not done");
+    expect(pane.querySelector("button.primary")?.textContent).toBe("Continue to merge");
+  });
+
+  it("still carries the undo card while a preview IS showing", () => {
+    const pane = paneFor({ ...ready, previewing: true }, "preview");
+    expect(pane.querySelectorAll(".card.undo")).toHaveLength(1);
+    expect(pane.querySelector("h1")?.textContent).toBe("A row is on the slide");
   });
 });
