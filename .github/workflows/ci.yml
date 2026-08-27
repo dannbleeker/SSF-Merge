@@ -36,3 +36,28 @@ jobs:
         run: npm run coverage
       - name: Test count
         run: npm run test:count
+
+  # Microsoft's own validator, kept OUT of `test` on purpose: it calls a
+  # Microsoft service, so it can fail for reasons that have nothing to do with
+  # the change, and `test` is the check a merge waits on. The offline rules in
+  # `scripts/manifest-rules.mjs` run in `test` and hold the things this project
+  # would actually be bitten by; this job is the authority on the schema.
+  #
+  # It is also the only thing here that can run at all: the validator answers
+  # 403 through the development environment's egress proxy, so for the whole
+  # life of this repo the manifests would otherwise never have been validated.
+  manifest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Manifests are valid
+        run: |
+          for m in manifest.xml manifest-prod.xml; do
+            echo "--- $m"
+            npx --yes office-addin-manifest validate "$m"
+          done

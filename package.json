@@ -17,7 +17,9 @@
     "probe": "node scripts/build-probe.mjs",
     "answers": "node scripts/read-answers.mjs",
     "dev": "vite",
-    "build": "vite build"
+    "build": "vite build",
+    "icons": "node scripts/build-icons.mjs",
+    "manifests": "node scripts/build-manifests.mjs"
   },
   "dependencies": {
     "@xmldom/xmldom": "^0.9.8",
