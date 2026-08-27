@@ -262,3 +262,64 @@ describe("which delimiter a paste uses", () => {
     expect(parseDelimited('"a\nb",c', "\t")).toEqual([["a\nb,c"]]);
   });
 });
+
+describe("a date that is not a real day", () => {
+  /**
+   * The engine's governing rule, stated in `recordset.ts` and again on
+   * `utcDate`: a merged deck that draws perfectly and is a month wrong is worse
+   * than one showing the cell untouched. `utcDate` exists to enforce it, by
+   * refusing anything that did not survive a round trip.
+   *
+   * It never fired on the string path, and could not have. `new Date` had
+   * already NORMALISED — 29 February 2026 into 1 March — so the components read
+   * back off the result were valid ones that round-tripped perfectly. The guard
+   * was reached only with numbers something else had made correct.
+   *
+   * Every accepting form here comes from a spreadsheet or a typed cell, which
+   * is where a 29 February in a common year comes from in the first place.
+   */
+  it("refuses a day the month does not have, in ISO", () => {
+    expect(parseDate("2026-02-29"), "29 Feb in a common year").toBeUndefined();
+    expect(parseDate("2026-04-31"), "31 April").toBeUndefined();
+    expect(parseDate("2026-06-31"), "31 June").toBeUndefined();
+  });
+
+  it("refuses a day the month does not have, written with the month's name", () => {
+    // These are worse than the ISO ones: `new Date("31 Feb 2026")` answers
+    // 3 MARCH, so the month moved as well as the day.
+    expect(parseDate("31 Feb 2026")).toBeUndefined();
+    expect(parseDate("30 February 2026")).toBeUndefined();
+    expect(parseDate("31 Apr 2026")).toBeUndefined();
+  });
+
+  it("still accepts a real leap day", () => {
+    // Not a guard against the bug — this passed before the fix too. It guards
+    // the FIX from being too broad: refusing every 29 February would be a
+    // cheap way to make the tests above green and would be worse than the bug.
+    expect(parseDate("2024-02-29")?.toISOString().slice(0, 10)).toBe("2024-02-29");
+    expect(parseDate("29 Feb 2024")?.toISOString().slice(0, 10)).toBe("2024-02-29");
+  });
+
+  it("reads the components from the STRING, not from a parsed Date", () => {
+    /**
+     * The ISO form with a time is parsed by `new Date` in the host's LOCAL
+     * zone, so east of UTC reading the components back gives the previous day.
+     * The suite runs in UTC and cannot see that, which is how it shipped once
+     * already — so this asserts the shape that makes it impossible rather than
+     * the symptom, which no assertion here could reach.
+     *
+     * Also not a guard against the rollover: it passed before the fix, in this
+     * timezone. It is here because the fix moved this path, and the thing it
+     * protects is invisible to a suite running in UTC.
+     */
+    expect(parseDate("2026-03-01T10:00")?.toISOString().slice(0, 10)).toBe("2026-03-01");
+    expect(parseDate("2026-03-01 23:59")?.toISOString().slice(0, 10)).toBe("2026-03-01");
+  });
+
+  it("returns the raw cell to the slide when it refuses", () => {
+    // The point of refusing: the author sees what they typed and can fix it,
+    // instead of 240 slides carrying a date nobody wrote.
+    expect(applyFormat("2026-02-29", "date")).toBe("2026-02-29");
+    expect(applyFormat("31 Feb 2026", "date:d MMM yyyy")).toBe("31 Feb 2026");
+  });
+});

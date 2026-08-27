@@ -60,17 +60,56 @@ export function parseDate(raw: string): Date | undefined {
     const month = a > 12 ? b : a;
     return utcDate(year < 100 ? 2000 + year : year, month, day);
   }
-  const d = new Date(v);
-  if (Number.isNaN(d.getTime())) return undefined;
-  // Read back in UTC, then rebuild in UTC.
+  // ISO, whose components are right there in the string. Taken from the string
+  // rather than from a parsed Date for two reasons, and both have bitten:
   //
-  // `new Date("1 Mar 2026")` is parsed in the host's LOCAL zone while
-  // `formatDate` reads UTC fields, so east of UTC every such date came out a
-  // day early: in Europe/Copenhagen — this project's own locale —
-  // `1 Mar 2026` rendered as `28 Feb 2026`. CI runs in UTC and the only date
-  // assertion used the date-only ISO form, which the spec parses as UTC, so
-  // nothing caught it.
-  return utcDate(d.getFullYear(), d.getMonth() + 1, d.getDate());
+  // `new Date("2026-03-01T10:00")` — the form `looksLikeDate` admits — is
+  // parsed in the host's LOCAL zone while `formatDate` reads UTC fields, so
+  // east of UTC it came out a day early. In Europe/Copenhagen, this project's
+  // own locale, `1 Mar 2026` rendered as `28 Feb 2026`.
+  //
+  // And `new Date` NORMALISES: `2026-02-29` is 1 March, `2026-04-31` is 1 May.
+  // Reading the components back off the result cannot catch that, because by
+  // then they are the normalised ones and they round-trip perfectly. That is
+  // why this function's own `utcDate` guard has always existed and has never
+  // fired on this path — it was only ever reached with numbers the parser had
+  // already made valid.
+  const iso = /^(\d{4})-(\d{2})-(\d{2})(?:[T ]|$)/.exec(v);
+  if (iso) return utcDate(Number(iso[1]), Number(iso[2]), Number(iso[3]));
+
+  // `1 Mar 2026` and its Danish and Norwegian spellings. The DAY and the YEAR
+  // come from the string; only the month NAME needs the platform, and it is
+  // resolved on a day that cannot roll over.
+  const named = /^(\d{1,2})[ .\-/]([A-Za-zÆØÅæøå]{3,})[ .\-/](\d{2,4})$/.exec(v);
+  if (named) {
+    const month = monthFromName(named[2] ?? "");
+    if (month === undefined) return undefined;
+    const year = Number(named[3]);
+    return utcDate(year < 100 ? 2000 + year : year, month, Number(named[1]));
+  }
+  return undefined;
+}
+
+/**
+ * A month name's number, or nothing if this platform does not know the word.
+ *
+ * Resolved by parsing the FIRST of that month, which exists in every month of
+ * every year — so the answer is the name's month and never a rollover. Asking
+ * `new Date` about the whole cell instead is what let `31 Feb 2026` through as
+ * 3 March: the parser had already moved the month by the time anything looked
+ * at it, and the components then agreed with themselves.
+ *
+ * `new Date` is the only month-name table available without shipping one per
+ * language, and it answers for English everywhere. Danish and Norwegian month
+ * words reach here — `looksLikeDate` admits them — and are simply refused,
+ * which returns the raw cell to the slide. That is the same answer they got
+ * before, so nothing regresses; a real table is a separate piece of work.
+ */
+function monthFromName(word: string): number | undefined {
+  const probe = new Date(`1 ${word} 2001 00:00:00Z`);
+  if (Number.isNaN(probe.getTime())) return undefined;
+  // The probe is anchored to UTC, so these are the components it was given.
+  return probe.getUTCFullYear() === 2001 && probe.getUTCDate() === 1 ? probe.getUTCMonth() + 1 : undefined;
 }
 
 /**

@@ -7,6 +7,30 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — an impossible date was silently rolled forward
+
+`2026-02-29` merged as **1 March** and `31 Feb 2026` as **3 March**, on every
+slide, with nothing said. The manual promised the opposite and the engine's own
+`utcDate` was written to enforce it.
+
+The guard could never have fired on that path. `parseDate` handed the cell to
+`new Date`, which NORMALISES, and then read the components back off the result —
+by which time they were valid ones that round-tripped perfectly. It only ever
+saw numbers something else had already made correct. The slash spellings took
+their components from the string and were right all along, which is why the
+manual's examples were all slash dates.
+
+The two remaining spellings `looksLikeDate` admits now take their components
+from the string too. A month NAME still needs the platform, and it is resolved
+by parsing the first of that month — a day that exists in every month, so the
+answer is the name's month and never a rollover. Asking `new Date` about the
+whole cell is what let `31 Feb 2026` through as 3 March: the month had already
+moved by the time anything looked at it, and the components then agreed with
+themselves.
+
+Found by running every accepting date form through the parser and diffing what
+came back against what went in, rather than by reading it.
+
 ### Added — conditional slides, which the engine has always done
 
 `prepare.ts` implemented conditional slides, `runPlan` reported

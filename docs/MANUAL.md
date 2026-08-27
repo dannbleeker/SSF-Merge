@@ -520,11 +520,16 @@ stands**, never guessed at and never blanked. A merged deck that draws perfectly
 and is two months wrong is worse than one showing the cell untouched, because
 nobody checks the first one.
 
-So: an impossible date — `29/02/2025`, `31/04/2026`, `13/13/2026` — is left
-alone rather than rolled forward into the real date that follows it. An
+So: an impossible date is left alone rather than rolled forward into the real
+date that follows it, in **every spelling** it can be written in —
+`29/02/2025`, `2026-02-29`, `31 Feb 2026`, `31/04/2026`, `2026-04-31`. An
 ambiguous slash date like `03/01/2026` is left alone for the same reason. A
 `number:` format asking for impossible decimals leaves the cell alone rather
 than failing the merge.
+
+Until 2026-08-27 this paragraph was true of the slash spellings and false of the
+other two: `2026-02-29` merged as 1 March and `31 Feb 2026` as 3 March, on every
+slide, with nothing said. A real leap day — `2024-02-29` — is still a date.
 
 Dates are read and written in the same zone, so `1 Mar 2026` prints as
 `01 Mar 2026` wherever you are.
