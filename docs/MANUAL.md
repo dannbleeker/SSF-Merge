@@ -183,7 +183,11 @@ PowerPoint answers with at that instant.
 - Slides must sit next to each other. Reorder them in the thumbnail pane first.
 - Records are emitted whole: all of record 1's slides, then all of record 2's.
 - A slide can be conditional, so a record gets two slides or three. Its position
-  never changes; it is skipped in place.
+  never changes; it is skipped in place. **The engine does this and the pane
+  cannot yet ask for it** — there is no control in step 1 or 2 that sets a
+  condition, so every slide in your block is emitted for every row. The rules
+  below are what will happen once there is one; they are not something you can
+  reach today. *Planned.*
 - A condition names a column. The slide is emitted when that column's cell has
   content. **A blank cell is false, and so are the words `false`, `falsk`, `no`,
   `nej`, `off` and `0`**, whatever their capitalisation. That short list exists
