@@ -9,6 +9,7 @@
  */
 import type { Pkg } from "../pptx/pkg.js";
 import type { Block, BlockSlide } from "./plan.js";
+import { notesPathFor } from "../pptx/clone.js";
 import { fieldsIn } from "./text.js";
 
 export interface BlockRequest {
@@ -74,7 +75,19 @@ export async function prepareBlock(pkg: Pkg, req: BlockRequest, runId: string): 
   for (let i = 0; i < count; i++) {
     const path = paths[start + i];
     if (!path) return { ok: false, why: `Slide ${req.from + i} is not in the deck that came back.` };
-    const own = fieldsIn(await pkg.doc(path));
+    // The slide, and its speaker notes.
+    //
+    // `runPlan` merges the notes page — a template whose notes read "Call
+    // {{Name}} afterwards" otherwise ships that verbatim on every handout — but
+    // this scan only ever read the slide. So a block whose placeholders live in
+    // the notes was refused with "no placeholders, so every copy would be
+    // identical", about a merge that would have filled them.
+    //
+    // The mirror of the chart case below, and the worse direction: there the
+    // pane reported fields it cannot merge, here it hid fields it can and
+    // blocked the merge on the strength of it.
+    const notes = await notesPathFor(pkg, path);
+    const own = [...fieldsIn(await pkg.doc(path)), ...(notes ? fieldsIn(await pkg.doc(notes)) : [])];
     for (const f of own) if (!fields.includes(f)) fields.push(f);
     // Fields the author placed somewhere this engine does not reach. Read from
     // the parts THIS slide relates to, never from the package at large: on the
@@ -113,7 +126,19 @@ export async function prepareBlock(pkg: Pkg, req: BlockRequest, runId: string): 
           `itself, or mark a block that has a placeholder on the slide.`,
       };
     }
-    return { ok: false, why: `${where} has no placeholders, so every copy would be identical.` };
+    // Says the SYNTAX, not the word "placeholder".
+    //
+    // PowerPoint calls its own empty content boxes placeholders — "Click to add
+    // title" IS a placeholder in its vocabulary — so a user looking at two of
+    // them was being told there are none. First contact with this add-in, on a
+    // fresh deck, is exactly the moment that reads as the thing being broken.
+    return {
+      ok: false,
+      why:
+        `${where} has no {{fields}}, so every copy would be identical. Type your column headers onto ` +
+        `the slides in double braces — {{First}}, {{City}} — then press again. PowerPoint's own empty ` +
+        `"Click to add title" boxes are not fields.`,
+    };
   }
 
   return { ok: true, block: { id: runId, slides }, fields, unmergeable };

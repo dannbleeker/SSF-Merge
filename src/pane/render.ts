@@ -208,6 +208,30 @@ export function render(root: HTMLElement, state: PaneState, current: StepId): vo
   // it shows a row — so it is the only one that needs a way forward that is not
   // the button. Without this the wizard has no exit from step 3 at all, which
   // is what making the preview real took away.
+  // The way out of the chicken-and-egg on step 1.
+  //
+  // The primary there only advances when the template read finds fields, so a
+  // deck with no `{{fields}}` on it had NO route to the data step — and the
+  // names to type are the data's own column headers, which the user cannot see
+  // until they attach it. Reported from a first run on an empty deck: the
+  // instruction was to go and type field names nobody knew yet.
+  //
+  // `blockedReason` already permits this step on the two slide numbers alone,
+  // so nothing about what is reachable changes; only a control was missing.
+  //
+  // Offered ONLY while there is no data, because that is the only state the
+  // label is true in. With rows attached the user has already been to step 2
+  // and the back link is the way there.
+  if (current === "template" && !state.rows && blockedReason(state, "fields") === null) {
+    main.append(
+      el(doc, "button", {
+        class: "back forward",
+        text: "Attach data first to see your column names",
+        attrs: { "data-forward": "fields" },
+      }),
+    );
+  }
+
   if (current === "preview" && !state.previewing && blockedReason(state, "merge") === null) {
     main.append(
       el(doc, "button", {

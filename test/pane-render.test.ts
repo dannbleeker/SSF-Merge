@@ -526,3 +526,45 @@ describe("a finished merge offers the slides back", () => {
     expect(pane.querySelector(".tick")).toBeNull();
   });
 });
+
+describe("getting to the data before the template exists", () => {
+  /**
+   * The chicken-and-egg a first run hit. Step 1's primary only advances when
+   * the template read finds fields, so a deck with no `{{fields}}` on it had no
+   * route to step 2 — and the names to type are the DATA's column headers,
+   * which cannot be seen until it is attached. The pane was telling the user to
+   * go and type names nobody knew yet.
+   *
+   * `blockedReason` already permitted that step on the two slide numbers alone.
+   * Only a control was missing, so nothing about what is reachable changed.
+   */
+  const draftOnly = { fields: [], previewing: false, draft: { from: "2", to: "3" }, deckSize: 4 };
+
+  it("offers a way to the data step from a template with no fields", () => {
+    const doc = paneFor(draftOnly, "template");
+    const link = doc.querySelector('[data-forward="fields"]');
+    expect(link?.textContent).toBe("Attach data first to see your column names");
+  });
+
+  it("does not offer it before the slide numbers make sense", () => {
+    // `blockedReason` refuses the step without a block, and the contract for
+    // `data-forward` is that render never draws one the click handler would
+    // have to re-decide.
+    const doc = paneFor({ fields: [], previewing: false, draft: { from: "", to: "" } }, "template");
+    expect(doc.querySelector('[data-forward="fields"]')).toBeNull();
+  });
+
+  it("stops offering it once data is attached", () => {
+    // The label would be a lie, and the back link is the way there by then.
+    const doc = paneFor({ ...draftOnly, rows: 2, columns: ["First", "City"] }, "template");
+    expect(doc.querySelector('[data-forward="fields"]')).toBeNull();
+  });
+
+  it("leaves the primary the last thing on the screen", () => {
+    // The layout rule the pane was approved on. A forward link is a link, and
+    // it goes before the button like every other one.
+    const doc = paneFor(draftOnly, "template");
+    const controls = Array.from(doc.querySelectorAll("button"));
+    expect(controls[controls.length - 1]?.className).toContain("primary");
+  });
+});

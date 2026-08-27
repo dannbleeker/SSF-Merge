@@ -1025,3 +1025,51 @@ describe("the run record while the host has not answered", () => {
     await settle();
   });
 });
+
+describe("reaching the data step before the template has fields", () => {
+  /**
+   * Driven through the real `main.ts`, because the question is not whether the
+   * link renders — `pane-render.test.ts` asks that — but whether pressing it
+   * gets somebody who is stuck to a box they can paste into.
+   *
+   * The state it starts from is the one that was reported: a fresh deck, two
+   * empty slides, the template read having refused.
+   */
+  it("takes a stuck user to the paste box without a template read", async () => {
+    await openPane();
+    await settle();
+    type("from", "2");
+    type("to", "3");
+    office.inspectBlock.mockResolvedValueOnce({
+      ok: false,
+      detail: "Slides 2 to 3 have no {{fields}}, so every copy would be identical.",
+      fields: [],
+    });
+    primary().click();
+    await settle();
+    expect(said().join(" "), "still on the refusal").toContain("{{fields}}");
+
+    const forward = pane().querySelector('[data-forward="fields"]') as HTMLElement;
+    expect(forward, "no way forward from a template with no fields").not.toBeNull();
+    forward.click();
+    await settle();
+
+    // The step label is uppercased by CSS, so the text node is title case.
+    expect(document.body.textContent).toContain("Step 2 of 4");
+    expect(field("paste"), "nothing to paste into").not.toBeNull();
+    // And no second template read was spent getting here.
+    expect(office.inspectBlock).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the column names once data is pasted, so the user can go and type them", async () => {
+    // The whole point of the detour: learn the headers, then author the slides.
+    await openPane();
+    await settle();
+    type("from", "2");
+    type("to", "3");
+    (pane().querySelector('[data-forward="fields"]') as HTMLElement).click();
+    await settle();
+    type("paste", "First\tCity\nAda\tLondon");
+    expect(document.body.textContent).toContain("First, City");
+  });
+});
