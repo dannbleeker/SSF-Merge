@@ -104,6 +104,8 @@ export interface MergeReport {
   paragraphsMerged?: number;
   skippedRecords?: number;
   skippedSlides?: number;
+  /** Conditions naming a column the data did not have. */
+  unknownConditions?: string[];
 }
 
 /**
@@ -135,5 +137,12 @@ export function describeMerge(r: MergeReport): string {
   // cannot reconcile those two numbers assumes the merge lost something.
   if (r.skippedRecords) parts.push(`${plural(r.skippedRecords, "row")} skipped by a condition`);
   if (r.skippedSlides) parts.push(`${plural(r.skippedSlides, "slide")} skipped by a condition`);
+  // The condition that did NOTHING, which is the one worth saying. The engine
+  // emits the slide anyway rather than hiding an authoring mistake behind
+  // output that looks finished — so without this line the user sees the right
+  // number of slides and never learns the condition was ignored.
+  if (r.unknownConditions && r.unknownConditions.length > 0) {
+    parts.push(`no column for ${r.unknownConditions.join(", ")}, so those slides were included for every row`);
+  }
   return `${parts.join(" · ")}.`;
 }

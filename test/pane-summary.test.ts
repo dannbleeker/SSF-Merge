@@ -89,6 +89,23 @@ describe("what an undo takes back", () => {
     expect(undoSummary(-3, 12)).toBe("Nothing to take back.");
   });
 
+  it("says when a condition did nothing", () => {
+    /**
+     * The engine emits the slide anyway rather than hiding an authoring
+     * mistake behind output that looks finished — so the merge produces the
+     * RIGHT number of slides and the condition was ignored. Without this line
+     * there is nothing at all to tell the user that.
+     *
+     * `unknownConditions` was carried on the outcome from the day the engine
+     * was written and read by nothing.
+     */
+    expect(describeMerge({ added: 6, deckAtStart: 12, unknownConditions: ["Renewal"] })).toContain(
+      "no column for Renewal, so those slides were included for every row",
+    );
+    // An ordinary merge stays one short sentence.
+    expect(describeMerge({ added: 6, deckAtStart: 12, unknownConditions: [] })).toBe("6 slides added after slide 12.");
+  });
+
   it("does not offer to remove slides the deck is too small to hold", () => {
     /**
      * The card computes its range backwards from the END of the deck, so a

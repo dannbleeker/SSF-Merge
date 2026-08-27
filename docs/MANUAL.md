@@ -21,6 +21,7 @@ placeholders where the data goes, and SSF Merge produces one copy per row.
 - [Formats](#formats)
 - [What repeats](#what-repeats)
 - [Your data](#your-data)
+  - [Choosing which slides are conditional](#choosing-which-slides-are-conditional)
 - [Where the merged slides go](#where-the-merged-slides-go) *(one of three)*
 - [What happens to the template](#what-happens-to-the-template) *(default only)*
 - [The pane](#the-pane)
@@ -183,11 +184,9 @@ PowerPoint answers with at that instant.
 - Slides must sit next to each other. Reorder them in the thumbnail pane first.
 - Records are emitted whole: all of record 1's slides, then all of record 2's.
 - A slide can be conditional, so a record gets two slides or three. Its position
-  never changes; it is skipped in place. **The engine does this and the pane
-  cannot yet ask for it** — there is no control in step 1 or 2 that sets a
-  condition, so every slide in your block is emitted for every row. The rules
-  below are what will happen once there is one; they are not something you can
-  reach today. *Planned.*
+  never changes; it is skipped in place. Set it on **step 2**, under *Every
+  slide, every row* — one dropdown per slide in your block, offering the columns
+  in the data you attached.
 - A condition names a column. The slide is emitted when that column's cell has
   content. **A blank cell is false, and so are the words `false`, `falsk`, `no`,
   `nej`, `off` and `0`**, whatever their capitalisation. That short list exists
@@ -195,8 +194,14 @@ PowerPoint answers with at that instant.
   out as a localised word, and treating `FALSK` as content would emit every
   slide it was told to leave out. Anything not on the list is content.
 - A condition naming a column your data does not have **emits the slide anyway**
-  and reports the problem. Dropping it would hide an authoring mistake behind
-  output that looks finished.
+  and reports the problem — under the dropdowns before you merge, and in the
+  sentence after it. Dropping it would hide an authoring mistake behind output
+  that looks finished. You can reach this without typing a name: pick a column,
+  then paste data that does not have it.
+- Conditions belong to the **template**, so a new paste keeps them. They are
+  keyed by slide number, so **changing the block clears them** — "slide 5 only
+  when Renewal" is about the fifth slide of the deck, and a block that starts
+  somewhere else would silently apply it to a different slide.
 - One deck can hold several blocks over different data. Slides 4 to 6 over
   customers while slides 9 to 10 repeat over products is an ordinary report.
 
@@ -227,6 +232,19 @@ entirely blank are skipped.
 Each column's type is detected from its values: a column is a number only if
 every filled cell is one, and a date only if every filled cell is an
 unambiguous date. One "n/a" makes the column text, which is the safe answer.
+
+### Choosing which slides are conditional
+
+Under the placeholder chips is a line reading *Every slide, every row*. Opening
+it shows one dropdown per slide in your block, each offering the columns in the
+data you attached: leave it on **Always**, or pick **Only when [column]**.
+
+The columns are offered rather than typed, because the engine matches a
+condition against a column name exactly and a typed name that does not match is
+a silent no-op you would find by counting slides in the output.
+
+Shut, the line says how many slides are conditional, so the answer is on screen
+without opening anything.
 
 ### Choosing which rows merge
 

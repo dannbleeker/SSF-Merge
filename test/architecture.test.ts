@@ -266,13 +266,11 @@ describe("every pane state field can actually be set", () => {
    * Not a lint rule and deliberately narrow: it answers one question, about one
    * file, whose shape is a convention this pane already follows everywhere.
    */
-  const SETTABLE_BY_NOTHING = new Set([
-    // Conditional slides. The engine is built; no control sets a condition, so
-    // every slide in a block is emitted for every row. Marked *planned* in
-    // docs/MANUAL.md and carried in docs/BACKLOG.md with where the control
-    // should go. Delete this entry in the change that adds it.
-    "conditions",
-  ]);
+  // Empty, and it has been. `conditions` sat here for exactly one change: the
+  // engine implemented conditional slides and no control set them. The entry
+  // came out with the control that filled the gap, which is the mechanism
+  // working — an exception that cannot outlive what it excuses.
+  const SETTABLE_BY_NOTHING = new Set<string>([]);
 
   function fieldsOf(source: string): string[] {
     const at = source.indexOf("export interface PaneState");
@@ -322,8 +320,10 @@ describe("every pane state field can actually be set", () => {
   });
 
   it("keeps the known-unreachable list honest", () => {
-    // So the exception cannot outlive the gap: once a control sets it, this
-    // fails until the entry is deleted.
+    // So an exception cannot outlive the gap: once a control sets it, this
+    // fails until the entry is deleted. Vacuous while the list is empty, and
+    // kept for the next entry rather than deleted with this one — the list is
+    // the mechanism, not the single field that needed it.
     for (const f of SETTABLE_BY_NOTHING) {
       expect(fields, `${f} is not a PaneState field`).toContain(f);
       expect(assigned.has(f), `${f} is set now — delete it from the list`).toBe(false);

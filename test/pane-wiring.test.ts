@@ -809,3 +809,152 @@ describe("the build stamp", () => {
     expect(document.querySelector("header .build")).toBeNull();
   });
 });
+
+describe("the conditional slide control", () => {
+  /**
+   * The gap this closes: `prepare.ts` implemented conditional slides,
+   * `PaneState` carried `conditions`, `main.ts` passed it to both the preview
+   * and the merge — and nothing WROTE it, so the field was undefined in every
+   * run that had ever happened. Built, tested, and reachable from nothing, for
+   * the third time in this repo.
+   *
+   * So these tests drive the real control through the real `main.ts`: what a
+   * user does is choose a column from a dropdown, and the thing that must be
+   * true is that the choice reaches `runMerge`.
+   */
+  async function toFieldsWithData(): Promise<void> {
+    await openPane();
+    await settle();
+    type("from", "4");
+    type("to", "6");
+    office.inspectBlock.mockResolvedValueOnce(REPORT);
+    primary().click();
+    await settle();
+    type("paste", "First\tLast\nAda\tLovelace\nGrace\tHopper");
+  }
+
+  function openConditions(): void {
+    (pane().querySelector('[data-action="conditions"]') as HTMLElement).click();
+  }
+
+  function choose(slide: number, column: string): void {
+    const node = pane().querySelector(`[data-condition="${slide}"]`) as HTMLSelectElement;
+    node.value = column;
+    node.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  it("is not offered before there is data to condition on", async () => {
+    // A condition names a COLUMN. With nothing attached the control could offer
+    // nothing to choose, and would be furniture on the one screen that is about
+    // attaching data.
+    await openPane();
+    await settle();
+    type("from", "4");
+    type("to", "6");
+    office.inspectBlock.mockResolvedValueOnce(REPORT);
+    primary().click();
+    await settle();
+    expect(pane().querySelector('[data-action="conditions"]')).toBeNull();
+  });
+
+  it("offers one control per slide in the block, defaulting to always", async () => {
+    await toFieldsWithData();
+    openConditions();
+    const selects = Array.from(pane().querySelectorAll("[data-condition]"));
+    expect(selects.map((s) => s.getAttribute("data-condition"))).toEqual(["4", "5", "6"]);
+    expect(selects.every((s) => (s as HTMLSelectElement).value === "")).toBe(true);
+    // The columns from THIS paste, and nothing invented.
+    const options = Array.from(selects[0]!.querySelectorAll("option")).map((o) => o.value);
+    expect(options).toEqual(["", "First", "Last"]);
+  });
+
+  it("carries the choice into the merge", async () => {
+    // The assertion the whole feature turns on. Everything else here could pass
+    // while `runMerge` was still handed nothing.
+    await toFieldsWithData();
+    openConditions();
+    choose(5, "Last");
+    primary().click(); // fields -> preview
+    (pane().querySelector("[data-forward]") as HTMLElement).click();
+    office.runMerge.mockResolvedValueOnce(OUTCOME);
+    primary().click();
+    await settle();
+    expect(office.runMerge).toHaveBeenCalledTimes(1);
+    expect((office.runMerge.mock.calls[0]?.[0] as { conditions?: unknown }).conditions).toEqual({ 5: "Last" });
+  });
+
+  it("forgets conditions when the block moves", async () => {
+    /**
+     * Keyed by SLIDE NUMBER, so "slide 5 only when Last" is about the fifth
+     * slide of the deck. Carried across a changed block it lands on whichever
+     * slide now holds that number — a slide the user never set a condition on,
+     * silently, discovered by counting slides in the output.
+     *
+     * The block here OVERLAPS the old one (4-6 becomes 3-5) and that is the
+     * whole point of the case. A first version moved to 7-9, where the stale
+     * key 5 is outside the new block and the engine ignores it — so the test
+     * passed with the clearing removed and proved nothing. Check which
+     * assertion goes red, and against what.
+     */
+    await toFieldsWithData();
+    openConditions();
+    choose(5, "Last");
+    // Back to step 1, which is where the slide boxes are.
+    (pane().querySelector('[data-back="template"]') as HTMLElement).click();
+    type("from", "3");
+    type("to", "5");
+    office.inspectBlock.mockResolvedValueOnce(REPORT);
+    primary().click();
+    await settle();
+    type("paste", "First\tLast\nAda\tLovelace");
+    // Not re-opened: the list stays open across the trip, which is a UI
+    // preference rather than a fact about the block. Toggling here would shut
+    // it and the assertion below would pass on an empty list.
+    const values = Array.from(pane().querySelectorAll("[data-condition]")).map((s) => (s as HTMLSelectElement).value);
+    expect(values, "the control is not open").toHaveLength(3);
+    expect(values, "slide 5 kept a condition set while it was the middle of another block").toEqual(["", "", ""]);
+
+    // And what actually reaches the engine, which is where the harm would be.
+    primary().click();
+    (pane().querySelector("[data-forward]") as HTMLElement).click();
+    office.runMerge.mockResolvedValueOnce(OUTCOME);
+    primary().click();
+    await settle();
+    expect((office.runMerge.mock.calls[0]?.[0] as { conditions?: unknown }).conditions).toBeUndefined();
+  });
+
+  it("keeps a condition across a new paste, and says the column is gone", async () => {
+    /**
+     * The opposite decision from the row filter, and deliberately: a filter is
+     * about the DATA, so row 7 of a new paste is not row 7 of the old one. A
+     * condition is about the TEMPLATE. Dropping it silently would rewrite the
+     * user's answer to "always" and change what the merge produces with nothing
+     * said — which is exactly what the engine's `unknownConditions` exists to
+     * prevent.
+     */
+    await toFieldsWithData();
+    openConditions();
+    choose(5, "Last");
+    type("paste", "First\tCity\nAda\tLondon");
+    expect(said().join(" ")).toContain("No column for Last");
+    const node = pane().querySelector('[data-condition="5"]') as HTMLSelectElement;
+    // Still chosen, and still an option, rather than quietly reset to Always.
+    expect(node.value).toBe("Last");
+  });
+
+  it("does not take a change while a merge is out", async () => {
+    // Same rule as every other edit on this screen: the answer is about to be
+    // written into this state and a change would make it stale.
+    await toFieldsWithData();
+    openConditions();
+    const held = deferred<unknown>();
+    primary().click();
+    (pane().querySelector("[data-forward]") as HTMLElement).click();
+    office.runMerge.mockReturnValueOnce(held.promise);
+    primary().click();
+    await settle();
+    expect(pane().querySelector("[data-condition]"), "the control is not on the merge step").toBeNull();
+    held.resolve(OUTCOME);
+    await settle();
+  });
+});

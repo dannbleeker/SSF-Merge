@@ -63,6 +63,16 @@ export interface PaneState {
   rowSearch?: string;
   /** Whether the row list is open. Closed by default: 240 rows is not a screen. */
   rowsOpen?: boolean;
+  /**
+   * Whether the condition list is open. Closed by default, like the rows.
+   *
+   * Most merges want every slide for every row, and a user who never opens this
+   * should pay one line for it. Shut, that line also STATES the current answer
+   * ("every slide, every row"), so the feature is discoverable without being in
+   * the way — a `<details>` whose summary says nothing is a control nobody
+   * finds.
+   */
+  conditionsOpen?: boolean;
   /** Conditions the user set, keyed by SLIDE NUMBER — the numbering they can see. */
   conditions?: Record<number, string>;
   /** What the two slide-number boxes hold right now, as typed. */
@@ -253,6 +263,73 @@ export const EMPTY: PaneState = { fields: [], previewing: false };
 /** How many slides one record produces. */
 export function slidesPerRecord(block: Block): number {
   return block.to - block.from + 1;
+}
+
+/**
+ * The slide numbers in the chosen block, in the numbering the user sees.
+ *
+ * Conditions are keyed by SLIDE NUMBER because that is what the user picked in
+ * step 1 and what the thumbnail rail shows. `prepareBlock` reads them back the
+ * same way (`req.conditions?.[req.from + i]`), so the pane and the engine agree
+ * on what "slide 5" means without either converting.
+ */
+export function blockSlides(state: PaneState): number[] {
+  const block = chosenBlock(state);
+  if (!block) return [];
+  const out: number[] = [];
+  for (let n = block.from; n <= block.to; n++) out.push(n);
+  return out;
+}
+
+/** The column a slide is conditional on, or "" for "always". */
+export function conditionFor(state: PaneState, slide: number): string {
+  return state.conditions?.[slide] ?? "";
+}
+
+/**
+ * The conditions with one slide's answer changed.
+ *
+ * Returns `undefined` when nothing is left, so the state carries no empty
+ * object: `state.conditions` being absent and being `{}` mean the same thing to
+ * every reader, and two spellings of one meaning is how a comparison starts
+ * disagreeing with itself.
+ *
+ * An empty column is a DELETE rather than a stored blank. `prepareBlock` tests
+ * the value for truthiness, so a stored `""` would behave as "always" — right
+ * by accident, and it would still be reported as a condition by anything
+ * counting keys.
+ */
+export function withCondition(
+  conditions: Record<number, string> | undefined,
+  slide: number,
+  column: string,
+): Record<number, string> | undefined {
+  const next: Record<number, string> = { ...conditions };
+  if (column === "") delete next[slide];
+  else next[slide] = column;
+  return Object.keys(next).length > 0 ? next : undefined;
+}
+
+/**
+ * Conditions that name a column the attached data does not have.
+ *
+ * The engine reports these too (`unknownConditions`) and emits the slide
+ * anyway, deliberately, so an authoring mistake is not hidden behind output
+ * that looks finished. The pane says it BEFORE the merge as well, because at
+ * that point it is still free to fix.
+ *
+ * Reachable without anyone typing a column name: the control offers only
+ * columns that exist, and then the user pastes different data.
+ */
+export function danglingConditions(state: PaneState): string[] {
+  if (!state.columns || !state.conditions) return [];
+  const have = new Set(state.columns);
+  const out: string[] = [];
+  for (const slide of blockSlides(state)) {
+    const column = state.conditions[slide];
+    if (column !== undefined && !have.has(column) && !out.includes(column)) out.push(column);
+  }
+  return out;
 }
 
 /**

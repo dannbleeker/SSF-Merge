@@ -7,6 +7,35 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added — conditional slides, which the engine has always done
+
+`prepare.ts` implemented conditional slides, `runPlan` reported
+`unknownConditions`, `PaneState` carried `conditions`, and `main.ts` passed it
+to both the preview and the merge. Nothing wrote it. The field was undefined in
+every run that had ever happened, and the manual described the feature as
+shipped — so a reader went looking for a control that was not there.
+
+It is on **step 2**, under a line reading *Every slide, every row*: one dropdown
+per slide in the block, offering the columns of the data attached. Step 2 rather
+than step 1, because a condition names a COLUMN and only this step knows them.
+
+A select, never free text. The engine matches a condition against a column name
+exactly, so a typed name is a silent no-op discovered by counting slides in the
+output. It does not remove the unknown-column case and is not meant to: a
+condition is chosen from THIS paste's columns and the next paste may not have
+them, which is said under the dropdowns before the merge and in the sentence
+after it. That second half was missing too — `unknownConditions` reached the
+pane from the day it was written and was read by nothing.
+
+Conditions belong to the template, so a new paste keeps them; they are keyed by
+slide number, so a changed block clears them. The test for that had to move to
+an OVERLAPPING block before it could fail: with the old block 4-6 and a new one
+7-9, a stale key of 5 is outside the block and the engine ignores it, so the
+guard passed against the unfixed code and proved nothing.
+
+`test/architecture.test.ts`'s known-unreachable list is empty again. It held one
+entry, for exactly one change.
+
 ### Added — a merge that never finished can still be taken back
 
 `undoInsert` is clamped against the deck's size BEFORE the run inserted

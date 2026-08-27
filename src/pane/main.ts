@@ -27,6 +27,7 @@ import {
   includedRecords,
   nextStep,
   readPastedTable,
+  withCondition,
   type PaneState,
   type StepId,
 } from "./steps.js";
@@ -62,12 +63,23 @@ function draw(): void {
     active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement
       ? active.getAttribute("data-field")
       : null;
+  // A condition SELECT keeps its focus too, and by its own attribute: it has no
+  // `data-field` and no caret, so it does not belong in the branch above.
+  // Without this, choosing a column moves focus to the top of the pane and the
+  // next slide's dropdown is a mouse away — on a control whose whole use is
+  // setting several in a row.
+  const condition = active instanceof HTMLSelectElement ? active.getAttribute("data-condition") : null;
   // Read the selection BEFORE the element is destroyed. A number input answers
   // null for both, which is exactly why the boxes are `type="text"`.
   const start = field !== null && active instanceof HTMLElement ? selectionOf(active) : null;
 
   render(root(), state, step);
 
+  if (condition !== null) {
+    const back = root().querySelector(`[data-condition="${selectorSafe(condition)}"]`);
+    if (back instanceof HTMLSelectElement) back.focus();
+    return;
+  }
   if (field === null) return;
   const node = root().querySelector(`[data-field="${selectorSafe(field)}"]`);
   if (!(node instanceof HTMLInputElement) && !(node instanceof HTMLTextAreaElement)) return;
@@ -189,6 +201,11 @@ function onClick(event: Event): void {
     draw();
     return;
   }
+  if (action === "conditions") {
+    state = { ...state, conditionsOpen: !state.conditionsOpen };
+    draw();
+    return;
+  }
   if (action === "selection") {
     void useSelection();
     return;
@@ -215,6 +232,25 @@ function onClick(event: Event): void {
  */
 function onInput(event: Event): void {
   const target = event.target;
+  // A SELECT as well as a box. `<select>` fires `input` as well as `change` in
+  // every browser this ships to, so one listener covers both — but the type
+  // guard is what decides, and it excluded selects until the condition control
+  // needed one.
+  if (target instanceof HTMLSelectElement) {
+    const slide = target.getAttribute("data-condition");
+    if (slide === null || state.running) return;
+    state = {
+      ...state,
+      conditions: withCondition(state.conditions, Number(slide), target.value),
+      // A changed condition changes what the merge produces, so the finished
+      // run's disarmed button goes with it — the same rule every other edit on
+      // this screen follows.
+      added: undefined,
+      notice: undefined,
+    };
+    draw();
+    return;
+  }
   if (!(target instanceof HTMLInputElement) && !(target instanceof HTMLTextAreaElement)) return;
   const field = target.getAttribute("data-field");
   if (!field) return;
@@ -229,7 +265,21 @@ function onInput(event: Event): void {
     // `chosenBlock` fall back to slides the boxes no longer name. The fields
     // read off it go with it for the same reason, and `added` goes because a
     // changed block is a different merge.
-    state = { ...state, draft, block: undefined, fields: [], notice: undefined, added: undefined };
+    state = {
+      ...state,
+      draft,
+      block: undefined,
+      fields: [],
+      notice: undefined,
+      added: undefined,
+      // Keyed by SLIDE NUMBER, so they mean nothing once the block moves:
+      // "slide 5 only when Renewal" is about the fifth slide of the deck, and
+      // a block starting one slide later would silently apply it to a
+      // different slide. Kept across a new PASTE, deliberately — a condition
+      // is about the template, and a column the new data lacks is reported
+      // rather than quietly dropped.
+      conditions: undefined,
+    };
     draw();
     return;
   }
@@ -289,6 +339,9 @@ async function useSelection(): Promise<void> {
           fields: [],
           added: undefined,
           notice: undefined,
+          // Same reason as typing in the boxes: conditions are keyed by slide
+          // number, and this changes which slides the block names.
+          conditions: undefined,
         }
       : { ...state, notice: picked.why };
   } finally {

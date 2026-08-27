@@ -14,8 +14,11 @@ import {
   EMPTY_DRAFT,
   STEPS,
   STEP_TITLE,
+  blockSlides,
   blockedReason,
   chosenBlock,
+  conditionFor,
+  danglingConditions,
   includedCount,
   rowIncluded,
   rowLabel,
@@ -290,6 +293,10 @@ function body(doc: Document, state: PaneState, current: StepId, orange: OrangeHo
       );
       out.push(card);
     }
+    // Only once there is data. A condition names a COLUMN, so with nothing
+    // attached the control could offer nothing to choose and would be a line of
+    // furniture on the one screen that is about attaching data.
+    if (state.columns && state.columns.length > 0) out.push(conditionPicker(doc, state));
     return out;
   }
 
@@ -401,6 +408,95 @@ function dataControl(doc: Document, state: PaneState): HTMLElement {
       el(doc, "p", {
         class: "muted",
         text: `${plural(state.rows, "row")} · ${state.columns.join(", ")}`,
+      }),
+    );
+  }
+  return wrap;
+}
+
+/**
+ * Which slides are conditional, and on what.
+ *
+ * CLOSED by default and summarised shut, the same shape as the row picker and
+ * for the same reason: most merges want every slide for every row, and a user
+ * who never opens this should pay one line for it. The line states the current
+ * answer rather than naming the feature, so it is discoverable without being in
+ * the way.
+ *
+ * A SELECT of the columns, never free text. The engine matches a condition
+ * against a column name exactly, so a typed name is a silent no-op the user
+ * discovers by counting slides in the output — and the columns are already
+ * known here, which is the whole reason this control lives on step 2 rather
+ * than step 1 where the slide numbers come from.
+ *
+ * It does not remove the `unknownConditions` case and is not meant to: a
+ * condition is chosen from THIS paste's columns, and the next paste may not
+ * have them. That is what `danglingConditions` says before the merge and what
+ * the engine reports after it.
+ */
+function conditionPicker(doc: Document, state: PaneState): HTMLElement {
+  const slides = blockSlides(state);
+  const wrap = el(doc, "div", { class: "conditions" });
+  const set = slides.filter((n) => conditionFor(state, n) !== "").length;
+
+  wrap.append(
+    el(doc, "button", {
+      class: "back conditions-toggle",
+      text: state.conditionsOpen
+        ? "Hide the conditions"
+        : set === 0
+          ? "Every slide, every row — add a condition"
+          : `${plural(set, "slide")} conditional — change`,
+      attrs: { "data-action": "conditions" },
+    }),
+  );
+  if (!state.conditionsOpen) return wrap;
+
+  wrap.append(
+    el(doc, "p", {
+      class: "muted",
+      text: "A conditional slide is left out for a row whose cell in that column is empty, or reads false, no or 0.",
+    }),
+  );
+
+  const list = el(doc, "ul", { class: "conditionlist" });
+  for (const slide of slides) {
+    const item = el(doc, "li");
+    const label = el(doc, "label");
+    label.append(el(doc, "span", { class: "caption", text: `Slide ${slide}` }));
+    const select = el(doc, "select", { attrs: { "data-condition": String(slide) } });
+    const chosen = conditionFor(state, slide);
+    // "Always" first and selected by default, so the control opens saying what
+    // is true rather than proposing the first column as an answer.
+    select.append(el(doc, "option", { text: "Always", value: "" }));
+    for (const column of state.columns ?? []) {
+      select.append(el(doc, "option", { text: `Only when ${column}`, value: column }));
+    }
+    // A column the data no longer has. Kept as an option rather than dropped,
+    // because dropping it would silently rewrite the user's answer to "Always"
+    // and change what the merge produces with nothing said.
+    if (chosen !== "" && !(state.columns ?? []).includes(chosen)) {
+      select.append(el(doc, "option", { text: `Only when ${chosen} (no such column)`, value: chosen }));
+    }
+    // The PROPERTY, not the attribute — the pane rebuilds itself on every
+    // change, and `selected` as an attribute is the default a control reverts
+    // to. Same reason the row checkboxes set `.checked`.
+    select.value = chosen;
+    label.append(select);
+    item.append(label);
+    list.append(item);
+  }
+  wrap.append(list);
+
+  const dangling = danglingConditions(state);
+  if (dangling.length > 0) {
+    wrap.append(
+      el(doc, "p", {
+        class: "blocked",
+        // Says what will HAPPEN, not just that something is wrong. The engine
+        // emits the slide anyway, and a user who expects it to be left out
+        // would otherwise find out by counting slides in the output.
+        text: `No column for ${dangling.join(", ")} — those slides will be included for every row.`,
       }),
     );
   }
