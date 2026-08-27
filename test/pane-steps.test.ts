@@ -50,16 +50,38 @@ describe("what blocks a step", () => {
   });
 
   it("blocks every later step until a block is chosen", () => {
-    for (const step of ["fields", "preview", "merge"] as const) {
+    for (const step of ["data", "fields", "preview", "merge"] as const) {
       expect(blockedReason(EMPTY, step), step).toContain("repeat");
     }
   });
 
-  it("blocks preview and merge until data is attached", () => {
+  it("blocks fields, preview and merge until data is attached", () => {
+    // A field IS a column name, so the fields step has nothing to offer until
+    // the data is attached. That is the whole reason the order is template,
+    // data, fields rather than template, fields, data.
     const noData: PaneState = { block: { from: 4, to: 6 }, fields: [], previewing: false };
-    expect(blockedReason(noData, "fields")).toBeNull();
+    expect(blockedReason(noData, "data")).toBeNull();
+    expect(blockedReason(noData, "fields")).toContain("data");
     expect(blockedReason(noData, "preview")).toContain("data");
     expect(blockedReason(noData, "merge")).toContain("data");
+  });
+
+  it("blocks preview and merge until something is on the slides", () => {
+    // The engine refuses a block with no placeholders too, and must: N
+    // identical copies is never what anybody meant and is expensive to undo.
+    // Said here so the refusal costs no host call and no insert.
+    const noFields: PaneState = {
+      block: { from: 4, to: 6 },
+      fields: [],
+      previewing: false,
+      columns: ["First"],
+      rows: 3,
+    };
+    expect(blockedReason(noFields, "fields"), "the step that fixes it").toBeNull();
+    expect(blockedReason(noFields, "preview")).toContain("no fields yet");
+    expect(blockedReason(noFields, "merge")).toContain("no fields yet");
+    // Names the slides, because the user has to go and look at them.
+    expect(blockedReason(noFields, "merge")).toContain("Slides 4 to 6");
   });
 
   it("NAMES the placeholders that have no column", () => {
@@ -240,7 +262,7 @@ describe("which block the pane acts on", () => {
 
   it("unblocks the later steps off the draft alone", () => {
     const typed: PaneState = { fields: [], previewing: false, draft: { from: "2", to: "4" } };
-    expect(blockedReason(typed, "fields")).toBeNull();
+    expect(blockedReason(typed, "data")).toBeNull();
   });
 });
 
@@ -286,7 +308,8 @@ describe("reading what was pasted", () => {
 
 describe("moving between steps", () => {
   it("gives the next step in order", () => {
-    expect(nextStep("template")).toBe("fields");
+    expect(nextStep("template")).toBe("data");
+    expect(nextStep("data")).toBe("fields");
     expect(nextStep("fields")).toBe("preview");
     expect(nextStep("preview")).toBe("merge");
   });
@@ -307,13 +330,23 @@ describe("moving between steps", () => {
 describe("what the primary says once there is data", () => {
   it("stops saying Attach data after the data is attached", () => {
     // A button that still says "Attach data" reads as a step that did not take.
-    expect(primary(ready, "fields").label).toBe("Use 240 rows");
-    expect(primary({ ...ready, rows: 1 }, "fields").label).toBe("Use 1 row");
+    expect(primary(ready, "data").label).toBe("Use 240 rows");
+    expect(primary({ ...ready, rows: 1 }, "data").label).toBe("Use 1 row");
   });
 
   it("cannot be pressed with nothing pasted", () => {
     const noData: PaneState = { block: { from: 4, to: 6 }, fields: [], previewing: false };
-    expect(primary(noData, "fields")).toEqual({ label: "Attach data", enabled: false });
+    expect(primary(noData, "data")).toEqual({ label: "Attach data", enabled: false });
+  });
+
+  it("names what the fields step will do, and what it already knows", () => {
+    // One press, one job: read the slides again and go on. The user has just
+    // been putting `{{Column}}` onto them and nothing tells the pane that
+    // happened — there is no document-changed event for slide text.
+    const nothingYet: PaneState = { block: { from: 4, to: 6 }, fields: [], previewing: false, rows: 3 };
+    expect(primary(nothingYet, "fields")).toEqual({ label: "Check the slides for fields", enabled: true });
+    expect(primary(ready, "fields").label).toBe("Use 2 fields");
+    expect(primary({ ...ready, fields: ["First"] }, "fields").label).toBe("Use 1 field");
   });
 
   it("offers the preview, now that pressing it shows one", () => {

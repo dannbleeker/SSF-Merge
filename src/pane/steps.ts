@@ -1,5 +1,5 @@
 /**
- * The four steps, and what may happen on each.
+ * The five steps, and what may happen on each.
  *
  * Pure, because "can the user press Merge yet" is the question the pane is for
  * and the one most likely to be got wrong: it depends on a template block, on
@@ -7,7 +7,7 @@
  * in a click handler it would be untestable and would drift from what the
  * screen says. Here it is a function of the state and the suite checks it.
  *
- * The step NUMBER is deliberately kept and shown ("Step 2 of 4"). It states how
+ * The step NUMBER is deliberately kept and shown ("Step 2 of 5"). It states how
  * much is left, which is the question a first-time user actually has, and it is
  * cheap to render. That was settled with the owner when the layout was.
  */
@@ -15,13 +15,26 @@
 import { parseDelimited, toRecordSet } from "../core/data/recordset.js";
 import type { RecordSet } from "../core/data/recordset.js";
 
-export type StepId = "template" | "fields" | "preview" | "merge";
+/**
+ * The order, and why DATA comes before FIELDS.
+ *
+ * A field is `{{Column}}` and the column names live in the user's data, so
+ * there is nothing to insert until the data is attached. The first version put
+ * the fields step second and asked the user to type placeholders they had no
+ * way to name yet — reported from a first real run on a fresh deck, where the
+ * refusal read as the add-in being broken.
+ *
+ * So: mark the slides that repeat, paste the rows, put the fields on the
+ * slides, look at one, merge.
+ */
+export type StepId = "template" | "data" | "fields" | "preview" | "merge";
 
 /** In order. The pane never renders these in any other sequence. */
-export const STEPS: readonly StepId[] = ["template", "fields", "preview", "merge"] as const;
+export const STEPS: readonly StepId[] = ["template", "data", "fields", "preview", "merge"] as const;
 
 export const STEP_TITLE: Record<StepId, string> = {
   template: "Template",
+  data: "Data",
   fields: "Fields",
   preview: "Preview",
   merge: "Merge",
@@ -90,6 +103,17 @@ export interface PaneState {
   paste?: string;
   /** Something the pane has to say that is not a blocked step — a host answer. */
   notice?: string;
+  /**
+   * What the last press of an Insert button did, in words.
+   *
+   * Its own field rather than `notice`, because the two survive different
+   * things: a notice is cleared by the next edit, and this has to stay on
+   * screen while the user leaves the pane, clicks into a text box on the slide
+   * and comes back. It is also the ONLY report the clipboard fallback has —
+   * where the insert lands visibly on the slide, a copy lands nowhere the user
+   * can see.
+   */
+  fieldNote?: string;
   /**
    * Whether this host can say which slides are selected (PowerPointApi 1.5).
    *
@@ -342,6 +366,77 @@ export function danglingConditions(state: PaneState): string[] {
 }
 
 /**
+ * The `{{…}}` a column is written as on a slide.
+ *
+ * One function, because this string is produced in three places — the button
+ * that inserts it, the text put on the clipboard when the host refuses the
+ * insert, and the chip that says which columns are already on the slides — and
+ * the engine's own reader (`fieldsIn`) is the fourth party that has to agree.
+ * Spelled differently in any one of them and the insert lands a placeholder
+ * the merge will never fill.
+ *
+ * No trimming and no case folding: `fieldsIn` matches the name between the
+ * braces exactly, and `unmatchedFields` compares against the column name
+ * exactly, so anything done here would have to be done there too.
+ */
+export function fieldToken(column: string): string {
+  return `{{${column}}}`;
+}
+
+/**
+ * Columns with no placeholder on the slides yet.
+ *
+ * The mirror of `unmatchedFields`, and the one the fields step is actually
+ * about: that names a field with no column behind it, this names a column the
+ * template never uses. Neither blocks a merge — a column nobody put on a slide
+ * is a perfectly ordinary thing to have in a spreadsheet — so this only ever
+ * orders the list and says which chips are already placed.
+ */
+export function unusedColumns(state: PaneState): string[] {
+  if (!state.columns) return [];
+  const placed = new Set(state.fields);
+  return state.columns.filter((c) => !placed.has(c));
+}
+
+/** The chosen block as a sentence subject: "Slide 4", "Slides 4 to 6". */
+function blockSubject(state: PaneState): string {
+  const block = chosenBlock(state);
+  if (!block) return "Those slides";
+  return block.from === block.to ? `Slide ${block.from}` : `Slides ${block.from} to ${block.to}`;
+}
+
+/**
+ * Why there is nothing to merge yet, naming the slides.
+ *
+ * Kept apart from the engine's own refusal (`prepareBlock`) deliberately: that
+ * one has to tell a user with no data and no pane in front of them what to
+ * type, so it spells the syntax out. By the time this one is shown the columns
+ * are attached and there is a button for each of them, so the advice is to
+ * press one — telling somebody to type `{{First}}` by hand next to a button
+ * that inserts it is worse advice, not shorter.
+ *
+ * Shown on PREVIEW and MERGE, where the fix is a step away. The fields step has
+ * its own wording, below, because the advice there cannot be "go to the fields
+ * step".
+ */
+export function noFieldsYet(state: PaneState): string {
+  return `${blockSubject(state)} carry no fields yet. Go back a step and put one on a slide.`;
+}
+
+/**
+ * The same fact on the step that fixes it.
+ *
+ * A separate sentence rather than one with a branch in it, because the two say
+ * different things: this one points AT the buttons above it, and the other
+ * points at this step. The first version shared `noFieldsYet` and told a user
+ * standing on the fields step to go to the fields step — which a screenshot
+ * caught and no assertion would have.
+ */
+export function noFieldsHere(state: PaneState): string {
+  return `${blockSubject(state)} carry no fields yet. Press a column above to put one on the slide, then check the slides again.`;
+}
+
+/**
  * Placeholders with no column behind them.
  *
  * Named rather than inlined because it is the one thing that blocks the merge
@@ -366,15 +461,30 @@ export function blockedReason(state: PaneState, step: StepId): string | null {
   switch (step) {
     case "template":
       return null;
-    case "fields":
+    case "data":
       return chosenBlock(state) ? null : "Choose the slides that repeat first.";
+    case "fields":
+      // Data first, because a field IS a column name. With nothing attached
+      // this step has nothing to offer and nothing to check against.
+      if (!chosenBlock(state)) return "Choose the slides that repeat first.";
+      if (!state.rows) return "Attach your data first.";
+      return null;
     case "preview":
       if (!chosenBlock(state)) return "Choose the slides that repeat first.";
       if (!state.rows) return "Attach your data first.";
+      // A preview runs the ORDINARY merge, which refuses a block with no
+      // placeholders — so without this the button would spend a template read
+      // and a host insert to arrive at that refusal. Said here instead, where
+      // it is still free to fix.
+      if (state.fields.length === 0) return noFieldsYet(state);
       return null;
     case "merge": {
       if (!chosenBlock(state)) return "Choose the slides that repeat first.";
       if (!state.rows) return "Attach your data first.";
+      // The engine refuses this too, and must: N identical copies is never what
+      // anybody meant and is expensive to undo. This is the same rule said
+      // before the run rather than after it.
+      if (state.fields.length === 0) return noFieldsYet(state);
       // Not the same as having no data. A user who unticked every row has
       // done something deliberate and needs telling what, not "attach data".
       if (includedCount(state) === 0) return "Every row is unticked, so there is nothing to merge.";
@@ -411,7 +521,7 @@ export function primary(state: PaneState, step: StepId): Primary {
 
   // A host call is out. The label says which, and NOTHING is pressable — this
   // is the whole reason `running` is in the state rather than on the button.
-  if (state.running === "inspect" && step === "template") {
+  if (state.running === "inspect" && (step === "template" || step === "fields")) {
     return { label: "Reading the slides…", enabled: false };
   }
   if (state.running === "merge" && step === "merge") {
@@ -435,7 +545,7 @@ export function primary(state: PaneState, step: StepId): Primary {
       return block
         ? { label: `Use slides ${block.from} to ${block.to}`, enabled: true }
         : { label: "Choose the slides that repeat", enabled: false };
-    case "fields":
+    case "data":
       // "Attach data" is what the step is FOR, so it stays the label until
       // there is data; once there is, the button states what it will carry
       // forward. A button that says "Attach data" after the data is attached
@@ -443,6 +553,21 @@ export function primary(state: PaneState, step: StepId): Primary {
       return state.rows
         ? { label: `Use ${state.rows} row${state.rows === 1 ? "" : "s"}`, enabled: reachable }
         : { label: "Attach data", enabled: false };
+    case "fields":
+      // One press, one job: read the slides again and go on. The user has just
+      // been putting `{{Column}}` onto them in PowerPoint, and nothing tells
+      // this pane that happened — there is no document-changed event for slide
+      // text — so the fields it lists are as old as the last read.
+      //
+      // The label states what is KNOWN rather than what the press does, once
+      // anything is known: "Check the slides again" beside a list of six
+      // fields reads as a step that has not taken.
+      return state.fields.length > 0
+        ? {
+            label: `Use ${state.fields.length} field${state.fields.length === 1 ? "" : "s"}`,
+            enabled: reachable,
+          }
+        : { label: "Check the slides for fields", enabled: reachable };
     case "preview":
       // "Remove", not "Put the template back". The template is never touched:
       // a preview is one row merged through the ORDINARY path and inserted, so

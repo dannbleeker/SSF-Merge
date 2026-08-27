@@ -44,27 +44,25 @@ const STATES = [
     state: { fields: [], previewing: false, draft: { from: "6", to: "4" }, deckSize: 12 },
   },
   { name: "1-template-chosen", step: "template", state: full },
-  {
-    // The reported first run: a fresh deck, two empty slides, the template read
-    // refused. Until this the primary was the only way forward and it does not
-    // advance from here, so there was no route to the data step at all.
-    name: "1-template-no-fields",
-    step: "template",
-    state: {
-      fields: [],
-      previewing: false,
-      draft: { from: "2", to: "3" },
-      deckSize: 4,
-      notice:
-        'Slides 2 to 3 have no {{fields}}, so every copy would be identical. Type your column headers onto the slides in double braces — {{First}}, {{City}} — then press again. PowerPoint\'s own empty "Click to add title" boxes are not fields.',
-    },
-  },
-  { name: "2-fields-empty", step: "fields", state: { ...full, columns: undefined, rows: undefined, paste: "" } },
+  { name: "2-data-empty", step: "data", state: { ...full, columns: undefined, rows: undefined, paste: "" } },
   {
     // Self-consistent on purpose: the paste, the columns and the row count are
     // what `readPastedTable` answers for PASTE. A fixture whose label and whose
     // box disagree teaches the reader a bug that is not there.
-    name: "2-fields",
+    name: "2-data",
+    step: "data",
+    state: { ...full, paste: PASTE, columns: ["First", "Last", "Email"], rows: 2 },
+  },
+  {
+    // The reported first run, on the step that now answers it: a fresh deck,
+    // nothing on the slides, and a button per column. The old order refused at
+    // step 1 and told the user to go and type names they had no way to know.
+    name: "3-fields-nothing-placed",
+    step: "fields",
+    state: { ...full, fields: [], paste: PASTE, columns: ["First", "Last", "Email"], rows: 2 },
+  },
+  {
+    name: "3-fields",
     step: "fields",
     state: {
       ...full,
@@ -75,15 +73,31 @@ const STATES = [
     },
   },
   {
-    name: "3-preview-showing",
+    // The clipboard fallback, which is the outcome nobody sees unless they are
+    // looking for it — an insert lands visibly on the slide, a copy lands
+    // nowhere the user can see.
+    name: "3-fields-clipboard",
+    step: "fields",
+    state: {
+      ...full,
+      fields: ["First"],
+      paste: PASTE,
+      columns: ["First", "Last", "Email"],
+      rows: 2,
+      fieldNote:
+        "PowerPoint would not type it in, so {{Last}} is on your clipboard — click into a text box on the slide and paste it. (no insertion point)",
+    },
+  },
+  {
+    name: "4-preview-showing",
     step: "preview",
     state: { ...full, previewing: true, previewSlides: { from: 13, to: 15 } },
   },
-  { name: "3-preview-idle", step: "preview", state: full },
-  { name: "4-merge", step: "merge", state: full },
-  { name: "4-merge-blocked", step: "merge", state: { fields: [], previewing: false } },
+  { name: "4-preview-idle", step: "preview", state: full },
+  { name: "5-merge", step: "merge", state: full },
+  { name: "5-merge-blocked", step: "merge", state: { fields: [], previewing: false } },
   {
-    name: "4-merge-host-said",
+    name: "5-merge-host-said",
     step: "merge",
     state: { ...full, notice: "PowerPoint would not name every slide between 4 and 6." },
   },
@@ -97,11 +111,11 @@ const STATES = [
     step: "template",
     state: { ...full, draft: { from: "4", to: "6" }, running: "inspect" },
   },
-  { name: "4-merge-running", step: "merge", state: { ...full, running: "merge" } },
+  { name: "5-merge-running", step: "merge", state: { ...full, running: "merge" } },
   {
     // Naming the call, which is the difference between a slow step and a stuck
     // one on a pane that is legitimately silent for two and a half minutes.
-    name: "4-merge-waiting-on-host",
+    name: "5-merge-waiting-on-host",
     step: "merge",
     state: { ...full, running: "merge", inFlight: "inserting the merged deck" },
   },
@@ -110,7 +124,7 @@ const STATES = [
     // The way back, which nothing rendered until 2026-08-27.
     // A run the pane never got to finish, offered back on the next open. The
     // slides are in the deck and the numbers were the only thing missing.
-    name: "4-merge-recovered",
+    name: "5-merge-recovered",
     step: "merge",
     state: {
       ...full,
@@ -120,12 +134,12 @@ const STATES = [
     },
   },
   {
-    name: "4-merge-done-undo",
+    name: "5-merge-done-undo",
     step: "merge",
     state: { ...full, added: 720, deckSize: 732, notice: "720 slides added after slide 12 · 480 placeholders filled." },
   },
   {
-    name: "4-merge-done-with-log",
+    name: "5-merge-done-with-log",
     step: "merge",
     state: {
       ...full,
@@ -152,7 +166,7 @@ const STATES = [
     // The impossible state IS worth a shot; it just is not this one. See
     // "4-merge-nothing-to-take-back" below, where the deck is genuinely too
     // small and the card is correctly not drawn.
-    name: "4-merge-done",
+    name: "5-merge-done",
     step: "merge",
     state: { ...full, added: 720, deckSize: 732, notice: "720 slides added after slide 12." },
   },
@@ -161,14 +175,14 @@ const STATES = [
     // draw — which the crash crumb makes reachable, because it offers a run
     // back on the NEXT open of the pane. No undo card: `sweepPlan` would refuse
     // it, so offering it would be a promise the next press breaks.
-    name: "4-merge-nothing-to-take-back",
+    name: "5-merge-nothing-to-take-back",
     step: "merge",
     state: { ...full, added: 720, deckSize: 12, notice: "720 slides added after slide 12." },
   },
   {
     // The record while the host has not answered — the state a wedged run sits
     // in, which used to show the waiting line and nothing else.
-    name: "4-merge-running-with-log",
+    name: "5-merge-running-with-log",
     step: "merge",
     state: {
       ...full,
@@ -187,20 +201,22 @@ const STATES = [
   {
     // A placeholder the author put in a chart. Not merged, and — until this —
     // not mentioned either: it is not in `fields`, so the chips never showed it.
-    name: "2-fields-chart-placeholder",
+    name: "3-fields-chart-placeholder",
     step: "fields",
     state: { ...full, paste: PASTE, columns: ["First", "Last", "Email"], rows: 2, unmergeable: ["Region"] },
   },
   {
-    // The condition control, shut and open. Shut it is one line that states the
-    // current answer; open it is a select per template slide.
-    name: "2-conditions-shut",
-    step: "fields",
+    // The condition control, shut and open, on the merge step it moved to when
+    // the fields step became about putting placeholders onto slides. Shut it is
+    // one line that states the current answer; open it is a select per template
+    // slide.
+    name: "5-conditions-shut",
+    step: "merge",
     state: { ...full, paste: PASTE, columns: ["First", "Last", "Email"], rows: 2 },
   },
   {
-    name: "2-conditions-open",
-    step: "fields",
+    name: "5-conditions-open",
+    step: "merge",
     state: {
       ...full,
       paste: PASTE,
@@ -214,8 +230,8 @@ const STATES = [
     // A condition naming a column this paste does not have — reachable by
     // choosing one and then pasting different data. The option is kept rather
     // than silently rewritten to "Always".
-    name: "2-conditions-dangling",
-    step: "fields",
+    name: "5-conditions-dangling",
+    step: "merge",
     state: {
       ...full,
       paste: PASTE,
@@ -226,7 +242,7 @@ const STATES = [
     },
   },
   {
-    name: "2-fields-two-missing",
+    name: "3-fields-two-missing",
     step: "fields",
     state: { ...full, fields: ["First", "Nickname", "Badge"], paste: PASTE, columns: ["First", "Last"], rows: 2 },
   },

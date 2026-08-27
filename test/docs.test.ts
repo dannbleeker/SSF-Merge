@@ -74,6 +74,12 @@ describe("the manual keeps up with the code", () => {
       "Preview the first row",
       "Remove the preview",
       "Skip to the merge",
+      // The two controls the five-step order added. Both are the answer to
+      // "how do I insert the fields?", which is the question a first run
+      // actually asked, so a manual that stops naming them is a manual that
+      // has lost the answer.
+      "Check the slides for fields",
+      "Click into a text box on the slide",
       "Remove these slides",
       "What this run did, step by step",
       // The condition control's shut line, which is the only thing naming the

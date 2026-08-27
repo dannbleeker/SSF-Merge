@@ -433,3 +433,60 @@ export async function selectedBlock(): Promise<SelectedBlock> {
 export function canReadSelection(): boolean {
   return canSelectSlides(hostSupports);
 }
+
+/** What became of a press of an Insert button. */
+export type CursorInsert = { ok: true } | { ok: false; why: string };
+
+/**
+ * Put text where the cursor is, on the slide the user is looking at.
+ *
+ * `setSelectedDataAsync` is a COMMON API — it carries no PowerPointApi
+ * requirement set, so `isSetSupported` cannot answer for it and there is
+ * nothing to declare in the manifest. Microsoft documents it as supported in
+ * PowerPoint on the web, on Windows and on Mac; what it does NOT document is
+ * what happens with no insertion point, which is the ordinary state of a pane
+ * the user has just clicked into. So it is guarded at runtime, twice: the
+ * method may be absent, and the call may come back with a status this add-in
+ * has to turn into a sentence rather than a stack trace.
+ *
+ * A refusal is an OUTCOME, never a raise. The pane awaits this from a click
+ * handler, where a rejection is an unhandled one — and the whole point of the
+ * control is that there is a clipboard fallback behind it, which only runs if
+ * this answers instead of throwing.
+ *
+ * Not wrapped in `withTimeout`: this is not `PowerPoint.run`, it takes no
+ * batch, and its callback is the host's own. A budget here would produce a
+ * false refusal on a host that was about to answer, and the fallback it would
+ * send the user to is the worse of the two paths.
+ */
+export async function insertTextAtCursor(text: string): Promise<CursorInsert> {
+  const doc = ((): Office.Document | undefined => {
+    try {
+      return Office.context.document;
+    } catch {
+      return undefined;
+    }
+  })();
+  if (!doc || typeof doc.setSelectedDataAsync !== "function") {
+    return { ok: false, why: "This PowerPoint will not let the pane type onto a slide." };
+  }
+  return new Promise<CursorInsert>((resolve) => {
+    try {
+      doc.setSelectedDataAsync(text, { coercionType: Office.CoercionType.Text }, (result) => {
+        if (result.status === Office.AsyncResultStatus.Succeeded) {
+          resolve({ ok: true });
+          return;
+        }
+        // The host's own sentence where there is one. It is the only thing that
+        // distinguishes "click into a text box first" from "this host cannot
+        // do it at all", and the two want different next moves from the user.
+        resolve({ ok: false, why: result.error?.message ?? "PowerPoint would not take the text." });
+      });
+    } catch (e) {
+      // Documented to call back rather than throw, and it throws anyway on a
+      // host with no document open. Answered, because the caller has a
+      // fallback and a raise would take it with it.
+      resolve({ ok: false, why: e instanceof Error ? e.message : String(e) });
+    }
+  });
+}

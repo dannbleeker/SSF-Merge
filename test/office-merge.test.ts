@@ -254,3 +254,40 @@ describe("a torn insert is reported in rows", () => {
     expect(out.detail).not.toMatch(/row\(s\) landed complete/);
   });
 });
+
+describe("a block with no fields on it yet", () => {
+  /**
+   * The seam the five-step order turns on, and the one place it must NOT be
+   * uniform.
+   *
+   * The pane picks the slides that repeat before any `{{field}}` is on them —
+   * it has to, because the names to type are the data's own column headers and
+   * the data is attached at the step after. So a template read has to ANSWER
+   * for an empty block. A merge must still refuse one: N identical copies is
+   * never what anybody meant and is expensive to undo once it is in the deck.
+   *
+   * `prepareBlock` is the same function on both paths, so the difference is one
+   * flag (`allowEmpty`) passed by exactly one caller. This is the test that
+   * says the flag has not leaked onto the destructive path.
+   */
+  const empty = async (): Promise<void> => {
+    const bytes = await makeDeck([{ paragraphs: [["Click to add title"]] }, { paragraphs: [["after"]] }]);
+    host.readTemplate.mockResolvedValue({ base64: Buffer.from(bytes).toString("base64"), offset: 0 });
+  };
+
+  it("is an ANSWER to inspectBlock, with no fields in it", async () => {
+    await empty();
+    const report = await inspectBlock({ from: 1, to: 1 });
+    expect(report.ok, report.ok ? "" : report.detail).toBe(true);
+    expect(report.fields).toEqual([]);
+  });
+
+  it("is still a REFUSAL from runMerge, in the words that say what to type", async () => {
+    await empty();
+    const out = await runMerge({ from: 1, to: 1, records });
+    expect(out.ok).toBe(false);
+    expect(out.detail).toContain("{{fields}}");
+    expect(out.added, "nothing may reach the deck").toBe(0);
+    expect(host.insertDeck).not.toHaveBeenCalled();
+  });
+});

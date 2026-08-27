@@ -10,7 +10,7 @@ Part of the SSF add-in family from
 
 Early, and installable: sideload `manifest-prod.xml`, press **Mail merge** on
 the Home tab, name a block of slides, paste a table, look at one row, and get
-one set of slides per row. All four steps of the pane are built.
+one set of slides per row. All five steps of the pane are built.
 
 | Piece | State |
 | --- | --- |
@@ -23,7 +23,7 @@ one set of slides per row. All four steps of the pane are built.
 | Running a plan against a package, end to end | done |
 | Host probe, for the questions only a real PowerPoint answers | done, [three sheets read](docs/PROBE.md) |
 | Office.js host layer (capability floor, template read, insert, positional undo) | done |
-| Task pane — four steps, the block control, the paste box, the merge button | done |
+| Task pane — five steps, the block control, the paste box, the field buttons, the merge button | done |
 | Manifests — XML and unified JSON, dev and prod, from one source | done |
 | Release workflow — manual, validated, assets checked against the docs | done |
 | Picking the template block by selecting slides | done |
