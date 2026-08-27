@@ -91,21 +91,94 @@ export function parseDate(raw: string): Date | undefined {
 }
 
 /**
- * A month name's number, or nothing if this platform does not know the word.
+ * Month names in the languages `looksLikeDate` admits, as a stated table.
  *
- * Resolved by parsing the FIRST of that month, which exists in every month of
- * every year — so the answer is the name's month and never a rollover. Asking
- * `new Date` about the whole cell instead is what let `31 Feb 2026` through as
- * 3 March: the parser had already moved the month by the time anything looked
- * at it, and the components then agreed with themselves.
+ * `NAMED_DATE` allows `ÆØÅ`, which is somebody having made room for Danish on
+ * purpose. Delegating the name to `new Date` then handled Danish BY ACCIDENT,
+ * because that parser matches an English three-letter prefix: `marts` and
+ * `januar` worked, `maj` and `desember` did not. One Danish date column came
+ * out half formatted and half raw across a merged deck, and the column was
+ * still typed `date`, so nothing said why.
  *
- * `new Date` is the only month-name table available without shipping one per
- * language, and it answers for English everywhere. Danish and Norwegian month
- * words reach here — `looksLikeDate` admits them — and are simply refused,
- * which returns the raw cell to the slide. That is the same answer they got
- * before, so nothing regresses; a real table is a separate piece of work.
+ * That is the failure this engine's governing rule is about, in its sharpest
+ * form — not a wrong date, but the same column rendering two ways. A table is
+ * the smallest thing that makes the answer a decision instead of a side effect
+ * of whichever parser the host ships.
+ *
+ * Full names and the three-letter abbreviations, listed rather than matched by
+ * prefix: an open prefix rule reads `1 marketing 2026` as March. No word here
+ * means a different month in a different one of these languages, and
+ * `test/data.test.ts` asserts that rather than trusting it.
+ *
+ * This is NOT the Danish locale the backlog rejected. That was a string table
+ * for the pane's own text, and it is still rejected. This is reading the user's
+ * DATA, which the regex already reached for.
+ */
+const MONTH_NAMES: Readonly<Record<string, number>> = Object.freeze({
+  // English
+  january: 1,
+  february: 2,
+  march: 3,
+  april: 4,
+  may: 5,
+  june: 6,
+  july: 7,
+  august: 8,
+  september: 9,
+  october: 10,
+  november: 11,
+  december: 12,
+  // Danish — april, august, september, november and december are the English
+  // spellings and are already above.
+  januar: 1,
+  februar: 2,
+  marts: 3,
+  maj: 5,
+  juni: 6,
+  juli: 7,
+  oktober: 10,
+  // Norwegian differs from Danish in three words.
+  mars: 3,
+  mai: 5,
+  desember: 12,
+  // Swedish differs in three more.
+  januari: 1,
+  februari: 2,
+  augusti: 8,
+  // The three-letter abbreviations a spreadsheet writes. `okt`, `maj`, `mai`
+  // and `des` are the ones an English-only table gets wrong.
+  jan: 1,
+  feb: 2,
+  mar: 3,
+  apr: 4,
+  jun: 6,
+  jul: 7,
+  aug: 8,
+  sep: 9,
+  oct: 10,
+  nov: 11,
+  dec: 12,
+  okt: 10,
+  des: 12,
+});
+
+/**
+ * A month name's number, or nothing if the word is not one we claim.
+ *
+ * The table first, then `new Date` as a last resort. The fallback is kept
+ * deliberately: it is what makes `1 mars 2026` and `1 janvier 2026` work today
+ * for languages this table does not list, and removing it would turn a partial
+ * answer into no answer for those users. Its inconsistency is exactly why the
+ * table exists — it is a floor, not the mechanism.
+ *
+ * The fallback resolves by parsing the FIRST of that month, which exists in
+ * every month of every year, so the answer is the name's month and never a
+ * rollover. Asking `new Date` about the whole cell is what let `31 Feb 2026`
+ * through as 3 March: the parser had moved the month before anything looked.
  */
 function monthFromName(word: string): number | undefined {
+  const known = MONTH_NAMES[word.toLowerCase()];
+  if (known !== undefined) return known;
   const probe = new Date(`1 ${word} 2001 00:00:00Z`);
   if (Number.isNaN(probe.getTime())) return undefined;
   // The probe is anchored to UTC, so these are the components it was given.

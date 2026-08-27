@@ -157,6 +157,22 @@ rather than guessed at. A deck that draws perfectly and is two months wrong is
 the worse outcome. Write the date as `2026-03-01` in your source if you want it
 merged as a date.
 
+**Month names are read in English, Danish, Norwegian and Swedish**, in full or
+in the three-letter form a spreadsheet writes — `3 maj 2026`, `1 okt 2026`,
+`1 desember 2026`. Other languages are read where the browser happens to know
+them, which is inconsistent by nature; those four are a stated list.
+
+Until 2026-08-27 the list did not exist and every name went to the browser,
+which matches an English three-letter prefix. So `marts` and `januar` worked
+and `maj` and `oktober` did not — one Danish column, half of it formatted and
+half of it showing the raw cell.
+
+**The month name written OUT is English**, whatever language it was read from:
+`{{Start|date:d MMM yyyy}}` gives `3 May 2026`. The output is the template
+author's to choose, so write the month yourself if you want it in another
+language — `{{Start|date:d}} maj {{Start|date:yyyy}}` — or use a numeric
+pattern like `dd-MM-yyyy`, which reads the same everywhere.
+
 ## What repeats
 
 A template is one or more **contiguous** slides, marked as a block. Three slides
