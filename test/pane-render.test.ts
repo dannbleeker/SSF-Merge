@@ -62,15 +62,29 @@ describe("the orange budget", () => {
       { ...ready, paste: "First\tLast", rows: 0, columns: undefined },
       { ...ready, notice: "PowerPoint would not name every slide." },
       { ...ready, notice: "PowerPoint would not name every slide.", previewing: true },
+      // TWO unmatched placeholders — the ordinary case of a paste missing a
+      // couple of columns, and the one every fixture here happened to miss.
+      { ...ready, fields: ["First", "Nickname", "Badge"] },
+      { ...ready, fields: ["First", "Nickname", "Badge"], previewing: true },
+      // A run in flight, and a run that landed.
+      { ...ready, running: "merge" as const },
+      { ...ready, running: "inspect" as const },
+      { ...ready, added: 720 },
     ];
     for (const state of states) {
       for (const step of ["template", "fields", "preview", "merge"] as const) {
         const pane = paneFor(state, step);
-        const oranges =
-          pane.querySelectorAll(".tick").length +
-          pane.querySelectorAll(".card.undo").length +
-          pane.querySelectorAll('.fields li[data-matched="no"]').length;
-        expect(oranges, `${step} with ${JSON.stringify(state)}`).toBeLessThanOrEqual(1);
+        // HOLDERS, not elements. A row of chips is one signal — "these are the
+        // ones with no column" — and `orangeHolder` already models it that
+        // way, returning a single holder name. Counting chips instead said a
+        // template missing two columns broke a budget nothing had broken: an
+        // ordinary state, which no fixture in the sweep or in the screenshot
+        // script happened to reach, so CI reported neither the violation nor
+        // the miscount.
+        const holders = [".tick", ".card.undo", '.fields li[data-matched="no"]'].filter(
+          (sel) => pane.querySelectorAll(sel).length > 0,
+        );
+        expect(holders.length, `${step} with ${JSON.stringify(state)}`).toBeLessThanOrEqual(1);
       }
     }
   });
@@ -163,14 +177,21 @@ describe("the two slide-number boxes", () => {
     expect(pane.querySelector('input[data-field="to"]')).not.toBeNull();
   });
 
-  it("sets the box's VALUE, not its value attribute", () => {
-    // setAttribute("value", …) sets the default an input reverts to. The pane
-    // re-renders on every keystroke, so with the attribute the box would snap
-    // back to what it held before the key that caused the render.
+  it("sets the box's VALUE, and leaves the value ATTRIBUTE alone", () => {
+    // The `.value` half of this passed against `setAttribute("value", …)` too
+    // — a fresh input reflects the content attribute into the property, and
+    // `render` builds fresh elements every time — so it could not fail against
+    // the implementation it is named for. The attribute assertion is the half
+    // that discriminates.
+    //
+    // The reason is not the one first written down here either. It is not that
+    // a box would "snap back": it is that a TEXTAREA has no value attribute at
+    // all, so one helper serving both controls has to write the property.
     const pane = paneFor({ fields: [], previewing: false, draft: { from: "4", to: "6" } }, "template");
     const from = pane.querySelector('input[data-field="from"]');
     expect(from).toBeInstanceOf(HTMLInputElement);
     expect((from as HTMLInputElement).value).toBe("4");
+    expect((from as HTMLInputElement).getAttribute("value"), "the property, not the attribute").toBeNull();
   });
 
   it("shows what is wrong with the boxes, and only once there is something", () => {
@@ -267,5 +288,26 @@ describe("the preview step", () => {
     const pane = paneFor({ ...ready, previewing: true }, "preview");
     expect(pane.querySelectorAll(".card.undo")).toHaveLength(1);
     expect(pane.querySelector("h1")?.textContent).toBe("A row is on the slide");
+  });
+});
+
+describe("the merge card is a forecast", () => {
+  it("goes as soon as the merge starts, because it reads as already done", () => {
+    // "720 slides added after slide 12" over a button reading "Merging…"
+    // announces slides that are not in the deck yet. Found by looking at the
+    // screenshot, which is the only thing that could see it.
+    const running = paneFor({ ...ready, running: "merge" }, "merge");
+    expect(running.querySelectorAll(".card.summary")).toHaveLength(0);
+    expect(running.querySelector("button.primary")?.textContent).toBe("Merging…");
+  });
+
+  it("does not sit beside the notice saying the same thing afterwards", () => {
+    const done = paneFor({ ...ready, added: 720, notice: "720 slides added after slide 12." }, "merge");
+    expect(done.querySelectorAll(".card.summary")).toHaveLength(0);
+    expect(done.querySelector(".notice")?.textContent).toContain("720 slides added");
+  });
+
+  it("is still there before anything has been pressed", () => {
+    expect(paneFor(ready, "merge").querySelectorAll(".card.summary")).toHaveLength(1);
   });
 });

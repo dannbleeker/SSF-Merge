@@ -77,23 +77,39 @@ export interface BlockReport {
  * than as the boxes are typed in.
  */
 export async function inspectBlock(req: { from: number; to: number }): Promise<BlockReport> {
-  let template;
+  // The WHOLE read, not just `readTemplate`. The first version wrapped that one
+  // call and awaited `Pkg.open` and `prepareBlock` outside — and both raise: a
+  // host that answers the export with bytes JSZip cannot open, or a package
+  // with no `ppt/presentation.xml`, which `Pkg.doc` throws for by name. Past
+  // the catch those rejections reached `void useBlock()` in the pane with no
+  // handler, leaving it saying "Reading the slides…" for the rest of the
+  // session with the real error in a console the user cannot open.
   try {
-    template = await readTemplate({ from: req.from, to: req.to });
+    const template = await readTemplate({ from: req.from, to: req.to });
+    const pkg = await Pkg.open(template.base64);
+    const prepared = await prepareBlock(
+      pkg,
+      { from: req.from, to: req.to, offsetInPackage: template.offset },
+      "inspect",
+    );
+    if (!prepared.ok) return { ok: false, detail: prepared.why, fields: [] };
+    return {
+      ok: true,
+      detail: `${prepared.fields.length} placeholder${prepared.fields.length === 1 ? "" : "s"} in slides ${req.from} to ${req.to}.`,
+      fields: prepared.fields,
+    };
   } catch (e) {
     // `readTemplate` throws its refusals — `blockIds` produced the sentence and
     // it is already the one to show. A raise here is the host declining to
-    // name or export the slides, which is a thing the user can act on.
-    return { ok: false, detail: e instanceof Error ? e.message : String(e), fields: [] };
+    // name or export the slides, or a package that came back unreadable, and
+    // both are things the user can act on.
+    return { ok: false, detail: readable(e), fields: [] };
   }
-  const pkg = await Pkg.open(template.base64);
-  const prepared = await prepareBlock(pkg, { from: req.from, to: req.to, offsetInPackage: template.offset }, "inspect");
-  if (!prepared.ok) return { ok: false, detail: prepared.why, fields: [] };
-  return {
-    ok: true,
-    detail: `${prepared.fields.length} placeholder${prepared.fields.length === 1 ? "" : "s"} in slides ${req.from} to ${req.to}.`,
-    fields: prepared.fields,
-  };
+}
+
+/** A raise as a sentence. Every message that reaches here is already one. */
+function readable(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
 }
 
 export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
@@ -109,19 +125,30 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
     return { ok: false, detail: "There are no rows to merge.", ...nothing };
   }
 
-  const template = await readTemplate({ from: req.from, to: req.to });
-  const pkg = await Pkg.open(template.base64);
-
-  const prepared = await prepareBlock(
-    pkg,
-    {
-      from: req.from,
-      to: req.to,
-      offsetInPackage: template.offset,
-      ...(req.conditions ? { conditions: req.conditions } : {}),
-    },
-    runId,
-  );
+  // Read and prepare inside a catch, the same way `inspectBlock` does. These
+  // were awaited bare, so `readTemplate`'s refusal — a throw this file's own
+  // `blockIds` change introduced — escaped `runMerge` entirely and reached the
+  // pane's `void merge()` with nothing to catch it. A refusal is an OUTCOME
+  // here, like every other one: the caller gets `ok: false` and a sentence, and
+  // `deckAtStart` survives so an undo still has its clamps.
+  let prepared: Awaited<ReturnType<typeof prepareBlock>>;
+  let pkg: Pkg;
+  try {
+    const template = await readTemplate({ from: req.from, to: req.to });
+    pkg = await Pkg.open(template.base64);
+    prepared = await prepareBlock(
+      pkg,
+      {
+        from: req.from,
+        to: req.to,
+        offsetInPackage: template.offset,
+        ...(req.conditions ? { conditions: req.conditions } : {}),
+      },
+      runId,
+    );
+  } catch (e) {
+    return { ok: false, detail: readable(e), ...nothing };
+  }
   if (!prepared.ok) return { ok: false, detail: prepared.why, ...nothing };
 
   const plan = buildPlan(prepared.block, req.records, { runId, ...(req.onEmpty ? { onEmpty: req.onEmpty } : {}) });

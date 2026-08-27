@@ -153,6 +153,9 @@ function body(doc: Document, state: PaneState, current: StepId, orange: OrangeHo
     );
     out.push(blockControl(doc, state));
     const read = readBlockDraft(state.draft ?? EMPTY_DRAFT, state.deckSize);
+    // A `why` WITH a block is advice the user may press past; without one it is
+    // a refusal. Both are shown the same way — the button already says which,
+    // by being live or not.
     if (read.why) out.push(el(doc, "p", { class: "blocked", text: read.why }));
     return out;
   }
@@ -199,7 +202,14 @@ function body(doc: Document, state: PaneState, current: StepId, orange: OrangeHo
   }
 
   const block = chosenBlock(state);
-  if (current === "merge" && block && state.rows) {
+  // The card is a FORECAST — "720 slides added after slide 12, leaving 732 in
+  // the deck" — and it is only true before the run. Left up during the merge it
+  // announces the slides as already added while the button reads "Merging…",
+  // and left up after it, it says the same sentence the notice says, which is
+  // the "does not state the same arithmetic twice" defect one element over.
+  // Once a run starts, what actually happened is the notice's to report.
+  const forecast = state.running === undefined && state.added === undefined;
+  if (current === "merge" && block && state.rows && forecast) {
     // The heading already states the arithmetic; repeating it here made the
     // screen say "240 rows x 3 slides" twice, which reads as a rendering bug.
     // The card carries the CONSEQUENCE, which is the other half of the answer.
@@ -235,7 +245,14 @@ function blockControl(doc: Document, state: PaneState): HTMLElement {
     label.append(
       el(doc, "input", {
         value: draft[field],
-        attrs: { type: "number", min: "1", inputmode: "numeric", "data-field": field },
+        // TEXT, not number, and `inputmode` is what still offers a touch
+        // keyboard its digits. `type="number"` refuses `selectionStart` and
+        // throws on `setSelectionRange`, so the caret could not be restored
+        // across the redraw this pane does on every keystroke — typing 5 into
+        // "4|6" gave 456 and the 9 after it went to the end. The reading was
+        // never the input's job anyway: `readBlockDraft` is the authority, and
+        // it is the only thing that ever saw "0" or "1.5".
+        attrs: { type: "text", inputmode: "numeric", autocomplete: "off", "data-field": field },
       }),
     );
     row.append(label);
@@ -257,7 +274,12 @@ function blockControl(doc: Document, state: PaneState): HTMLElement {
  * perfectly healthy when that happens.
  */
 function dataControl(doc: Document, state: PaneState): HTMLElement {
-  const wrap = el(doc, "div", { class: "field" });
+  // A LABEL, matching blockControl. As a div the caption was a sibling span
+  // that named nothing: a screen reader reached step 2 and announced "edit,
+  // multiline, blank", and clicking the caption focused the box on step 1 and
+  // did nothing on step 2. `.field` already styles it as a column, so wrapping
+  // needs no CSS and introduces no id.
+  const wrap = el(doc, "label", { class: "field" });
   wrap.append(el(doc, "span", { class: "caption", text: "Paste your rows, headers included" }));
   wrap.append(
     el(doc, "textarea", {

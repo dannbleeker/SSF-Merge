@@ -104,10 +104,16 @@ number of the first slide and the number of the last, as the thumbnail rail
 counts them.
 
 Picking the block by *clicking* the slides is still planned. Two boxes are what
-is built, and they are checked as you type — a block that ends before it starts,
-a slide 0, a fraction, or a block that runs past the end of your deck is
-refused in a sentence naming both numbers, before a template read is spent on
-it.
+is built, and they are checked as you type. A block that ends before it starts,
+a slide 0 or a fraction is **refused**, in a sentence quoting what you typed,
+before a template read is spent on it.
+
+A block running past the end of the deck is only a **warning**, and the button
+stays live. The pane counts your deck when it opens and again each time you
+press "Use slides N to M"; between those it can be out of date, and refusing a
+block because of a count taken ten minutes ago would tell you a slide you can
+see does not exist. The real check happens a moment later against the slide list
+PowerPoint answers with at that instant.
 
 - The deck's own order is the order each record gets.
 - Slides must sit next to each other. Reorder them in the thumbnail pane first.
@@ -219,6 +225,12 @@ one glance and neither means anything.
 
 **A link back on every screen but the first.** A wizard you can only walk
 forwards through is one you restart to change a number.
+
+**One host call at a time.** While the pane is reading your slides or merging,
+the button says so and nothing is pressable — including after going back a step
+and forward again, which is the way a wizard usually lets you start the same
+long job twice. Once a merge has added its slides the button says how many and
+stays down; change the block or the data and it arms again.
 
 *Partly planned.* Steps 1, 2 and 4 are built and reachable from the screen: name
 the block, paste the rows, press the button. Pressing "Use slides N to M" reads

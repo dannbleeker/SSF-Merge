@@ -24,6 +24,23 @@ numbers. `getSelectedSlides` is the obvious route and this host is documented to
 wedge its whole selection subsystem after `setSelectedShapes`, so it needs a
 probe question before it needs code.
 
+### The delimiter sniff reads only as far as the first newline
+**Priority: low.** Feasibility: high.
+`parseDelimited` decides tab-versus-comma from `src.slice(0, src.indexOf("\n") + 1)`.
+A quoted FIRST header cell containing a newline puts that boundary inside the
+cell, so the sample never reaches the tab and the whole table parses as one
+column: `parseDelimited('"a\nb"\tc\nx\ty')` returns `[["a\nb\tc"], ["x\ty"]]`.
+
+Found by an adversarial review of the pane controls and deliberately NOT fixed
+there — it is engine code that commit did not touch, and the pane degrades
+loudly rather than silently: one column means every placeholder is unmatched, so
+`blockedReason` names them all and the merge button stays down. Narrow trigger
+(the first header cell specifically, and only for tab-versus-comma), which is
+why it is low rather than blocking.
+
+The fix is a quote-aware sniff, or counting candidate delimiters across the
+whole text and taking the majority.
+
 ### Manifests
 **Priority: blocking.** Feasibility: high.
 XML and unified JSON from one source, validated in CI. Requirement floor

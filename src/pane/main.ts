@@ -20,8 +20,76 @@ function root(): HTMLElement {
   return node;
 }
 
+/**
+ * Redraw, keeping the caret where the user left it.
+ *
+ * `render` empties the root and builds fresh elements, so every draw destroys
+ * whatever was focused. That is invisible when a draw follows a click and
+ * ruinous when it follows a keystroke: the pane redraws on every character, so
+ * without this the caret jumps to the end of the box after each one and
+ * "4|6" typed into becomes 4569 instead of 4596. The paste box is worse, because
+ * an edit in the middle of a pasted table scatters the rest of the line to the
+ * end — and `readPastedTable` then merges the corrupted text.
+ *
+ * It applies to draws the user did NOT cause, too. The deck count resolves a
+ * second or two after the pane opens and redraws; before this, that redraw
+ * blanked the focus and swallowed the next digit typed, leaving the box holding
+ * what looked like a dropped keystroke.
+ */
 function draw(): void {
+  const active = document.activeElement;
+  const field =
+    active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement
+      ? active.getAttribute("data-field")
+      : null;
+  // Read the selection BEFORE the element is destroyed. A number input answers
+  // null for both, which is exactly why the boxes are `type="text"`.
+  const start = field !== null && active instanceof HTMLElement ? selectionOf(active) : null;
+
   render(root(), state, step);
+
+  if (field === null) return;
+  const node = root().querySelector(`[data-field="${selectorSafe(field)}"]`);
+  if (!(node instanceof HTMLInputElement) && !(node instanceof HTMLTextAreaElement)) return;
+  node.focus();
+  if (start === null) return;
+  try {
+    node.setSelectionRange(start[0], start[1]);
+  } catch {
+    // Some input types refuse the selection API outright. Focused is still
+    // better than not, and losing the caret position is not worth a raise that
+    // would take the whole redraw with it.
+  }
+}
+
+/** The caret, or null when this element will not say. */
+function selectionOf(node: HTMLElement): [number, number] | null {
+  const el = node as HTMLInputElement;
+  try {
+    return el.selectionStart === null || el.selectionEnd === null ? null : [el.selectionStart, el.selectionEnd];
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A field name, safe inside a QUOTED attribute selector.
+ *
+ * `field` comes off a `data-field` attribute this file wrote, so it is one of
+ * three known strings today — but it is read back out of the DOM, and a
+ * selector built by interpolation is one renamed control away from being a
+ * parse error that takes the redraw with it.
+ *
+ * Deliberately not `CSS.escape`: that escapes an IDENTIFIER, which is not what
+ * sits between the quotes here, and the first version of this function reached
+ * it as a detached reference — `const escape = CSS?.escape` — which throws
+ * `'escape' called on an object that is not a valid instance of CSS` the moment
+ * it is called. That took the whole focus restore with it, so the caret went
+ * back to being lost on every keystroke, silently, with the tests for it
+ * failing on the symptom rather than the cause.
+ */
+function selectorSafe(value: string): string {
+  return value.replace(/["\\]/g, "\\$&");
 }
 
 /**
@@ -94,17 +162,19 @@ function onInput(event: Event): void {
   if (!(target instanceof HTMLInputElement) && !(target instanceof HTMLTextAreaElement)) return;
   const field = target.getAttribute("data-field");
   if (!field) return;
+  // A host call is out and its answer is about to be written into this state.
+  // Taking the keystroke would make the answer stale before it lands, which is
+  // the race `useBlock`'s staleness check exists to notice.
+  if (state.running) return;
 
   if (field === "from" || field === "to") {
     const draft = { ...(state.draft ?? EMPTY_DRAFT), [field]: target.value };
     // The committed block goes, because it is now stale: leaving it would let
     // `chosenBlock` fall back to slides the boxes no longer name. The fields
-    // read off it go with it for the same reason.
-    state = { ...state, draft, block: undefined, fields: [], notice: undefined };
+    // read off it go with it for the same reason, and `added` goes because a
+    // changed block is a different merge.
+    state = { ...state, draft, block: undefined, fields: [], notice: undefined, added: undefined };
     draw();
-    // The caret. `render` rebuilds the pane, so the box that was being typed
-    // in is a different element by the time this returns.
-    focusField(field);
     return;
   }
 
@@ -114,24 +184,13 @@ function onInput(event: Event): void {
       ...state,
       paste: target.value,
       notice: undefined,
+      added: undefined,
       ...(read.records
         ? { records: read.records, columns: read.columns, rows: read.rows }
         : { records: undefined, columns: undefined, rows: undefined }),
     };
     draw();
-    focusField(field);
   }
-}
-
-/** Put the caret back where it was, at the end of what is there. */
-function focusField(field: string): void {
-  const node = root().querySelector(`[data-field="${field}"]`);
-  if (!(node instanceof HTMLInputElement) && !(node instanceof HTMLTextAreaElement)) return;
-  node.focus();
-  const end = node.value.length;
-  // A number input throws on setSelectionRange, which is why this is guarded
-  // rather than called on both.
-  if (node instanceof HTMLTextAreaElement) node.setSelectionRange(end, end);
 }
 
 /**
@@ -144,15 +203,46 @@ function focusField(field: string): void {
  */
 async function useBlock(): Promise<void> {
   const block = chosenBlock(state);
-  if (!block) return;
-  state = { ...state, notice: "Reading the slides…" };
+  if (!block || state.running) return;
+  state = { ...state, running: "inspect", notice: "Reading the slides…" };
   draw();
-  const report = await inspectBlock({ from: block.from, to: block.to });
-  state = report.ok
-    ? { ...state, block, fields: report.fields, notice: undefined }
-    : { ...state, block: undefined, fields: [], notice: report.detail };
-  if (report.ok) advance("template");
-  else draw();
+  try {
+    // The deck's size, re-read while we are spending a round trip anyway. It
+    // was taken once when the pane opened and never again, so a user who added
+    // slides and came back was being told about a deck that no longer existed.
+    const deckSize = await slideCount().catch(() => state.deckSize);
+    const report = await inspectBlock({ from: block.from, to: block.to });
+
+    // What the boxes say NOW. The read takes seconds and the pane stays on
+    // screen; committing a block the user has since retyped puts one block's
+    // placeholders behind another block's slides, and `chosenBlock` prefers
+    // the draft — so the merge would run on slides nobody read.
+    const still = chosenBlock({ ...state, deckSize });
+    if (!still || still.from !== block.from || still.to !== block.to) {
+      state = { ...state, deckSize, notice: "The slides changed while that was reading. Press again." };
+      return;
+    }
+
+    state = report.ok
+      ? { ...state, deckSize, block, fields: report.fields, notice: undefined }
+      : { ...state, deckSize, block: undefined, fields: [], notice: report.detail };
+    if (report.ok) step = nextStep("template") ?? step;
+  } catch (e) {
+    // `inspectBlock` answers rather than raising, so a raise here is something
+    // below it. Said out loud, because the alternative is a pane that reads
+    // "Reading the slides…" for the rest of the session.
+    state = { ...state, notice: readable(e) };
+  } finally {
+    // In a `finally`, so the button comes back on every path. A flag cleared
+    // only on the happy path is a pane that has to be reopened.
+    state = { ...state, running: undefined };
+    draw();
+  }
+}
+
+/** A raise as a sentence. */
+function readable(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
 }
 
 /**
@@ -168,28 +258,69 @@ async function useBlock(): Promise<void> {
  */
 async function merge(): Promise<void> {
   const block = chosenBlock(state);
-  if (!block || !state.rows || !state.records) return;
-  const button = root().querySelector("button.primary");
-  if (button instanceof HTMLButtonElement) {
-    button.disabled = true;
-    button.textContent = "Merging…";
-  }
-  const outcome = await runMerge({
-    from: block.from,
-    to: block.to,
-    records: state.records,
-    ...(state.conditions ? { conditions: state.conditions } : {}),
-  });
-  last = outcome;
-  // The fields the RUN found, which is the authority: `inspectBlock` read them
-  // before the merge and this is the same read after it.
-  state = {
-    ...state,
-    deckSize: outcome.deckAtStart + outcome.added,
-    ...(outcome.fields.length > 0 ? { fields: outcome.fields } : {}),
-    notice: outcome.detail,
-  };
+  const records = state.records;
+  const conditions = state.conditions;
+  if (!block || !state.rows || !records || state.running) return;
+  // In the STATE. The first version disabled the button by hand, on a DOM node
+  // every later `draw()` replaces with one `primary()` had re-enabled — so a
+  // Back and a Continue during a two-minute merge handed the user a live
+  // "Add 720 slides" over a run already in flight, and their deck got both.
+  state = { ...state, running: "merge", notice: undefined };
   draw();
+  try {
+    const outcome = await runMerge({
+      from: block.from,
+      to: block.to,
+      records,
+      ...(conditions ? { conditions } : {}),
+    });
+    last = outcome;
+    state = {
+      ...state,
+      deckSize: outcome.deckAtStart + outcome.added,
+      // The fields the RUN found, which is the authority: `inspectBlock` read
+      // them before the merge and this is the same read after it.
+      ...(outcome.fields.length > 0 ? { fields: outcome.fields } : {}),
+      // Only a run that ADDED something disarms the button. A refusal that
+      // added nothing should leave the user able to press again.
+      ...(outcome.added > 0 ? { added: outcome.added } : {}),
+      notice: outcome.detail,
+    };
+  } catch (e) {
+    // A raise does not mean nothing happened. This host takes calls it does
+    // not perform AND performs calls it then raises on — `insertDeck` reads
+    // the deck DELTA for exactly that reason, and its own re-count sits
+    // outside the try it uses to do so, so a timeout there rejects with the
+    // slides already in the deck. Count again and keep the numbers, because an
+    // undo is positional and clamped against them: a run whose numbers are
+    // lost cannot be taken back at all.
+    const deckAfter = await slideCount().catch(() => undefined);
+    const before = state.deckSize;
+    const added = deckAfter !== undefined && before !== undefined ? Math.max(0, deckAfter - before) : 0;
+    if (added > 0 && before !== undefined) {
+      last = {
+        ok: false,
+        detail: readable(e),
+        added,
+        deckAtStart: before,
+        runId: "recovered",
+        fields: [],
+        unknownConditions: [],
+      };
+    }
+    state = {
+      ...state,
+      ...(deckAfter !== undefined ? { deckSize: deckAfter } : {}),
+      ...(added > 0 ? { added } : {}),
+      notice:
+        added > 0
+          ? `The merge raised, and ${added} slide${added === 1 ? "" : "s"} landed anyway: ${readable(e)}`
+          : `The merge did not run: ${readable(e)}`,
+    };
+  } finally {
+    state = { ...state, running: undefined };
+    draw();
+  }
 }
 
 /** The last run, so an undo has the numbers it is clamped against. */
@@ -221,9 +352,11 @@ void Office.onReady(() => {
   node.addEventListener("click", onClick);
   node.addEventListener("input", onInput);
   draw();
-  // The deck's size, so the template boxes can refuse a block that runs past
-  // the end before a template read is spent on it. Failing is not fatal: the
-  // check is skipped and `prepareBlock` still catches it later.
+  // The deck's size, so the template boxes can warn about a block that runs
+  // past the end before a template read is spent on it. Failing is not fatal:
+  // the warning is skipped and `blockIds` still catches it later. It is re-read
+  // on every press of "Use slides N to M", because a count taken once at open
+  // goes stale the moment the user adds a slide.
   void slideCount().then(
     (deckSize) => {
       state = { ...state, deckSize };

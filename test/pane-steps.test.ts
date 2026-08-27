@@ -156,7 +156,13 @@ describe("reading the two slide-number boxes", () => {
   });
 
   it("refuses slide 0, because the rail starts at 1", () => {
-    expect(readBlockDraft({ from: "0", to: "3" }).why).toContain("1");
+    // The REFUSAL, not only the sentence. This asserted `why` contained "1"
+    // and nothing else — satisfied by the literal 1 in "numbered from 1", so
+    // an implementation returning a block AND a complaint passed the whole
+    // suite, and the user then spent a real host round trip on slide 0.
+    const read = readBlockDraft({ from: "0", to: "3" });
+    expect(read.block).toBeNull();
+    expect(read.why).toContain("0");
   });
 
   it("refuses a fraction rather than rounding one", () => {
@@ -166,13 +172,28 @@ describe("reading the two slide-number boxes", () => {
     expect(readBlockDraft({ from: "1", to: "abc" }).block).toBeNull();
   });
 
-  it("refuses a block running past the end of the deck ONCE the deck is counted", () => {
-    // Caught here, the sentence names both numbers. Caught in prepareBlock it
-    // costs a whole template read first.
-    expect(readBlockDraft({ from: "4", to: "9" }, 6).why).toContain("9");
-    expect(readBlockDraft({ from: "4", to: "9" }, 6).why).toContain("6");
-    // And is not checked at all before the deck has answered.
-    expect(readBlockDraft({ from: "4", to: "9" }).block).toEqual({ from: 4, to: 9 });
+  it("names what the USER typed in every refusal, not just the rule", () => {
+    // "Slides are numbered from 1." is a true sentence that says nothing about
+    // the boxes in front of them — and the manual promised numbers for all
+    // four cases while two of them carried none.
+    expect(readBlockDraft({ from: "0", to: "3" }).why).toContain("0");
+    expect(readBlockDraft({ from: "1.5", to: "3" }).why).toContain("1.5");
+    expect(readBlockDraft({ from: "6", to: "4" }).why).toContain("6");
+    expect(readBlockDraft({ from: "6", to: "4" }).why).toContain("4");
+  });
+
+  it("WARNS about a block past the end of the deck, and still lets it through", () => {
+    // Advice, not a refusal. `deckSize` is counted once when the pane opens, so
+    // a user who adds slides and comes back would otherwise be told their block
+    // does not exist — in a sentence stating a deck size that is no longer
+    // true, with no way to correct it short of reopening the pane. `blockIds`
+    // checks it a moment later against ids the host listed just now.
+    const read = readBlockDraft({ from: "4", to: "9" }, 6);
+    expect(read.block, "the user may press past it").toEqual({ from: 4, to: 9 });
+    expect(read.why).toContain("9");
+    expect(read.why).toContain("6");
+    // And nothing is said at all before the deck has answered.
+    expect(readBlockDraft({ from: "4", to: "9" }).why).toBeNull();
   });
 
   it("says slide, singular, when the deck holds exactly one", () => {

@@ -68,6 +68,32 @@ const STATES = [
     step: "merge",
     state: { ...full, notice: "PowerPoint would not name every slide between 4 and 6." },
   },
+  // The states an adversarial review found nothing was rendering: a host call
+  // in flight, a run that has landed, and a template missing two columns.
+  {
+    // With the draft, because in the real flow the boxes always hold what the
+    // press was made from. A fixture whose boxes are empty while the button
+    // reads "Reading the slides…" teaches a state that cannot happen.
+    name: "1-template-reading",
+    step: "template",
+    state: { ...full, draft: { from: "4", to: "6" }, running: "inspect" },
+  },
+  { name: "4-merge-running", step: "merge", state: { ...full, running: "merge" } },
+  {
+    name: "4-merge-done",
+    step: "merge",
+    state: { ...full, added: 720, notice: "720 slides added after slide 12." },
+  },
+  {
+    name: "2-fields-two-missing",
+    step: "fields",
+    state: { ...full, fields: ["First", "Nickname", "Badge"], paste: PASTE, columns: ["First", "Last"], rows: 2 },
+  },
+  {
+    name: "1-template-past-the-end",
+    step: "template",
+    state: { fields: [], previewing: false, draft: { from: "4", to: "99" }, deckSize: 12 },
+  },
 ];
 
 // The bundled browser and the installed playwright can disagree on build

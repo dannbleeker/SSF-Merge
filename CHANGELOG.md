@@ -7,6 +7,95 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — what an adversarial review of the commit above found
+
+Five lenses over the diff, each finding verified by three independent skeptics;
+sixteen findings survived a majority, three of them blocking. The pane could not
+be driven by the suite at all, so `test/pane-wiring.test.ts` now drives the real
+`main.ts` with only the two Office-touching modules mocked, and
+`test/office-merge.test.ts` covers the refusal paths `src/office` answers with.
+
+**A merge that raised left the pane dead.** `merge()` awaited `runMerge` with no
+catch, so a rejection skipped the `draw()` below it and the button kept the
+hand-written `disabled = true` / "Merging…" forever, with nothing shown to the
+user and `last` — the numbers a positional undo is clamped against — never set.
+The path was not exotic: the commit above made `readTemplate` THROW its refusal,
+and `runMerge` awaited it bare while `inspectBlock` next to it wrapped the
+identical call. Both now answer instead of raising, and `merge()` catches as a
+backstop; because a raise on this host does not mean nothing happened, it counts
+the deck again and keeps whatever landed, saying so.
+
+**The merge button came back mid-merge.** The only thing stopping a second press
+was a `disabled` flag on a DOM node every later `draw()` replaced with one
+`primary()` had re-enabled — so going Back and Continue during a two-minute
+merge handed the user a live "Add 720 slides" over a run in flight, and their
+deck got both inserts with one set of undo clamps. The run is in the STATE now
+(`running`), so `primary()` can see it. A completed run disarms the button too
+(`added`): redrawing a live "Add 720 slides" beside a notice saying 720 were
+added is how a deck gets 1440.
+
+**The architecture guard passed against the exact defect it names.** It sliced
+`readTemplate`'s body to the next `/**`, which is where the next DOCBLOCK starts
+and not where a function ends. With `readTemplate` reverted to the counting loop
+and a helper below it holding the strings the guard greps for, all seven
+assertions passed. Slicing to the next top-level `export` was tried and is also
+wrong — a plain `function` is not a stop. It brace-matches now, over a copy with
+strings and comments masked, skipping the parameter list (the first `{` after
+the signature was `block: { from: number; to: number }`, which made the guard go
+red on a correct file — the failure mode this file already has a paragraph
+about).
+
+**The caret jumped to the end of the box on every keystroke.** `render` builds
+fresh elements, so each draw destroyed the focused control; the first version
+focused the replacement and sent the caret to `value.length`. Typing 5 into
+"4|6" gave 456 and the next digit landed after the 6, and an edit in the middle
+of a pasted table scattered the rest of the line to the end — where
+`readPastedTable` then parsed the corrupted text into the records the merge
+runs on. `draw()` carries the selection across every redraw now, including ones
+the user did not cause: the deck count resolves a second or two after the pane
+opens, and its redraw was swallowing the next digit typed. The two boxes are
+`type="text" inputmode="numeric"` because `type="number"` answers `null` for
+`selectionStart` and throws on `setSelectionRange`.
+
+**The block was committed after the boxes had moved on.** `useBlock` captured
+the block before a read that takes seconds and wrote it back afterwards, with
+nothing disabled meanwhile — so retyping mid-read left `state.fields` describing
+one block while `chosenBlock` answered another, and the merge runs on
+`chosenBlock`. Input is refused while a read is out, the answer is discarded if
+the boxes changed anyway, and the flag is cleared in a `finally`.
+
+**`inspectBlock` caught one call of three.** `Pkg.open` and `prepareBlock` were
+awaited past its `try`, and both raise — on bytes JSZip cannot open, or a zip
+with no `ppt/presentation.xml`. Those rejections reached `void useBlock()` with
+no handler, leaving the pane reading "Reading the slides…" for the rest of the
+session.
+
+**The deck bound refused blocks that exist.** `deckSize` was counted once at
+pane load and never again, so a user who added slides and came back was told
+their block ran past the end of a deck that no longer had that size, with no way
+to correct it short of reopening the pane. It is a WARNING now, not a refusal —
+the authoritative check is `blockIds` against ids the host listed a moment later
+— and the count is re-read on every press of "Use slides N to M".
+
+**The paste box had no label at all.** A `div` with a sibling caption, where
+`blockControl` two functions up correctly used a `label`, so a screen reader
+announced "edit, multiline, blank" and clicking the caption did nothing.
+
+Three tests were decoration and are not any more. `sets the box's VALUE` passed
+against `setAttribute` too, because a fresh input reflects the attribute into the
+property. Two of `readBlockDraft`'s refusals asserted only that the MESSAGE
+contained a digit — satisfied by the literal 1 in "numbered from 1" — so an
+implementation returning a block *and* a complaint passed the suite. And the
+orange budget counted elements rather than holders, which meant a template
+missing two columns read as two oranges: an ordinary state that no fixture in
+the test or the screenshot script happened to reach, so CI reported neither the
+violation nor the miscount. It counts holders now, which is what `orangeHolder`
+already models, and two-unmatched is in the sweep.
+
+Every refusal sentence names what the user typed. "Slides are numbered from 1."
+is a true sentence that says nothing about the boxes in front of them, and the
+manual promised numbers for all four cases while two carried none.
+
 ### Fixed — the merge run built its own slide ids, and PowerPoint would have refused every one
 
 `runMerge` turned the template block into ids by counting —
@@ -67,10 +156,14 @@ screen now says the preview is not built, in the heading and the body, and its
 button carries the user on to the merge. The fields step's button said "Attach
 data" after the data was attached, which reads as a step that did not take.
 
-An input's `value` is set as the PROPERTY, never the attribute: `setAttribute`
-sets the default an input reverts to, and this pane re-renders on every
-keystroke, so the box would have snapped back to what it held before the key
-that caused the render.
+An input's `value` is set as the PROPERTY, never the attribute — a `textarea`
+has no value attribute at all, so one helper serving both controls has to write
+the property. (This paragraph first gave a different reason, that the box would
+"snap back" to the attribute's value; it would not. `render` empties the root
+and builds fresh elements, whose dirty-value flag is unset, so `setAttribute`
+would have worked for the inputs. The test named for the rule passed against
+the wrong implementation for the same reason, and now asserts the attribute is
+absent.)
 
 `scripts/pane-shots.mjs` renders eleven states now — including the two the
 controls added and the one where the host refused — and the orange-budget test
