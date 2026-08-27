@@ -287,6 +287,14 @@ A declared requirement set that your PowerPoint does not meet makes the add-in
 report, nothing to search for. The runtime check can tell you which version is
 missing and what it costs you, which is worth more than a silent absence.
 
+**The cost of that choice, stated plainly.** Because the manifest declares
+nothing, Microsoft's own validator reports the add-in as installable on every
+PowerPoint back to **2013 on Windows** — and PowerPoint 2013 does not have
+PowerPointApi 1.3. So on an old enough PowerPoint the add-in installs, appears
+on the Home tab, opens, and then tells you it cannot run and why. That is the
+trade: a message you can read and act on, instead of a button that was never
+there.
+
 ## When a cell is not what its format expects
 
 The rule throughout is that a cell the engine cannot read is **printed as it
