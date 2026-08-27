@@ -285,3 +285,19 @@ describe("the package a merge actually writes", () => {
     expect(template.get(TAG_RECORD)).toBeUndefined();
   });
 });
+
+describe("where a part's relationships live", () => {
+  it("puts them beside the part", () => {
+    expect(Pkg.relsPathFor("ppt/slides/slide1.xml")).toBe("ppt/slides/_rels/slide1.xml.rels");
+    expect(Pkg.relsPathFor("ppt/presentation.xml")).toBe("ppt/_rels/presentation.xml.rels");
+  });
+
+  it("handles a part at the package root", () => {
+    // `lastIndexOf("/")` answers -1, and `slice(0, -1)` then drops the part's
+    // last CHARACTER: the old answer was
+    // `[Content_Types].xm/_rels/[Content_Types].xml.rels`, a plausible-looking
+    // path to nowhere. Nothing calls it that way today — this closes it before
+    // something does, because the failure is silent.
+    expect(Pkg.relsPathFor("[Content_Types].xml")).toBe("_rels/[Content_Types].xml.rels");
+  });
+});

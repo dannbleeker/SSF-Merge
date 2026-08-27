@@ -96,6 +96,13 @@ export class Pkg {
   /** `ppt/slides/slide1.xml` → `ppt/slides/_rels/slide1.xml.rels`. */
   static relsPathFor(part: string): string {
     const slash = part.lastIndexOf("/");
+    // A part at the package ROOT has no directory, and `lastIndexOf` answers
+    // -1 for it: `slice(0, -1)` then drops the part's last CHARACTER and the
+    // result is a plausible-looking path to nowhere —
+    // `[Content_Types].xm/_rels/[Content_Types].xml.rels`. Nothing calls this
+    // with a root part today, so it has never bitten; it would fail silently
+    // when something did, which is the kind worth closing on sight.
+    if (slash < 0) return `_rels/${part}.rels`;
     return `${part.slice(0, slash)}/_rels/${part.slice(slash + 1)}.rels`;
   }
 

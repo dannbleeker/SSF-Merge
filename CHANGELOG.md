@@ -7,6 +7,36 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added — the package the engine hands over is checked as a package
+
+Everything else in the suite tests a decision: does this paragraph merge, does
+that plan skip the right row. None of it asked the question PowerPoint asks,
+which is whether the file is a legal OOXML package — and that answer is binary
+and expensive, because a deck that opens as "repaired" has lost whatever
+PowerPoint decided to drop, in somebody's presentation.
+
+`test/package-valid.test.ts` runs four real merges and checks the bytes: every
+relationship resolves to a part that exists, no duplicate rIds, every part has a
+content type, no override naming a part that is gone, slide ids unique and in
+the format's range, and no slide part the deck does not list. Then it runs the
+whole-deck route — keep what the run produced, drop the rest — and checks it
+again, because that is where #38 lived and it is the only path that takes parts
+OUT of a package.
+
+**The content-type rule was toothless when first written, and injecting a defect
+is what showed it.** A real .pptx declares `Default Extension="xml"`, so every
+XML part passed. Deleting the clone's `addContentTypeOverride` — which would
+ship every merged slide untyped — left the gate green. Slides and notes slides
+are checked for an override of their own now, and both injected defects fail
+four tests and one respectively.
+
+### Fixed — a relationships path for a part at the package root
+
+`Pkg.relsPathFor` used `lastIndexOf("/")` without handling -1, so a root part
+answered `[Content_Types].xm/_rels/[Content_Types].xml.rels` — the last
+character dropped and a directory invented. Nothing calls it that way today; it
+would have failed silently when something did.
+
 ### Fixed — an impossible date was silently rolled forward
 
 `2026-02-29` merged as **1 March** and `31 Feb 2026` as **3 March**, on every
