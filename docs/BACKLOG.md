@@ -10,22 +10,42 @@ is to build.
 
 ## Next
 
-### The delimiter sniff reads only as far as the first newline
-**Priority: low.** Feasibility: high.
-`parseDelimited` decides tab-versus-comma from `src.slice(0, src.indexOf("\n") + 1)`.
-A quoted FIRST header cell containing a newline puts that boundary inside the
-cell, so the sample never reaches the tab and the whole table parses as one
-column: `parseDelimited('"a\nb"\tc\nx\ty')` returns `[["a\nb\tc"], ["x\ty"]]`.
+### What the deck-read probe answers, and what to do about it
+**Priority: medium.** Feasibility: high once the sheet arrives.
+`deckSlideIds` already pages by position, so office-js#4272 cannot bite the way
+it would have — but the probe's `deckRead` block asks three things nobody here
+has measured, and each has a next step:
 
-Found by an adversarial review of the pane controls and deliberately NOT fixed
-there — it is engine code that commit did not touch, and the pane degrades
-loudly rather than silently: one column means every placeholder is unmatched, so
-`blockedReason` names them all and the merge button stays down. Narrow trigger
-(the first header cell specifically, and only for tab-versus-comma), which is
-why it is low rather than blocking.
+- `short` — whether a collection load answers short on this host at all. If it
+  never does, the paging is insurance and can stay as insurance.
+- `prefixOk` — whether a short read is the first n IN DECK ORDER. This is the
+  one that decides severity for anyone who reaches for `load("items/id")`
+  again: prefix-stable means a wrong block is REFUSED, scrambled means
+  `indexOf` answers the wrong slide NUMBER and a merge clones slides nobody
+  chose. If it comes back false, that fact belongs in `CLAUDE.md` as a
+  never-do.
+- `empty` — office-js#6363, a read that returns nothing after a sync that
+  succeeded. If it reproduces, `blockIds` and `blockFromSelection` should say
+  "PowerPoint would not list the deck" rather than "the deck has 0 slides",
+  which is what they say today.
 
-The fix is a quote-aware sniff, or counting candidate delimiters across the
-whole text and taking the majority.
+`canAnswerFiftyQuestion` reports whether the deck was big enough to answer the
+first one at all. A nine-slide deck cannot, and a sheet from one must not be
+read as though it did.
+
+### Whether an insert cares that a shape is selected
+**Priority: low.** Feasibility: unknown until the sheet arrives.
+office-js#2775 (a text-box add deletes the selected shape) and #3698 (a picture
+will not insert while one is selected) are both about SHAPES, and this add-in
+inserts SLIDES — so the documented repro does not apply and nothing here is
+known to be wrong. It is unverified rather than safe, and the preview step now
+inserts at a moment when the user may well have something selected.
+
+The probe's `insertWhileSelected` block reports what was selected and whether
+the insert landed anyway. It never SELECTS anything: the obvious workaround is
+`setSelectedShapes`, which is the one call in this family with a measured
+history of wedging the host, so nothing is built for this until there is a
+reason.
 
 ## After the first release
 

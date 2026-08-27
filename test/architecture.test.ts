@@ -198,8 +198,14 @@ describe("src/core", () => {
     // through `blockIds`, which is where the checking lives.
     const src = readFileSync("src/office/powerpoint.ts", "utf8");
     const body = functionBody(src, "export async function readTemplate");
-    expect(body, "asks the host for the ids").toContain('load("items/id")');
+    // The ids come from `deckSlideIds`, which is where the ASKING moved when
+    // it was paged against office-js#4272 — so the rule is followed to its new
+    // home rather than pinned to the old one. `readTemplate` must take them
+    // from there and check them in `src/host`.
+    expect(body, "asks the host for the ids").toContain("await deckSlideIds()");
     expect(body, "checks them in src/host rather than here").toContain("blockIds(");
+    const reader = functionBody(src, "export async function deckSlideIds");
+    expect(reader, "and that is where the host is asked").toContain('load("id")');
     // `exportAsBase64Presentation` is handed what `blockIds` returned and
     // nothing else. Anything built locally is the defect coming back.
     expect(body).toMatch(/exportAsBase64Presentation\(chosen\.ids\)/);
@@ -208,6 +214,29 @@ describe("src/core", () => {
     // catch that is a check that goes red for the wrong reason — which this
     // file already has a paragraph about.
     expect(body, "builds no id of its own").not.toContain("String(");
+  });
+
+  it("never takes the deck's ids through one big collection load", () => {
+    // office-js#4272: a collection load of more than ~50 items answers SHORT on
+    // the web, after a sync that SUCCEEDED. This add-in needs the deck's id
+    // list twice, and both readers key on POSITION in it — `blockIds` slices by
+    // index, `blockFromSelection` calls indexOf — so a short read that is not
+    // the first n in deck order makes both answer the wrong SLIDE NUMBER,
+    // silently, and the merge clones slides nobody chose.
+    //
+    // A mail-merge template deck is exactly the kind that gets large, so this
+    // is not a theoretical ceiling. `deckSlideIds` pages by `getItemAt`, which
+    // is a different code path and not subject to a collection load's limit.
+    const src = readFileSync("src/office/powerpoint.ts", "utf8");
+    const paged = functionBody(src, "export async function deckSlideIds");
+    expect(paged, "pages").toContain("ID_PAGE");
+    expect(paged, "reads by position, not as a collection").toContain("getItemAt");
+
+    // And nothing else loads the whole collection. `items/id` on the SELECTION
+    // is fine — a selection is a handful of slides, not the deck — so the check
+    // is against the deck's own collection.
+    const code = codeOf("src/office/powerpoint.ts");
+    expect(code, "no unpaged load of presentation.slides").not.toMatch(/presentation\.slides;?\s*\n?\s*\w*\.?load\(/);
   });
 
   it("looks values up without walking the prototype chain", () => {

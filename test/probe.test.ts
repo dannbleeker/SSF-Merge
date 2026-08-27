@@ -1,6 +1,8 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+// @ts-expect-error — plain .mjs with no types, shared with the scripts.
+import { withoutTsProse } from "../scripts/without-prose.mjs";
 import { creationIdOf } from "../src/core/pptx/clone.js";
 import { Pkg } from "../src/core/pptx/pkg.js";
 import { TAG_RUN, readSlideTags } from "../src/core/pptx/tags.js";
@@ -193,5 +195,57 @@ describe("the substring experiments", () => {
     // Otherwise a run whose inserts all failed leaves two text boxes on the
     // user's own slide, which is the deck it was told it could not damage.
     expect(snippet).toContain("if (!deckGrew)");
+  });
+});
+
+describe("the questions the review added", () => {
+  const snippet = readFileSync("probe/probe-snippet.ts", "utf8");
+
+  it("asks whether a collection load answers short, and against what", () => {
+    // office-js#4272. `getCount` is the authority — a scalar, not a load — so
+    // the question is only answerable if both are read in the same breath.
+    expect(snippet).toContain("deckReadProbe");
+    expect(snippet).toMatch(/getCount\(\)/);
+    expect(snippet).toContain("out.short");
+  });
+
+  it("asks whether a SHORT read is the first n in deck order", () => {
+    // The half that decides how bad it is. A prefix-stable short read means a
+    // block inside it is right and one past it is refused; a scrambled one
+    // means `indexOf` answers the wrong SLIDE NUMBER and the merge clones
+    // slides nobody chose. Checked against getItemAt, which is a different
+    // code path from a collection load.
+    expect(snippet).toContain("prefixOk");
+    expect(snippet).toMatch(/getItemAt\(i\)/);
+  });
+
+  it("asks whether the read comes back EMPTY after a sync that succeeded", () => {
+    // office-js#6363, and the sibling project's central failure.
+    expect(snippet).toContain("out.empty");
+  });
+
+  it("says whether the deck was even big enough to answer the >50 question", () => {
+    // A nine-slide deck cannot, and must not look as though it did — the
+    // vacuous-measurement trap this repo keeps meeting.
+    expect(snippet).toContain("canAnswerFiftyQuestion");
+  });
+
+  it("asks about inserting while a shape is selected WITHOUT selecting one", () => {
+    // The workaround would be `setSelectedShapes`, which is the one call in
+    // this family with a measured history of wedging the host. So the probe
+    // reads what is already selected and never sets anything.
+    expect(snippet).toContain("insertWhileSelectedProbe");
+    expect(snippet).toContain("getSelectedShapes");
+    // Against the CODE, not the prose. The snippet explains at length why it
+    // does not call `setSelectedShapes`, in comments containing the name — and
+    // the first version of this assertion matched those. Fourth time in this
+    // repo, and the first since `without-prose.mjs` existed to prevent it: the
+    // tool was there and I did not reach for it.
+    expect(withoutTsProse(snippet), "never sets a selection").not.toContain("setSelectedShapes");
+  });
+
+  it("runs both new questions and reports them", () => {
+    expect(snippet).toContain("answers.deckRead");
+    expect(snippet).toContain("answers.insertWhileSelected");
   });
 });

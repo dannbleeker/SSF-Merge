@@ -7,6 +7,39 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added — two probe questions, and the deck read paged against the answer
+
+**`deckSlideIds` pages the deck's id list, by position.**
+`slides.load("items/id")` is the obvious way and it is the one office-js#4272
+describes failing: past ~50 items the web host answers with FEWER than it has,
+after a sync that succeeded. This add-in needed that list twice — to pick a
+template block's ids, and to turn a selection into slide numbers.
+
+What a short read costs here is not merely a smaller list. `blockIds` slices by
+INDEX and `blockFromSelection` calls `indexOf`, so a short read that is not the
+first n in deck order makes both answer the wrong SLIDE NUMBER — silently — and
+the merge then clones slides nobody chose. A mail-merge template deck is exactly
+the kind that gets large, so this is not a theoretical ceiling.
+
+The ids come by `getItemAt` in pages of 20 now: a different code path from a
+collection load, not subject to its limit, with `getCount` — a scalar, not a
+load — as the authority on how many there are. **This did not wait for the probe
+answer**, because paging is correct either way and the unpaged read is wrong if
+the answer is bad.
+
+**Two questions added to the probe.** `deckRead` asks whether a load answers
+short at all, whether a short read is prefix-stable, whether it ever comes back
+EMPTY (office-js#6363), and — so the sheet cannot be over-read — whether the
+deck was even big enough to answer the first one. `insertWhileSelected` asks
+whether an insert lands with a shape selected, and asks it WITHOUT selecting
+anything: the workaround would be `setSelectedShapes`, the one call in this
+family with a measured history of wedging the host.
+
+The guard for that last property matched the snippet's own COMMENTS explaining
+why it does not call `setSelectedShapes` — the fourth time a guard in this repo
+has read prose as code, and the first since `without-prose.mjs` existed to
+prevent it. The tool was there and I did not reach for it. It does now.
+
 ### Fixed — the delimiter sniff, and two things a review against the sibling project found
 
 **The sniff sampled half a cell.** `parseDelimited` decided tab-versus-comma
