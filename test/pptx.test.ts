@@ -301,3 +301,91 @@ describe("where a part's relationships live", () => {
     expect(Pkg.relsPathFor("[Content_Types].xml")).toBe("_rels/[Content_Types].xml.rels");
   });
 });
+
+describe("a slide another tool has already written to", () => {
+  const P = 'xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"';
+  const A = 'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"';
+  const R = 'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
+
+  /**
+   * A slide carrying a `<p:custDataLst>` that holds only `<p:custData>` — no
+   * `<p:tags>` of its own. `writeSlideTags`'s comment says a template built by
+   * another tool routinely looks like this, and the branch that handles it was
+   * the one branch in this file nothing exercised.
+   *
+   * It matters because `CT_CommonSlideData` allows at most one
+   * `<p:custDataLst>`. Adding a second is not a tidiness problem: PowerPoint
+   * opens the file as repaired and drops what it does not like, in the user's
+   * own deck.
+   */
+  async function slideWithForeignCustData(): Promise<Pkg> {
+    const pkg = await Pkg.open(await makeDeck([{ paragraphs: [["hello"]] }]));
+    pkg.setText(
+      "ppt/slides/slide1.xml",
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n` +
+        `<p:sld ${P} ${A} ${R}><p:cSld><p:spTree>` +
+        `<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>` +
+        `</p:spTree>` +
+        `<p:custDataLst><p:custData r:id="rId9"/></p:custDataLst>` +
+        `</p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`,
+    );
+    return pkg;
+  }
+
+  it("adds its tags to the list that is there, not a second one", async () => {
+    const pkg = await slideWithForeignCustData();
+    await writeSlideTags(pkg, "ppt/slides/slide1.xml", [[TAG_RUN, "run-1"]]);
+    const xml = await pkg.text("ppt/slides/slide1.xml");
+    expect(xml.match(/<p:custDataLst/g) ?? [], "a second custDataLst makes the file open as repaired").toHaveLength(1);
+    // And the other tool's entry is still in it.
+    expect(xml).toContain('<p:custData r:id="rId9"');
+    expect((await readSlideTags(pkg, "ppt/slides/slide1.xml")).get(TAG_RUN)).toBe("run-1");
+  });
+
+  it("still round-trips through a real package", async () => {
+    // Written, zipped, reopened — because the branch edits a live document and
+    // the question is what the FILE ends up holding.
+    const pkg = await slideWithForeignCustData();
+    await writeSlideTags(pkg, "ppt/slides/slide1.xml", [[TAG_RUN, "run-2"]]);
+    const again = await Pkg.open(await pkg.toBytes());
+    expect((await readSlideTags(again, "ppt/slides/slide1.xml")).get(TAG_RUN)).toBe("run-2");
+  });
+});
+
+describe("reading a part the run has edited but not written back", () => {
+  it("answers with the edit, not the bytes on disk", async () => {
+    /**
+     * `Pkg` hands out parsed documents and only serialises them at the end, so
+     * a reader that goes straight to the zip sees the version the file was
+     * opened with. The changelog records this having bitten once already —
+     * "three tests were passing on the version from disk" — and `maybeText` is
+     * the reader my chart scan added a caller to.
+     */
+    const pkg = await Pkg.open(await makeDeck([{ paragraphs: [["before"]] }]));
+    const doc = await pkg.doc("ppt/slides/slide1.xml");
+    const t = doc.getElementsByTagNameNS("http://schemas.openxmlformats.org/drawingml/2006/main", "t")[0];
+    expect(t, "the fixture changed shape").toBeTruthy();
+    t!.textContent = "after";
+    expect(await pkg.maybeText("ppt/slides/slide1.xml")).toContain("after");
+    expect(await pkg.maybeText("ppt/slides/slide1.xml")).not.toContain("before");
+  });
+
+  it("answers nothing for a part that is not there", async () => {
+    const pkg = await Pkg.open(await makeDeck([{ paragraphs: [["x"]] }]));
+    expect(await pkg.maybeText("ppt/charts/chart1.xml")).toBeUndefined();
+  });
+});
+
+describe("relating a part that had no relationships at all", () => {
+  it("creates the rels file rather than failing", async () => {
+    // `addRel` writes an empty `<Relationships>` when the part has none. Every
+    // caller so far happened to work on a part that already had a rels file,
+    // so the branch that creates one had never run.
+    const pkg = await Pkg.open(await makeDeck([{ paragraphs: [["x"]] }]));
+    const owner = "ppt/theme/theme1.xml";
+    expect(pkg.has(Pkg.relsPathFor(owner)), "the fixture already gave theme1 a rels part").toBe(false);
+    const rId = await pkg.addRel(owner, "http://example.invalid/rel", "../media/image1.png");
+    expect(rId).toBe("rId1");
+    expect(await pkg.relTarget(owner, rId)).toBe("ppt/media/image1.png");
+  });
+});
