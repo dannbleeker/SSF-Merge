@@ -40,6 +40,25 @@ export function withoutHashComments(text) {
 }
 
 /**
+ * Block comments and comment-only lines, for TypeScript and JavaScript alike.
+ *
+ * The literals STAY, which is the whole reason this is separate from
+ * `withoutTsProse`. A guard over code that builds its output with template
+ * literals — `scripts/read-answers.mjs` reads half its sheet inside one — would
+ * otherwise have every one of those reads stripped out from under it and report
+ * the file as not doing what it plainly does. Reach for this when the thing
+ * being checked can legitimately live in a string, and for `withoutTsProse`
+ * when a name in a string is prose about a thing rather than a use of it.
+ */
+export function withoutTsComments(text) {
+  return text
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .split("\n")
+    .filter((line) => !/^\s*(\/\/|\*)/.test(line))
+    .join("\n");
+}
+
+/**
  * Block comments, comment-only lines, and STRING LITERALS, for TypeScript.
  *
  * The literals go too, and for the same reason the comments do: a verdict that
@@ -49,11 +68,7 @@ export function withoutHashComments(text) {
  * does exactly that, deliberately, and says so.
  */
 export function withoutTsProse(text) {
-  return text
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .split("\n")
-    .filter((line) => !/^\s*(\/\/|\*)/.test(line))
-    .join("\n")
+  return withoutTsComments(text)
     .replace(/`(?:[^`\\]|\\.)*`/g, '""')
     .replace(/"(?:[^"\\\n]|\\.)*"/g, '""')
     .replace(/'(?:[^'\\\n]|\\.)*'/g, '""');

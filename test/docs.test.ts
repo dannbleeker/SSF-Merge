@@ -65,3 +65,38 @@ describe("the documentation set is whole", () => {
     }
   });
 });
+
+describe("the probe's question numbers", () => {
+  /**
+   * The table in `docs/PROBE.md` and the headings `read-answers.mjs` prints are
+   * two hand-maintained lists of the same questions, and they had already come
+   * apart: the export arm was added as question 5 in the reader while the doc
+   * still called `fill.setImage` 5, so the same number named two different
+   * questions and a sheet read against the doc answered the wrong one.
+   *
+   * The NUMBERS are pinned and the wording deliberately is not. A gate over the
+   * text would make every rephrasing a two-file edit and would be switched off
+   * within a month; the drift that actually happened was numeric.
+   */
+  const doc = readFileSync("docs/PROBE.md", "utf8");
+  const reader = readFileSync("scripts/read-answers.mjs", "utf8");
+  const inDoc = [...doc.matchAll(/^\| (\d+) \| /gm)].map((m) => Number(m[1]));
+  // The reader prints them as "\n5. Does …" at the head of each section.
+  const inReader = [...reader.matchAll(/"\\n(\d+)\. /g)].map((m) => Number(m[1]));
+
+  it("finds both lists", () => {
+    // Guards the two patterns. Either one matching nothing would make the
+    // comparison below pass on a pair of empty arrays.
+    expect(inDoc.length).toBeGreaterThan(5);
+    expect(inReader.length).toBeGreaterThan(5);
+  });
+
+  it("asks each number once, in order, in both places", () => {
+    expect(inDoc).toStrictEqual([...inDoc].sort((a, b) => a - b));
+    expect(inReader).toStrictEqual([...inReader].sort((a, b) => a - b));
+    expect(new Set(inDoc).size).toBe(inDoc.length);
+    // Question 0 is the control arm, which the reader folds into section 1
+    // rather than printing on its own line.
+    expect(inReader).toStrictEqual(inDoc.filter((n) => n !== 0));
+  });
+});

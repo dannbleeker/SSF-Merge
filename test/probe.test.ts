@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 // @ts-expect-error — plain .mjs with no types, shared with the scripts.
-import { withoutTsProse } from "../scripts/without-prose.mjs";
+import { withoutTsComments, withoutTsProse } from "../scripts/without-prose.mjs";
 import { creationIdOf } from "../src/core/pptx/clone.js";
 import { Pkg } from "../src/core/pptx/pkg.js";
 import { TAG_RUN, readSlideTags } from "../src/core/pptx/tags.js";
@@ -244,8 +244,38 @@ describe("the questions the review added", () => {
     expect(withoutTsProse(snippet), "never sets a selection").not.toContain("setSelectedShapes");
   });
 
-  it("runs both new questions and reports them", () => {
+  it("runs both new questions", () => {
     expect(snippet).toContain("answers.deckRead");
     expect(snippet).toContain("answers.insertWhileSelected");
+  });
+});
+
+describe("every arm the probe collects is READ", () => {
+  /**
+   * The gap this closes was real and it was mine. `deckRead` and
+   * `insertWhileSelected` were asked, answered by a live host, written into the
+   * sheet — and `read-answers.mjs` printed neither, so the round reported seven
+   * of nine arms and looked complete. An arm nobody reads is the same nothing
+   * as an arm nobody asks, and it is worse, because the sheet says it is there.
+   *
+   * The test above this one was the near miss: it is named "reports them" and
+   * asserts only that the SNIPPET runs them. It is renamed now to claim what it
+   * checks.
+   *
+   * Both halves come from source rather than from a list here, so a list cannot
+   * go stale — which is the failure mode a hand-written pair of names would
+   * reintroduce on the next arm.
+   */
+  const reader = readFileSync("scripts/read-answers.mjs", "utf8");
+  const collected = [...snippet.matchAll(/\banswers\.(\w+)\s*=/g)].map((m) => m[1]);
+
+  it("finds arms to check", () => {
+    // Guards the regex, not the reader. A pattern that matched nothing would
+    // make every assertion below pass on an empty list.
+    expect(collected.length).toBeGreaterThan(5);
+  });
+
+  it.each(collected)("reads %s", (arm) => {
+    expect(withoutTsComments(reader), `${arm} is collected and never read`).toContain(`sheet.${arm}`);
   });
 });
