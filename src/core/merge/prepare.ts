@@ -9,6 +9,7 @@
  */
 import type { Pkg } from "../pptx/pkg.js";
 import type { Block, BlockSlide } from "./plan.js";
+import { notesPathFor } from "../pptx/clone.js";
 import { fieldsIn } from "./text.js";
 
 export interface BlockRequest {
@@ -74,7 +75,19 @@ export async function prepareBlock(pkg: Pkg, req: BlockRequest, runId: string): 
   for (let i = 0; i < count; i++) {
     const path = paths[start + i];
     if (!path) return { ok: false, why: `Slide ${req.from + i} is not in the deck that came back.` };
-    const own = fieldsIn(await pkg.doc(path));
+    // The slide, and its speaker notes.
+    //
+    // `runPlan` merges the notes page — a template whose notes read "Call
+    // {{Name}} afterwards" otherwise ships that verbatim on every handout — but
+    // this scan only ever read the slide. So a block whose placeholders live in
+    // the notes was refused with "no placeholders, so every copy would be
+    // identical", about a merge that would have filled them.
+    //
+    // The mirror of the chart case below, and the worse direction: there the
+    // pane reported fields it cannot merge, here it hid fields it can and
+    // blocked the merge on the strength of it.
+    const notes = await notesPathFor(pkg, path);
+    const own = [...fieldsIn(await pkg.doc(path)), ...(notes ? fieldsIn(await pkg.doc(notes)) : [])];
     for (const f of own) if (!fields.includes(f)) fields.push(f);
     // Fields the author placed somewhere this engine does not reach. Read from
     // the parts THIS slide relates to, never from the package at large: on the

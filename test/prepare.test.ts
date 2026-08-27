@@ -170,3 +170,51 @@ describe("placeholders the engine does not reach", () => {
     expect(prepared.ok && prepared.unmergeable).toEqual([]);
   });
 });
+
+describe("placeholders in the speaker notes", () => {
+  /**
+   * `runPlan` merges the notes page and always has — a template whose notes
+   * read "Call {{Name}} afterwards" otherwise ships that verbatim on every
+   * handout and in the presenter view. This scan only ever read the SLIDE.
+   *
+   * So a block whose placeholders live in the notes was refused with "no
+   * placeholders, so every copy would be identical" — a sentence about a merge
+   * that would have filled them. The mirror of the chart case, and the worse
+   * direction: there the pane reported fields it cannot merge; here it hid
+   * fields it can and blocked the merge on the strength of it.
+   */
+  it("counts a field the merge would fill", async () => {
+    const deck = await makeDeck([
+      { paragraphs: [["Quarterly review"]], notes: "Call {{Name}} afterwards" },
+      { paragraphs: [["after"]] },
+    ]);
+    const pkg = await Pkg.open(deck);
+    const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "run1");
+    expect(prepared.ok, prepared.ok ? "" : prepared.why).toBe(true);
+    if (!prepared.ok) return;
+    expect(prepared.fields).toEqual(["Name"]);
+  });
+
+  it("merges the slide's and the notes' fields into one list, without duplicates", async () => {
+    const deck = await makeDeck([
+      { paragraphs: [["Hello {{First}}"]], notes: "Ring {{First}} about {{Topic}}" },
+      { paragraphs: [["after"]] },
+    ]);
+    const pkg = await Pkg.open(deck);
+    const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "run1");
+    expect(prepared.ok && prepared.fields).toEqual(["First", "Topic"]);
+  });
+
+  it("still refuses a block with nothing anywhere", async () => {
+    // The refusal has to survive: a merge with no placeholders at all produces
+    // N identical copies, which is expensive to undo once it is in the deck.
+    const deck = await makeDeck([
+      { paragraphs: [["Quarterly review"]], notes: "no fields here" },
+      { paragraphs: [["after"]] },
+    ]);
+    const pkg = await Pkg.open(deck);
+    const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "run1");
+    expect(prepared.ok).toBe(false);
+    expect(prepared.ok || prepared.why).toContain("no placeholders");
+  });
+});
