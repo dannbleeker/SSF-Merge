@@ -168,11 +168,24 @@ export function render(root: HTMLElement, state: PaneState, current: StepId): vo
   // open, and blob downloads from one are blocked in WebView2
   // (office-js#1511). So the record is on screen, selectable, between markers
   // — the same channel the host probe already uses, because it is the one that
-  // works. Shown only once a run has finished, so it never competes with the
-  // sentence saying what happened.
-  if (state.log && !state.running) {
+  // works.
+  //
+  // Shown DURING a run as well as after it. It was gated on the run being over
+  // — "so it never competes with the sentence saying what happened" — and
+  // there is no such sentence while a run is out: the notice is cleared and
+  // the only line on screen is the call being waited on. What the gate did
+  // cost is the case the record exists for. A host that wedges never reaches
+  // the `finally` that used to write the log, so the run nobody can explain
+  // was the run with nothing to copy.
+  if (state.log) {
     const details = el(doc, "details", { class: "runlog" });
-    details.append(el(doc, "summary", { text: "What this run did, step by step" }));
+    details.append(
+      el(doc, "summary", {
+        // Says which it is. "did" on a run still going is a small lie that
+        // makes a reader trust the last line as the final one.
+        text: state.running ? "What this run has done so far" : "What this run did, step by step",
+      }),
+    );
     details.append(el(doc, "pre", { text: `=== SSF MERGE RUN LOG ===\n${state.log}\n=== END ===` }));
     main.append(details);
   }

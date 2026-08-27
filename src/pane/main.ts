@@ -454,18 +454,35 @@ async function merge(): Promise<void> {
   // reached NONE of its archived rounds — present in the code, absent from
   // every artefact anyone read.
   trace("pane", "run starting", { ...hostEnvironment(), deck: state.deckSize ?? "unknown" });
-  // The WINDOW, which is a different need from the record: a run log can only
-  // be handed over once the run ends, and the runs worth explaining are the
-  // ones that never do. What is on screen survives a host that takes the pane
-  // with it.
+  // The window and the record, both kept current as the run goes.
+  //
+  // The record used to be written ONCE, in the `finally` below, and this
+  // comment used to explain that "a run log can only be handed over once the
+  // run ends, and the runs worth explaining are the ones that never do". The
+  // first half was never true: the entries are in memory from the first call,
+  // and `traceText` will format them at any moment. Only the second half was —
+  // and it is the argument for writing the record continuously, not for
+  // withholding it.
+  //
+  // What it cost: on a host that wedges, the pane sat on "Waiting on
+  // PowerPoint: inserting the merged deck…" forever with nothing to copy, on
+  // exactly the run somebody needs to explain. A task pane has no devtools and
+  // cannot hand over a file, so what is on screen is the only channel there is.
+  //
+  // Cheap enough to do on every entry: a merge emits about ten, and the cap is
+  // 500. This is not a hot loop.
   onTrace((e) => {
-    if (e.scope !== "host" || e.message !== "issued") return;
-    const call = e.data?.call;
-    if (typeof call === "string") {
-      state = { ...state, inFlight: call };
-      draw();
-    }
+    const call = e.scope === "host" && e.message === "issued" ? e.data?.call : undefined;
+    state = { ...state, log: traceText(), ...(typeof call === "string" ? { inFlight: call } : {}) };
+    draw();
   });
+  // Seeded, not left to the first entry that arrives after the line above.
+  // `onTrace` only sees what is written AFTER it subscribes, and the run's
+  // first line — the environment, which is the most useful thing in the record
+  // — is written before it. A run whose first host call is slow would then
+  // show an empty record for as long as that call takes, which is the window
+  // this whole change is about.
+  state = { ...state, log: traceText() };
   draw();
   try {
     // BEFORE the call that makes an undo necessary. `deckAtStart` is the floor

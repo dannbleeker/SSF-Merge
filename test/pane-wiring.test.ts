@@ -958,3 +958,70 @@ describe("the conditional slide control", () => {
     await settle();
   });
 });
+
+describe("the run record while the host has not answered", () => {
+  /**
+   * The case the record exists for, driven through the real `main.ts`.
+   *
+   * `render.ts` gated the record on the run being over and `main.ts` wrote it
+   * once, in a `finally`. Between them, a host that never answers produced a
+   * pane showing "Waiting on PowerPoint: …" and nothing else — no record, on
+   * the one run somebody needs to explain. A task pane has no devtools and
+   * cannot hand over a file, so what is on screen is the whole channel.
+   *
+   * Asserted here rather than only in `pane-render.test.ts` because that file
+   * hands `render` a state with a `log` already in it. The question this one
+   * asks is whether anything PUTS one there while the call is out.
+   */
+  it("is on screen, with the call named, before the merge returns", async () => {
+    await reachMerge();
+    const held = deferred<unknown>();
+    office.runMerge.mockReturnValueOnce(held.promise);
+    primary().click();
+    await settle();
+
+    const log = pane().querySelector(".runlog pre")?.textContent ?? "";
+    expect(log, "no record while the host has not answered").toContain("=== SSF MERGE RUN LOG ===");
+    // The environment line the run emits after its mark, so the record is
+    // useful and not merely present.
+    expect(log).toContain("run starting");
+    expect(pane().querySelector(".runlog summary")?.textContent).toBe("What this run has done so far");
+    // The "Waiting on PowerPoint: …" line is deliberately NOT asserted here.
+    // It comes from `inFlight`, which is set by a host call tracing "issued" —
+    // and this harness mocks `runMerge`, so no host call happens and the line
+    // cannot appear. Asserting it would fail against correct code, and
+    // asserting its absence would pin a fact about the mock rather than about
+    // the pane. `pane-render.test.ts` covers that line directly.
+
+    held.resolve(OUTCOME);
+    await settle();
+    // And it is still there afterwards, now claiming to be finished.
+    expect(pane().querySelector(".runlog summary")?.textContent).toBe("What this run did, step by step");
+  });
+
+  it("starts empty for each run rather than showing the last one", async () => {
+    // `beginRun` clears the entries and the state's log goes with it. Without
+    // that, the first thing on screen during a merge is the PREVIOUS merge's
+    // record, which reads as this one having already got that far.
+    await reachMerge();
+    office.runMerge.mockResolvedValueOnce({ ...OUTCOME, detail: "first" });
+    primary().click();
+    await settle();
+    const first = pane().querySelector(".runlog pre")?.textContent ?? "";
+    expect(first).toContain("run starting");
+
+    // A second run, held open, must not be showing the first one's lines.
+    (pane().querySelector('[data-back="preview"]') as HTMLElement).click();
+    (pane().querySelector("[data-forward]") as HTMLElement).click();
+    const held = deferred<unknown>();
+    office.runMerge.mockReturnValueOnce(held.promise);
+    primary().click();
+    await settle();
+    const second = pane().querySelector(".runlog pre")?.textContent ?? "";
+    expect(second.split("\n").length, "the second run shows the first one's lines").toBeLessThan(
+      first.split("\n").length + 3,
+    );
+    held.resolve(OUTCOME);
+    await settle();
+  });
+});
