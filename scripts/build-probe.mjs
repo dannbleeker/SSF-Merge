@@ -51,7 +51,7 @@ const snippet = `/*
  * SSF Merge — host probe
  *
  * Paste this whole file into a blank Script Lab snippet in PowerPoint and press
- * Run. It appends slides to the end of the current deck, asks five questions,
+ * Run. It appends slides to the end of the current deck, asks seven questions,
  * removes what it added, and prints a JSON block.
  *
  * COPY THAT JSON BACK. It is the answer sheet, and nothing in the add-in should
@@ -272,6 +272,111 @@ async function sweep(deckAtStart: number, added: number): Promise<string> {
   }
 }
 
+/**
+ * Does \`slides.load("items/id")\` answer as many slides as \`getCount()\` says?
+ *
+ * office-js#4272 reports a load of more than ~50 items answering SHORT on the
+ * web, and a sibling add-in pages every collection read at 20 because of it.
+ * This add-in loads the WHOLE deck's ids twice — once to pick the template
+ * block's ids, once to turn a selection into slide numbers — and a mail-merge
+ * template deck is exactly the kind that gets large.
+ *
+ * Three facts, none inferable from the others:
+ *
+ * - \`count\` against \`items\`: whether the read is short at all, at THIS size.
+ * - \`prefixOk\`: whether a short read is the first n IN DECK ORDER. If it is,
+ *   the damage is bounded — a block inside the prefix is right and one past it
+ *   is refused. If it is not, \`deckIds.indexOf(id)\` returns the wrong slide
+ *   NUMBER, silently, and the merge clones slides nobody chose. Checked against
+ *   \`getItemAt\`, which is a different code path and not subject to a
+ *   collection load's ceiling.
+ * - \`empty\`: whether the read comes back with nothing after a sync that
+ *   SUCCEEDED — office-js#6363, and the sibling project's central failure.
+ *
+ * \`deckSize\` is reported because a nine-slide deck cannot answer the >50
+ * question and must not look as though it did.
+ */
+async function deckReadProbe(): Promise<Record<string, unknown>> {
+  const out: Record<string, unknown> = {};
+  try {
+    await withTimeout(
+      PowerPoint.run(async (context) => {
+        const slides = context.presentation.slides;
+        const count = slides.getCount();
+        slides.load("items/id");
+        await context.sync();
+
+        const loaded = slides.items.map((s) => s.id);
+        out.deckSize = count.value;
+        out.items = loaded.length;
+        out.short = loaded.length < count.value;
+        out.empty = loaded.length === 0;
+        out.canAnswerFiftyQuestion = count.value > 50;
+
+        // The same ids by POSITION, which is how a paged reader would take
+        // them. Bounded to what the collection returned plus a few past it, so
+        // a large deck does not turn this into a hundred syncs.
+        const upTo = Math.min(count.value, Math.max(loaded.length, 1) + 3);
+        const handles = [];
+        for (let i = 0; i < upTo; i++) {
+          const slide = slides.getItemAt(i);
+          slide.load("id");
+          handles.push(slide);
+        }
+        await context.sync();
+        const positional = handles.map((h) => h.id);
+        out.byPosition = positional.length;
+        // The load's answer is the first n of the deck, in order.
+        out.prefixOk = loaded.every((id, i) => id === positional[i]);
+      }),
+      20000,
+      "reading the deck's slide ids",
+    );
+  } catch (e) {
+    out.error = e instanceof Error ? e.message : String(e);
+  }
+  return out;
+}
+
+/**
+ * Does an insert land while a SHAPE is selected?
+ *
+ * office-js#2775 reports \`addTextBox\` deleting the selected shape on the web,
+ * and #3698 reports a PICTURE refusing to insert while one is selected. This
+ * add-in inserts SLIDES, which is neither — but nobody has established that,
+ * and the preview step now inserts at a moment when the user may well have
+ * something selected. A sibling add-in drops the selection before every draw;
+ * doing the same here would mean CALLING \`setSelectedShapes\`, which is the one
+ * call in this family with a measured history of wedging the host. So the
+ * question is asked before any code is written for it.
+ *
+ * Read-only about the selection: it never selects anything, it only reports
+ * what was already selected and whether the insert worked anyway.
+ */
+async function insertWhileSelectedProbe(): Promise<Record<string, unknown>> {
+  const out: Record<string, unknown> = {};
+  try {
+    out.shapesSelected = await withTimeout(
+      PowerPoint.run(async (context) => {
+        const shapes = context.presentation.getSelectedShapes();
+        shapes.load("items/id");
+        await context.sync();
+        return shapes.items.length;
+      }),
+      15000,
+      "reading the selected shapes",
+    );
+  } catch (e) {
+    // 1.5, and the floor is 1.2 — an older host simply cannot say.
+    out.shapesSelected = -1;
+    out.selectionReadError = e instanceof Error ? e.message : String(e);
+  }
+  const before = await slideCount();
+  out.insert = await insertDeck(FRESH_DECK);
+  out.landed = (await slideCount()) - before;
+  return out;
+}
+
 async function main() {
   const deckAtStart = await slideCount();
   const answers: Record<string, unknown> = {
@@ -303,6 +408,13 @@ async function main() {
   answers.insertCollision = await insertDeck(COLLISION_DECK);
   // Only draws if this run has a slide of its own to draw on.
   answers.substring = await substringProbe((await slideCount()) > deckAtStart);
+  // How the deck's own id list behaves — the read this add-in does twice and
+  // pages nowhere. See deckReadProbe.
+  answers.deckRead = await deckReadProbe();
+  // Whether an insert cares that a shape is selected. Asked, never worked
+  // around: the workaround would be setSelectedShapes, which is the call with
+  // the measured wedging history.
+  answers.insertWhileSelected = await insertWhileSelectedProbe();
 
   const deckNow = await slideCount();
   answers.sweep = await sweep(deckAtStart, deckNow - deckAtStart);

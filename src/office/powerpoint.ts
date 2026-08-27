@@ -72,6 +72,62 @@ export async function lastSlideId(): Promise<string> {
   );
 }
 
+/**
+ * Slides read per sync when taking the deck's ids.
+ *
+ * office-js#4272: a collection load of more than ~50 items answers SHORT on the
+ * web. A sibling add-in pages every collection read at 20 for that reason, and
+ * this is the same number for the same reason.
+ */
+export const ID_PAGE = 20;
+
+/**
+ * Every slide's id, in deck order, without a big collection load.
+ *
+ * `slides.load("items/id")` is the obvious way and it is the one office-js#4272
+ * describes failing: past ~50 items the web host answers with fewer than it
+ * has, after a sync that SUCCEEDED. This add-in needs that list twice — to pick
+ * a template block's ids, and to turn a selection into slide numbers — and a
+ * mail-merge template deck is exactly the kind that gets large.
+ *
+ * What a short read costs here is worth being precise about, because it is not
+ * merely a smaller list. `blockIds` slices by INDEX and `blockFromSelection`
+ * calls `indexOf`, so if the ids that come back are not the first n in deck
+ * order, both answer the wrong SLIDE NUMBER — silently, and the merge then
+ * clones slides nobody chose.
+ *
+ * So the ids are taken by POSITION instead, in pages: `getItemAt(i)` is a
+ * different code path from a collection load and is not subject to its ceiling.
+ * `getCount` is a scalar, not a load, and is the authority on how many there
+ * are. The probe asks whether a short read is prefix-stable on this host
+ * (`deckRead`); this does not wait for the answer, because paging is correct
+ * either way and the unpaged read is wrong if the answer is bad.
+ */
+export async function deckSlideIds(): Promise<string[]> {
+  const total = await slideCount();
+  const ids: string[] = [];
+  for (let start = 0; start < total; start += ID_PAGE) {
+    const end = Math.min(start + ID_PAGE, total);
+    const page = await withTimeout(
+      PowerPoint.run(async (context) => {
+        const slides = context.presentation.slides;
+        const handles = [];
+        for (let i = start; i < end; i++) {
+          const slide = slides.getItemAt(i);
+          slide.load("id");
+          handles.push(slide);
+        }
+        await context.sync();
+        return handles.map((h) => h.id);
+      }),
+      BUDGET.read,
+      `reading slide ids ${start + 1} to ${end}`,
+    );
+    ids.push(...page);
+  }
+  return ids;
+}
+
 export interface TemplateBytes {
   /** The package, base64. */
   base64: string;
@@ -100,19 +156,12 @@ export async function readTemplate(block: { from: number; to: number }): Promise
   const choice = chooseDeckSource(hostSupports);
   const offset = templateOffset(choice.source, block.from - 1);
   if (choice.source === "subset") {
+    // Paged and positional, never one big collection load. See `deckSlideIds`.
+    const deckIds = await deckSlideIds();
     const base64 = await withTimeout(
       PowerPoint.run(async (context) => {
         const slides = context.presentation.slides;
-        // "items" alone does not load the items' properties — Microsoft says
-        // so, and a sibling project spent a session on a collection read that
-        // named none. `id` is the only thing wanted here.
-        slides.load("items/id");
-        await context.sync();
-        const chosen = blockIds(
-          slides.items.map((s) => s.id),
-          block.from,
-          block.to,
-        );
+        const chosen = blockIds(deckIds, block.from, block.to);
         // Thrown rather than returned: this is a call, and the decision it
         // reports on was made in `src/host` where the suite can check it. The
         // message is already a sentence the pane shows as it stands.
@@ -298,19 +347,21 @@ export async function selectedBlock(): Promise<SelectedBlock> {
   }
   try {
     return await withTimeout(
-      PowerPoint.run(async (context) => {
-        const selected = context.presentation.getSelectedSlides();
-        selected.load("items/id");
-        // The deck's ids in the SAME sync this read already costs — the
-        // selection's ids mean nothing without them.
-        const deck = context.presentation.slides;
-        deck.load("items/id");
-        await context.sync();
-        return blockFromSelection(
-          selected.items.map((s) => s.id),
-          deck.items.map((s) => s.id),
-        );
-      }),
+      (async () => {
+        // The deck's ids first, paged and positional — the selection's ids mean
+        // nothing without them, and a single collection load of both is exactly
+        // what office-js#4272 answers short. See `deckSlideIds`.
+        const deckIds = await deckSlideIds();
+        return PowerPoint.run(async (context) => {
+          const selected = context.presentation.getSelectedSlides();
+          selected.load("items/id");
+          await context.sync();
+          return blockFromSelection(
+            selected.items.map((s) => s.id),
+            deckIds,
+          );
+        });
+      })(),
       BUDGET.read,
       "reading the selected slides",
     );
