@@ -7,6 +7,54 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added — a merge can be taken back
+
+`undoInsert` and `sweepPlan` were built, clamped and tested, and reachable from
+nothing. The pane kept the numbers an undo is clamped against, `undoSummary` was
+written and covered, and no view rendered either — so a real merge into
+somebody's deck had no way back short of pressing Ctrl+Z 720 times.
+
+A finished merge now offers **"Remove slides 13 to 732, which this merge
+added"**, below the sentence saying what the merge did, so what happened is read
+before the offer to undo it. A partial sweep KEEPS the offer, because slides are
+still in the deck and the user is the only one who can finish the job.
+
+### Fixed — a sweep could have deleted a stranger's slides
+
+**This reverses a decision recorded in the tests, and the reversal is the
+point.** `sweepPlan` capped its count at what the run added when the deck had
+grown by more, on the reasoning that the extra slides "are not ours, so do not
+take them". That reasoning inverts: the sweep removes the LAST slides, so if the
+deck grew by ten and the run added three, the last three belong to whoever added
+the other seven — it would delete their slides and leave the run's own in place.
+
+Harmless while the only caller was a probe sweeping seconds after it appended,
+where nothing has had time to arrive. Not harmless for an undo pressed after
+looking through 720 slides, on a deck AutoSave has been writing to and a
+co-author may have been editing. It refuses outright now, and the pane says so
+rather than doing nothing quietly.
+
+### Added — what was in the package, measured before it was sent
+
+The package is handed to `insertSlidesFromBase64` and nothing keeps it, so when
+PowerPoint answers `InvalidArgument` the file that caused it no longer exists
+anywhere. Handing the bytes back is not available either — blob downloads from a
+task pane do not work (office-js#1511).
+
+So every insert now records what the package WAS while it still existed: slide
+count, part count, and **byte size**, which is the number most likely to explain
+an insert that died inside its budget and which nothing recorded. On both
+populations, because a byte count with no successful run to compare it against
+cannot say whether this one was unusual.
+
+A refusal additionally records the **recipe** — block bounds, row count, column
+names and types, condition count. The engine is pure and package-only, so those
+rebuild the package offline in Node with no PowerPoint anywhere. **Structure
+only, and that is a rule rather than an oversight:** a mail merge's rows are the
+user's confidential data, and this record is written to be copied out of the
+pane and pasted into an issue. Values do not change the parts, the relationships
+or the content types, which is where a rejected package goes wrong.
+
 ### Added — a run record, and the merge finally says what it DID
 
 **Every host call now names itself and its duration, on both populations.** Until

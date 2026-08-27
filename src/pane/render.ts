@@ -29,7 +29,7 @@ import {
   unmatchedFields,
 } from "./steps.js";
 import type { OrangeHolder, PaneState, StepId } from "./steps.js";
-import { blockName, blockSummary, mergeArithmetic, mergeSummary, plural } from "./summary.js";
+import { blockName, blockSummary, mergeArithmetic, mergeSummary, plural, undoSummary } from "./summary.js";
 
 function el<K extends keyof HTMLElementTagNameMap>(
   doc: Document,
@@ -110,6 +110,30 @@ export function render(root: HTMLElement, state: PaneState, current: StepId): vo
   // wrong, and filing it under the same sentence as "Attach your data first"
   // makes both read as nagging.
   if (state.notice) main.append(el(doc, "p", { class: "blocked notice", text: state.notice }));
+
+  // What a finished merge added, and the way back.
+  //
+  // `undoInsert` and `sweepPlan` were built and tested before this and were
+  // reachable from nothing: `state.added` was set, `undoSummary` was written
+  // and covered, and no view rendered either. So the first real merge into
+  // somebody's deck had no way back short of pressing Ctrl+Z the right number
+  // of times, and a mail merge is exactly the operation you want to undo after
+  // looking at what it produced.
+  //
+  // Phrased as the SLIDES rather than as "undo", because this deletes part of
+  // a presentation and the sentence should say which part.
+  if (state.added && state.added > 0 && state.deckSize !== undefined && current === "merge") {
+    const card = el(doc, "div", { class: "card undo" });
+    card.append(el(doc, "p", { text: undoSummary(state.added, state.deckSize) }));
+    card.append(
+      el(doc, "button", {
+        class: "secondary",
+        text: state.running === "undo" ? "Removing…" : "Remove these slides",
+        attrs: { "data-action": "undo", ...(state.running ? { disabled: "" } : {}) },
+      }),
+    );
+    main.append(card);
+  }
 
   // WHICH host call is in flight, while one is.
   //

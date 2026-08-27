@@ -654,3 +654,95 @@ describe("taking rows out, through the real pane", () => {
     expect(box(1).checked).toBe(true);
   });
 });
+
+describe("taking a real merge back", () => {
+  /** Walk to the merge step and land a run of six slides. */
+  async function afterMerge(): Promise<HTMLElement> {
+    const root = await openPane();
+    await settle();
+    type("from", "4");
+    type("to", "6");
+    office.inspectBlock.mockResolvedValueOnce(REPORT);
+    primary().click();
+    await settle();
+    type("paste", "First\tLast\nAda\tLovelace\nGrace\tHopper");
+    primary().click(); // fields -> preview
+    // The preview step's primary RUNS a preview; the way past it is its own
+    // control. Clicking the primary here ran a merge and left the pane on
+    // step 3, which is why the first version of this helper landed nothing.
+    document.querySelector<HTMLButtonElement>('[data-forward="merge"]')?.click();
+    office.runMerge.mockResolvedValueOnce(OUTCOME);
+    primary().click();
+    await settle();
+    return root;
+  }
+
+  const undoButton = (): HTMLButtonElement | null =>
+    document.querySelector<HTMLButtonElement>('.card.undo button[data-action="undo"]');
+
+  it("offers the way back once a merge has landed", async () => {
+    // `undoInsert` and `sweepPlan` were built and tested before this and were
+    // reachable from nothing — the numbers were kept, the sentence was
+    // written, and no view rendered either.
+    await afterMerge();
+    expect(undoButton()).not.toBeNull();
+  });
+
+  it("sweeps with the run's OWN numbers, not the pane's current ones", async () => {
+    // The clamps are only worth anything against the count taken before the
+    // run inserted. Handing the sweep a number the pane happens to hold now is
+    // how a positional delete reaches slides the user owned first.
+    await afterMerge();
+    office.undoMerge.mockResolvedValueOnce({ removed: 6, detail: "removed 6 slide(s) from index 12" });
+    undoButton()?.click();
+    await settle();
+
+    expect(office.undoMerge).toHaveBeenCalledTimes(1);
+    expect(office.undoMerge.mock.calls[0]?.[0]).toMatchObject({ deckAtStart: 12, added: 6 });
+  });
+
+  it("puts the way back away once the slides are gone", async () => {
+    await afterMerge();
+    office.undoMerge.mockResolvedValueOnce({ removed: 6, detail: "removed 6 slide(s) from index 12" });
+    undoButton()?.click();
+    await settle();
+    expect(undoButton()).toBeNull();
+    expect(document.body.textContent).toContain("back to 12");
+  });
+
+  it("KEEPS the way back when the sweep only got some of them", async () => {
+    // A partial sweep leaves slides in the deck and the user is the only one
+    // who can finish the job, so the button has to stay.
+    await afterMerge();
+    office.undoMerge.mockResolvedValueOnce({ removed: 2, detail: "asked for 6 and the deck shrank by 2" });
+    undoButton()?.click();
+    await settle();
+    expect(undoButton(), "still offered").not.toBeNull();
+    expect(document.body.textContent).toContain("Some of the merge is still there");
+  });
+
+  it("says so when the sweep refused, and leaves the deck alone", async () => {
+    // `sweepPlan` refuses when the deck gained more than the run added,
+    // because the last N slides are then somebody else's. That refusal must
+    // reach the user as a sentence rather than as a silent no-op.
+    await afterMerge();
+    office.undoMerge.mockResolvedValueOnce({ removed: 0, detail: "nothing to take back (deck was 12, is 20)" });
+    undoButton()?.click();
+    await settle();
+    expect(document.body.textContent).toContain("Nothing was removed");
+    expect(undoButton(), "still offered, because nothing went").not.toBeNull();
+  });
+
+  it("does not take a second press while a sweep is out", async () => {
+    await afterMerge();
+    const held = deferred<unknown>();
+    office.undoMerge.mockReturnValueOnce(held.promise);
+    undoButton()?.click();
+    await settle();
+    undoButton()?.click();
+    await settle();
+    expect(office.undoMerge).toHaveBeenCalledTimes(1);
+    held.resolve({ removed: 6, detail: "removed 6" });
+    await settle();
+  });
+});

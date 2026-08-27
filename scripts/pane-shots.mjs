@@ -92,6 +92,12 @@ const STATES = [
   },
   {
     // The run record, collapsed. It must not bury the sentence above it.
+    // The way back, which nothing rendered until 2026-08-27.
+    name: "4-merge-done-undo",
+    step: "merge",
+    state: { ...full, added: 720, deckSize: 732, notice: "720 slides added after slide 12 · 480 placeholders filled." },
+  },
+  {
     name: "4-merge-done-with-log",
     step: "merge",
     state: {

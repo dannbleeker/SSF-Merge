@@ -25,6 +25,7 @@ import type { RecordSet } from "../core/data/recordset.js";
 import type { EmptyPolicy } from "../core/merge/resolve.js";
 import { insertDeck, readTemplate, slideCount, undoInsert } from "./powerpoint.js";
 import { readable } from "../host/errors.js";
+import { trace } from "../core/trace.js";
 
 export interface MergeRequest {
   /** The template block, in the numbering the thumbnail rail shows. */
@@ -205,10 +206,62 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
   // the artefact makes the verdict a statement about the wrong thing — and on
   // the file route the two disagreed by the size of the user's deck.
   const sending = await pkg.slidePaths();
-  const insert = await insertDeck(await pkg.toBase64(), sending.length);
+  const base64 = await pkg.toBase64();
+
+  // MEASURE THE ARTEFACT BEFORE IT IS GONE.
+  //
+  // `insertSlidesFromBase64` is handed this string and nothing keeps it: the
+  // package goes out of scope the moment the call returns, so when PowerPoint
+  // answers `InvalidArgument` the file that caused it no longer exists
+  // anywhere. Handing the bytes back is not available either — blob downloads
+  // from a task pane do not work (office-js#1511) — so what survives has to be
+  // measurements taken while the package is still here.
+  //
+  // Size especially. A 400-row merge is tens of megabytes of base64 held as a
+  // JS string in a task-pane WebView, and it is the number most likely to
+  // explain an insert that died inside `BUDGET.insert`. Nothing recorded it.
+  //
+  // On BOTH populations, not only when the insert fails: a byte count with no
+  // successful run to compare it against cannot say whether this one was
+  // unusual.
+  trace("merge", "handing the package over", {
+    slides: sending.length,
+    parts: pkg.partNames().length,
+    bytes: base64.length,
+    rows: req.records.rows.length,
+    block: `${req.from}-${req.to}`,
+  });
+
+  const insert = await insertDeck(base64, sending.length);
   const added = insert.landed;
 
   if (insert.verdict !== "yes") {
+    // The RECIPE, so the package can be rebuilt without another round.
+    //
+    // The engine is pure and package-only — `Pkg.open` → `prepareBlock` →
+    // `buildPlan` → `runPlan` → `toBase64` reproduces the exact package in
+    // Node with no PowerPoint anywhere. So the way to examine a package
+    // PowerPoint rejected is not to keep its bytes (which cannot leave a task
+    // pane anyway, office-js#1511) but to keep what MADE it. The template is
+    // the user's own deck, which they still have.
+    //
+    // STRUCTURE ONLY, and that is a rule rather than an oversight. A mail
+    // merge's rows are the user's confidential data — names, salaries,
+    // customer lists — and this record is written to be copied out of the pane
+    // and pasted into an issue. Column names and types describe the shape well
+    // enough to rebuild a package of the right structure; the values do not
+    // change the parts, the relationships or the content types, which is where
+    // a rejected package goes wrong.
+    trace("merge", "the host refused the package", {
+      verdict: insert.verdict,
+      block: `${req.from}-${req.to}`,
+      rows: req.records.rows.length,
+      columns: req.records.columns.map((c) => `${c.name}:${c.type}`),
+      conditions: Object.keys(req.conditions ?? {}).length,
+      slides: sending.length,
+      bytes: base64.length,
+      runId,
+    });
     return {
       ok: false,
       detail: `The merge was built but PowerPoint did not take it: ${insert.detail}`,

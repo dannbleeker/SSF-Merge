@@ -287,6 +287,27 @@ theme-change event for a PowerPoint task pane — the one in the Office typings
 belongs to Outlook — so switching PowerPoint between light and dark while the
 pane is open needs the pane reopened.
 
+## Taking a merge back
+
+After a merge lands, the pane offers **"Remove slides 13 to 732, which this
+merge added"**. It names the slides rather than saying "undo", because it is
+deleting part of your presentation and you should be able to check before
+pressing.
+
+It works by POSITION, not by looking the slides up: a slide a run has just
+added cannot be found by id on PowerPoint for the web. The sweep is clamped so
+it can never reach an index below the deck's size when the merge started, so
+nothing you had before the run can be touched.
+
+**If your deck grew after the merge, it refuses.** Add slides yourself, or have
+a co-author add some, and the last slides in the deck are no longer the ones the
+merge added — so the sweep says nothing was removed and leaves the deck alone.
+Delete those slides by hand. This is the safe direction: the alternative is
+deleting somebody else's work.
+
+A sweep that removed only some of them keeps the offer up, because the rest are
+still there and only you can finish.
+
 ## When something goes wrong
 
 **The pane says what it is waiting on.** A merge is legitimately quiet for a

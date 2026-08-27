@@ -11,7 +11,7 @@ import { inspectBlock, runMerge, undoMerge, type MergeOutcome } from "../office/
 import { readable } from "../host/errors.js";
 import { beginRun, onTrace, traceText } from "../core/trace.js";
 import { render } from "./render.js";
-import { describeMerge } from "./summary.js";
+import { describeMerge, plural } from "./summary.js";
 import {
   EMPTY,
   EMPTY_DRAFT,
@@ -188,6 +188,10 @@ function onClick(event: Event): void {
   }
   if (action === "preview") {
     void (state.previewing ? endPreview() : preview());
+    return;
+  }
+  if (action === "undo") {
+    void undoRun();
     return;
   }
   advance(action as StepId);
@@ -517,6 +521,57 @@ async function preview(): Promise<void> {
     };
   } catch (e) {
     state = { ...state, notice: `The preview did not run: ${readable(e)}` };
+  } finally {
+    state = { ...state, running: undefined };
+    draw();
+  }
+}
+
+/**
+ * Take back the slides the last merge added.
+ *
+ * The same call and the same clamps as removing a preview, and deliberately so
+ * — a preview IS a one-row merge here, so there is one sweep with one set of
+ * guarantees rather than two that can drift apart.
+ *
+ * What differs is WHEN it is pressed. A preview is removed seconds after it
+ * lands; this is a button a user may press after looking through 720 slides,
+ * on a deck AutoSave has been writing to and a co-author may have been
+ * editing. `sweepPlan` refuses outright when the deck has gained more than the
+ * run added, because at that point the last N slides are somebody else's and
+ * the run's own are unreachable by position — so the worst case here is a
+ * refusal with a sentence, never a wrong deletion.
+ */
+async function undoRun(): Promise<void> {
+  const outcome = last;
+  if (!outcome || state.running) return;
+  state = { ...state, running: "undo", notice: undefined };
+  draw();
+  try {
+    const { removed, detail } = await undoMerge(outcome);
+    if (removed <= 0) {
+      // A refusal is an OUTCOME and the detail already says why — usually that
+      // the deck changed underneath the run, which is a thing the user can
+      // check and act on rather than a failure of the pane.
+      state = { ...state, notice: `Nothing was removed — ${detail}` };
+      return;
+    }
+    const remaining = outcome.added - removed;
+    last = remaining > 0 ? { ...outcome, added: remaining } : undefined;
+    state = {
+      ...state,
+      deckSize: (state.deckSize ?? outcome.deckAtStart + outcome.added) - removed,
+      // Only a COMPLETE sweep disarms the button. A partial one leaves slides
+      // in the deck and the user is the only one who can finish the job, so
+      // the way back has to stay on screen.
+      ...(remaining > 0 ? { added: remaining } : { added: undefined }),
+      notice:
+        remaining > 0
+          ? `Some of the merge is still there — ${detail}`
+          : `${plural(removed, "slide")} removed. Your deck is back to ${outcome.deckAtStart}.`,
+    };
+  } catch (e) {
+    state = { ...state, notice: `The slides could not be removed: ${readable(e)}` };
   } finally {
     state = { ...state, running: undefined };
     draw();
