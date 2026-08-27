@@ -37,6 +37,7 @@ const office = vi.hoisted(() => ({
     deckSource: "file" as const,
     canSelect: true,
   })),
+  insertTextAtCursor: vi.fn<(t: string) => Promise<unknown>>(),
   inspectBlock: vi.fn<(r: { from: number; to: number }) => Promise<unknown>>(),
   runMerge: vi.fn<(r: unknown) => Promise<unknown>>(),
   undoMerge: vi.fn<(o: unknown) => Promise<unknown>>(),
@@ -48,6 +49,7 @@ vi.mock("../src/office/powerpoint.js", () => ({
   selectedBlock: office.selectedBlock,
   canReadSelection: office.canReadSelection,
   hostEnvironment: office.hostEnvironment,
+  insertTextAtCursor: office.insertTextAtCursor,
 }));
 vi.mock("../src/office/merge.js", () => ({
   inspectBlock: office.inspectBlock,
@@ -76,6 +78,9 @@ const OUTCOME = {
   fields: ["First", "Last"],
   unknownConditions: [],
 };
+
+/** How many steps the wizard has, for the walk-back helpers. */
+const STEP_COUNT = 5;
 
 let onReady: () => void;
 
@@ -123,17 +128,26 @@ async function settle(): Promise<void> {
   for (let i = 0; i < 8; i++) await Promise.resolve();
 }
 
-/** Walk from a fresh pane to the merge step with a block and data in hand. */
+/**
+ * Walk from a fresh pane to the merge step with a block and data in hand.
+ *
+ * Five steps: template, data, fields, preview, merge. TWO template reads, not
+ * one — the fields step re-reads the slides because the user has just been
+ * putting `{{Column}}` onto them and nothing tells the pane that happened.
+ */
 async function reachMerge(): Promise<void> {
   await openPane();
   await settle();
   type("from", "4");
   type("to", "6");
   office.inspectBlock.mockResolvedValueOnce(REPORT);
-  primary().click();
+  primary().click(); // template -> data
   await settle();
   type("paste", "First\tLast\nAda\tLovelace\nGrace\tHopper");
-  primary().click(); // fields -> preview
+  primary().click(); // data -> fields
+  office.inspectBlock.mockResolvedValueOnce(REPORT);
+  primary().click(); // fields, re-reading the slides -> preview
+  await settle();
   // The preview step's primary SHOWS a row rather than advancing, so the way
   // forward is the link beside it.
   (pane().querySelector("[data-forward]") as HTMLElement).click();
@@ -146,6 +160,7 @@ beforeEach(() => {
   office.undoMerge.mockReset();
   office.selectedBlock.mockReset();
   office.canReadSelection.mockReset().mockReturnValue(true);
+  office.insertTextAtCursor.mockReset().mockResolvedValue({ ok: true });
   office.ready.mockReturnValue({ ok: true, detail: "fine" });
 });
 
@@ -232,11 +247,15 @@ describe("a merge that is still running", () => {
     expect(office.runMerge).toHaveBeenCalledTimes(1);
 
     // An edit is what re-arms it, because an edit is a different merge. Back
-    // twice to the paste box, change the data, and the button is live again.
+    // to the paste box, change the data, and the button is live again.
     (pane().querySelector("[data-back]") as HTMLElement).click(); // preview
     (pane().querySelector("[data-back]") as HTMLElement).click(); // fields
+    (pane().querySelector("[data-back]") as HTMLElement).click(); // data
     type("paste", "First\tLast\nAda\tLovelace");
-    primary().click(); // fields -> preview
+    primary().click(); // data -> fields
+    office.inspectBlock.mockResolvedValueOnce(REPORT);
+    primary().click(); // fields, re-reading the slides -> preview
+    await settle();
     (pane().querySelector("[data-forward]") as HTMLElement).click(); // -> merge
     expect(primary().textContent).toBe("Add 3 slides");
     expect(primary().disabled).toBe(false);
@@ -371,10 +390,13 @@ describe("the preview", () => {
     type("from", "4");
     type("to", "6");
     office.inspectBlock.mockResolvedValueOnce(REPORT);
-    primary().click();
+    primary().click(); // template -> data
     await settle();
     type("paste", "First\tLast\nAda\tLovelace\nGrace\tHopper");
-    primary().click(); // fields -> preview
+    primary().click(); // data -> fields
+    office.inspectBlock.mockResolvedValueOnce(REPORT);
+    primary().click(); // fields, re-reading the slides -> preview
+    await settle();
   }
 
   const PREVIEW = { ...OUTCOME, added: 3, detail: "3 slides added after slide 12." };
@@ -592,7 +614,10 @@ describe("taking rows out, through the real pane", () => {
     primary().click();
     await settle();
     type("paste", "First\tLast\nAda\tLovelace\nGrace\tHopper\nKay\tMcNulty");
-    primary().click(); // fields -> preview
+    primary().click(); // data -> fields
+    office.inspectBlock.mockResolvedValueOnce(REPORT);
+    primary().click(); // fields, re-reading the slides -> preview
+    await settle();
     (pane().querySelector("[data-forward]") as HTMLElement).click(); // -> merge
     (pane().querySelector('[data-action="rows"]') as HTMLElement).click(); // open the list
     await settle();
@@ -639,8 +664,12 @@ describe("taking rows out, through the real pane", () => {
 
     (pane().querySelector("[data-back]") as HTMLElement).click(); // preview
     (pane().querySelector("[data-back]") as HTMLElement).click(); // fields
+    (pane().querySelector("[data-back]") as HTMLElement).click(); // data
     type("paste", "First\tLast\nZoe\tZed\nYan\tYates");
-    primary().click();
+    primary().click(); // data -> fields
+    office.inspectBlock.mockResolvedValueOnce(REPORT);
+    primary().click(); // fields, re-reading the slides -> preview
+    await settle();
     (pane().querySelector("[data-forward]") as HTMLElement).click();
     await settle();
     // Two rows, both in. The list stays OPEN across the paste — the disclosure
@@ -684,10 +713,14 @@ describe("taking a real merge back", () => {
     primary().click();
     await settle();
     type("paste", "First\tLast\nAda\tLovelace\nGrace\tHopper");
-    primary().click(); // fields -> preview
+    primary().click(); // data -> fields
+    office.inspectBlock.mockResolvedValueOnce(REPORT);
+    primary().click(); // fields, re-reading the slides -> preview
+    await settle();
     // The preview step's primary RUNS a preview; the way past it is its own
     // control. Clicking the primary here ran a merge and left the pane on
-    // step 3, which is why the first version of this helper landed nothing.
+    // the preview step, which is why the first version of this helper landed
+    // nothing.
     document.querySelector<HTMLButtonElement>('[data-forward="merge"]')?.click();
     office.runMerge.mockResolvedValueOnce(OUTCOME);
     primary().click();
@@ -822,15 +855,24 @@ describe("the conditional slide control", () => {
    * user does is choose a column from a dropdown, and the thing that must be
    * true is that the choice reaches `runMerge`.
    */
-  async function toFieldsWithData(): Promise<void> {
-    await openPane();
-    await settle();
-    type("from", "4");
-    type("to", "6");
-    office.inspectBlock.mockResolvedValueOnce(REPORT);
-    primary().click();
-    await settle();
-    type("paste", "First\tLast\nAda\tLovelace\nGrace\tHopper");
+  async function toMergeWithData(): Promise<void> {
+    await reachMerge();
+  }
+
+  /** Walk back to the slide-number boxes, whichever step the pane is on. */
+  function backToTemplate(): void {
+    for (let i = 0; i < STEP_COUNT; i++) {
+      if (pane().querySelector('[data-field="from"]')) return;
+      (pane().querySelector("[data-back]") as HTMLElement).click();
+    }
+  }
+
+  /** Walk back to the paste box. */
+  function backToData(): void {
+    for (let i = 0; i < STEP_COUNT; i++) {
+      if (pane().querySelector('[data-field="paste"]')) return;
+      (pane().querySelector("[data-back]") as HTMLElement).click();
+    }
   }
 
   function openConditions(): void {
@@ -843,10 +885,11 @@ describe("the conditional slide control", () => {
     node.dispatchEvent(new Event("input", { bubbles: true }));
   }
 
-  it("is not offered before there is data to condition on", async () => {
-    // A condition names a COLUMN. With nothing attached the control could offer
-    // nothing to choose, and would be furniture on the one screen that is about
-    // attaching data.
+  it("is not offered on the steps before the merge", async () => {
+    // It lives beside the row picker, because "which rows" and "which slides"
+    // are the two questions the merge screen is for. On the fields step — where
+    // it used to be — it sat next to a control for putting placeholders onto
+    // slides, which is a different job.
     await openPane();
     await settle();
     type("from", "4");
@@ -854,11 +897,15 @@ describe("the conditional slide control", () => {
     office.inspectBlock.mockResolvedValueOnce(REPORT);
     primary().click();
     await settle();
-    expect(pane().querySelector('[data-action="conditions"]')).toBeNull();
+    expect(pane().querySelector('[data-action="conditions"]'), "on the data step").toBeNull();
+    type("paste", "First\tLast\nAda\tLovelace\nGrace\tHopper");
+    office.inspectBlock.mockResolvedValueOnce(REPORT);
+    primary().click(); // data -> fields
+    expect(pane().querySelector('[data-action="conditions"]'), "on the fields step").toBeNull();
   });
 
   it("offers one control per slide in the block, defaulting to always", async () => {
-    await toFieldsWithData();
+    await toMergeWithData();
     openConditions();
     const selects = Array.from(pane().querySelectorAll("[data-condition]"));
     expect(selects.map((s) => s.getAttribute("data-condition"))).toEqual(["4", "5", "6"]);
@@ -871,11 +918,9 @@ describe("the conditional slide control", () => {
   it("carries the choice into the merge", async () => {
     // The assertion the whole feature turns on. Everything else here could pass
     // while `runMerge` was still handed nothing.
-    await toFieldsWithData();
+    await toMergeWithData();
     openConditions();
     choose(5, "Last");
-    primary().click(); // fields -> preview
-    (pane().querySelector("[data-forward]") as HTMLElement).click();
     office.runMerge.mockResolvedValueOnce(OUTCOME);
     primary().click();
     await settle();
@@ -896,17 +941,21 @@ describe("the conditional slide control", () => {
      * passed with the clearing removed and proved nothing. Check which
      * assertion goes red, and against what.
      */
-    await toFieldsWithData();
+    await toMergeWithData();
     openConditions();
     choose(5, "Last");
-    // Back to step 1, which is where the slide boxes are.
-    (pane().querySelector('[data-back="template"]') as HTMLElement).click();
+    backToTemplate();
     type("from", "3");
     type("to", "5");
     office.inspectBlock.mockResolvedValueOnce(REPORT);
-    primary().click();
+    primary().click(); // template -> data
     await settle();
-    type("paste", "First\tLast\nAda\tLovelace");
+    office.inspectBlock.mockResolvedValueOnce(REPORT);
+    primary().click(); // data -> fields
+    primary().click(); // fields -> preview
+    await settle();
+    (pane().querySelector("[data-forward]") as HTMLElement).click(); // -> merge
+
     // Not re-opened: the list stays open across the trip, which is a UI
     // preference rather than a fact about the block. Toggling here would shut
     // it and the assertion below would pass on an empty list.
@@ -915,8 +964,6 @@ describe("the conditional slide control", () => {
     expect(values, "slide 5 kept a condition set while it was the middle of another block").toEqual(["", "", ""]);
 
     // And what actually reaches the engine, which is where the harm would be.
-    primary().click();
-    (pane().querySelector("[data-forward]") as HTMLElement).click();
     office.runMerge.mockResolvedValueOnce(OUTCOME);
     primary().click();
     await settle();
@@ -932,30 +979,55 @@ describe("the conditional slide control", () => {
      * said — which is exactly what the engine's `unknownConditions` exists to
      * prevent.
      */
-    await toFieldsWithData();
+    // A condition on a column the TEMPLATE does not use, so that dropping it
+    // leaves the merge otherwise reachable: with the condition on a column
+    // that is also a field, the re-paste would block the merge on the
+    // unmatched field instead and this test would never reach the screen it
+    // is about.
+    await reachMerge();
+    backToData();
+    type("paste", "First\tLast\tRegion\nAda\tLovelace\tEMEA\nGrace\tHopper\tAMER");
+    office.inspectBlock.mockResolvedValueOnce(REPORT);
+    primary().click(); // data -> fields
+    primary().click(); // fields, re-reading the slides -> preview
+    await settle();
+    (pane().querySelector("[data-forward]") as HTMLElement).click(); // -> merge
     openConditions();
-    choose(5, "Last");
-    type("paste", "First\tCity\nAda\tLondon");
-    expect(said().join(" ")).toContain("No column for Last");
+    choose(5, "Region");
+    backToData();
+    type("paste", "First\tLast\tCity\nAda\tLovelace\tLondon");
+    office.inspectBlock.mockResolvedValueOnce(REPORT);
+    primary().click(); // data -> fields
+    primary().click(); // fields -> preview
+    await settle();
+    (pane().querySelector("[data-forward]") as HTMLElement).click(); // -> merge
+
+    expect(said().join(" ")).toContain("No column for Region");
     const node = pane().querySelector('[data-condition="5"]') as HTMLSelectElement;
     // Still chosen, and still an option, rather than quietly reset to Always.
-    expect(node.value).toBe("Last");
+    expect(node.value).toBe("Region");
   });
 
   it("does not take a change while a merge is out", async () => {
     // Same rule as every other edit on this screen: the answer is about to be
     // written into this state and a change would make it stale.
-    await toFieldsWithData();
+    //
+    // Asserted on what SURVIVES the run rather than on the control being
+    // absent. The control now shares the merge screen with the run, so it is
+    // still on screen while the call is out — and a select the user has
+    // changed keeps its own value until the next draw. The draw after the
+    // merge answers is where the state has its say.
+    await toMergeWithData();
     openConditions();
     const held = deferred<unknown>();
-    primary().click();
-    (pane().querySelector("[data-forward]") as HTMLElement).click();
     office.runMerge.mockReturnValueOnce(held.promise);
     primary().click();
     await settle();
-    expect(pane().querySelector("[data-condition]"), "the control is not on the merge step").toBeNull();
+    choose(5, "Last");
     held.resolve(OUTCOME);
     await settle();
+    const node = pane().querySelector('[data-condition="5"]') as HTMLSelectElement;
+    expect(node.value, "took a condition while the merge was out").toBe("");
   });
 });
 
@@ -1026,50 +1098,128 @@ describe("the run record while the host has not answered", () => {
   });
 });
 
-describe("reaching the data step before the template has fields", () => {
+describe("a template with no fields on it yet", () => {
   /**
-   * Driven through the real `main.ts`, because the question is not whether the
-   * link renders — `pane-render.test.ts` asks that — but whether pressing it
-   * gets somebody who is stuck to a box they can paste into.
+   * The order this pane was reordered for, driven through the real `main.ts`.
    *
    * The state it starts from is the one that was reported: a fresh deck, two
-   * empty slides, the template read having refused.
+   * empty slides, and a user who cannot name a single placeholder because the
+   * names are their data's column headers and the data is not attached yet.
+   * The old order refused at step 1 and told them to go and type names nobody
+   * had; the fix is that the slides come first, the data second, and the
+   * fields are put on the slides from a button.
    */
-  it("takes a stuck user to the paste box without a template read", async () => {
+  async function toFields(): Promise<void> {
     await openPane();
     await settle();
     type("from", "2");
     type("to", "3");
-    office.inspectBlock.mockResolvedValueOnce({
-      ok: false,
-      detail: "Slides 2 to 3 have no {{fields}}, so every copy would be identical.",
-      fields: [],
-    });
+    // The template read ANSWERS for a block with nothing on it now. `runMerge`
+    // still refuses one — see `allowEmpty` — and the pane refuses it too,
+    // before a host call is spent.
+    office.inspectBlock.mockResolvedValueOnce({ ok: true, detail: "0 placeholders in slides 2 to 3.", fields: [] });
     primary().click();
     await settle();
-    expect(said().join(" "), "still on the refusal").toContain("{{fields}}");
+    type("paste", "First\tCity\nAda\tLondon");
+    primary().click(); // data -> fields
+  }
 
-    const forward = pane().querySelector('[data-forward="fields"]') as HTMLElement;
-    expect(forward, "no way forward from a template with no fields").not.toBeNull();
-    forward.click();
-    await settle();
-
-    // The step label is uppercased by CSS, so the text node is title case.
-    expect(document.body.textContent).toContain("Step 2 of 4");
-    expect(field("paste"), "nothing to paste into").not.toBeNull();
-    // And no second template read was spent getting here.
-    expect(office.inspectBlock).toHaveBeenCalledTimes(1);
-  });
-
-  it("shows the column names once data is pasted, so the user can go and type them", async () => {
-    // The whole point of the detour: learn the headers, then author the slides.
+  it("goes on to the data step rather than refusing", async () => {
     await openPane();
     await settle();
     type("from", "2");
     type("to", "3");
-    (pane().querySelector('[data-forward="fields"]') as HTMLElement).click();
+    office.inspectBlock.mockResolvedValueOnce({ ok: true, detail: "0 placeholders in slides 2 to 3.", fields: [] });
+    primary().click();
     await settle();
-    type("paste", "First\tCity\nAda\tLondon");
-    expect(document.body.textContent).toContain("First, City");
+    // The step label is uppercased by CSS, so the text node is title case.
+    expect(document.body.textContent).toContain("Step 2 of 5");
+    expect(field("paste"), "nothing to paste into").not.toBeNull();
+  });
+
+  it("offers a button per column, spelled the way the engine reads it", async () => {
+    await toFields();
+    const chips = Array.from(pane().querySelectorAll("[data-insert]"));
+    expect(chips.map((c) => c.getAttribute("data-insert"))).toEqual(["First", "City"]);
+    // The TOKEN on the face, because that is what lands on the slide.
+    expect(chips.map((c) => c.textContent)).toEqual(["{{First}}", "{{City}}"]);
+  });
+
+  it("puts the field where the cursor is", async () => {
+    await toFields();
+    office.insertTextAtCursor.mockResolvedValueOnce({ ok: true });
+    (pane().querySelector('[data-insert="City"]') as HTMLElement).click();
+    await settle();
+    expect(office.insertTextAtCursor).toHaveBeenCalledWith("{{City}}");
+    // Says what to do NEXT: the insert lands on the slide, not in the pane, so
+    // without this the fields list stays empty and nothing says why.
+    expect(document.body.textContent).toContain("Check the slides");
+  });
+
+  it("falls back to the clipboard when the host will not type it in", async () => {
+    // The reason the control is worth building at all. A refusal here is
+    // ordinary — `setSelectedDataAsync` needs an insertion point, and a user
+    // who has not clicked into a text box has none.
+    const copied: string[] = [];
+    Object.defineProperty(globalThis.navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: (t: string) => {
+          copied.push(t);
+          return Promise.resolve();
+        },
+      },
+    });
+    await toFields();
+    office.insertTextAtCursor.mockResolvedValueOnce({ ok: false, why: "no insertion point" });
+    (pane().querySelector('[data-insert="First"]') as HTMLElement).click();
+    await settle();
+    expect(copied, "nothing reached the clipboard").toEqual(["{{First}}"]);
+    expect(document.body.textContent).toContain("clipboard");
+    // The host's own words, because they are what separates "click into a text
+    // box first" from "this host cannot do it at all".
+    expect(document.body.textContent).toContain("no insertion point");
+  });
+
+  it("names the token when even the clipboard is refused", async () => {
+    // A task pane is a nested cross-origin iframe, where `navigator.clipboard`
+    // is gated on a permission the host may not have granted. All three
+    // outcomes name the token; none of them is silence.
+    Object.defineProperty(globalThis.navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: () => Promise.reject(new Error("denied")) },
+    });
+    await toFields();
+    office.insertTextAtCursor.mockResolvedValueOnce({ ok: false, why: "no insertion point" });
+    (pane().querySelector('[data-insert="First"]') as HTMLElement).click();
+    await settle();
+    expect(document.body.textContent).toContain("{{First}}");
+    expect(document.body.textContent).toContain("by hand");
+  });
+
+  it("reads the slides again when the primary is pressed, and goes on", async () => {
+    // Nothing tells this pane that the user typed on a slide — there is no
+    // document-changed event for slide text — so the fields it lists are as old
+    // as the last read. The step's own primary is that read.
+    await toFields();
+    expect(office.inspectBlock).toHaveBeenCalledTimes(1);
+    office.inspectBlock.mockResolvedValueOnce({ ok: true, detail: "2 placeholders.", fields: ["First", "City"] });
+    primary().click();
+    await settle();
+    expect(office.inspectBlock).toHaveBeenCalledTimes(2);
+    expect(document.body.textContent).toContain("Step 4 of 5");
+  });
+
+  it("will not preview or merge a block that still has no fields", async () => {
+    // The engine refuses this too, and must — N identical copies is never what
+    // anybody meant. Said here so the refusal costs no host call.
+    await toFields();
+    office.inspectBlock.mockResolvedValueOnce({ ok: true, detail: "0 placeholders.", fields: [] });
+    primary().click();
+    await settle();
+    // Still on the fields step, and said why.
+    expect(document.body.textContent).toContain("Step 3 of 5");
+    expect(pane().textContent).toContain("carry no fields yet");
+    expect(office.runMerge).not.toHaveBeenCalled();
   });
 });

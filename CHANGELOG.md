@@ -7,17 +7,39 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
-### Fixed — a template with no fields had nowhere to go
+### Added — a button per column, and the steps in the order the work happens
 
-Reported from a first real run. Step 1's primary only advances when the template
-read finds fields, so a deck with no `{{fields}}` on it had **no route to step
-2** — and the names to type are the data's own column headers, which cannot be
-seen until it is attached. The pane was telling the user to go and type names
-nobody knew yet.
+Asked in these words after a first real run: *"how do I insert the fields? it
+should be: select slides for repeat → paste data → insert fields → merge."*
 
-Step 1 offers *Attach data first to see your column names* while no data is
-attached. `blockedReason` already permitted that step on the two slide numbers
-alone, so nothing about what is reachable changed; only a control was missing.
+The pane has five steps now — **Template, Data, Fields, Preview, Merge** — and
+the third one hands you a button per column. Press it with the cursor in a text
+box on a slide and `{{Column}}` is typed in there
+(`Office.context.document.setSelectedDataAsync`, a Common API with no
+requirement set, so nothing is declared and the call is guarded at run time).
+Where the host refuses — usually because nothing on the slide is selected — the
+token goes on the clipboard instead and the pane says so; where even that is
+refused, the sentence carries the token to read off the screen. All three
+outcomes name the token.
+
+The reorder is what makes it possible. A field is a column name, so there is
+nothing to insert until the data is attached: the old order asked for the fields
+first and refused to go forward without them, which meant telling a first-time
+user to go and type names they had no way to know. The template read tolerates a
+block with nothing on it now (`allowEmpty`, passed by `inspectBlock` alone) —
+`runMerge` still refuses one, because N identical copies is never what anybody
+meant, and the pane refuses it too, before a host call is spent.
+
+Nothing tells the pane that a user typed on a slide — there is no event for it —
+so the fields step's own button reads *Check the slides for fields* and reads
+them back.
+
+The conditional-slide control moved to the merge step, beside the row picker:
+"which rows" and "which slides" are the same kind of question, and the fields
+step is now about putting placeholders onto slides.
+
+The *Attach data first to see your column names* link on step 1 is gone with the
+problem it worked around — a link that sent the user backwards through a wizard.
 
 ### Fixed — the word PowerPoint had already taken
 

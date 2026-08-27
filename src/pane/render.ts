@@ -19,7 +19,10 @@ import {
   chosenBlock,
   conditionFor,
   danglingConditions,
+  fieldToken,
   includedCount,
+  noFieldsHere,
+  unusedColumns,
   rowIncluded,
   rowLabel,
   orangeHolder,
@@ -60,7 +63,7 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
-/** The four-segment progress rail. */
+/** The progress rail, one segment per step. */
 function rail(doc: Document, state: PaneState, current: StepId): HTMLElement {
   const ul = el(doc, "ul", { class: "rail" });
   for (const step of STEPS) {
@@ -206,32 +209,15 @@ export function render(root: HTMLElement, state: PaneState, current: StepId): vo
 
   // The preview step is the only one whose primary ACTS rather than advances —
   // it shows a row — so it is the only one that needs a way forward that is not
-  // the button. Without this the wizard has no exit from step 3 at all, which
+  // the button. Without this the wizard has no exit from step 4 at all, which
   // is what making the preview real took away.
-  // The way out of the chicken-and-egg on step 1.
   //
-  // The primary there only advances when the template read finds fields, so a
-  // deck with no `{{fields}}` on it had NO route to the data step — and the
-  // names to type are the data's own column headers, which the user cannot see
-  // until they attach it. Reported from a first run on an empty deck: the
-  // instruction was to go and type field names nobody knew yet.
-  //
-  // `blockedReason` already permits this step on the two slide numbers alone,
-  // so nothing about what is reachable changes; only a control was missing.
-  //
-  // Offered ONLY while there is no data, because that is the only state the
-  // label is true in. With rows attached the user has already been to step 2
-  // and the back link is the way there.
-  if (current === "template" && !state.rows && blockedReason(state, "fields") === null) {
-    main.append(
-      el(doc, "button", {
-        class: "back forward",
-        text: "Attach data first to see your column names",
-        attrs: { "data-forward": "fields" },
-      }),
-    );
-  }
-
+  // Step 1 used to need one too, and no longer does. The template read refused
+  // a block with no `{{fields}}` on it, so a fresh deck had no route forward at
+  // all and a link was bolted on saying "attach data first to see your column
+  // names" — an instruction to go BACKWARDS through a wizard. The order is the
+  // fix: data comes before fields now, and the template step advances on the
+  // two slide numbers alone.
   if (current === "preview" && !state.previewing && blockedReason(state, "merge") === null) {
     main.append(
       el(doc, "button", {
@@ -256,12 +242,18 @@ function headline(state: PaneState, current: StepId): string {
       const block = chosenBlock(state);
       return block ? blockSummary(block, state.rows) : "Which slides repeat?";
     }
+    case "data":
+      return state.rows ? plural(state.rows, "row") + " attached" : "Paste the rows to merge";
     case "fields":
       // plural(), not a template literal. The zero case was special-cased and
       // the ONE case was not, so a name badge or certificate template holding a
       // single {{Name}} announced "1 placeholders" — and the screenshot script
       // only ever renders three, so nothing showed it either.
-      return state.fields.length === 0 ? "No placeholders found" : plural(state.fields.length, "placeholder");
+      //
+      // The zero case is no longer a dead end: this step now hands the user a
+      // button per column, so the heading names the job rather than the
+      // absence.
+      return state.fields.length === 0 ? "Put your fields on the slides" : plural(state.fields.length, "placeholder");
     case "preview":
       return state.previewing ? "The first row is in your deck" : "See one row before you commit";
     case "merge": {
@@ -306,10 +298,21 @@ function body(doc: Document, state: PaneState, current: StepId, orange: OrangeHo
     return out;
   }
 
-  if (current === "fields") {
+  if (current === "data") {
     out.push(dataControl(doc, state));
     const read = readPastedTable(state.paste ?? "");
     if (read.why) out.push(el(doc, "p", { class: "blocked", text: read.why }));
+    return out;
+  }
+
+  if (current === "fields") {
+    out.push(insertControl(doc, state));
+    // What the last Insert press did. Kept out of `notice` on purpose: a notice
+    // is cleared by the next edit, and this has to survive the user leaving the
+    // pane, clicking into a text box on the slide, and coming back. It is also
+    // the only report the clipboard fallback has — an insert lands visibly on
+    // the slide, a copy lands nowhere the user can see.
+    if (state.fieldNote) out.push(el(doc, "p", { class: "muted note", text: state.fieldNote }));
     const missing = new Set(unmatchedFields(state));
     const list = el(doc, "ul", { class: "fields" });
     for (const field of state.fields) {
@@ -318,7 +321,15 @@ function body(doc: Document, state: PaneState, current: StepId, orange: OrangeHo
       const marked = missing.has(field) && orange === "unmatched";
       list.append(el(doc, "li", { text: field, attrs: { "data-matched": marked ? "no" : "yes" } }));
     }
-    out.push(list);
+    if (state.fields.length > 0) {
+      out.push(el(doc, "p", { class: "muted", text: "On the slides now:" }));
+      out.push(list);
+    } else {
+      // Not silence. The step's own primary re-reads the slides, and a user who
+      // has just inserted three fields and sees nothing has no way to tell an
+      // insert that did not land from a pane that has not looked yet.
+      out.push(el(doc, "p", { class: "muted", text: noFieldsHere(state) }));
+    }
     if (state.columns && missing.size > 0) {
       const card = el(doc, "div", { class: "card" });
       card.append(
@@ -345,10 +356,6 @@ function body(doc: Document, state: PaneState, current: StepId, orange: OrangeHo
       );
       out.push(card);
     }
-    // Only once there is data. A condition names a COLUMN, so with nothing
-    // attached the control could offer nothing to choose and would be a line of
-    // furniture on the one screen that is about attaching data.
-    if (state.columns && state.columns.length > 0) out.push(conditionPicker(doc, state));
     return out;
   }
 
@@ -382,8 +389,23 @@ function body(doc: Document, state: PaneState, current: StepId, orange: OrangeHo
     out.push(card);
   }
 
-  if (current === "merge" && state.records && state.rows) {
-    out.push(rowPicker(doc, state));
+  if (current === "merge") {
+    // Which rows, and which slides. The two questions the merge screen is for,
+    // both shut by default and both summarised shut.
+    //
+    // The conditions used to live on the fields step, which had the columns
+    // they name. That step is now about putting placeholders onto slides, and
+    // a control deciding which slides come out for which rows is a different
+    // job on the same screen. Here it sits beside the row picker, where the
+    // pair reads as "what comes out of this merge".
+    //
+    // Each keeps its OWN precondition rather than sharing one. A row list needs
+    // the rows; a condition needs only the column names, and folding it into
+    // the row picker's guard made it vanish from a state that has columns and
+    // no records — which is exactly the state a screenshot fixture holds, and
+    // is how this was noticed.
+    if (state.records && state.rows) out.push(rowPicker(doc, state));
+    if (state.columns && state.columns.length > 0) out.push(conditionPicker(doc, state));
   }
   return out;
 }
@@ -462,6 +484,76 @@ function dataControl(doc: Document, state: PaneState): HTMLElement {
         text: `${plural(state.rows, "row")} · ${state.columns.join(", ")}`,
       }),
     );
+  }
+  return wrap;
+}
+
+/**
+ * A button per column, which puts `{{Column}}` where the cursor is.
+ *
+ * The question this step exists to answer, asked in those words by the first
+ * person to use the add-in: "how do I insert the fields?" The answer used to be
+ * "type them", which is a fine answer for one field and a bad one for twelve —
+ * and it asks the user to spell a column name exactly right, from memory, with
+ * the data in another window.
+ *
+ * COLUMNS, not fields. The list is what the data has, in the order it has it,
+ * because that is the set the merge can fill: offering anything else would put
+ * a placeholder on a slide that nothing will ever bind to. A column already on
+ * the slides is marked rather than dropped — a template can legitimately use
+ * one twice, and a list that shrinks as you press it loses its own order.
+ *
+ * The instruction line is not decoration. Nothing in Office.js reports where
+ * the cursor is, so the pane cannot know whether the next press will land, and
+ * `setSelectedDataAsync` on a slide with nothing selected refuses with a
+ * message about a selection that reads as a bug. Saying "click into a text box
+ * first" ahead of the press is the only version of that the user can act on.
+ */
+function insertControl(doc: Document, state: PaneState): HTMLElement {
+  const wrap = el(doc, "div", { class: "insert" });
+  const columns = state.columns ?? [];
+  if (columns.length === 0) {
+    // Reachable: `blockedReason` sends the user back for data before this step,
+    // so the only way here with no columns is the Back link from Preview after
+    // clearing the paste box. Says which, rather than rendering an empty list.
+    wrap.append(el(doc, "p", { class: "muted", text: "Attach your data first — a field is a column name." }));
+    return wrap;
+  }
+  wrap.append(
+    el(doc, "p", {
+      class: "muted",
+      text: "Click into a text box on the slide, then press a column to put its field there.",
+    }),
+  );
+  const list = el(doc, "ul", { class: "chips" });
+  const placed = new Set(state.fields);
+  for (const column of columns) {
+    const item = el(doc, "li");
+    item.append(
+      el(doc, "button", {
+        class: "chip",
+        text: fieldToken(column),
+        attrs: {
+          "data-insert": column,
+          // Marked, not removed. See above.
+          "data-placed": placed.has(column) ? "yes" : "no",
+          // The chip shows the TOKEN, which is what lands on the slide; the
+          // title says what it is for. A user reading `{{Region}}` on a button
+          // knows what will appear and not what it will become.
+          title: `Put ${fieldToken(column)} on the slide${placed.has(column) ? " — already on these slides" : ""}`,
+          ...(state.running ? { disabled: "" } : {}),
+        },
+      }),
+    );
+    list.append(item);
+  }
+  wrap.append(list);
+  // Named, because a column nobody used is not an error and the user should not
+  // have to diff two lists to see it. Only once something IS placed: before
+  // that every column is unused and the line says nothing.
+  const unused = unusedColumns(state);
+  if (unused.length > 0 && state.fields.length > 0) {
+    wrap.append(el(doc, "p", { class: "muted", text: `Not on a slide yet: ${unused.join(", ")}.` }));
   }
   return wrap;
 }

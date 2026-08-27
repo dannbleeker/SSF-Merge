@@ -228,6 +228,51 @@ p.muted {
   color: var(--text);
 }
 
+/*
+ * The Insert chips.
+ *
+ * Buttons, not the `.fields` list one screen over, and they must not be
+ * confusable with it: that list is what is ON the slides and reads as a
+ * statement, these are what the data HAS and read as an offer. Same pill
+ * shape so they belong to one family, different weight and a pointer so one
+ * is obviously pressable.
+ */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  list-style: none;
+  padding: 0;
+  margin: 6px 0 0;
+}
+.chips button.chip {
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 12.5px;
+  border: 1px solid var(--blue);
+  background: var(--surface);
+  color: var(--blue);
+}
+/*
+ * Already on the slides. MUTED rather than hidden: a template can legitimately
+ * use a column twice, and a list that shrinks as it is pressed loses its own
+ * order under the user's hand.
+ */
+.chips button.chip[data-placed="yes"] {
+  border-color: var(--hair);
+  color: var(--muted);
+  background: var(--sunk);
+}
+.chips button.chip[disabled] {
+  border-color: var(--hair);
+  color: var(--disabled);
+  cursor: default;
+}
+/* What the last press did, sat under the chips it is about. */
+.note {
+  margin-top: 6px;
+}
+
 button {
   font: inherit;
   border-radius: 4px;

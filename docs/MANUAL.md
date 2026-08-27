@@ -3,7 +3,7 @@
 Mail merge for PowerPoint. You build one slide, or one block of slides, put
 placeholders where the data goes, and SSF Merge produces one copy per row.
 
-> **Status.** The engine, the task pane and the four steps are built and
+> **Status.** The engine, the task pane and the five steps are built and
 > shipped. What is still *planned* is marked, and it is now single options
 > inside sections rather than whole sections: sending the merge somewhere other
 > than this deck, doing anything to the template afterwards, and reading data
@@ -52,11 +52,11 @@ offers to take them straight back out again.
 
 3. **Step 1 — Template.** Type `3` into both boxes. The button reads **Choose
    the slides that repeat** until the numbers make sense, then becomes **Use
-   slides 3 to 3** — press it. The pane reads the slide and says it found 2
-   placeholders. If it says 0, the braces are probably curly quotes, or the
-   field name has a space in it.
+   slides 3 to 3** — press it. The pane reads the slide and goes on. It does not
+   need any `{{fields}}` on it yet: you put those on at step 3, from the column
+   names in the data you attach at step 2.
 
-4. **Step 2 — Fields.** Paste this into the box, including the header row:
+4. **Step 2 — Data.** Paste this into the box, including the header row:
 
    ```
    First	City
@@ -66,16 +66,25 @@ offers to take them straight back out again.
    ```
 
    Copy it out of a spreadsheet, or type it with real tab characters between the
-   columns. The pane will say **3 rows · First, City** and show a chip per
-   placeholder, with any chip that has no column behind it outlined. Press
-   **Use 3 rows**.
+   columns. The pane will say **3 rows · First, City**. Press **Use 3 rows**.
 
-5. **Step 3 — Preview.** Press **Preview the first row**. One row is merged
+5. **Step 3 — Fields.** There is a button per column: **{{First}}** and
+   **{{City}}**. Click into a text box on the slide, then press one — the field
+   is typed in at the cursor. If PowerPoint will not take it (usually because
+   nothing on the slide is selected) the pane puts it on your clipboard instead
+   and says so, and you paste it yourself.
+
+   When the fields are all on the slides, press **Check the slides for
+   fields**. The pane reads them again and lists what it found, with any chip
+   that has no column behind it outlined. If it finds none, the braces are
+   probably curly quotes, or the field name has a space in it.
+
+6. **Step 4 — Preview.** Press **Preview the first row**. One row is merged
    into your deck so you can look at it, and **Remove the preview** takes it
    out again. This is an ordinary one-row merge, not a mock-up — what you see
-   is what step 4 produces. **Skip to the merge** goes on without previewing.
+   is what step 5 produces. **Skip to the merge** goes on without previewing.
 
-6. **Step 4 — Merge.** The button reads **Add 3 slides** — the count, not the
+7. **Step 5 — Merge.** The button reads **Add 3 slides** — the count, not the
    word "merge" — and the line above says where they land and how big the deck
    will be afterwards. Press it, look at the result, and if you do not like it
    press **Remove these slides**.
@@ -253,9 +262,13 @@ unambiguous date. One "n/a" makes the column text, which is the safe answer.
 
 ### Choosing which slides are conditional
 
-Under the placeholder chips is a line reading *Every slide, every row*. Opening
-it shows one dropdown per slide in your block, each offering the columns in the
-data you attached: leave it on **Always**, or pick **Only when [column]**.
+On the merge screen, under the row list, is a line reading *Every slide, every
+row*. Opening it shows one dropdown per slide in your block, each offering the
+columns in the data you attached: leave it on **Always**, or pick **Only when
+[column]**.
+
+It sits beside the row list because the two answer the same kind of question —
+which rows, and which slides — and that is what the merge screen is for.
 
 The columns are offered rather than typed, because the engine matches a
 condition against a column name exactly and a typed name that does not match is
@@ -266,7 +279,7 @@ without opening anything.
 
 ### Choosing which rows merge
 
-Every pasted row is in by default. Under the paste box is a line saying how many
+Every pasted row is in by default. On the merge screen is a line saying how many
 rows are in and how many are out; opening it shows a checkbox per row, labelled
 with that row's first column, and a search box above them.
 
@@ -327,22 +340,27 @@ existing tag list rather than replacing it.
 
 ## The pane
 
-Four steps, and the step number is shown throughout — "Step 2 of 4" states how
+Five steps, and the step number is shown throughout — "Step 3 of 5" states how
 much is left, which is the question a first-time user actually has.
 
 | step | what you do |
 | --- | --- |
 | 1 · Template | Name the first and last slide of the set that repeats. They must be next to each other. |
-| 2 · Fields | See the placeholders found in those slides, and which ones have no column behind them. |
-| 3 · Preview | Merge the first row into your deck so you can look at it, then remove it. |
-| 4 · Merge | Add the slides, with the count on the button. |
+| 2 · Data | Paste your rows, headers included. |
+| 3 · Fields | Put `{{Column}}` onto the slides, from a button per column, then read them back. |
+| 4 · Preview | Merge the first row into your deck so you can look at it, then remove it. |
+| 5 · Merge | Add the slides, with the count on the button, and choose which rows and which slides. |
 
-**You can do steps 1 and 2 the other way round.** Step 1 will not go forward
-until the slides you named actually have `{{fields}}` on them — and the names to
-type are your data's column headers, which you cannot see until you attach it.
-So step 1 offers **Attach data first to see your column names**: paste your
-table, read the headers off the line under the box, go and type them onto the
-slides, then come back. The link is only there while no data is attached.
+**The data comes before the fields, and that is the whole shape of it.** A field
+is a column name in double braces, so there is nothing to type until the data is
+attached. An earlier version asked for the fields first and refused to go
+forward without them, which meant telling a first-time user to go and type names
+they had no way to know. Now step 1 takes the slide numbers alone, step 2 takes
+the data, and step 3 hands you a button per column.
+
+**The pane cannot see you typing on a slide.** There is no event for it, so the
+list of fields is as old as the last read — which is why step 3's button reads
+**Check the slides for fields** and pressing it looks again.
 
 Three things about it are deliberate and worth knowing.
 
@@ -368,10 +386,11 @@ and forward again, which is the way a wizard usually lets you start the same
 long job twice. Once a merge has added its slides the button says how many and
 stays down; change the block or the data and it arms again.
 
-All four steps are built and reachable from the screen: name the block, paste
-the rows, look at one, press the button. Pressing "Use slides N to M" reads
-those slides out of the open deck and lists the placeholders it actually found
-in them, so step 2 shows the real fields rather than a guess.
+All five steps are built and reachable from the screen: name the block, paste
+the rows, put the fields on the slides, look at one, press the button. Pressing
+"Use slides N to M" and "Check the slides for fields" both read those slides out
+of the open deck, so the list is the placeholders actually found in them rather
+than a guess.
 
 ### What a preview actually is
 

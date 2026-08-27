@@ -135,7 +135,17 @@ export async function inspectBlock(req: { from: number; to: number }): Promise<B
     const pkg = await Pkg.open(template.base64);
     const prepared = await prepareBlock(
       pkg,
-      { from: req.from, to: req.to, offsetInPackage: template.offset },
+      {
+        from: req.from,
+        to: req.to,
+        offsetInPackage: template.offset,
+        // Inspection ANSWERS for a block with nothing on it; the merge still
+        // refuses one. The pane picks the slides before the fields are typed —
+        // the names to type are the data's own column headers — so a template
+        // read that refused an empty block left the user at step 1 being told
+        // to type names nobody had yet. See `allowEmpty`.
+        allowEmpty: true,
+      },
       "inspect",
     );
     if (!prepared.ok) return { ok: false, detail: prepared.why, fields: [] };

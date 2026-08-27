@@ -20,11 +20,11 @@ function paneFor(state: PaneState, step: Parameters<typeof render>[2]) {
 
 describe("the pane's chrome", () => {
   it("says which step of how many, because that is what a first-timer asks", () => {
-    expect(paneFor(ready, "fields").querySelector(".step-of")?.textContent).toBe("Step 2 of 4 · Fields");
+    expect(paneFor(ready, "fields").querySelector(".step-of")?.textContent).toBe("Step 3 of 5 · Fields");
   });
 
-  it("draws a four-segment rail whatever the step", () => {
-    expect(paneFor(ready, "template").querySelectorAll(".rail li")).toHaveLength(4);
+  it("draws one rail segment per step, whatever the step", () => {
+    expect(paneFor(ready, "template").querySelectorAll(".rail li")).toHaveLength(5);
   });
 
   it("puts exactly one primary button on the screen, and it is last", () => {
@@ -166,7 +166,11 @@ describe("counting placeholders", () => {
 
   it("still says the plural for two and the sentence for none", () => {
     expect(paneFor({ ...ready, fields: ["A", "B"] }, "fields").querySelector("h1")?.textContent).toBe("2 placeholders");
-    expect(paneFor({ ...ready, fields: [] }, "fields").querySelector("h1")?.textContent).toBe("No placeholders found");
+    // The zero case names the JOB rather than the absence: the step now hands
+    // the user a button per column, so it is no longer a dead end.
+    expect(paneFor({ ...ready, fields: [] }, "fields").querySelector("h1")?.textContent).toBe(
+      "Put your fields on the slides",
+    );
   });
 });
 
@@ -209,12 +213,15 @@ describe("the two slide-number boxes", () => {
 });
 
 describe("the paste box", () => {
-  it("is on the fields step, named for main.ts to read", () => {
-    expect(paneFor(ready, "fields").querySelector('textarea[data-field="paste"]')).not.toBeNull();
+  it("is on the data step, named for main.ts to read", () => {
+    expect(paneFor(ready, "data").querySelector('textarea[data-field="paste"]')).not.toBeNull();
+    // And nowhere else. It moved off the fields step when the order changed,
+    // and two paste boxes on two screens are two states that can disagree.
+    expect(paneFor(ready, "fields").querySelector('textarea[data-field="paste"]')).toBeNull();
   });
 
   it("holds what was pasted as its VALUE, so a re-render does not empty it", () => {
-    const pane = paneFor({ ...ready, paste: "First\tLast\nAda\tLovelace" }, "fields");
+    const pane = paneFor({ ...ready, paste: "First\tLast\nAda\tLovelace" }, "data");
     const box = pane.querySelector("textarea");
     expect((box as HTMLTextAreaElement).value).toContain("Ada");
   });
@@ -222,20 +229,20 @@ describe("the paste box", () => {
   it("names the COLUMNS it found, not just a row count", () => {
     // A paste that came through as plain text parses into one column, and a
     // row count alone looks perfectly healthy when that happens.
-    const text = paneFor({ ...ready, columns: ["First", "Last"], rows: 240 }, "fields").textContent ?? "";
+    const text = paneFor({ ...ready, columns: ["First", "Last"], rows: 240 }, "data").textContent ?? "";
     expect(text).toContain("240 rows");
     expect(text).toContain("First, Last");
   });
 
   it("says a header row with no data under it is not data", () => {
-    expect(paneFor({ ...ready, paste: "First\tLast", rows: 0 }, "fields").textContent).toContain("header");
+    expect(paneFor({ ...ready, paste: "First\tLast", rows: 0 }, "data").textContent).toContain("header");
   });
 
   it("writes a pasted cell as TEXT, never as markup", () => {
     // Same rule as the field chips: this is a file somebody pasted, and
     // innerHTML here runs a script tag with the add-in's own privileges.
     const nasty = "<img src=x onerror=alert(1)>";
-    const pane = paneFor({ ...ready, paste: `Name\n${nasty}`, columns: [nasty], rows: 1 }, "fields");
+    const pane = paneFor({ ...ready, paste: `Name\n${nasty}`, columns: [nasty], rows: 1 }, "data");
     expect(pane.querySelectorAll("img")).toHaveLength(0);
     expect((pane.querySelector("textarea") as HTMLTextAreaElement).value).toContain(nasty);
   });
@@ -244,7 +251,7 @@ describe("the paste box", () => {
 describe("going back", () => {
   it("offers the previous step on every screen but the first", () => {
     expect(paneFor(ready, "template").querySelector("[data-back]")).toBeNull();
-    for (const step of ["fields", "preview", "merge"] as const) {
+    for (const step of ["data", "fields", "preview", "merge"] as const) {
       expect(paneFor(ready, step).querySelector("[data-back]"), step).not.toBeNull();
     }
   });
@@ -256,7 +263,7 @@ describe("going back", () => {
   it("never takes the last place on the screen from the primary", () => {
     // ONE PRIMARY per screen, always last. A back link that lands after it
     // makes two things to press and neither is obviously the one.
-    for (const step of ["fields", "preview", "merge"] as const) {
+    for (const step of ["data", "fields", "preview", "merge"] as const) {
       const main = paneFor(ready, step).querySelector("main");
       expect(main?.lastElementChild?.className, step).toBe("primary");
     }
@@ -527,44 +534,94 @@ describe("a finished merge offers the slides back", () => {
   });
 });
 
-describe("getting to the data before the template exists", () => {
+describe("the Insert buttons", () => {
   /**
-   * The chicken-and-egg a first run hit. Step 1's primary only advances when
-   * the template read finds fields, so a deck with no `{{fields}}` on it had no
-   * route to step 2 — and the names to type are the DATA's column headers,
-   * which cannot be seen until it is attached. The pane was telling the user to
-   * go and type names nobody knew yet.
+   * The question the first person to use this add-in asked, in these words:
+   * "how do I insert the fields?" The answer used to be "type them", which is
+   * fine for one field and bad for twelve — and it asks the user to spell a
+   * column name exactly right, from memory, with the data in another window.
    *
-   * `blockedReason` already permitted that step on the two slide numbers alone.
-   * Only a control was missing, so nothing about what is reachable changed.
+   * The list is the COLUMNS, in the order the data has them, because that is
+   * the set the merge can fill.
    */
-  const draftOnly = { fields: [], previewing: false, draft: { from: "2", to: "3" }, deckSize: 4 };
+  const withData = { ...ready, fields: [] as string[], columns: ["First", "City"], rows: 2 };
 
-  it("offers a way to the data step from a template with no fields", () => {
-    const doc = paneFor(draftOnly, "template");
-    const link = doc.querySelector('[data-forward="fields"]');
-    expect(link?.textContent).toBe("Attach data first to see your column names");
+  it("offers one per column, showing the token that will land on the slide", () => {
+    const chips = Array.from(paneFor(withData, "fields").querySelectorAll("[data-insert]"));
+    expect(chips.map((c) => c.getAttribute("data-insert"))).toEqual(["First", "City"]);
+    expect(chips.map((c) => c.textContent)).toEqual(["{{First}}", "{{City}}"]);
   });
 
-  it("does not offer it before the slide numbers make sense", () => {
-    // `blockedReason` refuses the step without a block, and the contract for
-    // `data-forward` is that render never draws one the click handler would
-    // have to re-decide.
-    const doc = paneFor({ fields: [], previewing: false, draft: { from: "", to: "" } }, "template");
-    expect(doc.querySelector('[data-forward="fields"]')).toBeNull();
+  it("marks a column already on the slides rather than dropping it", () => {
+    // A template can legitimately use a column twice, and a list that shrinks
+    // as it is pressed loses its own order under the user's hand.
+    const pane = paneFor({ ...withData, fields: ["First"] }, "fields");
+    expect(pane.querySelector('[data-insert="First"]')?.getAttribute("data-placed")).toBe("yes");
+    expect(pane.querySelector('[data-insert="City"]')?.getAttribute("data-placed")).toBe("no");
   });
 
-  it("stops offering it once data is attached", () => {
-    // The label would be a lie, and the back link is the way there by then.
-    const doc = paneFor({ ...draftOnly, rows: 2, columns: ["First", "City"] }, "template");
-    expect(doc.querySelector('[data-forward="fields"]')).toBeNull();
+  it("says where to click first, because nothing reports where the cursor is", () => {
+    // `setSelectedDataAsync` on a slide with nothing selected refuses with a
+    // message about a selection, which reads as a bug. Saying it ahead of the
+    // press is the only version the user can act on.
+    expect(paneFor(withData, "fields").textContent).toContain("Click into a text box");
   });
 
-  it("leaves the primary the last thing on the screen", () => {
-    // The layout rule the pane was approved on. A forward link is a link, and
-    // it goes before the button like every other one.
-    const doc = paneFor(draftOnly, "template");
-    const controls = Array.from(doc.querySelectorAll("button"));
+  it("names the columns that are not on a slide yet", () => {
+    const text = paneFor({ ...withData, fields: ["First"] }, "fields").textContent ?? "";
+    expect(text).toContain("Not on a slide yet: City");
+  });
+
+  it("says nothing about unused columns before anything is placed", () => {
+    // Before the first insert every column is unused and the line says nothing.
+    expect(paneFor(withData, "fields").textContent).not.toContain("Not on a slide yet");
+  });
+
+  it("writes a column name as TEXT, never as markup", () => {
+    // Same rule as the field chips and the paste box: this name came out of a
+    // file somebody pasted, and innerHTML here runs a script tag with the
+    // add-in's own privileges.
+    const nasty = "<img src=x onerror=alert(1)>";
+    const pane = paneFor({ ...withData, columns: [nasty] }, "fields");
+    expect(pane.querySelectorAll("img")).toHaveLength(0);
+    expect(pane.querySelector("[data-insert]")?.textContent).toBe(`{{${nasty}}}`);
+  });
+
+  it("says what the last press did, and leaves the primary last", () => {
+    const pane = paneFor({ ...withData, fieldNote: "{{City}} put on the slide." }, "fields");
+    expect(pane.textContent).toContain("{{City}} put on the slide.");
+    const controls = Array.from(pane.querySelectorAll("button"));
     expect(controls[controls.length - 1]?.className).toContain("primary");
+  });
+
+  it("names a placeholder the engine found in a chart, and says what will happen", () => {
+    /**
+     * Found while reworking this step: the card was built, the state field was
+     * carried through `inspectBlock`, and NOTHING in the suite rendered it —
+     * the fourth time in this repo a surface has been reachable from no test.
+     *
+     * "Charts are not supported" would leave the user to work out which of
+     * their placeholders is in one, so it names them and says they will ship as
+     * written.
+     */
+    const text = paneFor({ ...withData, unmergeable: ["Region"] }, "fields").textContent ?? "";
+    expect(text).toContain("Region is inside a chart or SmartArt");
+    expect(text).toContain("stay as written");
+    // Not folded in among the fields: it is not a candidate for a column, so
+    // counting it would ask for data that could never be used.
+    expect(paneFor({ ...withData, unmergeable: ["Region"] }, "fields").querySelectorAll(".fields li")).toHaveLength(0);
+  });
+
+  it("says nothing about charts when the template has none", () => {
+    expect(paneFor(withData, "fields").textContent).not.toContain("SmartArt");
+  });
+
+  it("says why the list is empty rather than showing nothing", () => {
+    // Reachable through the Back link from Preview after the paste box is
+    // cleared. An empty list on a step whose whole job is inserting reads as
+    // the control being broken.
+    const pane = paneFor({ ...ready, fields: [], columns: undefined, rows: undefined }, "fields");
+    expect(pane.textContent).toContain("Attach your data first");
+    expect(pane.querySelector("[data-insert]")).toBeNull();
   });
 });

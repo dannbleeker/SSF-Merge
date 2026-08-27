@@ -9,6 +9,7 @@
 import {
   canReadSelection,
   hostEnvironment,
+  insertTextAtCursor,
   ready as hostReady,
   selectedBlock,
   slideCount,
@@ -22,7 +23,9 @@ import { describeMerge, plural } from "./summary.js";
 import {
   EMPTY,
   EMPTY_DRAFT,
+  blockedReason,
   chosenBlock,
+  fieldToken,
   firstIncludedRow,
   includedRecords,
   nextStep,
@@ -186,14 +189,22 @@ function onClick(event: Event): void {
     return;
   }
 
+  // An Insert chip. Read before `data-action` for the same reason the row
+  // checkbox is: it sits inside the fields step, whose primary carries one.
+  const insert = target.closest("[data-insert]")?.getAttribute("data-insert");
+  if (insert !== null && insert !== undefined) {
+    void insertField(insert);
+    return;
+  }
+
   const action = target.closest("[data-action]")?.getAttribute("data-action");
   if (!action) return;
   if (action === "merge") {
     void merge();
     return;
   }
-  if (action === "template") {
-    void useBlock();
+  if (action === "template" || action === "fields") {
+    void useBlock(action);
     return;
   }
   if (action === "rows") {
@@ -272,6 +283,9 @@ function onInput(event: Event): void {
       fields: [],
       notice: undefined,
       added: undefined,
+      // The note names a token that was put on a slide in the OLD block. Left
+      // standing it reports an insert into slides this state no longer names.
+      fieldNote: undefined,
       // Keyed by SLIDE NUMBER, so they mean nothing once the block moves:
       // "slide 5 only when Renewal" is about the fifth slide of the deck, and
       // a block starting one slide later would silently apply it to a
@@ -297,6 +311,9 @@ function onInput(event: Event): void {
       paste: target.value,
       notice: undefined,
       added: undefined,
+      // A new paste can have different columns, so a note about `{{Region}}`
+      // being placed may now be about a column nothing will fill.
+      fieldNote: undefined,
       // The filter goes with the data it was about. Row 7 of the old paste is
       // not row 7 of the new one, and silently carrying an exclusion across
       // would take out a row the user never looked at.
@@ -358,7 +375,7 @@ async function useSelection(): Promise<void> {
  * the placeholders the fields step lists are the ones the merge will bind —
  * not a guess, and not a second parser that can disagree with the first.
  */
-async function useBlock(): Promise<void> {
+async function useBlock(from: StepId): Promise<void> {
   const block = chosenBlock(state);
   if (!block || state.running) return;
   state = { ...state, running: "inspect", notice: "Reading the slides…" };
@@ -388,9 +405,25 @@ async function useBlock(): Promise<void> {
           fields: report.fields,
           unmergeable: report.unmergeable ?? [],
           notice: undefined,
+          // The note said "press Check the slides", and this is that press.
+          // The list of fields below is the answer now.
+          fieldNote: undefined,
         }
       : { ...state, deckSize, block: undefined, fields: [], notice: report.detail };
-    if (report.ok) step = nextStep("template") ?? step;
+    // From whichever step asked. The template step reads to COMMIT a block;
+    // the fields step reads again because the user has just been typing
+    // `{{Column}}` into PowerPoint and nothing tells this pane that happened —
+    // there is no document-changed event for slide text. Same call, same
+    // staleness check, and each goes on to its own next step.
+    //
+    // Only to a step the read has actually UNBLOCKED. A template with no
+    // `{{fields}}` on it is a fine answer now — `inspectBlock` no longer
+    // refuses one — so a bare `nextStep` would walk a user from the fields
+    // step onto a preview that cannot run, where the only thing to do is come
+    // back. `blockedReason` is the same question the screen asks, so the pane
+    // cannot advance onto a step it would immediately draw as blocked.
+    const next = nextStep(from);
+    if (report.ok && next && blockedReason(state, next) === null) step = next;
   } catch (e) {
     // `inspectBlock` answers rather than raising, so a raise here is something
     // below it. Said out loud, because the alternative is a pane that reads
@@ -401,6 +434,82 @@ async function useBlock(): Promise<void> {
     // only on the happy path is a pane that has to be reopened.
     state = { ...state, running: undefined };
     draw();
+  }
+}
+
+/**
+ * One press of an Insert chip, and the two ways it can land.
+ *
+ * `setSelectedDataAsync` puts the token where the cursor is, which is the
+ * whole feature — the user clicks into a text box on the slide and presses a
+ * column. It is a Common API with no requirement set, so there is nothing to
+ * declare and nothing to check: whether this host will do it is found out by
+ * asking, once, per press.
+ *
+ * The FALLBACK is the reason this is worth building at all. On a host that
+ * refuses, or with no insertion point, the token goes on the clipboard instead
+ * and the pane says so — one Ctrl+V away from the same result, and still
+ * better than asking the user to spell a column name from memory with the data
+ * in another window. Where even the clipboard is refused (a task pane is a
+ * cross-origin iframe and `navigator.clipboard` is gated on permissions there)
+ * the sentence carries the token itself, so it can be read off the screen. All
+ * three outcomes name the token; none of them is silence.
+ *
+ * A module flag rather than `state.running`, deliberately. `running` disables
+ * the whole pane and relabels its primary, which is right for a two-minute
+ * merge and wrong for a chip the user presses six times in a row — the screen
+ * would flicker through "Reading the slides…" on every one. This only stops the
+ * same press arriving twice.
+ */
+let inserting = false;
+
+async function insertField(column: string): Promise<void> {
+  // A host call is out. Its answer is about to be written into this state, and
+  // an insert would be reported against a screen that is about to change.
+  if (state.running || inserting) return;
+  inserting = true;
+  const token = fieldToken(column);
+  try {
+    const done = await insertTextAtCursor(token);
+    if (done.ok) {
+      state = {
+        ...state,
+        // Says what to do NEXT, because the insert lands on the slide and not
+        // in the pane: without the second sentence the user has no reason to
+        // press the primary, and the fields list stays empty until they do.
+        fieldNote: `${token} put on the slide. Press "Check the slides" when you have placed them all.`,
+      };
+      return;
+    }
+    const copied = await copyText(token);
+    state = {
+      ...state,
+      fieldNote: copied
+        ? `PowerPoint would not type it in, so ${token} is on your clipboard — click into a text box on the slide and paste it. (${done.why})`
+        : `PowerPoint would not type it in, and the clipboard was refused too. Type ${token} onto the slide by hand. (${done.why})`,
+    };
+  } finally {
+    inserting = false;
+    draw();
+  }
+}
+
+/**
+ * The clipboard, or false.
+ *
+ * Never raises. A task pane is a nested cross-origin iframe, where
+ * `navigator.clipboard` is gated on a permission the host may not have granted
+ * and is absent outright on older WebViews — and this is the FALLBACK path, so
+ * a rejection here must produce the next sentence rather than take the handler
+ * with it.
+ */
+async function copyText(text: string): Promise<boolean> {
+  try {
+    if (!navigator.clipboard?.writeText) return false;
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
   }
 }
 

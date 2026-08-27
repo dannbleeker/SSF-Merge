@@ -21,6 +21,24 @@ export interface BlockRequest {
   offsetInPackage: number;
   /** Conditions the pane collected, keyed by slide number. */
   conditions?: Record<number, string>;
+  /**
+   * Whether a block with no `{{fields}}` on it is an ANSWER rather than a refusal.
+   *
+   * A merge with no placeholders produces N identical copies, so `runMerge`
+   * must never accept one — and it does not pass this. But the pane now picks
+   * the slides BEFORE the fields are on them: the order is choose slides,
+   * paste data, insert fields, merge, because the names to type are the data's
+   * own column headers and the user cannot know them at step 1. That was
+   * reported from a first real run: the refusal told somebody to go and type
+   * field names nobody had yet.
+   *
+   * So the same read serves two questions. "What is on these slides" tolerates
+   * nothing being on them; "may I clone them 240 times" does not. Passed
+   * explicitly rather than inferred from `runId === "inspect"`, because the one
+   * thing this flag must never do is turn off by accident on the destructive
+   * path.
+   */
+  allowEmpty?: boolean;
 }
 
 export type Prepared = { ok: true; block: Block; fields: string[]; unmergeable: string[] } | { ok: false; why: string };
@@ -108,7 +126,7 @@ export async function prepareBlock(pkg: Pkg, req: BlockRequest, runId: string): 
     slides.push({ path, seq: i + 1, fields: own, ...(condition ? { condition } : {}) });
   }
 
-  if (fields.length === 0) {
+  if (fields.length === 0 && !req.allowEmpty) {
     // Not an error the engine can see: a merge with no placeholders produces N
     // identical copies, which is never what anybody meant and is expensive to
     // undo once it is in the deck.
