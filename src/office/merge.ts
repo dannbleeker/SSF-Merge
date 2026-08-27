@@ -164,12 +164,33 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
 
   const result = await runPlan(pkg, plan, req.records, { ...(req.onEmpty ? { onEmpty: req.onEmpty } : {}) });
 
-  // The package still holds the TEMPLATE slides it cloned from. Inserted, they
-  // would put the user's own placeholder slides back into their deck after
-  // every run.
-  for (const slide of prepared.block.slides) await pkg.removeSlide(slide.path);
+  // Everything that is not a merged slide comes out, and the set is computed
+  // from the PACKAGE rather than from the block.
+  //
+  // Removing `prepared.block.slides` was enough on the `subset` route, where
+  // `exportAsBase64Presentation` hands back a package holding only the template
+  // block — take the block out and the clones are all that is left. On the
+  // `file` route it was not: `getFileAsync` hands back the USER'S ENTIRE
+  // PRESENTATION, so the package went to the host as their whole deck, minus
+  // the template block, plus the clones. Three rows merged into a forty-slide
+  // deck would have inserted forty-six slides, a second copy of everything they
+  // had. That route is every host below PowerPointApi 1.10 and this add-in's
+  // floor is 1.2, so it is supported and was never exercised.
+  //
+  // Keeping the clones rather than removing the block makes the two routes one
+  // case: on `subset` the difference is exactly the block, so nothing changed
+  // there, and `test/office-merge.test.ts` holds both.
+  const keep = new Set(result.slides);
+  for (const path of await pkg.slidePaths()) {
+    if (!keep.has(path)) await pkg.removeSlide(path);
+  }
 
-  const insert = await insertDeck(await pkg.toBase64(), result.slides.length);
+  // What the package HOLDS, not what the plan believed it built. `insertVerdict`
+  // grades the deck delta against this number, so taking it from anywhere but
+  // the artefact makes the verdict a statement about the wrong thing — and on
+  // the file route the two disagreed by the size of the user's deck.
+  const sending = await pkg.slidePaths();
+  const insert = await insertDeck(await pkg.toBase64(), sending.length);
   const added = insert.landed;
 
   if (insert.verdict !== "yes") {

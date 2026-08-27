@@ -143,6 +143,21 @@ tested for it. It wants a probe question before the first real merge on a deck
 that has comments. Recorded here rather than fixed because guessing at which
 parts are affected would be worse than measuring.
 
+### What reading it found in OUR code
+
+The archaeology was aimed at instruments and turned up a product defect. **On
+every host below PowerPointApi 1.10 the merge would have inserted the user's
+entire presentation a second time** — the `file` route returns the whole deck
+and only the template block was being removed from it. Fixed, with both routes
+now held by `test/office-merge.test.ts`.
+
+Worth recording as a transfer even though no PowerChart finding names it,
+because the rule that caught it is one of theirs: **measure the artefact you
+hand over, not your intent.** The count sent to the host was `result.slides.length`
+— what the plan believed it built — where the package's own `sldIdLst` was the
+only honest answer, and on that route the two disagreed by the size of the
+user's deck.
+
 ## What we learned that PowerChart has not
 
 PowerChart is read-only by the owner's instruction, so findings that run the
