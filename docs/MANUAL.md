@@ -104,8 +104,12 @@ per customer is the ordinary case. Step 1 of the pane is where you name it: the
 number of the first slide and the number of the last, as the thumbnail rail
 counts them.
 
-Picking the block by *clicking* the slides is still planned. Two boxes are what
-is built, and they are checked as you type. A block that ends before it starts,
+Select the slides in the thumbnail rail and press **Use the slides I have
+selected**, or type the two numbers. Either way they are checked as you type.
+
+A selection with a **gap** in it is refused rather than closed up: a template
+block is slides that repeat *together*, in order, so quietly filling the gap
+would add a slide to every row that you never picked. A block that ends before it starts,
 a slide 0 or a fraction is **refused**, in a sentence quoting what you typed,
 before a template read is spent on it.
 

@@ -152,3 +152,67 @@ export function blockIds(deckIds: string[], from: number, to: number): BlockIds 
   }
   return { ok: true, ids };
 }
+
+export type SelectedBlock = { ok: true; from: number; to: number } | { ok: false; why: string };
+
+/**
+ * The deck's own id for a slide named by a SELECTION.
+ *
+ * office-js#2474: a `SlideRange`'s `id` is not roundtrippable — it lacks the
+ * `#XYZ` suffix the same slide carries when read from `presentation.slides`, so
+ * `slides.getItem(rangeId)` answers InvalidArgument where the deck's own id
+ * works. Reported on Windows desktop and closed `not planned`.
+ *
+ * On the web host this project targets the ids happen to round-trip today, and
+ * a sibling add-in has 174 consecutive rounds of a selection read succeeding to
+ * say so — which is exactly why this must not be left to luck on a host nobody
+ * here has run. The repair is the issue's own observation as a rule: the deck's
+ * id is the range's id plus a `#suffix`, so an id absent from the deck's list is
+ * matched by that prefix.
+ *
+ * Exactly one match, or nothing. Two slides answering to one prefix means the
+ * assumption behind the repair is wrong on that host, and guessing between them
+ * would name the wrong slide — worse than refusing.
+ */
+export function deckIdForSelectedSlide(rangeId: string, deckIds: string[]): string | undefined {
+  if (deckIds.includes(rangeId)) return rangeId;
+  const withSuffix = deckIds.filter((id) => id.startsWith(`${rangeId}#`));
+  return withSuffix.length === 1 ? withSuffix[0] : undefined;
+}
+
+/**
+ * What the user has selected, as a template block in SLIDE NUMBERS.
+ *
+ * The pane speaks in the numbering the thumbnail rail shows, and a selection
+ * speaks in ids — so this is the translation, and it is pure because every
+ * refusal in it is a sentence the pane shows as it stands.
+ *
+ * A template block must be CONTIGUOUS: the whole product is "these slides
+ * repeat together, in this order, once per row". A selection with a gap in it
+ * is refused rather than closed up, because closing it up would silently add
+ * slides the user did not pick.
+ */
+export function blockFromSelection(rangeIds: string[], deckIds: string[]): SelectedBlock {
+  if (rangeIds.length === 0) return { ok: false, why: "No slides are selected." };
+
+  const numbers: number[] = [];
+  for (const rangeId of rangeIds) {
+    const deckId = deckIdForSelectedSlide(rangeId, deckIds);
+    // The host named a slide the deck's own list does not carry. Reported
+    // rather than skipped: quietly dropping it would build a block out of the
+    // slides that happened to resolve.
+    if (deckId === undefined) return { ok: false, why: "PowerPoint would not say which slides those are." };
+    numbers.push(deckIds.indexOf(deckId) + 1);
+  }
+
+  numbers.sort((a, b) => a - b);
+  const from = numbers[0] as number;
+  const to = numbers[numbers.length - 1] as number;
+  if (to - from + 1 !== numbers.length) {
+    return {
+      ok: false,
+      why: `Slides ${from} to ${to} are not all selected — a template block has to be slides that sit next to each other.`,
+    };
+  }
+  return { ok: true, from, to };
+}

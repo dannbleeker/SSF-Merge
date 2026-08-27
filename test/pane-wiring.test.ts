@@ -22,12 +22,17 @@ const readTemplateRefusal = "PowerPoint would not name every slide between 4 and
 const office = vi.hoisted(() => ({
   slideCount: vi.fn<() => Promise<number>>(),
   ready: vi.fn(() => ({ ok: true, detail: "fine" })),
+  selectedBlock: vi.fn<() => Promise<unknown>>(),
   inspectBlock: vi.fn<(r: { from: number; to: number }) => Promise<unknown>>(),
   runMerge: vi.fn<(r: unknown) => Promise<unknown>>(),
   undoMerge: vi.fn<(o: unknown) => Promise<unknown>>(),
 }));
 
-vi.mock("../src/office/powerpoint.js", () => ({ ready: office.ready, slideCount: office.slideCount }));
+vi.mock("../src/office/powerpoint.js", () => ({
+  ready: office.ready,
+  slideCount: office.slideCount,
+  selectedBlock: office.selectedBlock,
+}));
 vi.mock("../src/office/merge.js", () => ({
   inspectBlock: office.inspectBlock,
   runMerge: office.runMerge,
@@ -119,6 +124,7 @@ beforeEach(() => {
   office.inspectBlock.mockReset();
   office.runMerge.mockReset();
   office.undoMerge.mockReset();
+  office.selectedBlock.mockReset();
   office.ready.mockReturnValue({ ok: true, detail: "fine" });
 });
 
@@ -457,5 +463,76 @@ describe("the preview", () => {
     held.resolve({ removed: 3, detail: "removed 3 slide(s) from index 12" });
     await settle();
     expect(primary().textContent).toBe("Preview the first row");
+  });
+});
+
+describe("filling the boxes from the slides the user selected", () => {
+  it("puts the numbers in the boxes rather than committing a block", () => {
+    // Two steps for one action would be worse, and skipping the template read
+    // would be worse still — the fields step would then list nothing. What
+    // this asserts is that the read is NOT spent: whether `state.block` is
+    // also cleared is not observable and is not claimed.
+    return (async () => {
+      await openPane();
+      await settle();
+      office.selectedBlock.mockResolvedValueOnce({ ok: true, from: 4, to: 6 });
+      (pane().querySelector('[data-action="selection"]') as HTMLElement).click();
+      await settle();
+
+      expect((field("from") as HTMLInputElement).value).toBe("4");
+      expect((field("to") as HTMLInputElement).value).toBe("6");
+      // Still on the template step, with the read not yet spent.
+      expect(primary().textContent).toBe("Use slides 4 to 6");
+      expect(office.inspectBlock).not.toHaveBeenCalled();
+    })();
+  });
+
+  it("says what is wrong instead of filling anything", async () => {
+    await openPane();
+    await settle();
+    office.selectedBlock.mockResolvedValueOnce({
+      ok: false,
+      why: "Slides 2 to 4 are not all selected — a template block has to be slides that sit next to each other.",
+    });
+    (pane().querySelector('[data-action="selection"]') as HTMLElement).click();
+    await settle();
+
+    expect(said().join(" ")).toContain("next to each other");
+    expect((field("from") as HTMLInputElement).value).toBe("");
+  });
+
+  it("cannot be started twice, and gives the pane back either way", async () => {
+    await openPane();
+    await settle();
+    const held = deferred<unknown>();
+    office.selectedBlock.mockReturnValueOnce(held.promise);
+    const link = () => pane().querySelector('[data-action="selection"]') as HTMLElement;
+    link().click();
+    await settle();
+    expect(primary().disabled).toBe(true);
+    link().click();
+    await settle();
+    expect(office.selectedBlock).toHaveBeenCalledTimes(1);
+
+    held.resolve({ ok: true, from: 1, to: 2 });
+    await settle();
+    expect(primary().disabled).toBe(false);
+  });
+
+  it("clears a committed block, because the boxes now name different slides", async () => {
+    await openPane();
+    await settle();
+    type("from", "1");
+    type("to", "2");
+    office.inspectBlock.mockResolvedValueOnce(REPORT);
+    primary().click();
+    await settle();
+    (pane().querySelector("[data-back]") as HTMLElement).click();
+
+    office.selectedBlock.mockResolvedValueOnce({ ok: true, from: 7, to: 9 });
+    (pane().querySelector('[data-action="selection"]') as HTMLElement).click();
+    await settle();
+    // The old block's placeholders must not stand behind the new numbers.
+    expect(primary().textContent).toBe("Use slides 7 to 9");
   });
 });

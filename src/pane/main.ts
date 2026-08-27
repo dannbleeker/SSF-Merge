@@ -6,7 +6,7 @@
  * PowerPoint anywhere. `test/architecture.test.ts` holds that seam: a decision
  * that migrates into this file becomes untestable the moment it arrives.
  */
-import { ready as hostReady, slideCount } from "../office/powerpoint.js";
+import { ready as hostReady, selectedBlock, slideCount } from "../office/powerpoint.js";
 import { inspectBlock, runMerge, undoMerge, type MergeOutcome } from "../office/merge.js";
 import { render } from "./render.js";
 import {
@@ -165,6 +165,10 @@ function onClick(event: Event): void {
     void useBlock();
     return;
   }
+  if (action === "selection") {
+    void useSelection();
+    return;
+  }
   if (action === "preview") {
     void (state.previewing ? endPreview() : preview());
     return;
@@ -213,6 +217,43 @@ function onInput(event: Event): void {
         ? { records: read.records, columns: read.columns, rows: read.rows }
         : { records: undefined, columns: undefined, rows: undefined }),
     };
+    draw();
+  }
+}
+
+/**
+ * Fill the two boxes from the slides the user has selected.
+ *
+ * Fills the DRAFT rather than committing a block, so the numbers land in the
+ * boxes and the user still presses "Use slides N to M" — the read that finds
+ * the placeholders. Two steps for one action would be worse; silently skipping
+ * the template read would be worse still, because the fields step would then
+ * show nothing.
+ */
+async function useSelection(): Promise<void> {
+  if (state.running) return;
+  state = { ...state, running: "inspect", notice: "Reading your selection…" };
+  draw();
+  try {
+    const picked = await selectedBlock();
+    state = picked.ok
+      ? {
+          ...state,
+          draft: { from: String(picked.from), to: String(picked.to) },
+          // `block` cleared so it keeps meaning "a block whose placeholders
+          // have been READ". Nothing observable distinguishes this from
+          // committing the selection — `chosenBlock` prefers the draft either
+          // way, and the template step's only way forward is the button that
+          // reads — so it is stated here rather than guarded by a test that
+          // would pass against both. Defensive, and known to be.
+          block: undefined,
+          fields: [],
+          added: undefined,
+          notice: undefined,
+        }
+      : { ...state, notice: picked.why };
+  } finally {
+    state = { ...state, running: undefined };
     draw();
   }
 }

@@ -23,11 +23,13 @@
  *   comes back.
  */
 import {
+  blockFromSelection,
   blockIds,
   chooseDeckSource,
   checkFloor,
   templateOffset,
   type DeckSource,
+  type SelectedBlock,
   type Supports,
 } from "../host/capability.js";
 import { insertVerdict, type InsertVerdict } from "../host/verdicts.js";
@@ -262,4 +264,53 @@ export async function undoInsert(deckAtStart: number, added: number): Promise<Un
         ? `removed ${removed} slide(s) from index ${plan.from}${note}`
         : `asked for ${plan.count} slide(s) from index ${plan.from} and the deck shrank by ${removed}${note}`,
   };
+}
+
+/**
+ * The template block the user has SELECTED, in slide numbers.
+ *
+ * Reads the selection and the deck's own id list in one batch, because
+ * `blockFromSelection` needs both: a `SlideRange`'s id is not the deck's id
+ * (office-js#2474) and the pane speaks in the numbering the thumbnail rail
+ * shows, which is an INDEX into that list.
+ *
+ * Safe to call on this host, and that is measured rather than assumed. A
+ * sibling add-in runs a "selection ladder" — a read, `setSelectedSlides`, a
+ * read, `setSelectedShapes([id])`, a read, `setSelectedShapes([])`, a read —
+ * in every round of its self-test battery, and across **174 consecutive
+ * archived rounds every rung answered**, in 550-710ms, with zero refusals and
+ * zero silences. Its "edit the chart the user selected" scenario, which reads
+ * `getSelectedSlides` exactly as this does, passed 174 of 174 — and it runs
+ * AFTER the ladder, so the read survives even the call that office-js#3698
+ * says wedges the subsystem.
+ *
+ * This add-in never calls `setSelectedShapes` at all, which is the only call
+ * ever implicated in that wedge, so it is on the safest part of a surface that
+ * is measured safe.
+ */
+export async function selectedBlock(): Promise<SelectedBlock> {
+  try {
+    return await withTimeout(
+      PowerPoint.run(async (context) => {
+        const selected = context.presentation.getSelectedSlides();
+        selected.load("items/id");
+        // The deck's ids in the SAME sync this read already costs — the
+        // selection's ids mean nothing without them.
+        const deck = context.presentation.slides;
+        deck.load("items/id");
+        await context.sync();
+        return blockFromSelection(
+          selected.items.map((s) => s.id),
+          deck.items.map((s) => s.id),
+        );
+      }),
+      BUDGET.read,
+      "reading the selected slides",
+    );
+  } catch (e) {
+    // An OUTCOME, never a raise. The pane awaits this from a click handler, and
+    // a rejection there is an unhandled one — the shape of defect an
+    // adversarial review already found in this pane once.
+    return { ok: false, why: e instanceof Error ? e.message : String(e) };
+  }
 }

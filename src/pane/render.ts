@@ -174,6 +174,17 @@ function body(doc: Document, state: PaneState, current: StepId, orange: OrangeHo
       }),
     );
     out.push(blockControl(doc, state));
+    // Reading the selection is safe on this host and it is MEASURED so — see
+    // `selectedBlock`. Offered as a link beside the boxes rather than as the
+    // primary, because typing two numbers always works and clicking slides is
+    // the shortcut: if the host ever stops answering, the step still functions.
+    out.push(
+      el(doc, "button", {
+        class: "back use-selection",
+        text: "Use the slides I have selected",
+        attrs: { "data-action": "selection" },
+      }),
+    );
     const read = readBlockDraft(state.draft ?? EMPTY_DRAFT, state.deckSize);
     // A `why` WITH a block is advice the user may press past; without one it is
     // a refusal. Both are shown the same way — the button already says which,

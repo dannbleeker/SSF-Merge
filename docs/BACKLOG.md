@@ -10,15 +10,6 @@ is to build.
 
 ## Next
 
-### Picking the block by clicking slides
-**Priority: medium.** Feasibility: unknown until a probe answers.
-Two typed slide numbers work and are checked as they are entered, but clicking
-the slides is what a user reaches for. `getSelectedSlides` is the obvious route
-and this host is documented to wedge its whole selection subsystem after
-`setSelectedShapes`, so it needs a probe question before it needs code — the
-question being whether the SLIDE selection API is affected at all, or only the
-shape one.
-
 ### The delimiter sniff reads only as far as the first newline
 **Priority: low.** Feasibility: high.
 `parseDelimited` decides tab-versus-comma from `src.slice(0, src.indexOf("\n") + 1)`.
