@@ -456,14 +456,11 @@ itself, which is hosted at
 <https://ssf-merge.struktureretsundfornuft.dk>. Nothing is installed onto
 your machine.
 
-Get **`manifest-prod.xml`** and sideload it. Two places to get it, and the
-second one only once a version has been cut:
-
-- [the file on `main`](https://github.com/dannbleeker/SSF-Merge/raw/main/manifest-prod.xml)
-  — always current, and the right one while the add-in is still being tested;
-- the [latest release](https://github.com/dannbleeker/SSF-Merge/releases/latest),
-  once there is one. **There is none yet**, so that link is a 404 today; this
-  manual said to use it before anybody checked.
+Download **`manifest-prod.xml`** from the
+[latest release](https://github.com/dannbleeker/SSF-Merge/releases/latest) and
+sideload it. [The file on
+`main`](https://github.com/dannbleeker/SSF-Merge/raw/main/manifest-prod.xml) is
+the same pointer if you would rather take it from there.
 
 Both name the same hosted page, so the pane you get is the same either way — the
 manifest is only a pointer, and it is the pointer that is versioned, not the
