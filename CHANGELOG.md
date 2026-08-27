@@ -7,6 +7,63 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added — the manifests, and an add-in somebody can install
+
+Four files from one definition (`scripts/manifest-source.mjs`): the XML manifest
+a person sideloads, and the unified JSON one an administrator deploys, each in a
+development and a production flavour. Four hand-maintained files is four chances
+for the production one — the only one anybody sideloads — to say something the
+others do not, so `test/manifest.test.ts` fails when a committed file stops
+matching what the source produces.
+
+**No `<Requirements>` block, and that is the load-bearing decision.** The floor
+is PowerPointApi 1.3 (`slide.tags`; everything else the add-in calls is 1.2, and
+`getFileAsync` is a Common API PowerPointApi does not gate) and it is checked at
+RUNTIME by `checkFloor`. A host that does not meet a declared requirement set
+does not show the add-in at all — no ribbon entry, no error, nothing for the
+user to report — where the runtime check names the missing version and what it
+costs them. The rule refuses a requirement set in either format, and there is a
+test that adds one back to prove it still bites.
+
+`<Version>` is `1.0.0.0` and deliberately not the npm version, which is `0.0.0`.
+Office rejects anything below 1.0 outright — "Manifest Version Too Low" — and a
+sibling project shipped `0.1.0` in four manifests for the whole life of its repo
+with a fully green suite, because nothing there had ever asked Microsoft.
+
+**The `<Id>` GUID is pinned as a literal** in the source, in the rules and in the
+test. A new GUID is a new add-in: every existing sideload orphaned, every user
+removing the old entry by hand, nothing anywhere saying why.
+
+Microsoft's `office-addin-manifest validate` runs in a CI job of its own, kept
+out of `test` because it calls a Microsoft service and `test` is the check a
+merge waits on. It cannot run in the development environment at all — the
+service answers **403** through the egress proxy — which is exactly why
+`scripts/manifest-rules.mjs` holds the handful of rules that can be checked
+offline: a version below 1.0, a changed GUID, a declared requirement set, a
+missing `ReadWriteDocument`, a production manifest pointing at localhost, and a
+development manifest pointing at production.
+
+The ribbon icons are **drawn in code** (`scripts/build-icons.mjs`) rather than
+checked in as binaries: a 16, 32, 64 and 80 pixel PNG plus the monochrome
+outline the unified manifest wants, from the pane's own two colours, through a
+PNG encoder that is a raster, one zlib stream and three chunks. A binary in a
+diff is a change nobody can review, so the test asserts the committed bytes are
+exactly what the drawing produces and that the drawing is still the mark it
+claims — one orange row and two pale copies of it, inset, at every size.
+
+The first mark drawn was the pane's own tick, a single bar across the middle,
+and it read as a **minus sign**. Three rows say what the product does.
+
+Also: `vite.config.ts` pins the dev server to port 3000, because that is the
+origin the development manifest names and a manifest pointing at a port nothing
+serves is a blank pane with a generic error. `.prettierignore` gives the
+generator sole ownership of the JSON manifests — Prettier collapses their short
+arrays, so with both tools owning the file `npm run manifests` and
+`npm run format` leave the suite red whichever order they run in. And ESLint's
+default-project file cap is raised: four new scripts pushed `scripts/` past
+eight, at which point every file over the line reports the linter's own limit as
+though it were a defect in the code.
+
 ### Fixed — what an adversarial review of the commit above found
 
 Five lenses over the diff, each finding verified by three independent skeptics;

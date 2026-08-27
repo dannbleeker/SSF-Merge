@@ -24,7 +24,17 @@ export default tseslint.config(
       parserOptions: {
         // The config files sit outside tsconfig's include, and type-aware
         // linting refuses to parse a file no project owns.
-        projectService: { allowDefaultProject: ["*.js", "*.ts", "scripts/*.mjs"] },
+        //
+        // The COUNT is raised because the default is eight and `scripts/` went
+        // past it the moment the manifest generator arrived — at which point
+        // every file over the line fails with a parsing error rather than a
+        // finding, so `npm run lint` reports the linter's own limit as though
+        // it were a defect in the code. These are small Node scripts; the
+        // performance the cap protects is not at stake.
+        projectService: {
+          allowDefaultProject: ["*.js", "*.ts", "scripts/*.mjs"],
+          maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 40,
+        },
         tsconfigRootDir: import.meta.dirname,
       },
     },
@@ -62,6 +72,15 @@ export default tseslint.config(
     // differently on the same source is not a rule. The scripts are covered by
     // `test/probe.test.ts` and by running them.
     files: ["scripts/build-probe.mjs", "scripts/read-answers.mjs"],
+    rules: { "@typescript-eslint/no-unsafe-return": "off" },
+  },
+  {
+    // Untyped `.mjs` with no project behind it: every `RegExp.exec` result and
+    // every `JSON.parse` is `any`, so a function returning one is an unsafe
+    // return by construction rather than by mistake. The rules these files hold
+    // are gated by `test/manifest.test.ts`, which proves each one can still
+    // fail — a stronger check than the type of an intermediate.
+    files: ["scripts/manifest-rules.mjs", "scripts/manifest-source.mjs"],
     rules: { "@typescript-eslint/no-unsafe-return": "off" },
   },
   {

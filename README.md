@@ -8,9 +8,9 @@ Part of the SSF add-in family from
 
 ## Status
 
-Early, and now end to end: a block named in the pane is read out of the open
-deck, merged inside the file and handed back to PowerPoint. The preview step and
-the manifests are what stand between this and something that can be installed.
+Early, and installable: sideload `manifest-prod.xml`, press **Mail merge** on
+the Home tab, name a block of slides, paste a table, and get one set of slides
+per row. The preview step is the one part of the wizard still to build.
 
 | Piece | State |
 | --- | --- |
@@ -24,8 +24,9 @@ the manifests are what stand between this and something that can be installed.
 | Host probe, for the questions only a real PowerPoint answers | done, [three sheets read](docs/PROBE.md) |
 | Office.js host layer (capability floor, template read, insert, positional undo) | done |
 | Task pane — four steps, the block control, the paste box, the merge button | done |
+| Manifests — XML and unified JSON, dev and prod, from one source | done |
+| Ribbon icons, drawn in code rather than checked in as binaries | done |
 | Preview: one row on the real slide, then the template back | not started |
-| Manifests | not started |
 
 ## How it works
 

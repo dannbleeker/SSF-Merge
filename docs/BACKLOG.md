@@ -41,16 +41,6 @@ why it is low rather than blocking.
 The fix is a quote-aware sniff, or counting candidate delimiters across the
 whole text and taking the majority.
 
-### Manifests
-**Priority: blocking.** Feasibility: high.
-XML and unified JSON from one source, validated in CI. Requirement floor
-**`PowerPointApi 1.3`** checked at runtime, never declared — a declared floor
-makes the add-in vanish from the ribbon with no diagnostic. This said 1.4 until
-the floor was read off the calls the add-in actually makes: everything but
-`slide.tags` is 1.2, and `getFileAsync` is a Common API that PowerPointApi does
-not gate. `API_FLOOR` in `src/host/capability.ts` carries the table, and a test
-fails if it moves.
-
 ## After the first release
 
 ### Image fields

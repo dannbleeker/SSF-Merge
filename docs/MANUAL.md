@@ -18,6 +18,7 @@ placeholders where the data goes, and SSF Merge produces one copy per row.
 - [Where the merged slides go](#where-the-merged-slides-go) *(planned)*
 - [What happens to the template](#what-happens-to-the-template) *(planned)*
 - [The pane](#the-pane) *(partly planned)*
+- [Installing it](#installing-it)
 - [Tags SSF Merge writes](#tags-ssf-merge-writes)
 - [Limits](#limits)
 
@@ -246,6 +247,45 @@ The pane follows PowerPoint's theme, read once when it opens. There is no
 theme-change event for a PowerPoint task pane — the one in the Office typings
 belongs to Outlook — so switching PowerPoint between light and dark while the
 pane is open needs the pane reopened.
+
+## Installing it
+
+The add-in is a **manifest** — a small file naming a web page — plus the page
+itself, which is hosted at
+<https://ssf-merge.struktureretsundfornuft.dk>. Nothing is installed onto
+your machine.
+
+Download **`manifest-prod.xml`** from the repository and sideload it:
+
+| where | how |
+| --- | --- |
+| PowerPoint on the web | Home → Add-ins → More Add-ins → **My Add-ins** → Upload My Add-in, and pick the file |
+| PowerPoint on Windows | Put the file in a folder, share the folder, then File → Options → Trust Center → Trust Center Settings → Trusted Add-in Catalogs and add the share. Restart PowerPoint; the add-in appears under **Shared Folder** |
+| PowerPoint on Mac | Copy the file to `~/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef` |
+| A whole tenant | An administrator deploys **`manifest-prod.json`** (the unified manifest) from the Microsoft 365 admin centre |
+
+Then look on the **Home** tab for the **Mail merge** button.
+
+### What needs re-installing, and what does not
+
+Almost nothing. The pane is served from the web, so a change to the merge, the
+steps, the wording or the layout reaches you the next time you open the pane —
+no re-install, nothing to download.
+
+The **manifest** is the exception. Re-sideload only when the manifest itself
+changes: the ribbon button, the permissions, the display name, the icons, or
+the page the button opens. Those changes are called out in the changelog.
+
+### Why it does not say which PowerPoint it needs
+
+The manifest declares no `<Requirements>` block, deliberately. SSF Merge needs
+**PowerPointApi 1.3** — merge metadata lives in slide tags, which arrived in 1.3
+— and that is checked when the pane opens, not declared in the manifest.
+
+A declared requirement set that your PowerPoint does not meet makes the add-in
+**vanish from the ribbon** with no message at all: nothing to see, nothing to
+report, nothing to search for. The runtime check can tell you which version is
+missing and what it costs you, which is worth more than a silent absence.
 
 ## When a cell is not what its format expects
 

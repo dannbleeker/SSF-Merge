@@ -1,0 +1,121 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/teams/v1.17/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.17",
+  "id": "43ebbbac-44ad-42b2-a582-0ef079093e6c",
+  "version": "1.0.0.0",
+  "name": {
+    "short": "SSF Merge",
+    "full": "SSF Merge for PowerPoint"
+  },
+  "description": {
+    "short": "One template block of slides, one set per row of your data.",
+    "full": "Mail merge for PowerPoint. Mark a block of slides as your template, attach a table, and get one set of slides per row with every font, colour and placement intact."
+  },
+  "developer": {
+    "name": "StruktureretSundFornuft",
+    "websiteUrl": "https://struktureretsundfornuft.dk",
+    "privacyUrl": "https://github.com/dannbleeker/SSF-Merge/blob/main/SECURITY.md",
+    "termsOfUseUrl": "https://github.com/dannbleeker/SSF-Merge/blob/main/LICENSE"
+  },
+  "icons": {
+    "outline": "assets/icon-outline-32.png",
+    "color": "assets/icon-64.png"
+  },
+  "accentColor": "#00254C",
+  "localizationInfo": {
+    "defaultLanguageTag": "en-us"
+  },
+  "validDomains": [
+    "localhost:3000"
+  ],
+  "authorization": {
+    "permissions": {
+      "resourceSpecific": [
+        {
+          "name": "Document.ReadWrite.User",
+          "type": "Delegated"
+        }
+      ]
+    }
+  },
+  "extensions": [
+    {
+      "runtimes": [
+        {
+          "id": "TaskPaneRuntime",
+          "type": "general",
+          "code": {
+            "page": "https://localhost:3000/taskpane.html"
+          },
+          "lifetime": "short",
+          "actions": [
+            {
+              "id": "ShowTaskpane",
+              "type": "openPage",
+              "pinnable": false,
+              "view": "dashboard"
+            }
+          ]
+        }
+      ],
+      "ribbons": [
+        {
+          "contexts": [
+            "default"
+          ],
+          "tabs": [
+            {
+              "builtInTabId": "TabHome",
+              "groups": [
+                {
+                  "id": "SsfMerge.Group",
+                  "label": "SSF Merge",
+                  "icons": [
+                    {
+                      "size": 16,
+                      "url": "https://localhost:3000/assets/icon-16.png"
+                    },
+                    {
+                      "size": 32,
+                      "url": "https://localhost:3000/assets/icon-32.png"
+                    },
+                    {
+                      "size": 80,
+                      "url": "https://localhost:3000/assets/icon-80.png"
+                    }
+                  ],
+                  "controls": [
+                    {
+                      "id": "SsfMerge.OpenPane",
+                      "type": "button",
+                      "label": "Mail merge",
+                      "icons": [
+                        {
+                          "size": 16,
+                          "url": "https://localhost:3000/assets/icon-16.png"
+                        },
+                        {
+                          "size": 32,
+                          "url": "https://localhost:3000/assets/icon-32.png"
+                        },
+                        {
+                          "size": 80,
+                          "url": "https://localhost:3000/assets/icon-80.png"
+                        }
+                      ],
+                      "supertip": {
+                        "title": "Mail merge",
+                        "description": "Open SSF Merge to mark a template block and merge your data into it."
+                      },
+                      "actionId": "ShowTaskpane"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
