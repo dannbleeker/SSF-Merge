@@ -7,6 +7,15 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.0] — 2026-08-27
+
+The first release, and the first build that works at all: every one before it
+never loaded Office.js, so the pane rendered its header and stopped, on every
+host, with nothing said. Everything below shipped to `main` before this tag;
+this is the point at which there is a manifest to download.
+
 ### Added — the package the engine hands over is checked as a package
 
 Everything else in the suite tests a decision: does this paragraph merge, does
