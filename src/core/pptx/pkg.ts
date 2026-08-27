@@ -273,6 +273,31 @@ export class Pkg {
   }
 
   /** The next free `ppt/slides/slideN.xml` number. Never reuses a gap. */
+  /**
+   * The next free `ppt/notesSlides/notesSlideN.xml` number.
+   *
+   * Its OWN counter, not the slide's. Part names in a package are arbitrary and
+   * the two sequences drift apart the moment a slide is deleted, so a deck with
+   * one slide can perfectly well keep its notes in `notesSlide2.xml`. Naming a
+   * clone's notes after the slide number then lands on a part that is already
+   * there — and `copyPart` overwrites silently while `addContentTypeOverride`
+   * no-ops on the override that already exists, so the package stays structurally
+   * valid and is wrong in two ways at once: the clone shares the template's
+   * notes page (so the NEXT clone copies notes that have already been merged,
+   * and record 2's slide ships record 1's text), and removing the template on
+   * the way out deletes that shared part, leaving a slide whose notes
+   * relationship points at nothing.
+   *
+   * Both were reproduced on real bytes before this existed. `nextTagNumber` had
+   * the right shape all along, one file over: ask whether the path is free
+   * rather than assume it.
+   */
+  nextNotesNumber(): number {
+    let n = 1;
+    while (this.has(`ppt/notesSlides/notesSlide${n}.xml`)) n++;
+    return n;
+  }
+
   nextSlideNumber(): number {
     let max = 0;
     this.zip.forEach((path) => {

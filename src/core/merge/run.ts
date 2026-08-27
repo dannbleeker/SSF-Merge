@@ -66,11 +66,11 @@ export async function runPlan(
 
     // Nothing reads this slide again, so its parsed copy is written back and
     // dropped. Held, one live document per output slide accumulates on top of
-    // the zip's own bytes: 300 clones of an ordinary content slide measured
-    // 300 clones of a 300-paragraph slide measured 440 MB of heap held against
-    // 54 MB released, and 400 clones 591 MB against 54 — flat rather than
-    // growing with the record count, which is the property that matters on a
-    // task-pane WebView. Every part is byte-identical either way.
+    // the zip's own bytes: 300 clones of a 300-paragraph slide measured 440 MB
+    // of heap held against 54 MB released, and 400 clones 591 MB against 54 —
+    // flat rather than growing with the record count, which is the property
+    // that matters on a task-pane WebView. Every part is byte-identical either
+    // way.
     if (notes) {
       pkg.release(notes);
       // Its own .rels too: cloneNotesSlide edits that part to repoint the copy's

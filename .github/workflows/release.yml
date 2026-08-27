@@ -46,9 +46,40 @@ jobs:
           node scripts/build-manifests.mjs
           git diff --exit-code -- 'manifest*.xml' 'manifest*.json'
 
-      # Microsoft's own validator, on exactly the file being shipped.
+      # Microsoft's own validator, on exactly the files being shipped — BOTH of
+      # them. This validated the XML alone while the release also attaches
+      # `manifest-prod.json`, which is the file the note below tells
+      # administrators to deploy to a whole tenant.
       - name: Manifests are valid
-        run: npx --yes office-addin-manifest validate manifest-prod.xml
+        run: |
+          for m in manifest-prod.xml manifest-prod.json; do
+            echo "--- $m"
+            npx --yes office-addin-manifest validate "$m"
+          done
+
+      # The manifest is four URLs into GitHub Pages, and nothing else in this
+      # repo ever asks whether that host is SERVING. `checkManifest` asks whether
+      # a production manifest points at localhost, which is a different question
+      # and passes cleanly for a manifest pointing at a domain that 404s — so a
+      # release could tell people to sideload a file that installs perfectly and
+      # shows a blank ribbon button and an empty pane.
+      #
+      # On the release job only, never on CI: a third-party outage must not
+      # block a merge, which is the reasoning that already keeps the validator
+      # out of `test`. A release is manual, so a genuine outage failing it is
+      # the right outcome — do not ship pointing at a host that is down.
+      - name: The manifest's own URLs are being served
+        run: |
+          # Into a variable first, never `… | while read`. A loop on the right of
+          # a pipe runs in a subshell, and a `curl` that fails inside one is a
+          # step that goes green while the host is down — which is the exact
+          # failure this step exists to catch.
+          urls=$(node scripts/manifest-urls.mjs manifest-prod.xml manifest-prod.json)
+          test -n "$urls" || { echo "no URLs to check — the manifest named none"; exit 1; }
+          for url in $urls; do
+            echo "--- $url"
+            curl --fail --silent --show-error --location --retry 2 --output /dev/null "$url"
+          done
 
       # Production only, no localhost, and every manifest the documentation
       # tells a reader to download is actually attached.

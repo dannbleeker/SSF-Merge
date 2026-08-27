@@ -57,12 +57,28 @@ describe("the numbers an undo cannot be done without", () => {
       { kind: "ssf-merge-run", deckAtStart: 12 },
       { kind: "ssf-merge-run", added: 720 },
       { kind: "ssf-merge-run", deckAtStart: -1, added: 720 },
-      { kind: "ssf-merge-run", deckAtStart: 12, added: 0 },
+      { kind: "ssf-merge-run", deckAtStart: 12, added: -1 },
       { kind: "ssf-merge-run", deckAtStart: 1.5, added: 720 },
     ]) {
       real.setItem(KEY, JSON.stringify(bad));
       expect(readCrumb(), JSON.stringify(bad)).toBeUndefined();
     }
+  });
+
+  it("KEEPS a crumb written before the insert, which is the one it exists for", () => {
+    /**
+     * `merge()` writes `{added: 0}` before handing the package to PowerPoint,
+     * because a tab that dies during that call never comes back to write the
+     * real number — and that is the whole reason this file exists. Refusing
+     * zero on the way out made the crumb write-only in exactly that window:
+     * readable only after the run it was insurance against had succeeded.
+     *
+     * Zero authorises nothing. `sweepPlan` refuses a count of zero, so what the
+     * caller gets from this is a sentence and the deck's size before the run,
+     * never a delete.
+     */
+    real.setItem(KEY, JSON.stringify({ kind: "ssf-merge-run", deckAtStart: 12, added: 0, runId: "pending" }));
+    expect(readCrumb()).toMatchObject({ deckAtStart: 12, added: 0 });
   });
 });
 

@@ -7,6 +7,65 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a clone could share the template's notes page, and ship the wrong record's notes
+
+Found by a bug hunt and reproduced on real bytes before anything was changed.
+
+Part names in a package are arbitrary, and the slide and notes-slide sequences
+drift apart the moment a slide is deleted — so a one-slide deck can perfectly
+well keep its notes in `notesSlide2.xml`. `cloneNotesSlide` named the copy after
+the SLIDE number, which lands straight on that part. Nothing complains:
+`copyPart` overwrites silently and `addContentTypeOverride` no-ops on an
+override that is already there, so the package stays structurally valid and is
+wrong in two ways at once.
+
+- **The second record's slide shipped the first record's notes.** The clone
+  shares the template's notes page, that page is merged, and the next clone then
+  copies notes whose placeholders are already gone.
+- **The package went out with a notes relationship pointing at nothing.** The
+  template is removed on the way out — that is how the clones end up alone in
+  the package — and removing a slide takes its notes page with it. Shared, that
+  page was the clone's too. PowerPoint reports this as a damaged file without
+  saying which part it could not find.
+
+Notes parts are numbered from their own sequence now. `nextTagNumber` had the
+right shape all along, one file over: ask whether the path is free rather than
+assume it.
+
+### Fixed — the crash record was write-only in the window it exists for
+
+`merge()` writes the crumb BEFORE handing the package to PowerPoint, with
+`added: 0`, because a tab that dies during that call never comes back to write
+the real number — and that is the whole reason the file exists. `readCrumb`
+refused a zero, so the record was readable only after the run it was insurance
+against had already succeeded.
+
+Zero authorises nothing and must not: `sweepPlan` refuses a count of zero, and
+deriving one from the deck's growth would sweep whatever has been appended
+since. So the pane TELLS the user — a merge did not finish, the deck had N
+slides before it and has M now, check the end of the deck — and never offers a
+delete it cannot clamp. Said once, then the crumb is cleared, because there is
+no action attached to it.
+
+### Added — the JSON manifests are validated, and a release checks its own URLs
+
+Two gaps between "green repo" and "a stranger can install this".
+
+**`manifest-prod.json` is a release asset that no external authority read.** CI
+and the release both ran Microsoft's validator over the XML manifests only,
+while the release note points administrators deploying to a whole tenant at the
+JSON. Measured rather than assumed before wiring it up: the validator reads a
+JSON manifest against its schema offline, needs no service for it, and exits 1
+on one missing `id`, missing `version` and carrying a wrong `manifestVersion`.
+
+**Nothing ever asked whether the host a manifest names is serving.**
+`checkManifest` asks whether a production manifest points at localhost, which is
+a different question and passes cleanly for a manifest pointing at a domain that
+404s — an add-in that installs perfectly and shows a blank ribbon button and an
+empty pane. The release job now fetches every URL the manifest names on its own
+origin. On the release job only: a third-party outage must not block a merge,
+which is the reasoning that already keeps the validator out of `test`.
+
 ### Fixed — a field name could not contain a space, so Excel's own headers were invisible
 
 Reported from a real run, an hour after the Insert buttons shipped, on a deck

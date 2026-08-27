@@ -7,6 +7,12 @@ import { API_FLOOR } from "../src/host/capability.js";
 import { DEFINITION, FLOOR, allManifests, urls, PROD_ORIGIN, DEV_ORIGIN } from "../scripts/manifest-source.mjs";
 // @ts-expect-error — as above.
 import { checkManifest, urlsIn, REQUIRED_ID } from "../scripts/manifest-rules.mjs";
+// @ts-expect-error — as above.
+import { fetchable as fetchableJs } from "../scripts/manifest-urls.mjs";
+
+// `.mjs`, so the suite sees `any` across the boundary. Named once here rather
+// than asserted at every call site, which is where an unsafe-return lint lands.
+const fetchable = fetchableJs as (urls: string[]) => string[];
 
 /**
  * The manifests, checked offline.
@@ -273,5 +279,60 @@ describe("the icons the manifests point at", () => {
       // size — the thing that stops it reading as a full-width dash.
       expect(kind(at(0, Math.round(size * 0.3))), `icon-${size}.png left margin`).not.toBe("orange");
     }
+  });
+});
+
+describe("the URLs a release checks before it ships", () => {
+  /**
+   * Nothing else in this repo asks whether the host a manifest names is
+   * SERVING. `checkManifest` asks whether a production manifest points at
+   * localhost, which is a different question and passes cleanly for a manifest
+   * pointing at a domain that 404s — so a release could tell people to sideload
+   * a file that installs perfectly and shows a blank ribbon button and an empty
+   * pane, with nothing anywhere saying why.
+   *
+   * The fetching is in the release workflow, because a network call is not
+   * testable here. WHICH urls get fetched is the decision, and it is this.
+   */
+  it("takes the ones this project serves, and no more", () => {
+    const urls = fetchable([
+      "https://ssf-merge.example.dk/taskpane.html",
+      "https://ssf-merge.example.dk/assets/icon-32.png",
+      "https://github.com/dannbleeker/SSF-Merge",
+      "https://learn.microsoft.com/office/dev/add-ins/",
+    ]);
+    // Same origin as the pane. A release must not fail because github.com rate
+    // limited a runner or a documentation page moved — that is somebody else's
+    // uptime, and this step would be switched off after the first bad week.
+    expect(urls).toEqual([
+      "https://ssf-merge.example.dk/assets/icon-32.png",
+      "https://ssf-merge.example.dk/taskpane.html",
+    ]);
+  });
+
+  it("answers NOTHING when it cannot tell which origin is ours", () => {
+    // Rather than guessing at the first URL it sees. The workflow fails on an
+    // empty list, so a manifest whose shape this no longer understands stops a
+    // release instead of silently checking nothing.
+    expect(fetchable(["https://github.com/dannbleeker/SSF-Merge"])).toEqual([]);
+  });
+
+  it("finds every URL the real production manifests serve", () => {
+    // Against the committed files, so a renamed asset or a moved origin shows
+    // up here rather than in somebody's ribbon.
+    const urls = fetchable([...urlsIn(read("manifest-prod.xml")), ...urlsIn(read("manifest-prod.json"))]);
+    expect(urls.length, "the release would check no URLs at all").toBeGreaterThan(0);
+    expect(
+      urls.some((u) => u.endsWith("/taskpane.html")),
+      "the pane itself is not checked",
+    ).toBe(true);
+    expect(
+      urls.some((u) => u.includes("icon")),
+      "no icon is checked",
+    ).toBe(true);
+    expect(
+      urls.every((u) => u.startsWith("https://")),
+      "an insecure URL would be shipped",
+    ).toBe(true);
   });
 });
