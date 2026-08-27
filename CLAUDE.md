@@ -129,7 +129,9 @@ These come from PowerChart's field rounds against PowerPoint on the web. They
 are recordings, not opinions. Do not re-derive them — and do not re-copy them
 either: `docs/SIBLING.md` carries each one with its source and what was done
 about it, including the findings that turned out to be **no exposure** here,
-which is a real answer and the one nobody writes down.
+which is a real answer and the one nobody writes down. `npm run sibling-watch`
+reports anything in the sibling's curated tables that has no row yet; it runs
+weekly on its own and files one issue, reopened rather than duplicated.
 
 - **A slide the run just added does not resolve by id.** `slides.getItem(id)`
   refuses it, and `deleteSlideByPosition`'s `indexOf(id) < 0` reads "not listed"

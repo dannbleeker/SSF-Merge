@@ -2,6 +2,13 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+// @ts-expect-error — plain .mjs with no types, and deliberately the SAME module
+// the weekly sweep runs. Two copies of the triage table is how a claim quietly
+// stops matching its check.
+import { TRIAGED, VERDICTS, tableKeys, tablesFrom, untriaged, verdictOf } from "../scripts/sibling-watch.mjs";
+// @ts-expect-error — plain .mjs with no types, shared with the scripts.
+import { withoutTsProse } from "../scripts/without-prose.mjs";
+
 /**
  * The borrowed-fact guard.
  *
@@ -190,5 +197,106 @@ describe("the ledger is wired in", () => {
     // The precondition that made this transferable at all, and the one a
     // session holding only this repo cannot discover for itself.
     expect(ledger).toMatch(/both repositories checked out in the same session/i);
+  });
+});
+
+describe("the sibling sweep", () => {
+  const table = readFileSync("scripts/sibling-watch.mjs", "utf8");
+
+  it("pulls the keys out of a table, quoted or bare", () => {
+    const src = ["export const T = {", '  bare: "a",', '  "quoted": "b",', '  "with-dashes": "c",', "};", ""].join(
+      "\n",
+    );
+    expect(tableKeys(src, "T")).toEqual(["bare", "quoted", "with-dashes"]);
+  });
+
+  it("says a missing table is MISSING, never empty", () => {
+    // The failure this sweep would otherwise commit against itself: a table
+    // renamed upstream would match nothing, report "nothing new" every Monday,
+    // and be indistinguishable from a quiet week forever.
+    expect(tableKeys("export const OTHER = {\n  a: 1,\n};\n", "GONE")).toBeNull();
+    expect(() => {
+      tablesFrom((): string => "export const NOTHING = {\n};\n");
+    }).toThrow(/renamed or moved upstream/);
+  });
+
+  it("reports a finding with no row, and keeps which tables it was in", () => {
+    const tables = [
+      { kind: "question", table: "FAKE_BASELINE", keys: ["known", "fresh"] },
+      { kind: "question", table: "UNSTABLE_ANSWERS", keys: ["fresh"] },
+    ];
+    const found = untriaged(tables, { "question:known": "NO EXPOSURE — nothing here." });
+    // One row, not two: the same finding in two tables is one thing to answer.
+    // Which tables it sits in rides along, because UNSTABLE_ANSWERS means the
+    // sibling has seen it answer two ways and nothing may be built on it.
+    expect(found).toEqual([
+      { id: "question:fresh", kind: "question", key: "fresh", tables: ["FAKE_BASELINE", "UNSTABLE_ANSWERS"] },
+    ]);
+  });
+
+  it("cannot be fooled by a key inherited from Object.prototype", () => {
+    // `TRIAGED` is looked up by a key that comes from a file fetched over the
+    // network, so a bare `triaged[id]` would answer truthy for `constructor`
+    // and swallow a real finding in silence.
+    //
+    // TWO things make this true and the test cannot tell them apart: the
+    // `kind:` prefix (so the id is never a bare prototype name) and the
+    // `hasOwnProperty` lookup. Removing EITHER alone leaves this passing —
+    // measured, by doing it — and removing both turns it red. Stated rather
+    // than dressed up as proof of one guard, because a test that passes
+    // against the unfixed file is decoration and this one nearly was.
+    const found = untriaged([{ kind: "question", table: "T", keys: ["constructor", "__proto__"] }], {});
+    expect(found.map((f: { key: string }) => f.key)).toEqual(["constructor", "__proto__"]);
+  });
+
+  it("opens every reason with a verdict from the closed vocabulary", () => {
+    const unparsed = Object.entries(TRIAGED).filter(([, why]) => verdictOf(why) === undefined);
+    expect(
+      unparsed.map(([k]) => k),
+      "a reason must open with one of " + VERDICTS.join(", "),
+    ).toEqual([]);
+  });
+
+  it("gives every finding a reason, not just a verdict", () => {
+    // "NO EXPOSURE" alone is a shrug, and a key added purely to silence the
+    // sweep is worse than the finding it silences.
+    //
+    // The bar is deliberately low. A first pass required twenty characters and
+    // failed on four grouping entries reading "no grouping." — which is a
+    // COMPLETE answer for a finding about grouping. Padding those to satisfy a
+    // threshold would have made the table worse to read in the name of a test,
+    // so the threshold moved instead.
+    const bare = Object.entries(TRIAGED as Record<string, string>).filter(
+      ([, why]) => why.replace(verdictOf(why) ?? "", "").replace(/^[\s—-]+/, "").length < 8,
+    );
+    expect(bare.map(([k]) => k)).toEqual([]);
+  });
+
+  it("keys everything as issue: or question:", () => {
+    // The sibling's own spelling, so a rename upstream surfaces as a new
+    // finding rather than quietly matching nothing.
+    const odd = Object.keys(TRIAGED).filter((k) => !/^(issue:\d+|question:[a-z0-9-]+)$/.test(k));
+    expect(odd).toEqual([]);
+  });
+
+  it("keeps the ledger from falling behind the table", () => {
+    // The drift this whole apparatus exists to stop, applied to itself. Every
+    // finding we ACTED on has to appear in the prose a human reads; the ones
+    // that are no exposure do not, or the ledger becomes a list of 52 shrugs.
+    // This found 13 missing rows the first time it ran, against a ledger
+    // written the same morning.
+    const ledger = readFileSync("docs/SIBLING.md", "utf8");
+    const missing = Object.entries(TRIAGED as Record<string, string>)
+      .filter(([, why]) => verdictOf(why) !== "NO EXPOSURE")
+      .map(([key]) => key)
+      .filter((key) => !ledger.includes(key.split(":")[1] ?? ""));
+    expect(missing, "acted on but absent from docs/SIBLING.md").toEqual([]);
+  });
+
+  it("reads raw files and never runs the sibling's code", () => {
+    // A weekly job that imports a file fetched over the network is a supply
+    // chain, not a sweep.
+    expect(table).toContain("raw.githubusercontent.com");
+    expect(withoutTsProse(table)).not.toMatch(/\bimport\s*\(/);
   });
 });
