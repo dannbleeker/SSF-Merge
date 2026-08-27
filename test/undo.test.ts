@@ -12,9 +12,32 @@ describe("sweepPlan", () => {
     expect(sweepPlan({ deckAtStart: 10, deckNow: 12, added: 6 })).toEqual({ from: 10, count: 2 });
   });
 
-  it("never removes more than the run claims, even if the deck grew more", () => {
-    // Somebody else added a slide while the probe ran. It is not ours.
-    expect(sweepPlan({ deckAtStart: 10, deckNow: 20, added: 3 })).toEqual({ from: 17, count: 3 });
+  it("refuses outright when MORE arrived than the run added", () => {
+    // Reversed on 2026-08-27, when undo became a button a user can press
+    // rather than a probe's own clean-up.
+    //
+    // This asserted `{ from: 17, count: 3 }` — take the last three — on the
+    // reasoning that the extra slides "are not ours, so do not take them".
+    // That reasoning inverts: the sweep removes the LAST slides, so if the
+    // deck grew by ten and this run added three, the last three belong to
+    // whoever added the other seven. It would delete a stranger's slides and
+    // leave ours in place.
+    //
+    // Harmless for a probe that sweeps seconds after it appends. Not harmless
+    // for an undo pressed after a coffee break on a deck a co-author has been
+    // editing, which is what this now has to serve.
+    expect(sweepPlan({ deckAtStart: 10, deckNow: 20, added: 3 })).toBeNull();
+  });
+
+  it("still sweeps when the deck gained exactly what the run added", () => {
+    // The ordinary case, and the one the refusal must not break.
+    expect(sweepPlan({ deckAtStart: 10, deckNow: 13, added: 3 })).toEqual({ from: 10, count: 3 });
+  });
+
+  it("still sweeps when the host took FEWER than the run asked for", () => {
+    // A short insert is the run's own shortfall, not a stranger's arrival, and
+    // the slides that did land are still the last ones.
+    expect(sweepPlan({ deckAtStart: 10, deckNow: 12, added: 6 })).toEqual({ from: 10, count: 2 });
   });
 
   it("does nothing when the deck did not grow", () => {

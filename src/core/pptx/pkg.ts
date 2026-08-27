@@ -313,6 +313,22 @@ export class Pkg {
     return this.docs.size;
   }
 
+  /**
+   * Every part in the package, in the zip's own order.
+   *
+   * A measurement rather than a manipulation: the package is handed to
+   * PowerPoint as base64 and then goes out of scope, so when the host answers
+   * `InvalidArgument` the file that caused it no longer exists anywhere. What
+   * survives has to be counted while it is still here, and "how many parts"
+   * separates a package missing its content types from one that is merely
+   * large.
+   *
+   * Directory entries are excluded — JSZip records them and they are not parts.
+   */
+  partNames(): string[] {
+    return Object.keys(this.zip.files).filter((name) => !this.zip.files[name]?.dir);
+  }
+
   private flush(): void {
     for (const [path, doc] of this.docs) this.zip.file(path, serializeXml(doc));
   }

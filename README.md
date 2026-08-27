@@ -31,6 +31,7 @@ one set of slides per row. All four steps of the pane are built.
 | Preview: the first row merged into the deck, then swept | done |
 | Row filters — a searchable checkbox list picking which rows merge | done |
 | Run record — every host call named and timed, readable in the pane | done |
+| Undo — take back the slides a merge added, clamped so it cannot reach yours | done |
 
 ## How it works
 

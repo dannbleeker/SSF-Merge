@@ -89,7 +89,7 @@ export interface PaneState {
    * during a 90-second template read handed the user a live "Add 720 slides"
    * over a merge already in flight.
    */
-  running?: "inspect" | "merge" | "preview";
+  running?: "inspect" | "merge" | "preview" | "undo";
   /**
    * The host call in flight, for the pane to name while it waits.
    *
@@ -409,13 +409,19 @@ export function nextStep(from: StepId): StepId | null {
  * placeholder, two oranges, and nothing but a screenshot could see it. A budget
  * enforced in one place can be tested; one enforced in three cannot.
  *
- * Precedence is preview first, because a preview is a state the user must undo
- * and an unmatched field is one they can leave sitting there.
+ * Precedence is the states a user must ACT on first — a preview is sitting in
+ * their deck and a finished merge is sitting in it too, where an unmatched
+ * field is something they can leave alone and a tick is only decoration.
  */
-export type OrangeHolder = "tick" | "preview" | "unmatched";
+export type OrangeHolder = "tick" | "preview" | "undone" | "unmatched";
 
 export function orangeHolder(state: PaneState, step: StepId): OrangeHolder {
   if (state.previewing) return "preview";
+  // A landed merge outranks the tick for the same reason a preview does: the
+  // card offering the slides back is the thing on screen worth looking at, and
+  // a tick beside it is a second orange saying "done" about the very state the
+  // card exists to undo.
+  if (step === "merge" && (state.added ?? 0) > 0) return "undone";
   if (step === "fields" && unmatchedFields(state).length > 0) return "unmatched";
   return "tick";
 }

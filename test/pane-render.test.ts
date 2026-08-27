@@ -465,3 +465,41 @@ describe("the run record is reachable", () => {
     expect(details?.hasAttribute("open")).toBe(false);
   });
 });
+
+describe("a finished merge offers the slides back", () => {
+  const landed = { ...ready, added: 720, deckSize: 732 };
+
+  it("names the slides it would remove, not just 'undo'", () => {
+    // This deletes part of somebody's presentation. The sentence says which
+    // part, so a user who has scrolled away can check before pressing.
+    const card = paneFor(landed, "merge").querySelector(".card.undo");
+    expect(card?.textContent).toContain("Remove slides 13 to 732");
+  });
+
+  it("offers it only where the merge happened", () => {
+    // The card belongs to the merge step. On the earlier steps the user is
+    // still setting the run up, and a way to undo it there is noise.
+    for (const step of ["template", "fields", "preview"] as const) {
+      expect(paneFor(landed, step).querySelector(".card.undo"), step).toBeNull();
+    }
+  });
+
+  it("is not offered when nothing was added", () => {
+    expect(paneFor({ ...ready }, "merge").querySelector(".card.undo")).toBeNull();
+    expect(paneFor({ ...ready, added: 0 }, "merge").querySelector(".card.undo")).toBeNull();
+  });
+
+  it("disables the button while a call is out", () => {
+    // The same rule the merge button follows, and for the same reason: a
+    // second press during a sweep would ask the host to delete twice.
+    const button = paneFor({ ...landed, running: "undo" }, "merge").querySelector(".card.undo button");
+    expect(button?.hasAttribute("disabled")).toBe(true);
+    expect(button?.textContent).toContain("Removing…");
+  });
+
+  it("takes the orange from the tick rather than adding a second one", () => {
+    const pane = paneFor(landed, "merge");
+    expect(pane.querySelector(".card.undo")).not.toBeNull();
+    expect(pane.querySelector(".tick")).toBeNull();
+  });
+});
