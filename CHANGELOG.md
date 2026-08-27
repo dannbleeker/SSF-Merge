@@ -7,6 +7,17 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Removed — a Danish locale is no longer planned
+
+Dropped at the owner's decision. The backlog entry that carried it was wrong
+about the cost in the direction that matters: it claimed a string table already
+existed, and none does. Every user-visible string in the pane is an inline
+literal and a good number are assembled from fragments, so the work is building
+the table rather than translating it — and the assembled sentences would not
+survive extraction unchanged, because Danish pluralises and inflects
+differently. It moves to the rejected list with that reasoning, so reviving it
+starts from what it actually costs.
+
 ### Added — row filters
 
 **A searchable checkbox list picks which rows merge.** Pasting 400 rows and

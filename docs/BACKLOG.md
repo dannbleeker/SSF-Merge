@@ -76,19 +76,6 @@ Text lives in `charts/chart*.xml` and `diagrams/data*.xml` with embedded
 workbooks. Until it is built, the pane must say so out loud rather than skipping
 a field the user placed.
 
-### Danish locale
-**Priority: low.** Feasibility: medium.
-**There is no string table.** This entry claimed one "exists from the first pane
-commit" and it does not: every user-visible string in `steps.ts`, `render.ts` and
-`summary.ts` is an inline literal, and several are assembled from fragments
-(counts, pluralisation, "slide" versus "slides"). Extracting them is the bulk of
-this item, and the assembled ones do not survive extraction unchanged — Danish
-pluralises and inflects differently, so a sentence built by concatenating an
-English count onto an English noun has to become a whole-sentence lookup first.
-The layout does assume nothing about word length, which is the half of the
-original claim that holds. English ships first because the Marketplace listing
-is English.
-
 ### A filter expression language
 **Priority: low.** Feasibility: medium.
 Row filters shipped as a searchable checkbox list. An expression — `Region =
@@ -97,6 +84,19 @@ and it is a parser, an evaluator and an error surface on a 340 px pane. Usage
 will say whether it is worth answering; nothing has asked for it yet.
 
 ## Rejected — do not re-propose
+
+- **A Danish locale.** Dropped by the owner on 2026-08-27. The entry that
+  carried it was wrong about the cost in the direction that matters: it claimed
+  a string table "exists from the first pane commit" and there is none. Every
+  user-visible string in `steps.ts`, `render.ts` and `summary.ts` is an inline
+  literal, and a good number are assembled from fragments — counts,
+  pluralisation, "slide" versus "slides". So the work is not translation, it is
+  building the table first, and the assembled sentences do not survive
+  extraction unchanged: Danish pluralises and inflects differently, so anything
+  built by concatenating a count onto an English noun has to become a
+  whole-sentence lookup before it can be translated at all. The Marketplace
+  listing is English and nothing has asked for Danish. Reviving this means
+  reviving the string-table work, which is the larger half.
 
 - **A preview that writes onto the template slide and restores it.** This was
   the specified design and it is refused for the reason immediately below:
