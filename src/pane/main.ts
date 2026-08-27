@@ -372,7 +372,7 @@ async function preview(): Promise<void> {
   const block = chosenBlock(state);
   const records = state.records;
   if (!block || !records || state.running) return;
-  state = { ...state, running: "merge", notice: undefined };
+  state = { ...state, running: "preview", notice: undefined };
   draw();
   try {
     const outcome = await runMerge({
@@ -415,7 +415,7 @@ async function preview(): Promise<void> {
 async function endPreview(): Promise<void> {
   const outcome = shown;
   if (!outcome || state.running) return;
-  state = { ...state, running: "merge" };
+  state = { ...state, running: "preview" };
   draw();
   try {
     const { removed, detail } = await undoMerge(outcome);

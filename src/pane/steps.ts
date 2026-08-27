@@ -68,7 +68,7 @@ export interface PaneState {
    * during a 90-second template read handed the user a live "Add 720 slides"
    * over a merge already in flight.
    */
-  running?: "inspect" | "merge";
+  running?: "inspect" | "merge" | "preview";
   /**
    * Where a preview landed, in the numbering the thumbnail rail shows.
    *
@@ -294,6 +294,14 @@ export function primary(state: PaneState, step: StepId): Primary {
   }
   if (state.running === "merge" && step === "merge") {
     return { label: "Merging…", enabled: false };
+  }
+  if (state.running === "preview" && step === "preview") {
+    // Inserting a preview is a real merge and can take a minute on this host.
+    // Without this the button read "Preview the first row", greyed out, for the
+    // whole of it — which is the state the user cannot tell from a pane that
+    // has stopped responding. The other two long calls already named
+    // themselves; this one was added with the step and missed.
+    return { label: state.previewing ? "Removing…" : "Previewing…", enabled: false };
   }
   // Any other step, while something is out: it keeps its own words and loses
   // its press. Recursing with the flag cleared is deliberate — one place

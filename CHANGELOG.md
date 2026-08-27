@@ -46,6 +46,13 @@ a dead end, so the preview step carries a "Skip to the merge" link — rendered
 only when the merge is actually reachable, so it cannot carry the user to a step
 that refuses them.
 
+The preview names itself while it runs — "Previewing…" and "Removing…" — like
+the other two long host calls. Inserting a preview IS a real merge and can take
+a minute on this host, and a button reading "Preview the first row", greyed out,
+for the whole of it is the state a user cannot tell from a pane that has stopped
+responding. Third instance of that gap; found by re-reading the diff rather than
+by a failure.
+
 `endPreview` checks the sweep's count rather than believing it. A sweep that
 removed fewer slides than it asked for leaves part of the preview in the deck,
 and the user is the only one who can finish that; the pane says so and stays in

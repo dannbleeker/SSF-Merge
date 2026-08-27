@@ -422,17 +422,40 @@ describe("the preview", () => {
     expect(primary().textContent).toBe("Preview the first row");
   });
 
-  it("cannot be started twice", async () => {
+  it("cannot be started twice, and SAYS it is running", async () => {
+    // Inserting a preview is a real merge and can take a minute on this host.
+    // A button reading "Preview the first row", greyed out, for the whole of it
+    // is the state a user cannot tell from a pane that has stopped responding —
+    // and the other two long calls already named themselves.
     await reachPreview();
     const held = deferred<unknown>();
     office.runMerge.mockReturnValueOnce(held.promise);
     primary().click();
     await settle();
+    expect(primary().textContent).toBe("Previewing…");
     expect(primary().disabled).toBe(true);
     primary().click();
     await settle();
     expect(office.runMerge).toHaveBeenCalledTimes(1);
     held.resolve(PREVIEW);
     await settle();
+  });
+
+  it("says it is REMOVING while the sweep is out", async () => {
+    await reachPreview();
+    office.runMerge.mockResolvedValueOnce(PREVIEW);
+    primary().click();
+    await settle();
+
+    const held = deferred<unknown>();
+    office.undoMerge.mockReturnValueOnce(held.promise);
+    primary().click();
+    await settle();
+    expect(primary().textContent).toBe("Removing…");
+    expect(primary().disabled).toBe(true);
+
+    held.resolve({ removed: 3, detail: "removed 3 slide(s) from index 12" });
+    await settle();
+    expect(primary().textContent).toBe("Preview the first row");
   });
 });
