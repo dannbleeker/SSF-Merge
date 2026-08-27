@@ -342,3 +342,72 @@ export function exportPartsVerdict(o: ExportPartsObservation): { verdict: Verdic
     detail: `the export kept the comments and the authors part this deck carries (${o.sourceParts} parts in, ${o.exportParts} out${(o.missing ?? []).length > 0 ? `, ${(o.missing ?? []).length} other part(s) not carried over` : ""}).`,
   };
 }
+
+export interface TornInsert {
+  /** Rows whose every slide landed. */
+  complete: number;
+  /** Rows that got some slides but not all of them. */
+  torn: number;
+  /** Rows that got nothing at all. */
+  absent: number;
+  /** The first incomplete row, 0-based, or undefined when every row is whole. */
+  firstIncomplete?: number;
+  detail: string;
+}
+
+/**
+ * A partial insert read in ROWS, which is the unit a mail merge has.
+ *
+ * `insertVerdict` grades slides, and for the probe that is right — it inserts a
+ * two-slide fixture and the slides are the whole question. For a merge it is
+ * the wrong unit and says almost nothing: **719 of 720** means one row's
+ * three-slide block became two, every later row still looks correct, and the
+ * user finds it at slide 141 with no idea it was ever going to be there. "One
+ * of your 240 rows is incomplete" is a sentence somebody can act on.
+ *
+ * `slidesPerRecord` is taken from the plan, in plan order, one entry per row
+ * that produced anything.
+ *
+ * **THE PREFIX ASSUMPTION IS NAMED RATHER THAN HIDDEN.** This walks the rows in
+ * order and stops where the slides ran out, which is the reading if the host
+ * truncated the package. Nothing establishes that a partial insert truncates
+ * rather than dropping a slide from the middle — no round has produced one —
+ * so the COUNT of whole rows is exact only under that reading.
+ *
+ * It is stated and not measured because it changes no advice: the answer to a
+ * torn insert is to take the slides back and run it again, whichever row tore.
+ * Where every row produces the same number of slides — the ordinary case, since
+ * only a condition varies it — the count is position-independent anyway, and
+ * the assumption buys nothing but the row's index.
+ */
+export function tornInsert(slidesPerRecord: number[], landed: number): TornInsert {
+  const total = slidesPerRecord.reduce((a, b) => a + b, 0);
+  const rows = slidesPerRecord.length;
+  if (landed >= total) {
+    return { complete: rows, torn: 0, absent: 0, detail: `all ${rows} row(s) landed complete` };
+  }
+  let seen = 0;
+  let complete = 0;
+  let firstIncomplete: number | undefined;
+  for (const [i, slides] of slidesPerRecord.entries()) {
+    if (seen + slides <= landed) {
+      seen += slides;
+      complete++;
+      continue;
+    }
+    firstIncomplete = i;
+    break;
+  }
+  // Whether the first incomplete row got SOME of its slides or none. A row with
+  // nothing is missing; a row with two of three is torn, and torn is the worse
+  // of the two because it looks finished.
+  const got = landed - seen;
+  const torn = firstIncomplete !== undefined && got > 0 ? 1 : 0;
+  const absent = rows - complete - torn;
+  const detail =
+    torn > 0
+      ? `${complete} of ${rows} row(s) landed complete; row ${(firstIncomplete ?? 0) + 1} got ${got} of its ${slidesPerRecord[firstIncomplete ?? 0] ?? 0} slide(s)` +
+        (absent > 0 ? `, and ${absent} row(s) got nothing` : "")
+      : `${complete} of ${rows} row(s) landed complete; ${absent} row(s) got nothing`;
+  return { complete, torn, absent, ...(firstIncomplete !== undefined ? { firstIncomplete } : {}), detail };
+}
