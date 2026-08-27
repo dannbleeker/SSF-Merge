@@ -7,6 +7,59 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added — pick the template block by selecting slides
+
+**Unblocked by evidence that already existed.** The backlog said this needed a
+probe question before it needed code: `getSelectedSlides` is the obvious route,
+and this host is documented to wedge its whole selection subsystem after
+`setSelectedShapes` (office-js#3083, #3698). The question was whether the SLIDE
+selection API is affected at all, or only the shape one.
+
+A sibling add-in on the same host has been asking exactly that, every round, for
+months. It runs a "selection ladder" — a read, `setSelectedSlides`, a read,
+`setSelectedShapes([id])`, a read, `setSelectedShapes([])`, a read — and stops
+at the first rung that goes silent. Across **174 consecutive archived rounds,
+every rung answered**, in 550-710ms, with **zero refusals and zero silences**.
+Its "edit the chart the user selected" scenario reads `getSelectedSlides`
+exactly as this does and passed **174 of 174** — and it runs AFTER the ladder,
+so the read survives even the call #3698 names.
+
+So the wedge is not live on this host, `setSelectedSlides` was never implicated
+in it even when it was, and this add-in never calls `setSelectedShapes` at all.
+The measurement is cited at the call site rather than summarised here, because
+the next person to doubt it should find the numbers next to the code.
+
+**And the sibling had already paid for a gotcha this would have hit.**
+office-js#2474: a `SlideRange`'s id is *not* the deck's id — it lacks the
+`#XYZ` suffix — so `slides.getItem(rangeId)` answers InvalidArgument where the
+deck's own id works. Closed `not planned`. The failure is the silent kind: the
+id resolves to a null object and the slide is treated as gone. The ids happen to
+round-trip on the web host today, which is exactly why it must not be left to
+luck. `deckIdForSelectedSlide` matches a suffix-less id by prefix, and refuses
+when two slides answer to one — guessing between them would name the wrong
+slide, which is worse than refusing.
+
+`blockFromSelection` turns the selection into slide NUMBERS, and refuses three
+things rather than guessing: an empty selection, a slide the deck will not name
+(dropping it would build a block out of whichever slides happened to resolve),
+and a selection with a GAP. That last one matters most — a template block is
+slides that repeat *together*, so closing the gap would add a slide to every one
+of the user's rows that they never picked.
+
+The control fills the two BOXES rather than committing a block, so the user
+still presses "Use slides N to M" — the read that finds the placeholders.
+Skipping it would leave the fields step listing nothing. It is a link beside the
+boxes rather than the primary, because typing two numbers always works: if the
+host ever does stop answering, the step still functions.
+
+One thing is deliberately NOT claimed as tested. Clearing `state.block` when the
+boxes are filled from a selection keeps that field meaning "a block whose
+placeholders have been read" — but nothing observable distinguishes it from
+committing the selection, since `chosenBlock` prefers the draft either way and
+the template step's only way forward is the button that reads. It is stated in
+a comment as defensive, and known to be, rather than guarded by a test that
+would pass against both.
+
 ### Changed — one comment-stripper instead of three
 
 Three guards in this repo have gone wrong the same way, each in a different

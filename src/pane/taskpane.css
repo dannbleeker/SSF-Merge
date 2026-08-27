@@ -326,3 +326,10 @@ button.back {
 button.forward {
   align-self: flex-end;
 }
+
+/* Beside the two boxes: a shortcut, not the primary way in. Typing the numbers
+   always works, so this reads as an offer rather than as the path. */
+button.use-selection {
+  align-self: flex-start;
+  margin-top: -4px;
+}

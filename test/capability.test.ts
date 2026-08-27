@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { API_FLOOR, blockIds, checkFloor, chooseDeckSource, templateOffset } from "../src/host/capability.js";
+import {
+  API_FLOOR,
+  blockFromSelection,
+  blockIds,
+  checkFloor,
+  chooseDeckSource,
+  deckIdForSelectedSlide,
+  templateOffset,
+} from "../src/host/capability.js";
 
 /** A host that supports every version up to and including `top`. */
 function upTo(top: string) {
@@ -125,5 +133,72 @@ describe("the host's own ids for a block of slides", () => {
     ] as const) {
       expect(blockIds(deck, from, to).ok, `${from} to ${to}`).toBe(false);
     }
+  });
+});
+
+describe("the deck's own id for a slide named by a selection", () => {
+  // office-js#2474: a SlideRange's id lacks the `#XYZ` suffix the same slide
+  // carries when read from `presentation.slides`, so `getItem(rangeId)`
+  // answers InvalidArgument where the deck's id works. Closed `not planned`.
+  const deck = ["256#3561048925", "257#1897035307", "258#2230304510"];
+
+  it("takes an id that is already the deck's", () => {
+    expect(deckIdForSelectedSlide("257#1897035307", deck)).toBe("257#1897035307");
+  });
+
+  it("matches a suffix-less range id by its prefix", () => {
+    expect(deckIdForSelectedSlide("257", deck)).toBe("257#1897035307");
+  });
+
+  it("refuses when two slides answer to one prefix", () => {
+    // Guessing between them would name the wrong slide, which is worse than
+    // refusing — and it means the assumption behind the whole repair is wrong
+    // on that host.
+    expect(deckIdForSelectedSlide("25", ["25#a", "25#b"])).toBeUndefined();
+  });
+
+  it("refuses an id the deck does not carry at all", () => {
+    expect(deckIdForSelectedSlide("999", deck)).toBeUndefined();
+  });
+});
+
+describe("the template block a selection names", () => {
+  const deck = ["256#a", "257#b", "258#c", "259#d", "260#e"];
+
+  it("reads contiguous slides as a block, in the rail's numbering", () => {
+    expect(blockFromSelection(["257#b", "258#c", "259#d"], deck)).toEqual({ ok: true, from: 2, to: 4 });
+  });
+
+  it("does not care what order the host listed them in", () => {
+    expect(blockFromSelection(["259#d", "257#b", "258#c"], deck)).toEqual({ ok: true, from: 2, to: 4 });
+  });
+
+  it("reads a single slide as a one-slide block", () => {
+    expect(blockFromSelection(["258#c"], deck)).toEqual({ ok: true, from: 3, to: 3 });
+  });
+
+  it("works through the suffix-less ids office-js#2474 describes", () => {
+    expect(blockFromSelection(["257", "258"], deck)).toEqual({ ok: true, from: 2, to: 3 });
+  });
+
+  it("REFUSES a selection with a gap rather than closing it up", () => {
+    // The whole product is "these slides repeat together". Closing the gap
+    // would silently add a slide the user did not pick, to every row.
+    const read = blockFromSelection(["257#b", "259#d"], deck);
+    expect(read.ok).toBe(false);
+    expect(!read.ok && read.why).toContain("next to each other");
+    expect(!read.ok && read.why).toContain("2 to 4");
+  });
+
+  it("refuses an empty selection", () => {
+    expect(blockFromSelection([], deck)).toEqual({ ok: false, why: "No slides are selected." });
+  });
+
+  it("refuses rather than dropping a slide the deck will not name", () => {
+    // Quietly skipping it would build a block out of whichever slides happened
+    // to resolve — a block the user never selected.
+    const read = blockFromSelection(["257#b", "999#z"], deck);
+    expect(read.ok).toBe(false);
+    expect(!read.ok && read.why).toContain("would not say");
   });
 });
