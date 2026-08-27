@@ -34,6 +34,18 @@ export const ID = "43ebbbac-44ad-42b2-a582-0ef079093e6c";
  */
 export const VERSION = "1.0.0.0";
 
+/**
+ * The requirement floor, as the manifests' comment states it.
+ *
+ * A second spelling of `API_FLOOR` in `src/host/capability.ts`, because a build
+ * script cannot import TypeScript and importing `dist-lib/` would make writing
+ * a manifest depend on a build. `test/manifest.test.ts` holds the two together,
+ * which is what the previous arrangement lacked: the code corrected 1.3 to 1.2
+ * and both manifests kept 1.3 for weeks, so the file a user installs disagreed
+ * with the check that runs.
+ */
+export const FLOOR = "1.2";
+
 export const PROD_ORIGIN = "https://ssf-merge.struktureretsundfornuft.dk";
 export const DEV_ORIGIN = "https://localhost:3000";
 
@@ -82,9 +94,15 @@ function esc(value) {
  * The XML manifest — the one a person sideloads today.
  *
  * There is DELIBERATELY no `<Requirements>` block. The add-in needs
- * PowerPointApi 1.3 (`slide.tags`; everything else it calls is 1.2, and
- * `getFileAsync` is a Common API that PowerPointApi does not gate), and that
- * floor is checked at RUNTIME by `checkFloor` in `src/host/capability.ts`.
+ * PowerPointApi 1.2 — `getFileAsync` is a Common API that PowerPointApi does
+ * not gate — and that floor is checked at RUNTIME by `checkFloor` in
+ * `src/host/capability.ts`, which is the one place it is stated.
+ *
+ * This said 1.3 until 2026-08-27, and 1.4 before that. Both were justified by
+ * `slide.tags`, which nothing in this add-in calls: merge metadata rides in the
+ * package. `capability.ts` corrected the number and the manifests kept the old
+ * one, so the file a user installs disagreed with the check that runs. The
+ * comment names `API_FLOOR` now and a test holds the two together.
  * Declaring it here would be worse than useless: a host that does not meet a
  * declared requirement set does not show the add-in AT ALL — no ribbon entry,
  * no error, nothing for the user to report — where the runtime check can say
@@ -117,7 +135,7 @@ export function xmlManifest(origin) {
     <Host Name="Presentation" />
   </Hosts>
 
-  <!-- No <Requirements>. The floor is PowerPointApi 1.3 and it is checked at
+  <!-- No <Requirements>. The floor is PowerPointApi ${FLOOR} and it is checked at
        runtime by checkFloor, because a DECLARED set the host lacks makes the
        add-in vanish from the ribbon with no diagnostic at all. -->
 

@@ -246,3 +246,87 @@ describe("src/core", () => {
     expect(src).toContain("Object.create(null)");
   });
 });
+
+describe("every pane state field can actually be set", () => {
+  /**
+   * The failure this repo keeps shipping: engine built, tested, and reachable
+   * from nothing. Undo was the first (`undoInsert`, `sweepPlan` and
+   * `undoSummary` all covered, no view rendering any of them, #40). The build
+   * stamp was the second — in the run record, which only exists after a run,
+   * and so absent exactly when it is wanted. Conditional slides are the third,
+   * and the largest: `prepare.ts` implements them, `runPlan` reports
+   * `unknownConditions`, `PaneState` carries `conditions`, `main.ts` passes it
+   * to both the preview and the merge — and nothing anywhere WRITES it, so it
+   * is undefined in every run that has ever happened.
+   *
+   * A field the pane reads and can never set is a feature the product does not
+   * have, however much of it is built. This finds them by reading which keys
+   * the `state = { … }` assignments in `main.ts` actually set.
+   *
+   * Not a lint rule and deliberately narrow: it answers one question, about one
+   * file, whose shape is a convention this pane already follows everywhere.
+   */
+  const SETTABLE_BY_NOTHING = new Set([
+    // Conditional slides. The engine is built; no control sets a condition, so
+    // every slide in a block is emitted for every row. Marked *planned* in
+    // docs/MANUAL.md and carried in docs/BACKLOG.md with where the control
+    // should go. Delete this entry in the change that adds it.
+    "conditions",
+  ]);
+
+  function fieldsOf(source: string): string[] {
+    const at = source.indexOf("export interface PaneState");
+    const body = source.slice(at, source.indexOf("\n}", at));
+    return [...body.matchAll(/^ {2}(\w+)\??:/gm)].map((m) => m[1] ?? "");
+  }
+
+  /** Keys assigned by any `state = { … }` in the pane's entry point. */
+  function assignedFields(source: string): Set<string> {
+    const out = new Set<string>();
+    for (const start of [...source.matchAll(/state\s*=\s*\{/g)]) {
+      let depth = 0;
+      let end = start.index + start[0].length - 1;
+      for (let i = end; i < source.length; i++) {
+        if (source[i] === "{") depth++;
+        else if (source[i] === "}" && --depth === 0) {
+          end = i;
+          break;
+        }
+      }
+      const block = source.slice(start.index, end + 1);
+      // `key: value`, and the `{ key }` shorthand.
+      // Keys always follow the opening brace or a comma, so those two are the
+      // whole alphabet here. (This carried a `\A` from the scratch version that
+      // found the bug — a Python anchor, which in JavaScript matches a literal
+      // "A". Harmless in this input and wrong; lint caught it.)
+      for (const m of block.matchAll(/[{,]\s*(?:\.\.\.)?\s*(\w+)\s*:/g)) out.add(m[1] ?? "");
+      for (const m of block.matchAll(/[{,]\s*(\w+)\s*(?=[,}])/g)) out.add(m[1] ?? "");
+    }
+    return out;
+  }
+
+  const fields = fieldsOf(readFileSync("src/pane/steps.ts", "utf8"));
+  const assigned = assignedFields(readFileSync("src/pane/main.ts", "utf8"));
+
+  it("reads both halves", () => {
+    // Guards the two scans. Either answering nothing would make the comparison
+    // below pass on empty sets — the vacuous measurement this suite has caught
+    // twice already.
+    expect(fields.length).toBeGreaterThan(10);
+    expect(assigned.size).toBeGreaterThan(10);
+  });
+
+  it("has no field the pane can only read", () => {
+    const unreachable = fields.filter((f) => !assigned.has(f) && !SETTABLE_BY_NOTHING.has(f));
+    expect(unreachable, "PaneState fields nothing in main.ts sets").toEqual([]);
+  });
+
+  it("keeps the known-unreachable list honest", () => {
+    // So the exception cannot outlive the gap: once a control sets it, this
+    // fails until the entry is deleted.
+    for (const f of SETTABLE_BY_NOTHING) {
+      expect(fields, `${f} is not a PaneState field`).toContain(f);
+      expect(assigned.has(f), `${f} is set now — delete it from the list`).toBe(false);
+    }
+  });
+});

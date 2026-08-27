@@ -81,7 +81,11 @@ let onReady: () => void;
 
 /** Load the pane fresh, run its Office.onReady, and hand back the root. */
 async function openPane(): Promise<HTMLElement> {
-  document.body.innerHTML = '<div id="pane"></div>';
+  // The HEADER as well as the pane, because `taskpane.html` has one and things
+  // are drawn into it. Boot the harness with a bare `#pane` and `showBuild`
+  // finds no header, returns, and the guard below passes on a page that is not
+  // the page — the shape of every "the harness bypassed it" bug in this repo.
+  document.body.innerHTML = '<header><b>SSF</b><span>Merge</span></header><div id="pane"></div>';
   vi.resetModules();
   (globalThis as unknown as { Office: unknown }).Office = {
     onReady: (cb: () => void) => {
@@ -758,5 +762,50 @@ describe("taking a real merge back", () => {
     expect(office.undoMerge).toHaveBeenCalledTimes(1);
     held.resolve({ removed: 6, detail: "removed 6" });
     await settle();
+  });
+});
+
+describe("the build stamp", () => {
+  /**
+   * Which build the host actually served, readable BEFORE anything is run.
+   *
+   * It already reaches the run record through `hostEnvironment()`, and that was
+   * treated as enough. It is not: a run record exists only once a run has
+   * finished, and the question is asked before one starts. PowerPoint caches
+   * the pane's HTML for about ten minutes, so opening it too soon after a
+   * deploy tests code the host never fetched and reads as a clean run of the
+   * wrong build.
+   *
+   * The case that made it worth wiring: the build before it never loaded
+   * Office.js and rendered a header and nothing else. Anyone testing that fix
+   * has the broken build cached, and the two are told apart by this line or not
+   * at all.
+   */
+  it("is in the header as soon as the pane opens, with no run needed", async () => {
+    await openPane();
+    const stamp = document.querySelector("header .build");
+    expect(stamp?.textContent).toBe("test");
+    // Before the floor check, so a host that REFUSES to run still says which
+    // build refused. Asserted through the pane being unable to have run: no
+    // merge has happened, so there is no run record for it to have come from.
+    expect(office.runMerge).not.toHaveBeenCalled();
+  });
+
+  it("says nothing rather than 'unknown' when the build is not stamped", async () => {
+    // A checkout with no git builds with `__BUILD_STAMP__` undefined and
+    // `environmentLine` answers "unknown". A header reading `unknown` is worse
+    // than an empty one: it looks like an answer.
+    office.hostEnvironment.mockReturnValueOnce({
+      build: "unknown",
+      platform: "PC",
+      host: "16.0.0",
+      sets: ["1.2"],
+      floor: "1.2",
+      clearsFloor: true,
+      deckSource: "file" as const,
+      canSelect: true,
+    });
+    await openPane();
+    expect(document.querySelector("header .build")).toBeNull();
   });
 });

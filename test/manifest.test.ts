@@ -4,7 +4,7 @@ import { DOMParser } from "@xmldom/xmldom";
 import { API_FLOOR } from "../src/host/capability.js";
 // @ts-expect-error — plain .mjs tools with no types. The definition lives THERE
 // so the generator and this test cannot read different sources.
-import { DEFINITION, allManifests, urls, PROD_ORIGIN, DEV_ORIGIN } from "../scripts/manifest-source.mjs";
+import { DEFINITION, FLOOR, allManifests, urls, PROD_ORIGIN, DEV_ORIGIN } from "../scripts/manifest-source.mjs";
 // @ts-expect-error — as above.
 import { checkManifest, urlsIn, REQUIRED_ID } from "../scripts/manifest-rules.mjs";
 
@@ -97,6 +97,17 @@ describe("the requirement floor is checked at runtime, never declared", () => {
     // 1.2, and corrected from 1.3: that was justified by `slide.tags`, which
     // nothing in this add-in calls. See `capability.ts`.
     expect(API_FLOOR).toBe("1.2");
+  });
+
+  it("states the SAME floor in the manifests as the code checks", () => {
+    // Two spellings, held together. The code corrected 1.3 to 1.2 — the 1.3 was
+    // justified by `slide.tags`, which nothing here calls — and both manifests
+    // kept 1.3, so the file a user installs disagreed with the check that runs.
+    // Nothing was watching, because the comment is prose to every other rule.
+    expect(FLOOR).toBe(API_FLOOR);
+    for (const name of NAMES.filter((n) => n.endsWith(".xml"))) {
+      expect(read(name), name).toContain(`PowerPointApi ${API_FLOOR}`);
+    }
   });
 
   it("declares no requirement set in any manifest", () => {

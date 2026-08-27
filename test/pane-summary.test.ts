@@ -7,6 +7,7 @@ import {
   mergeSummary,
   plural,
   slidesAdded,
+  undoIsPossible,
   undoSummary,
 } from "../src/pane/summary.js";
 
@@ -86,6 +87,27 @@ describe("what an undo takes back", () => {
     // A merge that added nothing must not offer to delete slide 13 to 12.
     expect(undoSummary(0, 12)).toBe("Nothing to take back.");
     expect(undoSummary(-3, 12)).toBe("Nothing to take back.");
+  });
+
+  it("does not offer to remove slides the deck is too small to hold", () => {
+    /**
+     * The card computes its range backwards from the END of the deck, so a
+     * deck smaller than the run's own output produced a first slide at or
+     * below zero: `Remove slides -707 to 12, which this merge added.` — with a
+     * button under it.
+     *
+     * Reachable in the product, not only in a fixture. The crash crumb offers a
+     * run back when the pane reopens, and by then the user may have taken those
+     * slides out by hand. `sweepPlan` already refused, so the button was safe;
+     * the SENTENCE was the defect, because it said the slides were there and
+     * named them.
+     */
+    expect(undoSummary(720, 12)).toBe("Nothing to take back.");
+    expect(undoIsPossible(720, 12)).toBe(false);
+    // The boundary: a deck holding exactly the run's output and nothing else.
+    expect(undoIsPossible(12, 12)).toBe(true);
+    expect(undoSummary(12, 12)).toBe("Remove slides 1 to 12, which this merge added.");
+    expect(undoIsPossible(13, 12)).toBe(false);
   });
 });
 

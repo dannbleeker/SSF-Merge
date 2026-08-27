@@ -3,24 +3,83 @@
 Mail merge for PowerPoint. You build one slide, or one block of slides, put
 placeholders where the data goes, and SSF Merge produces one copy per row.
 
-> **Status.** The engine is built and tested; the task pane is not written yet.
-> Sections marked *planned* describe behaviour that is designed and agreed but
-> not yet shipped. Nothing here is aspirational: a section moves out of
-> *planned* in the same change that makes it true.
+> **Status.** The engine, the task pane and the four steps are built and
+> shipped. What is still *planned* is marked, and it is now single options
+> inside sections rather than whole sections: sending the merge somewhere other
+> than this deck, doing anything to the template afterwards, and reading data
+> from a file or from Excel.
+>
+> Nothing here is aspirational: a line moves out of *planned* in the same change
+> that makes it true. This block said the pane was not written for some days
+> after it shipped, which is the failure it exists to prevent.
 
 ## Contents
 
+- [Your first merge](#your-first-merge)
 - [The idea](#the-idea)
 - [Placeholders](#placeholders)
 - [Formats](#formats)
 - [What repeats](#what-repeats)
 - [Your data](#your-data)
-- [Where the merged slides go](#where-the-merged-slides-go) *(planned)*
-- [What happens to the template](#what-happens-to-the-template) *(planned)*
-- [The pane](#the-pane) *(partly planned)*
+- [Where the merged slides go](#where-the-merged-slides-go) *(one of three)*
+- [What happens to the template](#what-happens-to-the-template) *(default only)*
+- [The pane](#the-pane)
 - [Installing it](#installing-it)
 - [Tags SSF Merge writes](#tags-ssf-merge-writes)
 - [Limits](#limits)
+
+## Your first merge
+
+Five minutes, on a deck you do not mind adding slides to. Nothing here deletes
+anything: a merge only ever **adds** slides after your template, and step 4
+offers to take them straight back out again.
+
+1. **Make a template slide.** Any slide will do. Put two placeholders on it,
+   typed exactly like this, braces included:
+
+   ```
+   {{First}}
+   {{City}}
+   ```
+
+   Note which slide number it is in the thumbnail rail on the left — say it is
+   slide 3. A template can be several slides in a row; one is enough to start.
+
+2. **Open the pane.** Home tab → **Mail merge**.
+
+3. **Step 1 — Template.** Type `3` into both boxes. The button reads **Choose
+   the slides that repeat** until the numbers make sense, then becomes **Use
+   slides 3 to 3** — press it. The pane reads the slide and says it found 2
+   placeholders. If it says 0, the braces are probably curly quotes, or the
+   field name has a space in it.
+
+4. **Step 2 — Fields.** Paste this into the box, including the header row:
+
+   ```
+   First	City
+   Ada	London
+   Grace	New York
+   Katherine	Hampton
+   ```
+
+   Copy it out of a spreadsheet, or type it with real tab characters between the
+   columns. The pane will say **3 rows · First, City** and show a chip per
+   placeholder, with any chip that has no column behind it outlined. Press
+   **Use 3 rows**.
+
+5. **Step 3 — Preview.** Press **Preview the first row**. One row is merged
+   into your deck so you can look at it, and **Remove the preview** takes it
+   out again. This is an ordinary one-row merge, not a mock-up — what you see
+   is what step 4 produces. **Skip to the merge** goes on without previewing.
+
+6. **Step 4 — Merge.** The button reads **Add 3 slides** — the count, not the
+   word "merge" — and the line above says where they land and how big the deck
+   will be afterwards. Press it, look at the result, and if you do not like it
+   press **Remove these slides**.
+
+If any step does anything other than this, the pane's run record is at the
+bottom of the screen once a run finishes — open **What this run did, step by
+step**, select it, and copy it. It carries no cell values, only structure.
 
 ## The idea
 
@@ -124,7 +183,11 @@ PowerPoint answers with at that instant.
 - Slides must sit next to each other. Reorder them in the thumbnail pane first.
 - Records are emitted whole: all of record 1's slides, then all of record 2's.
 - A slide can be conditional, so a record gets two slides or three. Its position
-  never changes; it is skipped in place.
+  never changes; it is skipped in place. **The engine does this and the pane
+  cannot yet ask for it** — there is no control in step 1 or 2 that sets a
+  condition, so every slide in your block is emitted for every row. The rules
+  below are what will happen once there is one; they are not something you can
+  reach today. *Planned.*
 - A condition names a column. The slide is emitted when that column's cell has
   content. **A blank cell is false, and so are the words `false`, `falsk`, `no`,
   `nej`, `off` and `0`**, whatever their capitalisation. That short list exists
@@ -184,22 +247,31 @@ clears the filter, because a row number means nothing against different data.
 
 ## Where the merged slides go
 
-*Planned.* Three choices:
+**Into this deck, after the template block.** That is what ships, it is not a
+setting, and the merge screen says where the slides will land and how large the
+deck will be afterwards before you press anything.
 
-1. **Into this deck**, after the template block.
-2. **Into a new presentation**, which opens beside the current one. Better for
-   large merges, because a very long deck is slow to edit.
-3. **One file per row**, saved to OneDrive. Requires signing in.
+Two more destinations are designed and not built:
+
+- **Into a new presentation**, which would open beside the current one. Better
+  for large merges, because a very long deck is slow to edit. *Planned.*
+- **One file per row**, saved to OneDrive. *Planned*, and blocked rather than
+  merely unbuilt: a task pane cannot hand you a downloaded file
+  ([office-js#1511](https://github.com/OfficeDev/office-js/issues/1511)), so it
+  needs an upload-and-link route.
 
 ## What happens to the template
 
-*Planned.* When merging into the same deck, the template block can:
+**Nothing. It stays exactly where it is**, which is what ships and what makes a
+merge re-runnable: change a row, run it again. A merge only ever ADDS slides.
 
-- **stay where it is** (default) — you can run the merge again later;
-- **move to the end** — out of the way, still re-runnable. PowerPoint's add-in
-  API cannot hide a slide, so this is as close as it gets;
-- **be deleted** — one way. Deleting ends re-run for that deck, and it happens
-  only after the merge is confirmed to have landed.
+Two alternatives are designed and not built, both of them one-way enough to be
+worth doing carefully rather than quickly:
+
+- **move it to the end** — out of the way, still re-runnable. PowerPoint's
+  add-in API cannot hide a slide, so this is as close as it gets. *Planned.*
+- **delete it** — ends re-run for that deck, so it would happen only after the
+  merge is confirmed to have landed. *Planned.*
 
 ## Tags SSF Merge writes
 
@@ -366,9 +438,18 @@ itself, which is hosted at
 <https://ssf-merge.struktureretsundfornuft.dk>. Nothing is installed onto
 your machine.
 
-Download **`manifest-prod.xml`** from the
-[latest release](https://github.com/dannbleeker/SSF-Merge/releases/latest) and
-sideload it:
+Get **`manifest-prod.xml`** and sideload it. Two places to get it, and the
+second one only once a version has been cut:
+
+- [the file on `main`](https://github.com/dannbleeker/SSF-Merge/raw/main/manifest-prod.xml)
+  — always current, and the right one while the add-in is still being tested;
+- the [latest release](https://github.com/dannbleeker/SSF-Merge/releases/latest),
+  once there is one. **There is none yet**, so that link is a 404 today; this
+  manual said to use it before anybody checked.
+
+Both name the same hosted page, so the pane you get is the same either way — the
+manifest is only a pointer, and it is the pointer that is versioned, not the
+add-in.
 
 | where | how |
 | --- | --- |
@@ -409,7 +490,7 @@ missing and what it costs you, which is worth more than a silent absence.
 **The cost of that choice, stated plainly.** Because the manifest declares
 nothing, Microsoft's own validator reports the add-in as installable on every
 PowerPoint back to **2013 on Windows** — and PowerPoint 2013 does not have
-PowerPointApi 1.3. So on an old enough PowerPoint the add-in installs, appears
+PowerPointApi 1.2. So on an old enough PowerPoint the add-in installs, appears
 on the Home tab, opens, and then tells you it cannot run and why. That is the
 trade: a message you can read and act on, instead of a button that was never
 there.

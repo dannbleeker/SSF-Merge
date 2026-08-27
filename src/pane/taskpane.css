@@ -112,6 +112,14 @@ header span {
   font-size: 12.5px;
 }
 
+/* Pushed to the right so it reads as a stamp rather than part of the name. */
+.build {
+  margin-left: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  opacity: 0.75;
+}
+
 main {
   padding: 16px 14px;
   display: flex;

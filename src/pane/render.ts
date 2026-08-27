@@ -29,7 +29,15 @@ import {
   unmatchedFields,
 } from "./steps.js";
 import type { OrangeHolder, PaneState, StepId } from "./steps.js";
-import { blockName, blockSummary, mergeArithmetic, mergeSummary, plural, undoSummary } from "./summary.js";
+import {
+  blockName,
+  blockSummary,
+  mergeArithmetic,
+  mergeSummary,
+  plural,
+  undoIsPossible,
+  undoSummary,
+} from "./summary.js";
 
 function el<K extends keyof HTMLElementTagNameMap>(
   doc: Document,
@@ -122,7 +130,12 @@ export function render(root: HTMLElement, state: PaneState, current: StepId): vo
   //
   // Phrased as the SLIDES rather than as "undo", because this deletes part of
   // a presentation and the sentence should say which part.
-  if (state.added && state.added > 0 && state.deckSize !== undefined && current === "merge") {
+  if (
+    state.added &&
+    state.deckSize !== undefined &&
+    undoIsPossible(state.added, state.deckSize) &&
+    current === "merge"
+  ) {
     const card = el(doc, "div", { class: "card undo" });
     card.append(el(doc, "p", { text: undoSummary(state.added, state.deckSize) }));
     card.append(

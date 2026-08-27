@@ -20,7 +20,7 @@
     <Host Name="Presentation" />
   </Hosts>
 
-  <!-- No <Requirements>. The floor is PowerPointApi 1.3 and it is checked at
+  <!-- No <Requirements>. The floor is PowerPointApi 1.2 and it is checked at
        runtime by checkFloor, because a DECLARED set the host lacks makes the
        add-in vanish from the ribbon with no diagnostic at all. -->
 
