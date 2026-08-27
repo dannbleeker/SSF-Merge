@@ -543,9 +543,9 @@ describe("filling the boxes from the slides the user selected", () => {
 describe("a host too old to read the selection", () => {
   it("does not offer the shortcut at all", async () => {
     // `getSelectedSlides` is PowerPointApi 1.5 and the floor is 1.2, so this
-    // is an EXTRA. It shipped unguarded — the call went in on 174 rounds of
-    // evidence that it is not wedged, without anyone asking which version
-    // introduced it. Safe to call and present are different questions.
+    // is an EXTRA. It shipped unguarded — the call went in on a sibling
+    // project's rounds showing it is not wedged, without anyone asking which
+    // version introduced it. Safe to call and present are different questions.
     office.canReadSelection.mockReturnValue(false);
     await openPane();
     await settle();
