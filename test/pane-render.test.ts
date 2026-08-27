@@ -453,9 +453,32 @@ describe("the run record is reachable", () => {
     expect(pre?.textContent).toContain("=== END ===");
   });
 
-  it("keeps it out of the way while the run is still going", () => {
-    const doc = paneFor({ ...ready, running: "merge", log: "old run" }, "merge");
-    expect(doc.querySelector(".runlog")).toBeNull();
+  it("shows it WHILE the run is still going, which is the case it exists for", () => {
+    /**
+     * REVERSES a decision this test used to record. It read "keeps it out of
+     * the way while the run is still going" and asserted the record was absent
+     * — on the reasoning that it would compete with the sentence saying what
+     * happened.
+     *
+     * There is no such sentence while a run is out: the notice is cleared and
+     * the only line on screen names the call being waited on. What the gate
+     * did cost is the case the record exists for. A host that wedges never
+     * reaches the `finally` that wrote the log, so the pane sat on "Waiting on
+     * PowerPoint…" forever with nothing to copy — the run nobody can explain
+     * was the one with nothing to explain it with.
+     */
+    const doc = paneFor({ ...ready, running: "merge", log: "  0.1s  host  issued  call=x" }, "merge");
+    expect(doc.querySelector(".runlog pre")?.textContent).toContain("call=x");
+  });
+
+  it("says whether the run is over, rather than claiming it is", () => {
+    // "What this run did" on a run still going is a small lie, and the
+    // expensive kind: it invites a reader to take the last line as the final
+    // one and conclude the run stopped there.
+    const going = paneFor({ ...ready, running: "merge", log: "a line" }, "merge");
+    expect(going.querySelector(".runlog summary")?.textContent).toBe("What this run has done so far");
+    const done = paneFor({ ...ready, log: "a line" }, "merge");
+    expect(done.querySelector(".runlog summary")?.textContent).toBe("What this run did, step by step");
   });
 
   it("is collapsed, so a 500-line log does not bury the outcome", () => {

@@ -22,6 +22,12 @@ export interface SlideSpec {
   paragraphs: string[][];
   /** true for stock notes text, or the text itself — a placeholder in it is the point. */
   notes?: boolean | string;
+  /**
+   * Text for a chart related from this slide, in DrawingML as a real one holds
+   * it. A placeholder here is one the engine does NOT merge, which is the case
+   * `prepareBlock` has to report rather than pass over.
+   */
+  chart?: string;
   creationId?: number;
 }
 
@@ -61,6 +67,7 @@ function slideXml(spec: SlideSpec): string {
 const TYPE = {
   slide: "application/vnd.openxmlformats-officedocument.presentationml.slide+xml",
   notes: "application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml",
+  chart: "application/vnd.openxmlformats-officedocument.drawingml.chart+xml",
 } as const;
 
 const REL_TYPE = {
@@ -70,6 +77,7 @@ const REL_TYPE = {
   master: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster",
   theme: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme",
   doc: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument",
+  chart: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart",
 } as const;
 
 /** Build a deck whose slides are exactly the specs given. */
@@ -79,9 +87,12 @@ export async function makeDeck(slides: SlideSpec[]): Promise<Uint8Array> {
   const overrides = slides
     .map((_, i) => `<Override PartName="/ppt/slides/slide${i + 1}.xml" ContentType="${TYPE.slide}"/>`)
     .concat(
-      slides.flatMap((s, i) =>
-        s.notes ? [`<Override PartName="/ppt/notesSlides/notesSlide${i + 1}.xml" ContentType="${TYPE.notes}"/>`] : [],
-      ),
+      slides.flatMap((s, i) => [
+        ...(s.notes
+          ? [`<Override PartName="/ppt/notesSlides/notesSlide${i + 1}.xml" ContentType="${TYPE.notes}"/>`]
+          : []),
+        ...(s.chart ? [`<Override PartName="/ppt/charts/chart${i + 1}.xml" ContentType="${TYPE.chart}"/>`] : []),
+      ]),
     )
     .join("");
 
@@ -160,12 +171,31 @@ export async function makeDeck(slides: SlideSpec[]): Promise<Uint8Array> {
     const notesRel = spec.notes
       ? `<Relationship Id="rId2" Type="${REL_TYPE.notes}" Target="../notesSlides/notesSlide${n}.xml"/>`
       : "";
+    const chartRel = spec.chart
+      ? `<Relationship Id="rId3" Type="${REL_TYPE.chart}" Target="../charts/chart${n}.xml"/>`
+      : "";
     zip.file(
       `ppt/slides/_rels/slide${n}.xml.rels`,
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n<Relationships ${REL}>` +
         `<Relationship Id="rId1" Type="${REL_TYPE.layout}" Target="../slideLayouts/slideLayout1.xml"/>` +
-        `${notesRel}</Relationships>`,
+        `${notesRel}${chartRel}</Relationships>`,
     );
+    if (spec.chart) {
+      // A chart's text is DrawingML, the same `<a:p>`/`<a:t>` the slide uses,
+      // which is why `fieldsIn` finds it. Split across two runs on purpose:
+      // that is the ordinary state of a placeholder after an edit, and it is
+      // what a regex over the raw markup would miss.
+      const half = Math.ceil(spec.chart.length / 2);
+      zip.file(
+        `ppt/charts/chart${n}.xml`,
+        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n` +
+          `<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" ${A}>` +
+          `<c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p>` +
+          `<a:r><a:rPr lang="en-US"/><a:t>${escapeText(spec.chart.slice(0, half))}</a:t></a:r>` +
+          `<a:r><a:rPr lang="en-US"/><a:t>${escapeText(spec.chart.slice(half))}</a:t></a:r>` +
+          `</a:p></c:rich></c:tx></c:title></c:chartSpace>`,
+      );
+    }
     if (spec.notes) {
       zip.file(
         `ppt/notesSlides/notesSlide${n}.xml`,

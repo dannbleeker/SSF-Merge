@@ -98,6 +98,15 @@ export interface BlockReport {
   detail: string;
   /** Placeholders found in the block, in the order they appear. */
   fields: string[];
+  /**
+   * Placeholders found in a chart or SmartArt, which this engine does not merge.
+   *
+   * Reported rather than dropped. Not merging them is a stated limit; not
+   * saying so is the defect — the author puts `{{Name}}` in a chart title, the
+   * pane counts the placeholders it can see, and the braces ship on every
+   * merged slide.
+   */
+  unmergeable?: string[];
 }
 
 /**
@@ -134,6 +143,7 @@ export async function inspectBlock(req: { from: number; to: number }): Promise<B
       ok: true,
       detail: `${prepared.fields.length} placeholder${prepared.fields.length === 1 ? "" : "s"} in slides ${req.from} to ${req.to}.`,
       fields: prepared.fields,
+      ...(prepared.unmergeable.length > 0 ? { unmergeable: prepared.unmergeable } : {}),
     };
   } catch (e) {
     // `readTemplate` throws its refusals — `blockIds` produced the sentence and

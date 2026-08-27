@@ -7,7 +7,70 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed — three small format defects
+
+- **`-0`.** `formatNumber` took the sign from the input rather than the rounded
+  value, so `-0.4` at no decimal places printed `-0` — a quantity that does not
+  exist, on a slide, from an ordinary cell.
+- **`number:1e2` asked for a hundred decimal places and got them.** `Number`
+  reads `1e2`, `0x10` and padded strings, so a spec that is not a count of
+  places was used as one. Digits only now; anything else returns the cell as it
+  stands, like every other unreadable format.
+- **`date:MMMM` printed `MarM`** — `MMM` replaced and the fourth `M` left
+  standing. `MMMM` is a full month name now rather than being refused, since it
+  is a thing to want. The supported tokens are exactly the six the manual lists.
+
+### Added — a placeholder in a chart is named instead of passed over
+
+A chart's labels live in `ppt/charts/chartN.xml` and SmartArt's in
+`ppt/diagrams/dataN.xml`, neither of which is a `<a:p>` on the slide. So
+`fieldsIn` never saw them: the author put `{{Region}}` in a chart title, the
+pane counted the placeholders it could see, and the braces shipped on every
+merged slide. Not merging them is a stated limit; not saying so was the defect.
+
+`prepareBlock` reads the parts each block slide RELATES to — never the package
+at large, because below API 1.10 the template comes back as the whole deck and a
+chart on slide 40 is not this block's problem. It uses `fieldsIn` on the parsed
+part rather than a regex over the markup, because chart text is DrawingML and a
+placeholder split across runs is the ordinary state of one after an edit.
+
+A block whose only placeholders are in a chart used to be refused with "no
+placeholders, so every copy would be identical" — true, and useless to somebody
+looking at one. It now names them and says what to do.
+
+### Fixed — a Danish date column formatted half of itself
+
+`NAMED_DATE` admits `ÆØÅ`, so `detectType` types a Danish date column as a date.
+The month NAME then went to `new Date`, which matches an English three-letter
+prefix — so `marts` and `januar` worked, `maj` and `oktober` did not, and one
+column came out half formatted and half raw across a merged deck with nothing
+saying why.
+
+The sharpest form of the rule this engine is built on: not a wrong date, but the
+same column rendering two ways.
+
+English, Danish, Norwegian and Swedish month names are a stated table now, full
+and three-letter, listed rather than matched by prefix — an open prefix rule
+reads `1 marketing 2026` as March. No word in the four means a different month
+in another, and a test asserts that over the whole table rather than trusting
+it, so a word added later that clashes fails there.
+
+The `new Date` fallback stays, deliberately. It is what makes French and Italian
+month names work for users the table does not list, and dropping it would turn a
+partial answer into no answer for them. Its inconsistency is why the table
+exists; it is a floor, not the mechanism.
+
+**Not the Danish locale the backlog rejected.** That was a string table for the
+pane's own text and is still rejected. This is reading the user's DATA, which
+the date regex already reached for.
+
+### Added — the run record is on screen while the run is still going
+
+It was gated on the run being over, so a host that wedges produced a pane
+showing "Waiting on PowerPoint…" and nothing else — on exactly the run somebody
+needs to explain. The record is also SEEDED when the run starts rather than left
+to the first trace that arrives after the subscriber, because the run's most
+useful line, the environment, is written before it.
 
 ## [0.1.0] — 2026-08-27
 

@@ -151,6 +151,32 @@ const STATES = [
     state: { ...full, added: 720, deckSize: 12, notice: "720 slides added after slide 12." },
   },
   {
+    // The record while the host has not answered — the state a wedged run sits
+    // in, which used to show the waiting line and nothing else.
+    name: "4-merge-running-with-log",
+    step: "merge",
+    state: {
+      ...full,
+      running: "merge",
+      inFlight: "inserting the merged deck",
+      log: [
+        "   0.0s  pane  run starting  build=225e8a5 platform=OfficeOnline floor=1.2 deck=12",
+        "   0.0s  host  issued    call=counting the deck's slides budget=15000",
+        "   0.1s  host  answered  call=counting the deck's slides ms=94",
+        "   0.1s  host  issued    call=exporting the template slides budget=90000",
+        "   2.4s  host  answered  call=exporting the template slides ms=2311",
+        "   2.4s  host  issued    call=inserting the merged deck budget=60000",
+      ].join("\n"),
+    },
+  },
+  {
+    // A placeholder the author put in a chart. Not merged, and — until this —
+    // not mentioned either: it is not in `fields`, so the chips never showed it.
+    name: "2-fields-chart-placeholder",
+    step: "fields",
+    state: { ...full, paste: PASTE, columns: ["First", "Last", "Email"], rows: 2, unmergeable: ["Region"] },
+  },
+  {
     // The condition control, shut and open. Shut it is one line that states the
     // current answer; open it is a select per template slide.
     name: "2-conditions-shut",

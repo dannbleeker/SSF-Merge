@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyFormat, formatNumber, numericValue, parseDate } from "../src/core/data/format.js";
+import { applyFormat, formatDate, formatNumber, numericValue, parseDate } from "../src/core/data/format.js";
 import { detectType, looksLikeDate, parseDelimited, toRecordSet } from "../src/core/data/recordset.js";
 
 describe("parseDelimited", () => {
@@ -321,5 +321,152 @@ describe("a date that is not a real day", () => {
     // instead of 240 slides carrying a date nobody wrote.
     expect(applyFormat("2026-02-29", "date")).toBe("2026-02-29");
     expect(applyFormat("31 Feb 2026", "date:d MMM yyyy")).toBe("31 Feb 2026");
+  });
+});
+
+describe("month names the date gate already admits", () => {
+  /**
+   * `NAMED_DATE` allows `ÆØÅ`, which is somebody having made room for Danish
+   * deliberately. Resolving the name through `new Date` then handled Danish BY
+   * ACCIDENT — that parser matches an English three-letter prefix, so `marts`
+   * and `januar` worked and `maj` and `desember` did not.
+   *
+   * The symptom is the sharpest form of the rule this engine is built on: one
+   * column, one format spec, two renderings. `detectType` still called it a
+   * date, so half the slides carried `01-03-2026` and half carried
+   * `3 maj 2026`, with nothing saying why.
+   */
+  const DANISH: [string, string][] = [
+    ["1 januar 2026", "2026-01-01"],
+    ["2 februar 2026", "2026-02-02"],
+    ["3 marts 2026", "2026-03-03"],
+    ["4 april 2026", "2026-04-04"],
+    ["5 maj 2026", "2026-05-05"],
+    ["6 juni 2026", "2026-06-06"],
+    ["7 juli 2026", "2026-07-07"],
+    ["8 august 2026", "2026-08-08"],
+    ["9 september 2026", "2026-09-09"],
+    ["10 oktober 2026", "2026-10-10"],
+    ["11 november 2026", "2026-11-11"],
+    ["12 december 2026", "2026-12-12"],
+  ];
+
+  it.each(DANISH)("reads the Danish %s", (raw, iso) => {
+    expect(parseDate(raw)?.toISOString().slice(0, 10)).toBe(iso);
+  });
+
+  it("reads the Norwegian and Swedish spellings that differ", () => {
+    // The whole reason a table beats a prefix rule: these are the words an
+    // English-only answer gets wrong, not the ones it gets right by luck.
+    expect(parseDate("1 mars 2026")?.toISOString().slice(0, 10)).toBe("2026-03-01");
+    expect(parseDate("1 mai 2026")?.toISOString().slice(0, 10)).toBe("2026-05-01");
+    expect(parseDate("1 desember 2026")?.toISOString().slice(0, 10)).toBe("2026-12-01");
+    expect(parseDate("1 januari 2026")?.toISOString().slice(0, 10)).toBe("2026-01-01");
+    expect(parseDate("1 augusti 2026")?.toISOString().slice(0, 10)).toBe("2026-08-01");
+  });
+
+  it("reads the abbreviations a spreadsheet writes", () => {
+    expect(parseDate("1 okt 2026")?.toISOString().slice(0, 10)).toBe("2026-10-01");
+    expect(parseDate("1 des 2026")?.toISOString().slice(0, 10)).toBe("2026-12-01");
+    expect(parseDate("1 Maj 2026")?.toISOString().slice(0, 10)).toBe("2026-05-01");
+  });
+
+  it("does not let a Nordic name through as the wrong month", () => {
+    /**
+     * The property that makes one table safe for four languages, asserted
+     * rather than trusted: no word means a different month in a different one
+     * of them. Written as a check over the WHOLE table, so a word added later
+     * that clashes fails here instead of quietly renaming a month.
+     */
+    const languages = [
+      "january february march april may june july august september october november december",
+      "januar februar marts april maj juni juli august september oktober november december",
+      "januar februar mars april mai juni juli august september oktober november desember",
+      "januari februari mars april maj juni juli augusti september oktober november december",
+    ];
+    const meaning = new Map<string, number>();
+    for (const line of languages) {
+      line.split(" ").forEach((word, i) => {
+        const month = i + 1;
+        const already = meaning.get(word);
+        expect(already ?? month, `${word} means two different months`).toBe(month);
+        meaning.set(word, month);
+        // And the engine agrees with the list.
+        expect(parseDate(`1 ${word} 2026`)?.getUTCMonth(), `1 ${word} 2026`).toBe(i);
+      });
+    }
+    expect(meaning.size).toBe(25);
+  });
+
+  it("still refuses a day that month does not have, whatever the language", () => {
+    // The table must not become a way round the guard added with it.
+    expect(parseDate("31 apr 2026")).toBeUndefined();
+    expect(parseDate("30 februar 2026")).toBeUndefined();
+    expect(parseDate("32 maj 2026")).toBeUndefined();
+  });
+
+  it("keeps whatever the platform already handled", () => {
+    /**
+     * The fallback stays on purpose. It is what makes French and Italian month
+     * names work today for users this table does not list, and dropping it
+     * would turn a partial answer into no answer for them. Its inconsistency is
+     * why the table exists — it is a floor, not the mechanism.
+     */
+    expect(parseDate("1 janvier 2026")?.toISOString().slice(0, 10)).toBe("2026-01-01");
+    expect(parseDate("1 March 2026")?.toISOString().slice(0, 10)).toBe("2026-03-01");
+  });
+
+  it("formats a whole Danish column the same way, which was the defect", () => {
+    // The end-to-end shape: before the table, `maj` fell through to the raw
+    // cell while `marts` formatted, in the same column, on the same deck.
+    const column = ["1 marts 2026", "3 maj 2026", "1 desember 2026"];
+    expect(column.map((c) => applyFormat(c, "date:dd-MM-yyyy"))).toEqual(["01-03-2026", "03-05-2026", "01-12-2026"]);
+  });
+});
+
+describe("formats that were wrong in small ways", () => {
+  it("does not print minus zero", () => {
+    // The sign came from the INPUT, not the rounded value, so `-0.4` at no
+    // decimal places printed `-0` — a quantity that does not exist, on a
+    // slide, from an ordinary cell.
+    expect(applyFormat("-0.4", "number")).toBe("0");
+    expect(applyFormat("-0.04", "number:1")).toBe("0,0");
+    // And still keeps the sign where there is one to keep.
+    expect(applyFormat("-1.5", "number")).toBe("-2");
+    expect(applyFormat("-0.4", "number:1")).toBe("-0,4");
+  });
+
+  it("takes only a count of places as a decimal count", () => {
+    // `Number` also reads `1e2`, so `number:1e2` asked for a hundred decimal
+    // places and got them: a legal `toFixed` call producing a number no slide
+    // has room for. A spec that is not a count is not a count, and the cell is
+    // returned as it stands like every other unreadable format.
+    expect(applyFormat("1234.5", "number:1e2")).toBe("1234.5");
+    expect(applyFormat("1234.5", "number:0x2")).toBe("1234.5");
+    expect(applyFormat("1234.5", "number:-1")).toBe("1234.5");
+    expect(applyFormat("1234.5", "number:101")).toBe("1234.5");
+    // The forms that ARE a count still work, surrounding space included.
+    expect(applyFormat("1234.5", "number:2")).toBe("1 234,50");
+    expect(applyFormat("1234.5", "number: 2 ")).toBe("1 234,50");
+  });
+
+  it("writes a full month name for MMMM", () => {
+    // It printed `MarM` — `MMM` replaced and the fourth `M` left standing.
+    // Supported rather than refused, since a full month is a thing to want.
+    const d = parseDate("2026-03-01");
+    expect(d && formatDate(d, "MMMM")).toBe("March");
+    expect(d && formatDate(d, "d MMMM yyyy")).toBe("1 March 2026");
+    // And the shorter tokens still mean what they meant.
+    expect(d && formatDate(d, "MMM")).toBe("Mar");
+    expect(d && formatDate(d, "yyyy-MM-dd")).toBe("2026-03-01");
+  });
+
+  it("leaves the letters of a literal alone", () => {
+    // The `\b` around the single `d` is load-bearing: without it a pattern of
+    // `Ends d` prints "En1s 1". Longest-token-first is the other half — swap
+    // `yyyy` and `yy` and the year becomes "2626".
+    const d = parseDate("2026-03-01");
+    expect(d && formatDate(d, "Ends d")).toBe("Ends 1");
+    expect(d && formatDate(d, "yyyy")).toBe("2026");
   });
 });

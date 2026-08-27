@@ -132,8 +132,8 @@ Add a format after a pipe:
 
 | Format | Argument | Notes |
 | --- | --- | --- |
-| `number` | decimal places, default 0 | Space for thousands, comma for decimals |
-| `date` | a pattern, default `dd-MM-yyyy` | `yyyy` `yy` `MMM` `MM` `dd` `d` |
+| `number` | decimal places, default 0 | Space for thousands, comma for decimals. Digits only — `number:1e2` is not a count and leaves the cell alone |
+| `date` | a pattern, default `dd-MM-yyyy` | `yyyy` `yy` `MMMM` `MMM` `MM` `dd` `d`, and nothing else. Any other text in the pattern is printed as written |
 | `upper` | none | Locale-aware, so `måned` becomes `MÅNED` |
 | `lower` | none | Locale-aware |
 
@@ -156,6 +156,22 @@ Chicago, and nothing in the cell says which. The value is printed as it stands
 rather than guessed at. A deck that draws perfectly and is two months wrong is
 the worse outcome. Write the date as `2026-03-01` in your source if you want it
 merged as a date.
+
+**Month names are read in English, Danish, Norwegian and Swedish**, in full or
+in the three-letter form a spreadsheet writes — `3 maj 2026`, `1 okt 2026`,
+`1 desember 2026`. Other languages are read where the browser happens to know
+them, which is inconsistent by nature; those four are a stated list.
+
+Until 2026-08-27 the list did not exist and every name went to the browser,
+which matches an English three-letter prefix. So `marts` and `januar` worked
+and `maj` and `oktober` did not — one Danish column, half of it formatted and
+half of it showing the raw cell.
+
+**The month name written OUT is English**, whatever language it was read from:
+`{{Start|date:d MMM yyyy}}` gives `3 May 2026`. The output is the template
+author's to choose, so write the month yourself if you want it in another
+language — `{{Start|date:d}} maj {{Start|date:yyyy}}` — or use a numeric
+pattern like `dd-MM-yyyy`, which reads the same everywhere.
 
 ## What repeats
 
@@ -534,7 +550,11 @@ Dates are read and written in the same zone, so `1 Mar 2026` prints as
 ## Limits
 
 - **Charts and SmartArt are not merged.** Their text lives in separate parts
-  with their own embedded workbooks. Placeholders inside them are left alone.
+  with their own embedded workbooks. Placeholders inside them are left alone —
+  and **step 2 names them**, so you find out while you can still move the text
+  onto the slide rather than by reading the merged deck. If a block's only
+  placeholders are in a chart, step 1 says that instead of "no placeholders",
+  which is true and useless when you are looking at one.
 - **Cut and paste on PowerPoint for the web loses shape tags**
   ([office-js#3784](https://github.com/OfficeDev/office-js/issues/3784)). A
   merged slide cut and pasted into another deck loses its run tag, so undo will
