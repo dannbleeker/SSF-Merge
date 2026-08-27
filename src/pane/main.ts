@@ -381,7 +381,14 @@ async function useBlock(): Promise<void> {
     }
 
     state = report.ok
-      ? { ...state, deckSize, block, fields: report.fields, notice: undefined }
+      ? {
+          ...state,
+          deckSize,
+          block,
+          fields: report.fields,
+          unmergeable: report.unmergeable ?? [],
+          notice: undefined,
+        }
       : { ...state, deckSize, block: undefined, fields: [], notice: report.detail };
     if (report.ok) step = nextStep("template") ?? step;
   } catch (e) {

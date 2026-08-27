@@ -85,3 +85,88 @@ describe("turning slide numbers into a block", () => {
     expect(out.block.slides.map((s) => s.condition)).toEqual([undefined, "HasBonus", undefined]);
   });
 });
+
+describe("placeholders the engine does not reach", () => {
+  /**
+   * A chart's labels live in `ppt/charts/chartN.xml` with an embedded workbook
+   * behind them; SmartArt's live in `ppt/diagrams/dataN.xml`. Neither is a
+   * `<a:p>` on the slide, so `mergeDocument` never touches them and `fieldsIn`
+   * never reports them.
+   *
+   * Not merging them is a stated limit. Not SAYING so was the defect: the
+   * author puts `{{Region}}` in a chart title, the pane counts the placeholders
+   * it can see, and 240 slides ship with the braces on them.
+   */
+  it("reports a placeholder in a chart instead of passing over it", async () => {
+    const deck = await makeDeck([
+      { paragraphs: [["Hello {{First}}"]], chart: "Sales for {{Region}}" },
+      { paragraphs: [["after"]] },
+    ]);
+    const pkg = await Pkg.open(deck);
+    const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "run1");
+    expect(prepared.ok).toBe(true);
+    if (!prepared.ok) return;
+    // Kept APART from the fields, not folded in: it is not a candidate for a
+    // column, so counting it would make the fields step ask for data that
+    // could never be used.
+    expect(prepared.fields).toEqual(["First"]);
+    expect(prepared.unmergeable).toEqual(["Region"]);
+  });
+
+  it("does not say a block has no placeholders when one is in its chart", async () => {
+    /**
+     * "No placeholders" is true — the engine cannot fill a chart — and useless:
+     * the author placed one, is looking at it, and is being told it is not
+     * there. The complaint this pass exists for, arriving on the one path
+     * where it reads as the engine being broken.
+     */
+    const deck = await makeDeck([{ paragraphs: [["a title"]], chart: "{{Region}}" }, { paragraphs: [["after"]] }]);
+    const pkg = await Pkg.open(deck);
+    const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "run1");
+    expect(prepared.ok).toBe(false);
+    if (prepared.ok) return;
+    expect(prepared.why).toContain("Region");
+    expect(prepared.why).toContain("chart or SmartArt");
+    expect(prepared.why, "the unhelpful sentence").not.toContain("no placeholders");
+  });
+
+  it("finds one the host has split across runs", async () => {
+    // The fixture splits its chart text in half deliberately. A placeholder
+    // split across two runs is the ordinary state of one after an edit, and it
+    // is what a regex over the raw markup would miss while reporting the tidy
+    // ones — the same reason `mergeParagraph` matches against joined text.
+    const deck = await makeDeck([
+      { paragraphs: [["{{OnTheSlide}}"]], chart: "{{LongFieldName}}" },
+      { paragraphs: [["y"]] },
+    ]);
+    const pkg = await Pkg.open(deck);
+    const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "run1");
+    expect(prepared.ok && prepared.unmergeable).toEqual(["LongFieldName"]);
+  });
+
+  it("says nothing when no chart holds a placeholder", async () => {
+    const deck = await makeDeck([
+      { paragraphs: [["{{First}}"]], chart: "Sales by quarter" },
+      { paragraphs: [["after"]] },
+    ]);
+    const pkg = await Pkg.open(deck);
+    const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "run1");
+    expect(prepared.ok && prepared.unmergeable).toEqual([]);
+  });
+
+  it("ignores a chart on a slide outside the block", async () => {
+    /**
+     * The reason this reads the parts THIS slide relates to rather than the
+     * package at large. On the route below API 1.10 the template comes back as
+     * the WHOLE deck, so a package-wide scan would name a chart on slide 40 and
+     * send the user hunting through a template that is fine.
+     */
+    const deck = await makeDeck([
+      { paragraphs: [["{{First}}"]] },
+      { paragraphs: [["elsewhere"]], chart: "{{NotMine}}" },
+    ]);
+    const pkg = await Pkg.open(deck);
+    const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "run1");
+    expect(prepared.ok && prepared.unmergeable).toEqual([]);
+  });
+});

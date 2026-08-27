@@ -7,6 +7,24 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added — a placeholder in a chart is named instead of passed over
+
+A chart's labels live in `ppt/charts/chartN.xml` and SmartArt's in
+`ppt/diagrams/dataN.xml`, neither of which is a `<a:p>` on the slide. So
+`fieldsIn` never saw them: the author put `{{Region}}` in a chart title, the
+pane counted the placeholders it could see, and the braces shipped on every
+merged slide. Not merging them is a stated limit; not saying so was the defect.
+
+`prepareBlock` reads the parts each block slide RELATES to — never the package
+at large, because below API 1.10 the template comes back as the whole deck and a
+chart on slide 40 is not this block's problem. It uses `fieldsIn` on the parsed
+part rather than a regex over the markup, because chart text is DrawingML and a
+placeholder split across runs is the ordinary state of one after an edit.
+
+A block whose only placeholders are in a chart used to be refused with "no
+placeholders, so every copy would be identical" — true, and useless to somebody
+looking at one. It now names them and says what to do.
+
 ### Fixed — a Danish date column formatted half of itself
 
 `NAMED_DATE` admits `ÆØÅ`, so `detectType` types a Danish date column as a date.

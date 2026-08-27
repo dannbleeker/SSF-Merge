@@ -278,20 +278,36 @@ describe("every pane state field can actually be set", () => {
     return [...body.matchAll(/^ {2}(\w+)\??:/gm)].map((m) => m[1] ?? "");
   }
 
-  /** Keys assigned by any `state = { … }` in the pane's entry point. */
+  /**
+   * Keys assigned by any `state = …` statement in the pane's entry point.
+   *
+   * The whole STATEMENT, not the first `{` after the `=`. An earlier version
+   * matched `state\s*=\s*\{` and could therefore not see a ternary —
+   * `state = report.ok ? { … } : { … }` — which is how two of this file's
+   * assignments are written. It called a field set only that way "set by
+   * nothing", and would equally have missed a field that really was
+   * unreachable if its neighbours happened to be ternaries.
+   *
+   * The trade, stated: reading the whole statement also picks up keys of
+   * objects NESTED inside it, so a field could be called settable because a
+   * different object used its name. That direction produces a false pass; a
+   * scan blind to a common assignment form produces both.
+   */
   function assignedFields(source: string): Set<string> {
     const out = new Set<string>();
-    for (const start of [...source.matchAll(/state\s*=\s*\{/g)]) {
+    for (const start of [...source.matchAll(/\bstate\s*=[^=]/g)]) {
       let depth = 0;
-      let end = start.index + start[0].length - 1;
-      for (let i = end; i < source.length; i++) {
-        if (source[i] === "{") depth++;
-        else if (source[i] === "}" && --depth === 0) {
+      let end = source.length;
+      for (let i = start.index; i < source.length; i++) {
+        const c = source[i];
+        if (c === "{" || c === "(" || c === "[") depth++;
+        else if (c === "}" || c === ")" || c === "]") depth--;
+        else if (c === ";" && depth <= 0) {
           end = i;
           break;
         }
       }
-      const block = source.slice(start.index, end + 1);
+      const block = source.slice(start.index, end);
       // `key: value`, and the `{ key }` shorthand.
       // Keys always follow the opening brace or a comma, so those two are the
       // whole alphabet here. (This carried a `\A` from the scratch version that

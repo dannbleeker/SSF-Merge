@@ -73,8 +73,14 @@ route is Graph upload plus a link, or `openBrowserWindow` to a download page.
 ### Charts and SmartArt
 **Priority: medium.** Feasibility: low to medium.
 Text lives in `charts/chart*.xml` and `diagrams/data*.xml` with embedded
-workbooks. Until it is built, the pane must say so out loud rather than skipping
-a field the user placed.
+workbooks. Merging them is still open.
+
+**The half that said "the pane must say so out loud rather than skipping a
+field the user placed" SHIPPED on 2026-08-27.** `prepareBlock` reads the parts
+each block slide relates to and reports what it finds there, step 2 names them,
+and a block whose only placeholders are in a chart gets that sentence instead of
+"no placeholders". So the silent case is closed and what is left is the feature
+itself.
 
 ### A filter expression language
 **Priority: low.** Feasibility: medium.

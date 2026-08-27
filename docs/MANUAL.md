@@ -550,7 +550,11 @@ Dates are read and written in the same zone, so `1 Mar 2026` prints as
 ## Limits
 
 - **Charts and SmartArt are not merged.** Their text lives in separate parts
-  with their own embedded workbooks. Placeholders inside them are left alone.
+  with their own embedded workbooks. Placeholders inside them are left alone —
+  and **step 2 names them**, so you find out while you can still move the text
+  onto the slide rather than by reading the merged deck. If a block's only
+  placeholders are in a chart, step 1 says that instead of "no placeholders",
+  which is true and useless when you are looking at one.
 - **Cut and paste on PowerPoint for the web loses shape tags**
   ([office-js#3784](https://github.com/OfficeDev/office-js/issues/3784)). A
   merged slide cut and pasted into another deck loses its run tag, so undo will

@@ -137,6 +137,30 @@ export class Pkg {
     return id;
   }
 
+  /**
+   * Every package path a part relates to, one hop out.
+   *
+   * External targets are skipped: a hyperlink's `Target` is a URL and
+   * `resolveTarget` would answer a package path that does not exist.
+   *
+   * One hop is enough for what asks: a chart and a SmartArt diagram are both
+   * related directly from the slide that shows them.
+   */
+  async relatedParts(ownerPart: string): Promise<string[]> {
+    const path = Pkg.relsPathFor(ownerPart);
+    if (!this.has(path)) return [];
+    const doc = await this.doc(path);
+    const out: string[] = [];
+    for (const rel of elements(doc, PKG_REL_NS, "Relationship")) {
+      if ((rel.getAttribute("TargetMode") ?? "") === "External") continue;
+      const target = rel.getAttribute("Target");
+      if (!target) continue;
+      const resolved = resolveTarget(ownerPart, target);
+      if (!out.includes(resolved)) out.push(resolved);
+    }
+    return out;
+  }
+
   /** Resolve one `r:id` in a part to the package path it points at. */
   async relTarget(ownerPart: string, rId: string): Promise<string | undefined> {
     const path = Pkg.relsPathFor(ownerPart);
