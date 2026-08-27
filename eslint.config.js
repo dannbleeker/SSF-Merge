@@ -80,7 +80,7 @@ export default tseslint.config(
     // return by construction rather than by mistake. The rules these files hold
     // are gated by `test/manifest.test.ts`, which proves each one can still
     // fail — a stronger check than the type of an intermediate.
-    files: ["scripts/manifest-rules.mjs", "scripts/manifest-source.mjs"],
+    files: ["scripts/manifest-rules.mjs", "scripts/manifest-source.mjs", "scripts/release-assets.mjs"],
     rules: { "@typescript-eslint/no-unsafe-return": "off" },
   },
   {

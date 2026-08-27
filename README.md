@@ -25,6 +25,7 @@ one set of slides per row. All four steps of the pane are built.
 | Office.js host layer (capability floor, template read, insert, positional undo) | done |
 | Task pane — four steps, the block control, the paste box, the merge button | done |
 | Manifests — XML and unified JSON, dev and prod, from one source | done |
+| Release workflow — manual, validated, assets checked against the docs | done |
 | Ribbon icons, drawn in code rather than checked in as binaries | done |
 | Preview: the first row merged into the deck, then swept | done |
 

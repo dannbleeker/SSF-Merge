@@ -273,7 +273,9 @@ itself, which is hosted at
 <https://ssf-merge.struktureretsundfornuft.dk>. Nothing is installed onto
 your machine.
 
-Download **`manifest-prod.xml`** from the repository and sideload it:
+Download **`manifest-prod.xml`** from the
+[latest release](https://github.com/dannbleeker/SSF-Merge/releases/latest) and
+sideload it:
 
 | where | how |
 | --- | --- |
