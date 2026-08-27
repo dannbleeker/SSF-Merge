@@ -418,3 +418,50 @@ describe("the row picker", () => {
     expect(pane.querySelector(".rowlist li")?.textContent).toContain(nasty);
   });
 });
+
+describe("the pane says what it is waiting on", () => {
+  it("names the host call in flight", () => {
+    // A merge is silent for up to two and a half minutes. A frozen "Merging…"
+    // is indistinguishable from a wedged pane, and the call name is the one
+    // thing a user can report that says WHERE it stopped.
+    const doc = paneFor({ ...ready, running: "merge", inFlight: "inserting the merged deck" }, "merge");
+    expect(doc.querySelector(".inflight")?.textContent).toContain("inserting the merged deck");
+  });
+
+  it("says nothing when no call is in flight", () => {
+    expect(paneFor({ ...ready, running: "merge" }, "merge").querySelector(".inflight")).toBeNull();
+  });
+
+  it("does not leave the waiting line up after the run", () => {
+    // `running` is undefined once the run ends; the sentence saying what
+    // happened is the notice's job from then on.
+    const doc = paneFor({ ...ready, inFlight: "inserting the merged deck" }, "merge");
+    expect(doc.querySelector(".inflight")).toBeNull();
+  });
+});
+
+describe("the run record is reachable", () => {
+  it("shows the log once the run has finished, between markers", () => {
+    // The extraction channel. A task pane is a nested cross-origin iframe with
+    // no devtools a user can open, and blob downloads from one are blocked
+    // (office-js#1511) — so the only way this record reaches anybody is by
+    // being on screen to select and copy.
+    const doc = paneFor({ ...ready, log: "  0.1s  host  issued  call=x" }, "merge");
+    const pre = doc.querySelector(".runlog pre");
+    expect(pre?.textContent).toContain("=== SSF MERGE RUN LOG ===");
+    expect(pre?.textContent).toContain("call=x");
+    expect(pre?.textContent).toContain("=== END ===");
+  });
+
+  it("keeps it out of the way while the run is still going", () => {
+    const doc = paneFor({ ...ready, running: "merge", log: "old run" }, "merge");
+    expect(doc.querySelector(".runlog")).toBeNull();
+  });
+
+  it("is collapsed, so a 500-line log does not bury the outcome", () => {
+    const doc = paneFor({ ...ready, log: "a line" }, "merge");
+    const details = doc.querySelector(".runlog");
+    expect(details?.tagName.toLowerCase()).toBe("details");
+    expect(details?.hasAttribute("open")).toBe(false);
+  });
+});

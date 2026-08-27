@@ -111,6 +111,32 @@ export function render(root: HTMLElement, state: PaneState, current: StepId): vo
   // makes both read as nagging.
   if (state.notice) main.append(el(doc, "p", { class: "blocked notice", text: state.notice }));
 
+  // WHICH host call is in flight, while one is.
+  //
+  // A merge is legitimately silent for up to two and a half minutes —
+  // `BUDGET.file` allows ninety seconds to read the template and
+  // `BUDGET.insert` sixty to hand the package over — and a frozen "Merging…"
+  // for that long is indistinguishable from a pane that has wedged. It is also
+  // the one thing a user can report that tells us WHERE it stopped.
+  if (state.running && state.inFlight) {
+    main.append(el(doc, "p", { class: "inflight", text: `Waiting on PowerPoint: ${state.inFlight}…` }));
+  }
+
+  // The run record, and the only way it reaches anybody.
+  //
+  // A task pane is a nested cross-origin iframe with no devtools a user can
+  // open, and blob downloads from one are blocked in WebView2
+  // (office-js#1511). So the record is on screen, selectable, between markers
+  // — the same channel the host probe already uses, because it is the one that
+  // works. Shown only once a run has finished, so it never competes with the
+  // sentence saying what happened.
+  if (state.log && !state.running) {
+    const details = el(doc, "details", { class: "runlog" });
+    details.append(el(doc, "summary", { text: "What this run did, step by step" }));
+    details.append(el(doc, "pre", { text: `=== SSF MERGE RUN LOG ===\n${state.log}\n=== END ===` }));
+    main.append(details);
+  }
+
   // Before the primary, so the primary stays the LAST element in the view —
   // the rule the layout was approved on. Rendered as a link rather than a
   // second button so there is still visibly one thing to press.

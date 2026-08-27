@@ -91,6 +91,18 @@ export interface PaneState {
    */
   running?: "inspect" | "merge" | "preview";
   /**
+   * The host call in flight, for the pane to name while it waits.
+   *
+   * A merge is legitimately silent for up to two and a half minutes —
+   * `BUDGET.file` allows ninety seconds to read the template and
+   * `BUDGET.insert` sixty to hand the package over — and a frozen "Merging…"
+   * for that long is indistinguishable from a wedged pane. Naming the call
+   * costs nothing and is the difference between waiting and giving up.
+   */
+  inFlight?: string;
+  /** The run record, shown so a user can copy it out. A task pane has no devtools. */
+  log?: string;
+  /**
    * Where a preview landed, in the numbering the thumbnail rail shows.
    *
    * The card names the slides rather than saying only "a preview is showing",

@@ -84,6 +84,31 @@ const STATES = [
   },
   { name: "4-merge-running", step: "merge", state: { ...full, running: "merge" } },
   {
+    // Naming the call, which is the difference between a slow step and a stuck
+    // one on a pane that is legitimately silent for two and a half minutes.
+    name: "4-merge-waiting-on-host",
+    step: "merge",
+    state: { ...full, running: "merge", inFlight: "inserting the merged deck" },
+  },
+  {
+    // The run record, collapsed. It must not bury the sentence above it.
+    name: "4-merge-done-with-log",
+    step: "merge",
+    state: {
+      ...full,
+      added: 720,
+      notice: "720 slides added after slide 12 · no placeholders were filled — check the spelling in your template.",
+      log: [
+        "   0.0s  host  issued    call=counting the deck's slides budget=15000",
+        "   0.1s  host  answered  call=counting the deck's slides ms=94",
+        "   0.1s  host  issued    call=exporting the template slides budget=90000",
+        "   2.4s  host  answered  call=exporting the template slides ms=2311",
+        "   2.4s  host  issued    call=inserting the merged deck budget=60000",
+        "  14.9s  host  answered  call=inserting the merged deck ms=12470",
+      ].join("\n"),
+    },
+  },
+  {
     name: "4-merge-done",
     step: "merge",
     state: { ...full, added: 720, notice: "720 slides added after slide 12." },

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   blockName,
   blockSummary,
+  describeMerge,
   mergeArithmetic,
   mergeSummary,
   plural,
@@ -85,5 +86,39 @@ describe("what an undo takes back", () => {
     // A merge that added nothing must not offer to delete slide 13 to 12.
     expect(undoSummary(0, 12)).toBe("Nothing to take back.");
     expect(undoSummary(-3, 12)).toBe("Nothing to take back.");
+  });
+});
+
+describe("describeMerge says what the merge DID", () => {
+  it("says a zero out loud rather than omitting it", () => {
+    // The failure a first real run is likeliest to hit: a template whose
+    // placeholders are spelled how its author spelled them. Every slide lands,
+    // nothing is filled, and the deck delta reports a perfect success.
+    const line = describeMerge({ added: 720, deckAtStart: 12, paragraphsMerged: 0 });
+    expect(line).toContain("720 slides added after slide 12");
+    expect(line).toMatch(/no placeholders were filled/i);
+    expect(line).toMatch(/spelling/i);
+  });
+
+  it("counts the placeholders when the merge worked", () => {
+    expect(describeMerge({ added: 6, deckAtStart: 3, paragraphsMerged: 18 })).toContain("18 placeholders filled");
+  });
+
+  it("reconciles rows against slides when a condition skipped some", () => {
+    // "8 rows" and "6 slides" are both right and a user who cannot reconcile
+    // them assumes the merge lost something.
+    const line = describeMerge({ added: 6, deckAtStart: 3, paragraphsMerged: 12, skippedRecords: 2 });
+    expect(line).toContain("2 rows skipped by a condition");
+  });
+
+  it("stays one short sentence when nothing unusual happened", () => {
+    const line = describeMerge({ added: 6, deckAtStart: 3, paragraphsMerged: 12 });
+    expect(line).toBe("6 slides added after slide 3 · 12 placeholders filled.");
+  });
+
+  it("says nothing about a count it was not given", () => {
+    // An older outcome has no `paragraphsMerged`, and inventing "0 filled" for
+    // it would report a failure that did not happen.
+    expect(describeMerge({ added: 6, deckAtStart: 3 })).toBe("6 slides added after slide 3.");
   });
 });

@@ -74,3 +74,44 @@ export function undoSummary(added: number, deckSize: number): string {
     ? `Remove slide ${from}, which this merge added.`
     : `Remove slides ${from} to ${deckSize}, which this merge added.`;
 }
+
+/** What a finished merge actually did, as opposed to how much the deck grew. */
+export interface MergeReport {
+  added: number;
+  deckAtStart: number;
+  paragraphsMerged?: number;
+  skippedRecords?: number;
+  skippedSlides?: number;
+}
+
+/**
+ * The sentence a finished merge gets.
+ *
+ * "720 slides added" is a measurement of the DECK. It is true of a merge that
+ * filled every placeholder and equally true of one that matched none of them
+ * and inserted 720 copies of the template — which is the likeliest way a first
+ * run against a real template goes wrong, because the placeholders are spelled
+ * how the author spelled them and not how the pane expects.
+ *
+ * So the count of paragraphs actually rewritten goes in the same sentence, and
+ * a ZERO is said out loud rather than omitted as an empty clause. `0` is an
+ * answer, and it is the whole finding.
+ *
+ * Clause-joined and zeros otherwise dropped, so an ordinary merge reads as one
+ * short sentence and only an unusual one grows.
+ */
+export function describeMerge(r: MergeReport): string {
+  const parts = [`${plural(r.added, "slide")} added after slide ${r.deckAtStart}`];
+  if (r.paragraphsMerged !== undefined) {
+    parts.push(
+      r.paragraphsMerged === 0
+        ? "no placeholders were filled — check the spelling in your template"
+        : `${plural(r.paragraphsMerged, "placeholder")} filled`,
+    );
+  }
+  // Skips are why "8 rows" and "6 slides" can both be right, and a user who
+  // cannot reconcile those two numbers assumes the merge lost something.
+  if (r.skippedRecords) parts.push(`${plural(r.skippedRecords, "row")} skipped by a condition`);
+  if (r.skippedSlides) parts.push(`${plural(r.skippedSlides, "slide")} skipped by a condition`);
+  return `${parts.join(" · ")}.`;
+}
