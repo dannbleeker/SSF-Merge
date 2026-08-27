@@ -20,7 +20,8 @@
     "build": "vite build",
     "icons": "node scripts/build-icons.mjs",
     "manifests": "node scripts/build-manifests.mjs",
-    "release:check": "node scripts/check-release.mjs"
+    "release:check": "node scripts/check-release.mjs",
+    "sibling-watch": "node scripts/sibling-watch.mjs"
   },
   "dependencies": {
     "@xmldom/xmldom": "^0.9.8",

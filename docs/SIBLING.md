@@ -115,6 +115,33 @@ is a real answer and the most common one worth writing down.
 | Grouping, tag-settle and id-refusal recovery | most of its renderer | **No exposure.** No shape-level work here at all. |
 | Waiting after `slides.add()` (office-js#2903) cost 18 of 19 probe answers in one round | tried and reverted there | **Rejected before trying.** `docs/BACKLOG.md` rejected list. |
 | Bindings as a route around id refusals — the host rejects the batch carrying the binding | its probe, with a control arm | **Rejected before trying.** `docs/BACKLOG.md` rejected list. |
+| A slide add whose sync never resolves though the slide lands (office-js#1650) | its bounded slide-adds | **Adopted as doctrine.** We never call `slides.add`, but `insertSlidesFromBase64` is the same shape and gets the same answer: the deck delta decides. |
+| `addTextBox` deletes the SELECTED shape on the web (office-js#2775) | its `dropShapeSelection` | **No exposure to the call, but the class is ours.** The preview inserts when the user may have something selected, so `insertWhileSelectedProbe` asks rather than assuming. |
+| The web uppercases tag KEYS internally and needs the uppercased spelling to read them back (office-js#6079) | its tag writer | **Relevant, and already safe by luck.** Every key we write is uppercase (`SSF_MERGE_RUN`, `SSF_MERGE_RECORD`, `SSF_MERGE_BLOCK`). A lowercase key would go into the package fine and be unreadable on the web. |
+| `Slide.exportAsBase64` omits modern comments and `ppt/authors.xml` (office-js#6867) | its round evidence | **A finding for us that the sibling correctly marked no exposure — see below.** |
+| Shape tags are lost on cut/paste on the web (office-js#3784) | its triage | **Documented, not guarded.** A merged slide cut and pasted into another deck loses its run tag, so undo cannot find it. Caveat in `docs/MANUAL.md`; detection is refused for the sibling's reason. |
+| Inserted content may appear in the slide PREVIEW but not the main view (office-js#6498) | its visibility gate | **Relevant as a support answer.** A user reporting missing merged slides may be seeing this, and the deck delta will say they landed. Nothing here can read the canvas to tell them apart. |
+| `PowerPoint.run` batching fails to load properties reliably after `sync()` (office-js#6363) | its central failure | **Highly relevant.** `deckSlideIds` batches `load("id")` across twenty `getItemAt` handles and reads them after one sync — precisely this shape. Asked by our `deckRead` probe's `empty` arm. |
+| `getcount-populates-same-sync` — the count is right while the list is empty | its `FAKE_BASELINE` | **Relevant.** Why the paging loop trusts the scalar `getCount()` and never a collection load. |
+| `getitemat-past-end` — what the host does past the end of the collection | its `FAKE_BASELINE` | **Relevant.** Bounds both `deckSlideIds` (paging by index) and `undoInsert` (deleting by index). |
+| `which-end-a-short-read-drops` | its `FAKE_BASELINE` | **Relevant.** A short read that is not a prefix makes a slide NUMBER wrong, not merely a list shorter. Our probe asks the same thing as `prefixOk`. |
+| `how-many-collection-reads-a-context-survives` | its `PENDING_QUESTIONS` | **Relevant.** `deckSlideIds` takes one `PowerPoint.run` per page deliberately, so no context accumulates reads. Recorded so the reason survives a refactor. |
+| `delete-then-lookup` — whether a deleted slide still resolves | its `FAKE_BASELINE` | **Relevant as doctrine.** Exactly what made by-id clean-up unsafe. Undo deletes by position, highest index first, and re-counts rather than believing the call. |
+| `scratch-slides-returned` — whether a probe gets its slides back | its positional sweep | **Adopted.** Our probe's sweep is positional and triple-clamped, each clamp proven load-bearing in `test/undo.test.ts`. |
+
+### The one open risk this sweep surfaced
+
+**`exportAsBase64Presentation` may be dropping parts, and nobody has checked.**
+office-js#6867 reports that `Slide.exportAsBase64` omits modern comments and
+`ppt/authors.xml`. PowerChart marked it no exposure and was right to: it calls
+that API to get a PICTURE of a slide. We call the presentation-level export to
+read the TEMPLATE WE THEN CLONE, so any part the export drops is a part every
+merged slide is missing — silently, in a file that opens cleanly.
+
+Different call in the same family, and the presentation-level one has never been
+tested for it. It wants a probe question before the first real merge on a deck
+that has comments. Recorded here rather than fixed because guessing at which
+parts are affected would be worse than measuring.
 
 ## What we learned that PowerChart has not
 
@@ -142,8 +169,26 @@ It is subject to its own rule. The 44-citation count and the 174-round figure
 above are dated because they are counters, and they will be stale rather than
 wrong. Re-count before quoting either.
 
-The half that is not yet built is the **sweep**: a weekly job, modelled on
-PowerChart's `office-js-watch.yml`, that reads the curated tables above and
-reports anything with no row here. Both repositories are public and readable
-without a token, so it needs no credentials. Until it exists this ledger is
-maintained by hand, which means it is maintained when somebody remembers.
+**The sweep runs weekly** (`.github/workflows/sibling-watch.yml`, Mondays, an
+hour after PowerChart's own office-js sweep so a finding it triages that morning
+is in its tables before this looks). `scripts/sibling-watch.mjs` reads the
+curated tables above and reports anything with no row in its `TRIAGED` map —
+one issue, reopened and updated, never one per sweep. Run it yourself with
+`npm run sibling-watch`.
+
+Raw file reads only, never the GitHub API: both repositories are public, so it
+needs no token and runs in CI and in an agent session alike. It never imports
+the sibling's code — a weekly job that executes a file fetched over the network
+is a supply chain, not a sweep.
+
+Three exit codes, and the third is the one that matters: 0 when everything has a
+row, 3 when something does not, and anything else when the sweep itself broke. A
+table renamed upstream throws by name rather than matching nothing, because
+"nothing new, every Monday, forever" is indistinguishable from a quiet week and
+is exactly the failure this file exists to prevent.
+
+**`TRIAGED` is the source of truth and this prose is downstream of it.** Every
+reason opens with a verdict from a closed vocabulary — `NO EXPOSURE`, `ADOPTED`,
+`RELEVANT` — and `test/sibling.test.ts` fails when a finding we ACTED on has no
+line here. It found thirteen missing rows the first time it ran, against a
+ledger written the same morning.

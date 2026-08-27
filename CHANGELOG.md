@@ -7,6 +7,46 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added — the sibling sweep, and two findings it surfaced on its first run
+
+`scripts/sibling-watch.mjs` reads PowerChart's curated tables — its triaged
+office-js issues and the four host-answer tables that gate its fake against a
+real PowerPoint — and reports anything with no row in `docs/SIBLING.md`. Weekly,
+one issue reopened rather than duplicated. Raw file reads only, no GitHub API
+and no token, and it never imports the sibling's code: a weekly job that
+executes a file fetched over the network is a supply chain, not a sweep.
+
+Seeded by running it against the live tables and triaging all **69** findings,
+so the first Monday is quiet rather than a wall nobody reads. 52 are **no
+exposure** — no shape work, no grouping, no rasterising, no pictures — and
+saying so is the point: an untriaged finding is indistinguishable from an
+unnoticed one.
+
+**Two findings for us that the sibling had correctly marked no exposure for
+itself:**
+
+- **`exportAsBase64Presentation` may be dropping parts.** office-js#6867 reports
+  that `Slide.exportAsBase64` omits modern comments and `ppt/authors.xml`.
+  PowerChart calls that API for a picture of a slide, so it does not care. We
+  call the presentation-level export to read the TEMPLATE WE THEN CLONE, so any
+  part the export drops is a part every merged slide is missing — silently, in a
+  file that opens cleanly. Recorded rather than fixed; it wants a probe question
+  before the first real merge on a deck with comments.
+- **The web uppercases tag keys** (office-js#6079) and then requires the
+  uppercased spelling to read them back. Every key this engine writes is already
+  uppercase, so this is safe by luck rather than by design — and now written
+  down, because a lowercase key would go into the package fine and be
+  unreadable.
+
+A table renamed upstream throws by name rather than matching nothing: "nothing
+new, every Monday, forever" is indistinguishable from a quiet week, and that is
+the failure the whole apparatus exists to prevent.
+
+`TRIAGED` is the source of truth and `docs/SIBLING.md` is downstream of it —
+every reason opens with a verdict from a closed vocabulary, and the suite fails
+when a finding we acted on has no line in the ledger. That check found thirteen
+missing rows the first time it ran, against a ledger written the same morning.
+
 ### Added — a ledger for what we know from the sibling project, and a rule that keeps it honest
 
 Most of what this repo knows about the PowerPoint host was learned by
