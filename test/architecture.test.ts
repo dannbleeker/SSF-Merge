@@ -1,6 +1,8 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+// @ts-expect-error — plain .mjs with no types, shared with the scripts.
+import { withoutTsProse } from "../scripts/without-prose.mjs";
 
 function filesUnder(dir: string): string[] {
   return readdirSync(dir).flatMap((entry) => {
@@ -9,14 +11,6 @@ function filesUnder(dir: string): string[] {
   });
 }
 
-/**
- * The file with its prose removed.
- *
- * The first version of this guard matched the words "Office.js" and
- * "PowerPoint.run" in the comments that explain WHY the engine avoids them, so
- * it failed on four files that were entirely correct. A guard that goes red for
- * the wrong reason teaches the next reader to widen it until it goes green.
- */
 /**
  * One function's source, brace-matched from its signature.
  *
@@ -94,21 +88,20 @@ function functionBody(src: string, signature: string): string {
   throw new Error(`${signature} never closes its body`);
 }
 
+/**
+ * The file with its prose removed, so a guard reads what the code DOES.
+ *
+ * The first version of this matched the words "Office.js" and "PowerPoint.run"
+ * in the comments that explain WHY the engine avoids them, so it failed on four
+ * files that were entirely correct. A guard that goes red for the wrong reason
+ * teaches the next reader to widen it until it goes green.
+ *
+ * The stripper is shared now — `scripts/without-prose.mjs` — because the same
+ * mistake has been made three times in three syntaxes, and three private copies
+ * is three chances to write a fourth.
+ */
 function codeOf(file: string): string {
-  return (
-    readFileSync(file, "utf8")
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .split("\n")
-      .filter((line) => !/^\s*(\/\/|\*)/.test(line))
-      .join("\n")
-      // String literals go too, for the same reason the comments did. A verdict
-      // that names office-js#6105 in its text is a sentence about an issue, not
-      // a dependency on it, and the first version of the src/host guard failed
-      // on exactly that — a file with no imports at all.
-      .replace(/`(?:[^`\\]|\\.)*`/g, '""')
-      .replace(/"(?:[^"\\\n]|\\.)*"/g, '""')
-      .replace(/'(?:[^'\\\n]|\\.)*'/g, '""')
-  );
+  return withoutTsProse(readFileSync(file, "utf8")) as string;
 }
 
 describe("src/core", () => {

@@ -7,6 +7,37 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed — one comment-stripper instead of three
+
+Three guards in this repo have gone wrong the same way, each in a different
+syntax, and each was found only when it went red on a file that was correct or
+green on one that was not:
+
+- `test/architecture.test.ts` forbade Office.js in the engine and matched the
+  word "Office.js" in the paragraphs explaining WHY the engine avoids it — four
+  correct files, red;
+- `scripts/manifest-rules.mjs` forbade a `<Requirements>` block and matched the
+  XML comment explaining why the manifest has none, so the generator refused to
+  write a file that was exactly right;
+- `test/release.test.ts` checked that the pre-flight runs before the tag is
+  created and matched the YAML comment mentioning `gh release create`, so it
+  compared the comment's position with the check's and reported the order
+  backwards.
+
+A file that explains itself is not a defect; a guard that cannot tell an
+explanation from an instruction is. `scripts/without-prose.mjs` is the one
+module now — `withoutXmlComments`, `withoutHashComments`, `withoutTsProse` —
+and `test/without-prose.test.ts` drives each against the exact case that caught
+its guard, so a stripper that stops handling its own case fails rather than
+quietly putting a guard back where it started.
+
+None of the three is a parser. Each is the smallest thing that makes its own
+guard honest, which is why they are named for what they remove rather than for
+a language.
+
+Three private copies was three chances to write a fourth. The next person
+reaching for one finds it.
+
 ### Added — a release workflow, and a gate on the thing every other gate misses
 
 Every check in this repo reads the WORKING TREE. A user downloads the RELEASE,
