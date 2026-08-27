@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 // @ts-expect-error — plain .mjs tools with no types. The rules live THERE so the
 // workflow and this test cannot read different ones.
 import { RELEASE_ASSETS, assetsPromisedByDocs, releaseProblems } from "../scripts/release-assets.mjs";
+// @ts-expect-error — as above.
+import { withoutHashComments } from "../scripts/without-prose.mjs";
 
 /**
  * What a release ships.
@@ -82,20 +84,11 @@ describe("what a release must never ship", () => {
 });
 
 describe("the release workflow", () => {
-  /**
-   * The workflow with its prose removed.
-   *
-   * The comment at the top of the file EXPLAINS why the tag is created by
-   * `gh release create`, and the first version of these tests matched that
-   * sentence instead of the step — so "runs the pre-flight first" compared the
-   * comment's position with the check's and reported the order backwards.
-   * Third time in this repo that a guard has read prose as code; same fix as
-   * `manifest-rules.mjs` and `architecture.test.ts`.
-   */
-  const workflow = read(".github/workflows/release.yml")
-    .split("\n")
-    .filter((line) => !/^\s*#/.test(line))
-    .join("\n");
+  // Stripped of its comments: the header explains why the tag is created by
+  // `gh release create`, and the first version of these tests matched that
+  // sentence instead of the step — so the ORDER check compared the comment's
+  // position with the check's and reported it backwards.
+  const workflow = withoutHashComments(read(".github/workflows/release.yml")) as string;
 
   it("is manual only — a release is a decision, not a consequence of merging", () => {
     expect(workflow).toContain("workflow_dispatch");

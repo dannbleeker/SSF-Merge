@@ -11,6 +11,7 @@
  * Every one of them is a thing that has actually been shipped somewhere, or is
  * one edit away from being.
  */
+import { withoutXmlComments } from "./without-prose.mjs";
 
 export const REQUIRED_ID = "43ebbbac-44ad-42b2-a582-0ef079093e6c";
 
@@ -19,21 +20,8 @@ export function isProd(name) {
   return name.includes("-prod");
 }
 
-/**
- * The manifest with its prose removed.
- *
- * The manifest EXPLAINS why it has no `<Requirements>`, in an XML comment
- * containing the words `<Requirements>`, and the first version of the rule
- * below matched it — so the generator refused to write a file that was exactly
- * right. Same trap as `test/architecture.test.ts`'s first version, and the same
- * fix: read the markup, not the prose.
- */
-function markupOf(text) {
-  return text.replace(/<!--[\s\S]*?-->/g, "");
-}
-
 function xmlRules(raw, name, out) {
-  const text = markupOf(raw);
+  const text = withoutXmlComments(raw);
   if (!text.includes("<OfficeApp")) {
     out.push(`${name} is not an Office add-in manifest`);
     return;
@@ -93,7 +81,7 @@ function jsonRules(text, name, out) {
 
 /** Every URL a manifest points at, in the order it names them. */
 export function urlsIn(text) {
-  return [...markupOf(text).matchAll(/https?:\/\/[^"'\s<>]+/g)].map((m) => m[0].replace(/&amp;/g, "&"));
+  return [...withoutXmlComments(text).matchAll(/https?:\/\/[^"'\s<>]+/g)].map((m) => m[0].replace(/&amp;/g, "&"));
 }
 
 /**
