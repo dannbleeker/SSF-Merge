@@ -44,6 +44,21 @@ const STATES = [
     state: { fields: [], previewing: false, draft: { from: "6", to: "4" }, deckSize: 12 },
   },
   { name: "1-template-chosen", step: "template", state: full },
+  {
+    // The reported first run: a fresh deck, two empty slides, the template read
+    // refused. Until this the primary was the only way forward and it does not
+    // advance from here, so there was no route to the data step at all.
+    name: "1-template-no-fields",
+    step: "template",
+    state: {
+      fields: [],
+      previewing: false,
+      draft: { from: "2", to: "3" },
+      deckSize: 4,
+      notice:
+        'Slides 2 to 3 have no {{fields}}, so every copy would be identical. Type your column headers onto the slides in double braces — {{First}}, {{City}} — then press again. PowerPoint\'s own empty "Click to add title" boxes are not fields.',
+    },
+  },
   { name: "2-fields-empty", step: "fields", state: { ...full, columns: undefined, rows: undefined, paste: "" } },
   {
     // Self-consistent on purpose: the paste, the columns and the row count are

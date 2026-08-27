@@ -36,7 +36,9 @@ anything: a merge only ever **adds** slides after your template, and step 4
 offers to take them straight back out again.
 
 1. **Make a template slide.** Any slide will do. Put two placeholders on it,
-   typed exactly like this, braces included:
+   typed exactly like this, braces included. (Working from a deck rather than
+   from this example? Open the pane, type your slide numbers, and press *Attach
+   data first to see your column names* — then you know what to type.)
 
    ```
    {{First}}
@@ -334,6 +336,13 @@ much is left, which is the question a first-time user actually has.
 | 2 · Fields | See the placeholders found in those slides, and which ones have no column behind them. |
 | 3 · Preview | Merge the first row into your deck so you can look at it, then remove it. |
 | 4 · Merge | Add the slides, with the count on the button. |
+
+**You can do steps 1 and 2 the other way round.** Step 1 will not go forward
+until the slides you named actually have `{{fields}}` on them — and the names to
+type are your data's column headers, which you cannot see until you attach it.
+So step 1 offers **Attach data first to see your column names**: paste your
+table, read the headers off the line under the box, go and type them onto the
+slides, then come back. The link is only there while no data is attached.
 
 Three things about it are deliberate and worth knowing.
 

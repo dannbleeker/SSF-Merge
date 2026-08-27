@@ -7,6 +7,36 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a template with no fields had nowhere to go
+
+Reported from a first real run. Step 1's primary only advances when the template
+read finds fields, so a deck with no `{{fields}}` on it had **no route to step
+2** — and the names to type are the data's own column headers, which cannot be
+seen until it is attached. The pane was telling the user to go and type names
+nobody knew yet.
+
+Step 1 offers *Attach data first to see your column names* while no data is
+attached. `blockedReason` already permitted that step on the two slide numbers
+alone, so nothing about what is reachable changed; only a control was missing.
+
+### Fixed — the word PowerPoint had already taken
+
+The same run answered "Slides 2 to 3 has no placeholders" on a deck whose slides
+held two of PowerPoint's own empty content boxes — which PowerPoint itself calls
+placeholders. First contact, on an empty deck, reading as the add-in being
+broken rather than as an answer.
+
+The refusal names the syntax now and says where the names come from. A first
+draft said "type something like `{{Name}}`" and was rejected by the same
+reporter: at step 1 nothing is attached and nobody knows their column names yet.
+
+### Fixed — a placeholder only in the speaker notes was refused
+
+`runPlan` merges the notes page and always has. `prepareBlock`'s field scan only
+read the slide, so a block whose placeholders lived in the notes was refused
+with "no placeholders, so every copy would be identical" — about a merge that
+would in fact have filled them.
+
 ### Fixed — three small format defects
 
 - **`-0`.** `formatNumber` took the sign from the input rather than the rounded
