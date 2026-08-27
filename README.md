@@ -8,8 +8,9 @@ Part of the SSF add-in family from
 
 ## Status
 
-Early. The engine's spine is here and tested; the task pane and the host layer
-are not written yet.
+Early, and now end to end: a block named in the pane is read out of the open
+deck, merged inside the file and handed back to PowerPoint. The preview step and
+the manifests are what stand between this and something that can be installed.
 
 | Piece | State |
 | --- | --- |
@@ -20,8 +21,11 @@ are not written yet.
 | Data parsing, type detection, formatting | done |
 | Merge plan (blocks, records, conditional slides) | done |
 | Running a plan against a package, end to end | done |
-| Host probe, for the questions only a real PowerPoint answers | done, [not yet run](docs/PROBE.md) |
-| Office.js host layer, task pane, manifests | not started |
+| Host probe, for the questions only a real PowerPoint answers | done, [three sheets read](docs/PROBE.md) |
+| Office.js host layer (capability floor, template read, insert, positional undo) | done |
+| Task pane — four steps, the block control, the paste box, the merge button | done |
+| Preview: one row on the real slide, then the template back | not started |
+| Manifests | not started |
 
 ## How it works
 

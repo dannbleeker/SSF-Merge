@@ -17,6 +17,83 @@ function filesUnder(dir: string): string[] {
  * it failed on four files that were entirely correct. A guard that goes red for
  * the wrong reason teaches the next reader to widen it until it goes green.
  */
+/**
+ * One function's source, brace-matched from its signature.
+ *
+ * The first version sliced to the next `\n/**`, which is not where a function
+ * ends — it is where the next DOCBLOCK starts, and only by accident of the
+ * current file order was that the same place. An adversarial pass proved the
+ * cost: with `readTemplate` reverted to the counting loop this guard exists to
+ * forbid, and a helper below it holding the strings the guard greps for, the
+ * slice ran past the defect into the helper and every assertion passed. With no
+ * later `/**` at all, `indexOf` answers -1 and `slice(start, -1)` swallows the
+ * rest of the file.
+ *
+ * Slicing to the next top-level `export` was tried second and is ALSO wrong: a
+ * plain `function` between them is not a stop, so the same repro still passed.
+ * Only the braces say where a function ends, so they are what is counted —
+ * over a copy with strings and comments masked to spaces, because a brace in a
+ * comment closes nothing and this file's prose is full of them.
+ */
+function maskLiterals(src: string): string {
+  const out = src.split("");
+  let i = 0;
+  const blank = (from: number, to: number) => {
+    for (let j = from; j < to && j < out.length; j++) if (out[j] !== "\n") out[j] = " ";
+  };
+  while (i < src.length) {
+    const two = src.slice(i, i + 2);
+    if (two === "//") {
+      const end = src.indexOf("\n", i);
+      blank(i, end === -1 ? src.length : end);
+      i = end === -1 ? src.length : end;
+    } else if (two === "/*") {
+      const end = src.indexOf("*/", i + 2);
+      blank(i, end === -1 ? src.length : end + 2);
+      i = end === -1 ? src.length : end + 2;
+    } else if (src[i] === '"' || src[i] === "'" || src[i] === "`") {
+      const quote = src[i];
+      let j = i + 1;
+      while (j < src.length && src[j] !== quote) j += src[j] === "\\" ? 2 : 1;
+      blank(i, j + 1);
+      i = j + 1;
+    } else i++;
+  }
+  return out.join("");
+}
+
+function functionBody(src: string, signature: string): string {
+  const start = src.indexOf(signature);
+  expect(start, `${signature} is in the file`).toBeGreaterThan(-1);
+  const masked = maskLiterals(src);
+  // Past the PARAMETER LIST first. The first `{` after the signature is not
+  // the body when a parameter is typed inline — `readTemplate(block: { from:
+  // number; to: number })` matched its own annotation, so the "body" was
+  // eleven words of signature and every `toContain` failed on a file that was
+  // perfectly correct. A guard that goes red for the wrong reason teaches the
+  // next reader to widen it until it goes green.
+  const paren = masked.indexOf("(", start);
+  expect(paren, `${signature} has a parameter list`).toBeGreaterThan(-1);
+  let parens = 0;
+  let afterParams = -1;
+  for (let i = paren; i < masked.length; i++) {
+    if (masked[i] === "(") parens++;
+    else if (masked[i] === ")" && --parens === 0) {
+      afterParams = i;
+      break;
+    }
+  }
+  expect(afterParams, `${signature} closes its parameter list`).toBeGreaterThan(-1);
+  const open = masked.indexOf("{", afterParams);
+  expect(open, `${signature} has a body`).toBeGreaterThan(-1);
+  let depth = 0;
+  for (let i = open; i < masked.length; i++) {
+    if (masked[i] === "{") depth++;
+    else if (masked[i] === "}" && --depth === 0) return src.slice(start, i + 1);
+  }
+  throw new Error(`${signature} never closes its body`);
+}
+
 function codeOf(file: string): string {
   return (
     readFileSync(file, "utf8")
@@ -110,6 +187,34 @@ describe("src/core", () => {
       expect(body, `${fn} catches its own raise`).toMatch(/}\s*catch\s*\(/);
       expect(body, `${fn} counts the deck again afterwards`).toContain("await slideCount()");
     }
+  });
+
+  it("never builds a slide id, it asks the host for one", () => {
+    // A slide id on this host looks like "256#3561048925". The first merge run
+    // counted instead — `for (let n = from; n <= to; n++) ids.push(String(n))`
+    // — and handed `["4", "5", "6"]` to `exportAsBase64Presentation`, whose
+    // typings say it throws InvalidArgument for an id not in the collection.
+    // Both sides were `string`, so tsc saw nothing and all three answer sheets
+    // report PowerPointApi 1.10, which means `chooseDeckSource` returns
+    // `subset` on the owner's own host and the first press of the merge button
+    // would have thrown.
+    //
+    // The signature is the main guard: `readTemplate` takes slide NUMBERS, so
+    // no caller can pass ids and tsc refuses the old call outright. This is the
+    // other half — the ids it uses have to come off a loaded collection and
+    // through `blockIds`, which is where the checking lives.
+    const src = readFileSync("src/office/powerpoint.ts", "utf8");
+    const body = functionBody(src, "export async function readTemplate");
+    expect(body, "asks the host for the ids").toContain('load("items/id")');
+    expect(body, "checks them in src/host rather than here").toContain("blockIds(");
+    // `exportAsBase64Presentation` is handed what `blockIds` returned and
+    // nothing else. Anything built locally is the defect coming back.
+    expect(body).toMatch(/exportAsBase64Presentation\(chosen\.ids\)/);
+    // Scoped to this function, not the file. `String(e)` is how the two
+    // mutating calls coerce a raise they caught, and a check wide enough to
+    // catch that is a check that goes red for the wrong reason — which this
+    // file already has a paragraph about.
+    expect(body, "builds no id of its own").not.toContain("String(");
   });
 
   it("looks values up without walking the prototype chain", () => {

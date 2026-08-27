@@ -99,9 +99,21 @@ merged as a date.
 ## What repeats
 
 A template is one or more **contiguous** slides, marked as a block. Three slides
-per customer is the ordinary case. The engine does all of this today; the pane
-that lets you *choose* the block is still planned, so for now a block is
-described in code.
+per customer is the ordinary case. Step 1 of the pane is where you name it: the
+number of the first slide and the number of the last, as the thumbnail rail
+counts them.
+
+Picking the block by *clicking* the slides is still planned. Two boxes are what
+is built, and they are checked as you type. A block that ends before it starts,
+a slide 0 or a fraction is **refused**, in a sentence quoting what you typed,
+before a template read is spent on it.
+
+A block running past the end of the deck is only a **warning**, and the button
+stays live. The pane counts your deck when it opens and again each time you
+press "Use slides N to M"; between those it can be out of date, and refusing a
+block because of a count taken ten minutes ago would tell you a slide you can
+see does not exist. The real check happens a moment later against the slide list
+PowerPoint answers with at that instant.
 
 - The deck's own order is the order each record gets.
 - Slides must sit next to each other. Reorder them in the thumbnail pane first.
@@ -122,14 +134,22 @@ described in code.
 
 ## Your data
 
-*Partly planned.* The engine reads a table; the pane will offer several ways to
-give it one.
+*Partly planned.* Pasting works; the other two sources are still to come.
 
 | Source | State |
 | --- | --- |
-| Paste a range copied from Excel | engine reads it, pane planned |
+| Paste a range copied from Excel | built — step 2 of the pane |
 | A .csv or .xlsx file | planned |
 | An Excel table on OneDrive or SharePoint via Microsoft Graph | planned |
+
+Select the range in Excel, copy, and paste into the box on step 2. That arrives
+tab-separated and is read as such; a comma-separated paste is read too. The
+columns found are listed under the box beside the row count, deliberately — a
+copy that came through as plain text parses into ONE column, and a row count on
+its own looks perfectly healthy when that happens.
+
+A header row with nothing under it is refused rather than counted as zero rows,
+because "Add 0 slides" does not say which half was wrong.
 
 The first row is the header. A column with no header is named `Column 3` rather
 than dropped, and two columns with the same header become `Name` and `Name 2`,
@@ -185,7 +205,7 @@ much is left, which is the question a first-time user actually has.
 | --- | --- |
 | 1 · Template | Name the first and last slide of the set that repeats. They must be next to each other. |
 | 2 · Fields | See the placeholders found in those slides, and which ones have no column behind them. |
-| 3 · Preview | Put one row's values on the real slide, then put the template back. |
+| 3 · Preview | Put one row's values on the real slide, then put the template back. *(planned)* |
 | 4 · Merge | Add the slides, with the count on the button. |
 
 Three things about it are deliberate and worth knowing.
@@ -203,12 +223,24 @@ something is temporarily untrue on the slide — a preview showing, a placeholde
 with no column — the orange moves there and the tick goes away. Two oranges in
 one glance and neither means anything.
 
-*Partly planned.* The merge itself is built and wired: pressing the button reads
-the template out of the open deck, does the whole merge inside the file, and
-hands PowerPoint one deck in one call, anchored after your last slide. What is
-not built yet are the CONTROLS in front of it — picking the block by clicking
-slides, and attaching data — so nothing in the pane can set those yet. Until they
-land the merge is reachable from the engine and from tests, not from the screen.
+**A link back on every screen but the first.** A wizard you can only walk
+forwards through is one you restart to change a number.
+
+**One host call at a time.** While the pane is reading your slides or merging,
+the button says so and nothing is pressable — including after going back a step
+and forward again, which is the way a wizard usually lets you start the same
+long job twice. Once a merge has added its slides the button says how many and
+stays down; change the block or the data and it arms again.
+
+*Partly planned.* Steps 1, 2 and 4 are built and reachable from the screen: name
+the block, paste the rows, press the button. Pressing "Use slides N to M" reads
+those slides out of the open deck and lists the placeholders it actually found
+in them, so step 2 shows the real fields rather than a guess.
+
+**Step 3 is not built.** Writing one row onto the real slide and putting the
+template back is real work and it is not done; the screen says so and its button
+carries you on to the merge rather than promising a preview. The merge does not
+need it.
 
 The pane follows PowerPoint's theme, read once when it opens. There is no
 theme-change event for a PowerPoint task pane — the one in the Office typings

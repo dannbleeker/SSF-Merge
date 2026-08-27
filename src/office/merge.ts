@@ -55,6 +55,63 @@ function newRunId(deckAtStart: number, rows: number): string {
   return `r${deckAtStart}-${rows}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+export interface BlockReport {
+  ok: boolean;
+  /** What to show the user, as it stands. */
+  detail: string;
+  /** Placeholders found in the block, in the order they appear. */
+  fields: string[];
+}
+
+/**
+ * What a template block holds, without merging anything.
+ *
+ * The same read and the same preparation `runMerge` does, stopping before the
+ * plan. It exists because the pane's fields step is otherwise a guess: the
+ * placeholders are in the slides' XML and nothing but reading them says what
+ * they are, so a pane that listed nothing would be telling the user their
+ * template has no fields when it has six.
+ *
+ * It costs one template read per press of "Use slides N to M", not one per
+ * keystroke — which is why the pane commits the block on the button rather
+ * than as the boxes are typed in.
+ */
+export async function inspectBlock(req: { from: number; to: number }): Promise<BlockReport> {
+  // The WHOLE read, not just `readTemplate`. The first version wrapped that one
+  // call and awaited `Pkg.open` and `prepareBlock` outside — and both raise: a
+  // host that answers the export with bytes JSZip cannot open, or a package
+  // with no `ppt/presentation.xml`, which `Pkg.doc` throws for by name. Past
+  // the catch those rejections reached `void useBlock()` in the pane with no
+  // handler, leaving it saying "Reading the slides…" for the rest of the
+  // session with the real error in a console the user cannot open.
+  try {
+    const template = await readTemplate({ from: req.from, to: req.to });
+    const pkg = await Pkg.open(template.base64);
+    const prepared = await prepareBlock(
+      pkg,
+      { from: req.from, to: req.to, offsetInPackage: template.offset },
+      "inspect",
+    );
+    if (!prepared.ok) return { ok: false, detail: prepared.why, fields: [] };
+    return {
+      ok: true,
+      detail: `${prepared.fields.length} placeholder${prepared.fields.length === 1 ? "" : "s"} in slides ${req.from} to ${req.to}.`,
+      fields: prepared.fields,
+    };
+  } catch (e) {
+    // `readTemplate` throws its refusals — `blockIds` produced the sentence and
+    // it is already the one to show. A raise here is the host declining to
+    // name or export the slides, or a package that came back unreadable, and
+    // both are things the user can act on.
+    return { ok: false, detail: readable(e), fields: [] };
+  }
+}
+
+/** A raise as a sentence. Every message that reaches here is already one. */
+function readable(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
 export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
   // Before anything is added. Undo is positional and clamped against this
   // number, so it is taken first and carried through even on the failure
@@ -68,21 +125,30 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
     return { ok: false, detail: "There are no rows to merge.", ...nothing };
   }
 
-  const ids: string[] = [];
-  for (let n = req.from; n <= req.to; n++) ids.push(String(n));
-  const template = await readTemplate(ids, req.from - 1);
-  const pkg = await Pkg.open(template.base64);
-
-  const prepared = await prepareBlock(
-    pkg,
-    {
-      from: req.from,
-      to: req.to,
-      offsetInPackage: template.offset,
-      ...(req.conditions ? { conditions: req.conditions } : {}),
-    },
-    runId,
-  );
+  // Read and prepare inside a catch, the same way `inspectBlock` does. These
+  // were awaited bare, so `readTemplate`'s refusal — a throw this file's own
+  // `blockIds` change introduced — escaped `runMerge` entirely and reached the
+  // pane's `void merge()` with nothing to catch it. A refusal is an OUTCOME
+  // here, like every other one: the caller gets `ok: false` and a sentence, and
+  // `deckAtStart` survives so an undo still has its clamps.
+  let prepared: Awaited<ReturnType<typeof prepareBlock>>;
+  let pkg: Pkg;
+  try {
+    const template = await readTemplate({ from: req.from, to: req.to });
+    pkg = await Pkg.open(template.base64);
+    prepared = await prepareBlock(
+      pkg,
+      {
+        from: req.from,
+        to: req.to,
+        offsetInPackage: template.offset,
+        ...(req.conditions ? { conditions: req.conditions } : {}),
+      },
+      runId,
+    );
+  } catch (e) {
+    return { ok: false, detail: readable(e), ...nothing };
+  }
   if (!prepared.ok) return { ok: false, detail: prepared.why, ...nothing };
 
   const plan = buildPlan(prepared.block, req.records, { runId, ...(req.onEmpty ? { onEmpty: req.onEmpty } : {}) });

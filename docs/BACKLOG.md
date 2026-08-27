@@ -10,27 +10,36 @@ is to build.
 
 ## Next
 
-### Pane controls — picking the block and attaching data
-**Priority: blocking.** Feasibility: high.
-The merge run is built (`src/office/merge.ts`): it reads the template, merges in
-the package, strips the template slides so they are not re-inserted, hands
-PowerPoint one deck, and reads the delta. Undo is positional and clamped from the
-count taken before the run.
+### The preview step — one row on the real slide
+**Priority: high.** Feasibility: medium.
+Step 3 of the pane is the one thing in the wizard that is not built. It has to
+write one record's values onto the real template slide, store what was there in
+a `SSF_MERGE_TEMPLATE` shape tag, and put it back — which means editing shapes
+through Office.js rather than in the package, the one place this project does
+that. The screen says so out loud today and its button carries the user past it;
+the merge does not need it.
 
-What is missing is the two controls in front of it — choosing the block by
-clicking slides in the deck, and attaching data (paste, then file). Until they
-exist `PaneState.block` and `PaneState.records` are never set, so the merge
-button can never enable. That is the next increment and it is the last thing
-between the repo and a working add-in.
+The other half is picking the block by CLICKING slides rather than typing two
+numbers. `getSelectedSlides` is the obvious route and this host is documented to
+wedge its whole selection subsystem after `setSelectedShapes`, so it needs a
+probe question before it needs code.
 
-### Task pane — wiring it to the deck
-**Priority: blocking.** Feasibility: high.
-The pane is built and shipped: four steps, the SSF visual system, English, the
-step machine and every label under test, and a screenshot script that renders
-every state at 320 and 512. What is left is the wiring — choosing a block from
-the real deck, reading fields out of the real slides, a preview that writes to
-the slide and restores from `SSF_MERGE_TEMPLATE`, and the merge itself. It lands
-with the merge run, because they are the same seam from two sides.
+### The delimiter sniff reads only as far as the first newline
+**Priority: low.** Feasibility: high.
+`parseDelimited` decides tab-versus-comma from `src.slice(0, src.indexOf("\n") + 1)`.
+A quoted FIRST header cell containing a newline puts that boundary inside the
+cell, so the sample never reaches the tab and the whole table parses as one
+column: `parseDelimited('"a\nb"\tc\nx\ty')` returns `[["a\nb\tc"], ["x\ty"]]`.
+
+Found by an adversarial review of the pane controls and deliberately NOT fixed
+there — it is engine code that commit did not touch, and the pane degrades
+loudly rather than silently: one column means every placeholder is unmatched, so
+`blockedReason` names them all and the merge button stays down. Narrow trigger
+(the first header cell specifically, and only for tab-versus-comma), which is
+why it is low rather than blocking.
+
+The fix is a quote-aware sniff, or counting candidate delimiters across the
+whole text and taking the majority.
 
 ### Manifests
 **Priority: blocking.** Feasibility: high.

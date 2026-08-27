@@ -54,15 +54,37 @@ describe("the orange budget", () => {
       { ...ready, fields: ["First", "Nickname"] },
       { ...ready, fields: ["First", "Nickname"], previewing: true },
       { ...ready, rows: 1, block: { from: 4, to: 4 } },
+      // The states the controls added. A budget checked over the states that
+      // existed when it was written is a budget that stops covering the pane
+      // the first time the pane grows.
+      { ...ready, draft: { from: "6", to: "4" } },
+      { ...ready, draft: { from: "6", to: "4" }, previewing: true },
+      { ...ready, paste: "First\tLast", rows: 0, columns: undefined },
+      { ...ready, notice: "PowerPoint would not name every slide." },
+      { ...ready, notice: "PowerPoint would not name every slide.", previewing: true },
+      // TWO unmatched placeholders — the ordinary case of a paste missing a
+      // couple of columns, and the one every fixture here happened to miss.
+      { ...ready, fields: ["First", "Nickname", "Badge"] },
+      { ...ready, fields: ["First", "Nickname", "Badge"], previewing: true },
+      // A run in flight, and a run that landed.
+      { ...ready, running: "merge" as const },
+      { ...ready, running: "inspect" as const },
+      { ...ready, added: 720 },
     ];
     for (const state of states) {
       for (const step of ["template", "fields", "preview", "merge"] as const) {
         const pane = paneFor(state, step);
-        const oranges =
-          pane.querySelectorAll(".tick").length +
-          pane.querySelectorAll(".card.undo").length +
-          pane.querySelectorAll('.fields li[data-matched="no"]').length;
-        expect(oranges, `${step} with ${JSON.stringify(state)}`).toBeLessThanOrEqual(1);
+        // HOLDERS, not elements. A row of chips is one signal — "these are the
+        // ones with no column" — and `orangeHolder` already models it that
+        // way, returning a single holder name. Counting chips instead said a
+        // template missing two columns broke a budget nothing had broken: an
+        // ordinary state, which no fixture in the sweep or in the screenshot
+        // script happened to reach, so CI reported neither the violation nor
+        // the miscount.
+        const holders = [".tick", ".card.undo", '.fields li[data-matched="no"]'].filter(
+          (sel) => pane.querySelectorAll(sel).length > 0,
+        );
+        expect(holders.length, `${step} with ${JSON.stringify(state)}`).toBeLessThanOrEqual(1);
       }
     }
   });
@@ -145,5 +167,147 @@ describe("counting placeholders", () => {
   it("still says the plural for two and the sentence for none", () => {
     expect(paneFor({ ...ready, fields: ["A", "B"] }, "fields").querySelector("h1")?.textContent).toBe("2 placeholders");
     expect(paneFor({ ...ready, fields: [] }, "fields").querySelector("h1")?.textContent).toBe("No placeholders found");
+  });
+});
+
+describe("the two slide-number boxes", () => {
+  it("puts both on the template step, named for main.ts to read", () => {
+    const pane = paneFor({ fields: [], previewing: false }, "template");
+    expect(pane.querySelector('input[data-field="from"]')).not.toBeNull();
+    expect(pane.querySelector('input[data-field="to"]')).not.toBeNull();
+  });
+
+  it("sets the box's VALUE, and leaves the value ATTRIBUTE alone", () => {
+    // The `.value` half of this passed against `setAttribute("value", …)` too
+    // — a fresh input reflects the content attribute into the property, and
+    // `render` builds fresh elements every time — so it could not fail against
+    // the implementation it is named for. The attribute assertion is the half
+    // that discriminates.
+    //
+    // The reason is not the one first written down here either. It is not that
+    // a box would "snap back": it is that a TEXTAREA has no value attribute at
+    // all, so one helper serving both controls has to write the property.
+    const pane = paneFor({ fields: [], previewing: false, draft: { from: "4", to: "6" } }, "template");
+    const from = pane.querySelector('input[data-field="from"]');
+    expect(from).toBeInstanceOf(HTMLInputElement);
+    expect((from as HTMLInputElement).value).toBe("4");
+    expect((from as HTMLInputElement).getAttribute("value"), "the property, not the attribute").toBeNull();
+  });
+
+  it("shows what is wrong with the boxes, and only once there is something", () => {
+    const half = paneFor({ fields: [], previewing: false, draft: { from: "4", to: "" } }, "template");
+    expect(half.querySelectorAll(".blocked")).toHaveLength(0);
+    const wrong = paneFor({ fields: [], previewing: false, draft: { from: "6", to: "4" } }, "template");
+    expect(wrong.querySelector(".blocked")?.textContent).toContain("ends before it starts");
+  });
+
+  it("carries the typed numbers into the heading and the button", () => {
+    const pane = paneFor({ fields: [], previewing: false, draft: { from: "2", to: "5" } }, "template");
+    expect(pane.querySelector("h1")?.textContent).toContain("Slides 2 to 5");
+    expect(pane.querySelector("button.primary")?.textContent).toBe("Use slides 2 to 5");
+  });
+});
+
+describe("the paste box", () => {
+  it("is on the fields step, named for main.ts to read", () => {
+    expect(paneFor(ready, "fields").querySelector('textarea[data-field="paste"]')).not.toBeNull();
+  });
+
+  it("holds what was pasted as its VALUE, so a re-render does not empty it", () => {
+    const pane = paneFor({ ...ready, paste: "First\tLast\nAda\tLovelace" }, "fields");
+    const box = pane.querySelector("textarea");
+    expect((box as HTMLTextAreaElement).value).toContain("Ada");
+  });
+
+  it("names the COLUMNS it found, not just a row count", () => {
+    // A paste that came through as plain text parses into one column, and a
+    // row count alone looks perfectly healthy when that happens.
+    const text = paneFor({ ...ready, columns: ["First", "Last"], rows: 240 }, "fields").textContent ?? "";
+    expect(text).toContain("240 rows");
+    expect(text).toContain("First, Last");
+  });
+
+  it("says a header row with no data under it is not data", () => {
+    expect(paneFor({ ...ready, paste: "First\tLast", rows: 0 }, "fields").textContent).toContain("header");
+  });
+
+  it("writes a pasted cell as TEXT, never as markup", () => {
+    // Same rule as the field chips: this is a file somebody pasted, and
+    // innerHTML here runs a script tag with the add-in's own privileges.
+    const nasty = "<img src=x onerror=alert(1)>";
+    const pane = paneFor({ ...ready, paste: `Name\n${nasty}`, columns: [nasty], rows: 1 }, "fields");
+    expect(pane.querySelectorAll("img")).toHaveLength(0);
+    expect((pane.querySelector("textarea") as HTMLTextAreaElement).value).toContain(nasty);
+  });
+});
+
+describe("going back", () => {
+  it("offers the previous step on every screen but the first", () => {
+    expect(paneFor(ready, "template").querySelector("[data-back]")).toBeNull();
+    for (const step of ["fields", "preview", "merge"] as const) {
+      expect(paneFor(ready, step).querySelector("[data-back]"), step).not.toBeNull();
+    }
+  });
+
+  it("names the step it goes to", () => {
+    expect(paneFor(ready, "merge").querySelector("[data-back]")?.getAttribute("data-back")).toBe("preview");
+  });
+
+  it("never takes the last place on the screen from the primary", () => {
+    // ONE PRIMARY per screen, always last. A back link that lands after it
+    // makes two things to press and neither is obviously the one.
+    for (const step of ["fields", "preview", "merge"] as const) {
+      const main = paneFor(ready, step).querySelector("main");
+      expect(main?.lastElementChild?.className, step).toBe("primary");
+    }
+  });
+});
+
+describe("what the host said", () => {
+  it("is shown, and kept apart from what the step needs", () => {
+    // "PowerPoint would not name every slide between 4 and 6" is not something
+    // the user did wrong, and filing it under the same sentence as "Attach
+    // your data first" makes both read as nagging.
+    const pane = paneFor({ ...ready, notice: "PowerPoint would not name every slide." }, "merge");
+    expect(pane.querySelector(".notice")?.textContent).toContain("PowerPoint");
+  });
+});
+
+describe("the preview step", () => {
+  it("says the preview is not built rather than offering it, in the HEADING too", () => {
+    // The heading was the last thing on this screen still promising a preview
+    // after the button stopped. A screen whose heading and whose button
+    // disagree is one the user trusts neither half of.
+    const pane = paneFor(ready, "preview");
+    expect(pane.querySelector("h1")?.textContent).toBe("Preview is not built yet");
+    expect(pane.textContent).toContain("not done");
+    expect(pane.querySelector("button.primary")?.textContent).toBe("Continue to merge");
+  });
+
+  it("still carries the undo card while a preview IS showing", () => {
+    const pane = paneFor({ ...ready, previewing: true }, "preview");
+    expect(pane.querySelectorAll(".card.undo")).toHaveLength(1);
+    expect(pane.querySelector("h1")?.textContent).toBe("A row is on the slide");
+  });
+});
+
+describe("the merge card is a forecast", () => {
+  it("goes as soon as the merge starts, because it reads as already done", () => {
+    // "720 slides added after slide 12" over a button reading "Merging…"
+    // announces slides that are not in the deck yet. Found by looking at the
+    // screenshot, which is the only thing that could see it.
+    const running = paneFor({ ...ready, running: "merge" }, "merge");
+    expect(running.querySelectorAll(".card.summary")).toHaveLength(0);
+    expect(running.querySelector("button.primary")?.textContent).toBe("Merging…");
+  });
+
+  it("does not sit beside the notice saying the same thing afterwards", () => {
+    const done = paneFor({ ...ready, added: 720, notice: "720 slides added after slide 12." }, "merge");
+    expect(done.querySelectorAll(".card.summary")).toHaveLength(0);
+    expect(done.querySelector(".notice")?.textContent).toContain("720 slides added");
+  });
+
+  it("is still there before anything has been pressed", () => {
+    expect(paneFor(ready, "merge").querySelectorAll(".card.summary")).toHaveLength(1);
   });
 });

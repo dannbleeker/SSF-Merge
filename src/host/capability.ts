@@ -108,3 +108,47 @@ export function chooseDeckSource(supports: Supports): SourceChoice {
 export function templateOffset(source: DeckSource, blockStartInDeck: number): number {
   return source === "subset" ? 0 : blockStartInDeck;
 }
+
+export type BlockIds = { ok: true; ids: string[] } | { ok: false; why: string };
+
+/**
+ * The host's OWN ids for a block of slides, out of every id the deck listed.
+ *
+ * `from` and `to` are 1-based slide numbers, the numbering the thumbnail rail
+ * shows and the only one a user can see. `deckIds` is what
+ * `slides.load("items/id")` answered, in deck order.
+ *
+ * This exists because the first version of the merge run did not ask the host
+ * at all. It built the ids by counting — `for (let n = from; n <= to; n++)
+ * ids.push(String(n))` — and handed `["4", "5", "6"]` to
+ * `exportAsBase64Presentation`, whose typings say it *"throws an InvalidArgument
+ * exception if provided slide IDs or Slide objects are not found in this
+ * collection"*. A slide id on this host looks like `256#3561048925`; `"4"` is
+ * not one and never was. `tsc` could not see it, because both sides are
+ * `string`. All three answer sheets under `docs/host-answers/` report
+ * PowerPointApi up to 1.10, so `chooseDeckSource` returns `subset` on the
+ * owner's own host and the first press of the merge button would have thrown.
+ *
+ * The guard against it coming back is the TYPE: `readTemplate` takes slide
+ * numbers now and no caller can pass ids at all. This function is the other
+ * half — the host is asked, and what it answers is checked rather than assumed.
+ */
+export function blockIds(deckIds: string[], from: number, to: number): BlockIds {
+  if (!Number.isInteger(from) || !Number.isInteger(to) || from < 1 || to < from) {
+    return { ok: false, why: `The template block has to be whole slide numbers, and slide ${from} to ${to} is not.` };
+  }
+  if (to > deckIds.length) {
+    return {
+      ok: false,
+      why: `The template block is slides ${from} to ${to}, and PowerPoint listed ${deckIds.length} slide(s).`,
+    };
+  }
+  const ids = deckIds.slice(from - 1, to);
+  // A blank id is the host refusing to name a slide, which it is documented to
+  // do. Passed on it would export the wrong slides or throw somewhere less
+  // legible; caught here it is a sentence the pane can show.
+  if (ids.some((id) => !id)) {
+    return { ok: false, why: `PowerPoint would not name every slide between ${from} and ${to}.` };
+  }
+  return { ok: true, ids };
+}

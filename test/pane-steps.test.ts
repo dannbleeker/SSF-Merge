@@ -1,6 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { EMPTY, STEPS, blockedReason, primary, slidesPerRecord, statusOf, unmatchedFields } from "../src/pane/steps.js";
-import type { PaneState } from "../src/pane/steps.js";
+import {
+  EMPTY,
+  STEPS,
+  blockedReason,
+  chosenBlock,
+  nextStep,
+  primary,
+  readBlockDraft,
+  readPastedTable,
+  slidesPerRecord,
+  statusOf,
+  unmatchedFields,
+} from "../src/pane/steps.js";
+import type { PaneState, StepId } from "../src/pane/steps.js";
 
 const ready: PaneState = {
   block: { from: 4, to: 6 },
@@ -109,5 +121,190 @@ describe("what the step rail shows", () => {
     // Otherwise a fully-filled state paints all four ticks before the user has
     // been anywhere, and the rail stops meaning progress.
     expect(statusOf(ready, "merge", "fields")).toBe("waiting");
+  });
+});
+
+describe("reading the two slide-number boxes", () => {
+  it("says nothing at all while a box is still empty", () => {
+    // A form that turns red on the first keystroke is wrong more often than
+    // the user is. The boxes are filled one at a time, so "4" and "" is a
+    // half-typed entry, not a mistake.
+    for (const draft of [
+      { from: "", to: "" },
+      { from: "4", to: "" },
+      { from: "", to: "6" },
+    ]) {
+      const read = readBlockDraft(draft);
+      expect(read.why, JSON.stringify(draft)).toBeNull();
+      expect(read.block, JSON.stringify(draft)).toBeNull();
+    }
+  });
+
+  it("reads two numbers into a block", () => {
+    expect(readBlockDraft({ from: "4", to: "6" }).block).toEqual({ from: 4, to: 6 });
+  });
+
+  it("ignores the whitespace a paste brings with it", () => {
+    expect(readBlockDraft({ from: " 4 ", to: "\t6" }).block).toEqual({ from: 4, to: 6 });
+  });
+
+  it("refuses a block that ends before it starts, naming both slides", () => {
+    const read = readBlockDraft({ from: "6", to: "4" });
+    expect(read.block).toBeNull();
+    expect(read.why).toContain("6");
+    expect(read.why).toContain("4");
+  });
+
+  it("refuses slide 0, because the rail starts at 1", () => {
+    // The REFUSAL, not only the sentence. This asserted `why` contained "1"
+    // and nothing else — satisfied by the literal 1 in "numbered from 1", so
+    // an implementation returning a block AND a complaint passed the whole
+    // suite, and the user then spent a real host round trip on slide 0.
+    const read = readBlockDraft({ from: "0", to: "3" });
+    expect(read.block).toBeNull();
+    expect(read.why).toContain("0");
+  });
+
+  it("refuses a fraction rather than rounding one", () => {
+    // Rounding picks a slide the user did not name, and the merge then clones
+    // it perfectly.
+    expect(readBlockDraft({ from: "1.5", to: "3" }).block).toBeNull();
+    expect(readBlockDraft({ from: "1", to: "abc" }).block).toBeNull();
+  });
+
+  it("names what the USER typed in every refusal, not just the rule", () => {
+    // "Slides are numbered from 1." is a true sentence that says nothing about
+    // the boxes in front of them — and the manual promised numbers for all
+    // four cases while two of them carried none.
+    expect(readBlockDraft({ from: "0", to: "3" }).why).toContain("0");
+    expect(readBlockDraft({ from: "1.5", to: "3" }).why).toContain("1.5");
+    expect(readBlockDraft({ from: "6", to: "4" }).why).toContain("6");
+    expect(readBlockDraft({ from: "6", to: "4" }).why).toContain("4");
+  });
+
+  it("WARNS about a block past the end of the deck, and still lets it through", () => {
+    // Advice, not a refusal. `deckSize` is counted once when the pane opens, so
+    // a user who adds slides and comes back would otherwise be told their block
+    // does not exist — in a sentence stating a deck size that is no longer
+    // true, with no way to correct it short of reopening the pane. `blockIds`
+    // checks it a moment later against ids the host listed just now.
+    const read = readBlockDraft({ from: "4", to: "9" }, 6);
+    expect(read.block, "the user may press past it").toEqual({ from: 4, to: 9 });
+    expect(read.why).toContain("9");
+    expect(read.why).toContain("6");
+    // And nothing is said at all before the deck has answered.
+    expect(readBlockDraft({ from: "4", to: "9" }).why).toBeNull();
+  });
+
+  it("says slide, singular, when the deck holds exactly one", () => {
+    expect(readBlockDraft({ from: "1", to: "2" }, 1).why).toContain("1 slide");
+    expect(readBlockDraft({ from: "1", to: "2" }, 1).why).not.toContain("1 slides");
+  });
+});
+
+describe("which block the pane acts on", () => {
+  it("prefers what the boxes say over what was committed", () => {
+    // A button reading "Use slides 4 to 6" while the boxes hold 7 and 9 is a
+    // button that does something other than what it says.
+    const state: PaneState = { ...ready, draft: { from: "7", to: "9" } };
+    expect(chosenBlock(state)).toEqual({ from: 7, to: 9 });
+    expect(primary(state, "template").label).toBe("Use slides 7 to 9");
+  });
+
+  it("keeps the committed block while a box is being retyped", () => {
+    // Mid-edit the draft reads nothing. Dropping the block there would blank
+    // the heading and the button on every keystroke.
+    expect(chosenBlock({ ...ready, draft: { from: "7", to: "" } })).toEqual({ from: 4, to: 6 });
+  });
+
+  it("is undefined when there is neither", () => {
+    expect(chosenBlock(EMPTY)).toBeUndefined();
+  });
+
+  it("unblocks the later steps off the draft alone", () => {
+    const typed: PaneState = { fields: [], previewing: false, draft: { from: "2", to: "4" } };
+    expect(blockedReason(typed, "fields")).toBeNull();
+  });
+});
+
+describe("reading what was pasted", () => {
+  it("says nothing about an empty box", () => {
+    expect(readPastedTable("")).toEqual({ records: null, columns: [], rows: 0, why: null });
+    expect(readPastedTable("   \n ").why).toBeNull();
+  });
+
+  it("reads a range pasted out of Excel, which arrives tab-separated", () => {
+    const read = readPastedTable("First\tLast\nAda\tLovelace\nGrace\tHopper");
+    expect(read.columns).toEqual(["First", "Last"]);
+    expect(read.rows).toBe(2);
+    expect(read.records?.rows[0]).toEqual({ First: "Ada", Last: "Lovelace" });
+  });
+
+  it("reads a comma-separated paste too", () => {
+    expect(readPastedTable("First,Last\nAda,Lovelace").columns).toEqual(["First", "Last"]);
+  });
+
+  it("counts the rows the merge will actually run, not the lines pasted", () => {
+    // A trailing newline and a blank line in the middle are both what a copy
+    // out of a spreadsheet brings with it, and neither is a row.
+    const read = readPastedTable("Name\nAda\n\nGrace\n");
+    expect(read.rows).toBe(2);
+    expect(read.records?.rows).toHaveLength(2);
+  });
+
+  it("refuses a header row with nothing under it", () => {
+    // The button would otherwise say "Add 0 slides" and the user would have no
+    // idea which half was wrong.
+    expect(readPastedTable("First\tLast").why).toContain("header");
+    expect(readPastedTable("First\tLast").records).toBeNull();
+  });
+
+  it("is the ONE parse: the columns shown are the columns the merge binds", () => {
+    // Two parses — one for the labels, one for the merge — is two that can
+    // disagree, and the one that disagrees is the one nobody sees.
+    const read = readPastedTable("A\tA\nx\ty");
+    expect(read.columns).toEqual(read.records?.columns.map((c) => c.name));
+  });
+});
+
+describe("moving between steps", () => {
+  it("gives the next step in order", () => {
+    expect(nextStep("template")).toBe("fields");
+    expect(nextStep("fields")).toBe("preview");
+    expect(nextStep("preview")).toBe("merge");
+  });
+
+  it("has nowhere to go after the last step", () => {
+    expect(nextStep("merge")).toBeNull();
+  });
+
+  it("does NOT send an unknown step back to the beginning", () => {
+    // `order[order.indexOf(from) + 1]` answers order[0] for anything that is
+    // not a step, so a stray data-action put the user on step 1 with their
+    // block and their data still in state — a wizard that resets itself and
+    // looks like it lost the lot.
+    expect(nextStep("nonsense" as StepId)).toBeNull();
+  });
+});
+
+describe("what the primary says once there is data", () => {
+  it("stops saying Attach data after the data is attached", () => {
+    // A button that still says "Attach data" reads as a step that did not take.
+    expect(primary(ready, "fields").label).toBe("Use 240 rows");
+    expect(primary({ ...ready, rows: 1 }, "fields").label).toBe("Use 1 row");
+  });
+
+  it("cannot be pressed with nothing pasted", () => {
+    const noData: PaneState = { block: { from: 4, to: 6 }, fields: [], previewing: false };
+    expect(primary(noData, "fields")).toEqual({ label: "Attach data", enabled: false });
+  });
+
+  it("does not offer a preview nothing writes", () => {
+    // Putting one row onto the slide is not built. A button naming something
+    // that does not happen is the one thing a user cannot check before
+    // pressing it.
+    expect(primary(ready, "preview").label).toBe("Continue to merge");
+    // The half that IS built — putting the template back — is untouched.
+    expect(primary({ ...ready, previewing: true }, "preview").label).toContain("back");
   });
 });
