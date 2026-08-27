@@ -55,6 +55,13 @@ jobs:
           for m in manifest-prod.xml manifest-prod.json; do
             echo "--- $m"
             npx --yes office-addin-manifest validate "$m"
+            # The tool prints "The manifest is valid." for XML and NOTHING AT
+            # ALL for JSON, so a JSON line in this log is otherwise a filename
+            # followed by silence — indistinguishable from a file it skipped.
+            # It does validate them: a JSON manifest missing `id`, missing
+            # `version` and carrying a wrong `manifestVersion` exits 1 with all
+            # three named. This line is so the log says which happened.
+            echo "$m: validated"
           done
 
       # The manifest is four URLs into GitHub Pages, and nothing else in this
