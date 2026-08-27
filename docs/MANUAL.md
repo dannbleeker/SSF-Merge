@@ -287,6 +287,42 @@ theme-change event for a PowerPoint task pane — the one in the Office typings
 belongs to Outlook — so switching PowerPoint between light and dark while the
 pane is open needs the pane reopened.
 
+## When something goes wrong
+
+**The pane says what it is waiting on.** A merge is legitimately quiet for a
+while: reading the template is allowed ninety seconds and handing the package to
+PowerPoint another sixty, so up to two and a half minutes can pass with nothing
+happening on screen. While it waits the pane names the call — "Waiting on
+PowerPoint: inserting the merged deck…" — so you can tell a slow step from a
+stuck one, and so you can say which step it stopped at.
+
+**Every run leaves a record.** Under the outcome there is a collapsed *"What
+this run did, step by step"*. Open it and you get every call the run made, in
+order, with how long each took:
+
+```
+=== SSF MERGE RUN LOG ===
+   0.0s  host  issued    call=counting the deck's slides budget=15000
+   0.1s  host  answered  call=counting the deck's slides ms=94
+   0.1s  host  issued    call=exporting the template slides budget=90000
+   2.4s  host  answered  call=exporting the template slides ms=2311
+   2.4s  host  issued    call=inserting the merged deck budget=60000
+  14.9s  host  answered  call=inserting the merged deck ms=12470
+=== END ===
+```
+
+Select it and copy it. That is the whole channel: a task pane cannot open
+developer tools and cannot save a file, so the text on screen is how the record
+reaches anybody. If a merge goes wrong, this is the thing worth sending.
+
+A call that never came back shows its `issued` line with no `answered` after it,
+which names the step that stopped.
+
+**"No placeholders were filled."** The merge added the slides and changed
+nothing on them, which almost always means the placeholder names in your
+template do not match your column headers. Check the spelling and the braces —
+`{{First name}}` matches a column headed `First name`, and nothing else does.
+
 ## Installing it
 
 The add-in is a **manifest** — a small file naming a web page — plus the page

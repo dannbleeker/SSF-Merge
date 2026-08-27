@@ -7,6 +7,67 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added — a run record, and the merge finally says what it DID
+
+**Every host call now names itself and its duration, on both populations.** Until
+now `withTimeout`'s `what` reached exactly one place: the message of a `Timeout`
+nobody sees unless the call failed. So no successful call in this codebase said
+what it was or how long it took, and there was no baseline against which a
+41-second insert is normal or alarming — every number in `BUDGET` was a guess
+with no measurement behind it. A value recorded only on failures cannot be
+compared against anything and is not yet a measurement.
+
+Three states, not two: `answered`, `gave up waiting`, `raised`. A call that ran
+out of budget and a call that threw are different facts about the host and want
+different next steps.
+
+**The line is written BEFORE the call and named for what it knows.** `issued`
+is what it knows. A call that never answers is on the record while you are
+still waiting for it — which is the whole point, and why the name cannot imply
+completion.
+
+**`src/core/trace.ts`** is the record: a capped array cleared at the start of
+each run, one clock origin, payloads copied at write and at read, and a watcher
+that cannot cost the log the entry it was writing. Deliberately small — a merge
+emits about ten entries, and the ring arithmetic and histograms a sibling
+project needs are sized to its 276-entry runs, not ours.
+
+**The pane says what it is waiting on.** A merge is legitimately silent for up
+to two and a half minutes (`BUDGET.file` 90s plus `BUDGET.insert` 60s), and a
+frozen "Merging…" for that long is indistinguishable from a pane that has
+wedged. It now names the call in flight.
+
+**And the record is reachable.** A collapsed, selectable block holds the run log
+between markers. A task pane is a nested cross-origin iframe with no devtools a
+user can open and blob downloads from one are blocked (office-js#1511), so being
+on screen to copy is the channel that works — the same one the host probe
+already uses.
+
+### Fixed — a merge that filled no placeholders reported success
+
+`runPlan` has always returned `paragraphsMerged`, with a docstring saying "a
+zero here on a real template means the fields never matched", and the merge seam
+threw it away. So a merge over a template whose placeholders are spelled how its
+author spelled them — the likeliest way a first run against a real deck goes
+wrong — inserted every slide, changed nothing on any of them, and reported
+"720 slides added".
+
+The finished merge now reads **"720 slides added after slide 12 · no
+placeholders were filled — check the spelling in your template"**. A zero is
+said out loud rather than dropped as an empty clause: `0` is an answer, and here
+it is the whole finding. Rows and slides skipped by a condition are named too,
+so "8 rows" and "6 slides" reconcile instead of reading as loss.
+
+### Fixed — an error message could put the whole merged deck on screen
+
+Office echoes an argument back into `debugInfo`, and the argument to
+`insertSlidesFromBase64` is the entire merged package as base64 — tens of
+megabytes on a large merge. The path from there to the pane was `err.message` →
+`state.notice` → a DOM text node, uncapped at every step, with the sentence
+explaining the failure at the front and nothing after it readable. `readable`
+now lives once in `src/host/errors.ts` and caps at 400 characters, counting what
+it dropped rather than leaving a bare ellipsis.
+
 ### Fixed — a merge on an older PowerPoint would have duplicated the user's whole deck
 
 `readTemplate` has two routes and only one of them was handled past the merge.

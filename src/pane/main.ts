@@ -8,7 +8,10 @@
  */
 import { canReadSelection, ready as hostReady, selectedBlock, slideCount } from "../office/powerpoint.js";
 import { inspectBlock, runMerge, undoMerge, type MergeOutcome } from "../office/merge.js";
+import { readable } from "../host/errors.js";
+import { beginRun, onTrace, traceText } from "../core/trace.js";
 import { render } from "./render.js";
+import { describeMerge } from "./summary.js";
 import {
   EMPTY,
   EMPTY_DRAFT,
@@ -356,11 +359,6 @@ function toggleRow(index: number): void {
   draw();
 }
 
-/** A raise as a sentence. */
-function readable(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
-
 /**
  * The merge, and the one thing this file adds to it: telling the user.
  *
@@ -382,7 +380,23 @@ async function merge(): Promise<void> {
   // every later `draw()` replaces with one `primary()` had re-enabled — so a
   // Back and a Continue during a two-minute merge handed the user a live
   // "Add 720 slides" over a run already in flight, and their deck got both.
-  state = { ...state, running: "merge", notice: undefined };
+  state = { ...state, running: "merge", notice: undefined, inFlight: undefined, log: undefined };
+  // A run of its own, so the record is this merge and not this session. Pairing
+  // one run's numbers with another run's failures is the wrong turn that costs
+  // an hour.
+  beginRun();
+  // The WINDOW, which is a different need from the record: a run log can only
+  // be handed over once the run ends, and the runs worth explaining are the
+  // ones that never do. What is on screen survives a host that takes the pane
+  // with it.
+  onTrace((e) => {
+    if (e.scope !== "host" || e.message !== "issued") return;
+    const call = e.data?.call;
+    if (typeof call === "string") {
+      state = { ...state, inFlight: call };
+      draw();
+    }
+  });
   draw();
   try {
     const outcome = await runMerge({
@@ -401,7 +415,10 @@ async function merge(): Promise<void> {
       // Only a run that ADDED something disarms the button. A refusal that
       // added nothing should leave the user able to press again.
       ...(outcome.added > 0 ? { added: outcome.added } : {}),
-      notice: outcome.detail,
+      // What the merge DID. `outcome.detail` says how much the deck GREW,
+      // which is equally true of a merge that filled every placeholder and one
+      // that matched none of them and inserted 720 copies of the template.
+      notice: outcome.ok ? describeMerge(outcome) : outcome.detail,
     };
   } catch (e) {
     // A raise does not mean nothing happened. This host takes calls it does
@@ -435,7 +452,14 @@ async function merge(): Promise<void> {
           : `The merge did not run: ${readable(e)}`,
     };
   } finally {
-    state = { ...state, running: undefined };
+    // Stop watching before the last draw: the window is for the wait, and a
+    // subscriber left attached would relabel `inFlight` on the next run's
+    // first call while this run's summary is still on screen.
+    onTrace(undefined);
+    // Banked whatever happened, and ESPECIALLY when it did not work — a task
+    // pane has no devtools a user can open, so the only way this record
+    // reaches anybody is by being on screen to copy.
+    state = { ...state, running: undefined, inFlight: undefined, log: traceText() };
     draw();
   }
 }

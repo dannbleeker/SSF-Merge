@@ -24,6 +24,7 @@ import { Pkg } from "../core/pptx/pkg.js";
 import type { RecordSet } from "../core/data/recordset.js";
 import type { EmptyPolicy } from "../core/merge/resolve.js";
 import { insertDeck, readTemplate, slideCount, undoInsert } from "./powerpoint.js";
+import { readable } from "../host/errors.js";
 
 export interface MergeRequest {
   /** The template block, in the numbering the thumbnail rail shows. */
@@ -48,6 +49,23 @@ export interface MergeOutcome {
   fields: string[];
   /** Conditions naming a column the data does not have. */
   unknownConditions: string[];
+  /**
+   * How many paragraphs the merge actually rewrote.
+   *
+   * `runPlan` has always returned this, with a docstring saying "a zero here on
+   * a real template means the fields never matched", and this file threw it
+   * away. So a merge over a template whose placeholders are spelled differently
+   * — the single likeliest way a first real run goes wrong — inserted every
+   * slide, changed nothing on any of them, and reported unqualified success.
+   *
+   * The deck delta says how much the deck GREW. This says whether the merge
+   * did anything, and they are not the same question.
+   */
+  paragraphsMerged?: number;
+  /** Rows skipped by a condition, so "8 rows" and "6 slides" reconcile. */
+  skippedRecords?: number;
+  /** Individual slides skipped by a condition. */
+  skippedSlides?: number;
 }
 
 /** A run id that does not need a clock, so the engine stays deterministic. */
@@ -107,11 +125,6 @@ export async function inspectBlock(req: { from: number; to: number }): Promise<B
   }
 }
 
-/** A raise as a sentence. Every message that reaches here is already one. */
-function readable(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
-
 export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
   // Before anything is added. Undo is positional and clamped against this
   // number, so it is taken first and carried through even on the failure
@@ -159,6 +172,8 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
       ...nothing,
       fields: prepared.fields,
       unknownConditions: plan.unknownConditions,
+      skippedRecords: plan.skippedRecords.length,
+      skippedSlides: plan.skippedSlides.length,
     };
   }
 
@@ -202,6 +217,9 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
       runId,
       fields: prepared.fields,
       unknownConditions: plan.unknownConditions,
+      paragraphsMerged: result.paragraphsMerged,
+      skippedRecords: plan.skippedRecords.length,
+      skippedSlides: plan.skippedSlides.length,
     };
   }
 
@@ -213,6 +231,12 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
     runId,
     fields: prepared.fields,
     unknownConditions: plan.unknownConditions,
+    // Carried on the SUCCESS path too, not only when something went wrong. A
+    // merge that adds every slide and fills no placeholder is the failure this
+    // number exists to name, and it arrives looking exactly like a success.
+    paragraphsMerged: result.paragraphsMerged,
+    skippedRecords: plan.skippedRecords.length,
+    skippedSlides: plan.skippedSlides.length,
   };
 }
 

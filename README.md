@@ -30,6 +30,7 @@ one set of slides per row. All four steps of the pane are built.
 | Ribbon icons, drawn in code rather than checked in as binaries | done |
 | Preview: the first row merged into the deck, then swept | done |
 | Row filters — a searchable checkbox list picking which rows merge | done |
+| Run record — every host call named and timed, readable in the pane | done |
 
 ## How it works
 

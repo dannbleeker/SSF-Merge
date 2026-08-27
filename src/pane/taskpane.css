@@ -377,3 +377,39 @@ button.rows-toggle {
   margin: 0;
   accent-color: var(--blue);
 }
+
+/* Which host call is in flight. A merge is legitimately silent for up to two
+   and a half minutes, and a frozen "Merging…" for that long is
+   indistinguishable from a pane that has wedged. */
+.inflight {
+  color: var(--muted, #605e5c);
+  font-style: italic;
+}
+
+/* The run record. A task pane has no devtools a user can open and blob
+   downloads from one are blocked, so this is the extraction channel: on
+   screen, selectable, between markers. */
+.runlog {
+  margin-top: 12px;
+}
+
+.runlog summary {
+  cursor: pointer;
+  color: var(--muted, #605e5c);
+  font-size: 12px;
+}
+
+.runlog pre {
+  max-height: 240px;
+  overflow: auto;
+  /* Selectable is the whole point — this is how the record leaves the pane. */
+  user-select: text;
+  white-space: pre;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  background: var(--surface, #faf9f8);
+  border: 1px solid var(--line, #edebe9);
+  border-radius: 4px;
+  padding: 8px;
+}
