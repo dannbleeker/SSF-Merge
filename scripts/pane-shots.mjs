@@ -31,6 +31,17 @@ const full = {
 
 const PASTE = "First\tLast\tEmail\nAda\tLovelace\tada@example.com\nGrace\tHopper\tgrace@example.com";
 
+/**
+ * What an Excel pivot table actually hands you, spaces and all.
+ *
+ * These three headers are the ones a real run pasted in, and the reader could
+ * not see any of them: a field name was a list of allowed characters and a
+ * space was not on it. Kept as a fixture because the screen that reported it —
+ * the chips on the slides, "carry no fields yet" underneath — is the one nobody
+ * was looking at.
+ */
+const PIVOT = ["Row Labels", "Min. of cost", "Sum of quantity monthly"];
+
 const STATES = [
   { name: "1-template-empty", step: "template", state: { fields: [], previewing: false } },
   {
@@ -71,6 +82,19 @@ const STATES = [
       columns: ["First", "Last", "Email"],
       rows: 2,
     },
+  },
+  {
+    // The reported screen, with the reader that can read it.
+    name: "3-fields-pivot-headers",
+    step: "fields",
+    state: { ...full, fields: [], paste: PASTE, columns: PIVOT, rows: 2 },
+  },
+  {
+    // A header the engine would read back as a DIFFERENT, shorter name. Named
+    // rather than silently dropped: the fix is to rename the column.
+    name: "3-fields-column-refused",
+    step: "fields",
+    state: { ...full, fields: [], paste: PASTE, columns: ["First", "Total|EUR"], rows: 2 },
   },
   {
     // The clipboard fallback, which is the outcome nobody sees unless they are

@@ -21,6 +21,7 @@ import {
   danglingConditions,
   fieldToken,
   includedCount,
+  insertableColumns,
   noFieldsHere,
   unusedColumns,
   rowIncluded,
@@ -324,10 +325,18 @@ function body(doc: Document, state: PaneState, current: StepId, orange: OrangeHo
     if (state.fields.length > 0) {
       out.push(el(doc, "p", { class: "muted", text: "On the slides now:" }));
       out.push(list);
-    } else {
+    } else if (!state.fieldNote) {
       // Not silence. The step's own primary re-reads the slides, and a user who
       // has just inserted three fields and sees nothing has no way to tell an
       // insert that did not land from a pane that has not looked yet.
+      //
+      // Withheld while a note is up, because between the two the note is the
+      // one that is CURRENT. This sentence is read off the last template read,
+      // and an insert lands on the slide without telling the pane — so a
+      // freshly inserted field puts "{{City}} put on the slide" directly above
+      // "these slides carry no fields yet", which is the screen contradicting
+      // itself about something the user just did. The note already ends by
+      // asking for the read that settles it.
       out.push(el(doc, "p", { class: "muted", text: noFieldsHere(state) }));
     }
     if (state.columns && missing.size > 0) {
@@ -511,8 +520,11 @@ function dataControl(doc: Document, state: PaneState): HTMLElement {
  */
 function insertControl(doc: Document, state: PaneState): HTMLElement {
   const wrap = el(doc, "div", { class: "insert" });
-  const columns = state.columns ?? [];
-  if (columns.length === 0) {
+  // The engine's own reader decides which columns can carry a field, so the
+  // button and the read-back cannot disagree. They did, for an hour, and it
+  // shipped: see `insertableColumns`.
+  const { can: columns, cannot } = insertableColumns(state);
+  if (columns.length === 0 && cannot.length === 0) {
     // Reachable: `blockedReason` sends the user back for data before this step,
     // so the only way here with no columns is the Back link from Preview after
     // clearing the paste box. Says which, rather than rendering an empty list.
@@ -551,9 +563,19 @@ function insertControl(doc: Document, state: PaneState): HTMLElement {
   // Named, because a column nobody used is not an error and the user should not
   // have to diff two lists to see it. Only once something IS placed: before
   // that every column is unused and the line says nothing.
-  const unused = unusedColumns(state);
+  const unused = unusedColumns(state).filter((c) => columns.includes(c));
   if (unused.length > 0 && state.fields.length > 0) {
     wrap.append(el(doc, "p", { class: "muted", text: `Not on a slide yet: ${unused.join(", ")}.` }));
+  }
+  // Named, not silently dropped. The fix is to rename the column, and a chip
+  // that is simply absent says nothing about which one or why.
+  if (cannot.length > 0) {
+    wrap.append(
+      el(doc, "p", {
+        class: "blocked",
+        text: `${cannot.join(", ")} ${cannot.length === 1 ? "cannot be a field" : "cannot be fields"}: a field name may not contain a brace or a pipe. Rename the ${cannot.length === 1 ? "column" : "columns"} and paste again.`,
+      }),
+    );
   }
   return wrap;
 }

@@ -7,6 +7,39 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a field name could not contain a space, so Excel's own headers were invisible
+
+Reported from a real run, an hour after the Insert buttons shipped, on a deck
+whose slides plainly carried `{{Min. of cost}}`, `{{Row Labels}}` and
+`{{Sum of quantity monthly}}` — put there by those very buttons — while the pane
+answered *"Slides 2 to 3 carry no fields yet."*
+
+The reader's character class was a list of allowed characters and a space was
+not on it. Those three are the literal default headers of an Excel pivot table,
+which is the commonest thing anybody pastes into this add-in, so the engine was
+blind to most real data. The rule is stated the other way round now, which is
+what it always meant: a name is anything that is not a brace, a pipe or a line
+break, and it must carry at least one letter or digit. `{{ }}` and `{{!!}}` are
+still not fields; `{{a b}}`, which had been swept in with them, is one.
+
+**The deeper defect was that the pane and the engine disagreed at all.** The
+Insert button built `{{Column}}` and `FIELD` read it back, and nothing checked
+that those two agree — so the button could put a token on the slide that the
+reader could not see. `canBeField` is the engine's own reader, asked rather than
+restated, and the Fields step now offers a button only for a column it can
+actually write as a field. It names the ones it will not offer and why, because
+the fix is to rename the column and an absent chip says neither which nor why.
+The case that made it worth a shared function is not a header that fails to
+match but one that matches a *different, shorter* name: `Total|EUR` would have
+put a field called `Total` on the slide, bound to nothing, silently.
+
+Also fixed on the same screen: a freshly inserted field put *"{{City}} put on
+the slide"* directly above *"these slides carry no fields yet"*. An insert lands
+on the slide and tells the pane nothing, so the second sentence was read off a
+template read taken before it — the screen contradicting itself about something
+the user had just done. The stale line is withheld while the note is up, and the
+note already ends by asking for the read that settles it.
+
 ### Added — a button per column, and the steps in the order the work happens
 
 Asked in these words after a first real run: *"how do I insert the fields? it
