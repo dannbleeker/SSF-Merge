@@ -68,11 +68,33 @@ export function mergeSummary(block: Block, rows: number, deckSize: number): stri
  * say so.
  */
 export function undoSummary(added: number, deckSize: number): string {
-  if (added <= 0) return "Nothing to take back.";
+  if (!undoIsPossible(added, deckSize)) return "Nothing to take back.";
   const from = deckSize - added + 1;
   return added === 1
     ? `Remove slide ${from}, which this merge added.`
     : `Remove slides ${from} to ${deckSize}, which this merge added.`;
+}
+
+/**
+ * Whether the deck can still contain what the run added.
+ *
+ * The card is a promise to delete a specific range, and the range is computed
+ * backwards from the END of the deck — so a deck SMALLER than the run's own
+ * output produces a first slide at or below zero. It read `Remove slides -707
+ * to 12, which this merge added.` and offered a button.
+ *
+ * Reachable, and not only through a bad fixture: the crash crumb offers a run
+ * back when the pane reopens, and by then the user may have taken those slides
+ * out by hand or with Ctrl+Z. `added` is what the run did; `deckSize` is what
+ * is there now; nothing keeps them in step across a closed pane.
+ *
+ * `sweepPlan` already refuses this case, so pressing the button was safe — it
+ * answered "nothing to take back". Safe and wrong: the card said the slides
+ * were there and named them. This is the pane agreeing with the decision that
+ * will actually be taken.
+ */
+export function undoIsPossible(added: number, deckSize: number): boolean {
+  return added > 0 && deckSize - added + 1 >= 1;
 }
 
 /** What a finished merge actually did, as opposed to how much the deck grew. */

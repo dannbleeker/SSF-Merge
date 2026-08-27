@@ -15,6 +15,7 @@ placeholders where the data goes, and SSF Merge produces one copy per row.
 
 ## Contents
 
+- [Your first merge](#your-first-merge)
 - [The idea](#the-idea)
 - [Placeholders](#placeholders)
 - [Formats](#formats)
@@ -26,6 +27,59 @@ placeholders where the data goes, and SSF Merge produces one copy per row.
 - [Installing it](#installing-it)
 - [Tags SSF Merge writes](#tags-ssf-merge-writes)
 - [Limits](#limits)
+
+## Your first merge
+
+Five minutes, on a deck you do not mind adding slides to. Nothing here deletes
+anything: a merge only ever **adds** slides after your template, and step 4
+offers to take them straight back out again.
+
+1. **Make a template slide.** Any slide will do. Put two placeholders on it,
+   typed exactly like this, braces included:
+
+   ```
+   {{First}}
+   {{City}}
+   ```
+
+   Note which slide number it is in the thumbnail rail on the left — say it is
+   slide 3. A template can be several slides in a row; one is enough to start.
+
+2. **Open the pane.** Home tab → **Mail merge**.
+
+3. **Step 1 — Template.** Type `3` into both boxes. The button reads **Choose
+   the slides that repeat** until the numbers make sense, then becomes **Use
+   slides 3 to 3** — press it. The pane reads the slide and says it found 2
+   placeholders. If it says 0, the braces are probably curly quotes, or the
+   field name has a space in it.
+
+4. **Step 2 — Fields.** Paste this into the box, including the header row:
+
+   ```
+   First	City
+   Ada	London
+   Grace	New York
+   Katherine	Hampton
+   ```
+
+   Copy it out of a spreadsheet, or type it with real tab characters between the
+   columns. The pane will say **3 rows · First, City** and show a chip per
+   placeholder, with any chip that has no column behind it outlined. Press
+   **Use 3 rows**.
+
+5. **Step 3 — Preview.** Press **Preview the first row**. One row is merged
+   into your deck so you can look at it, and **Remove the preview** takes it
+   out again. This is an ordinary one-row merge, not a mock-up — what you see
+   is what step 4 produces. **Skip to the merge** goes on without previewing.
+
+6. **Step 4 — Merge.** The button reads **Add 3 slides** — the count, not the
+   word "merge" — and the line above says where they land and how big the deck
+   will be afterwards. Press it, look at the result, and if you do not like it
+   press **Remove these slides**.
+
+If any step does anything other than this, the pane's run record is at the
+bottom of the screen once a run finishes — open **What this run did, step by
+step**, select it, and copy it. It carries no cell values, only structure.
 
 ## The idea
 

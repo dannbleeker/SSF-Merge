@@ -654,8 +654,41 @@ function advance(from: StepId): void {
 
 export { last as lastRun };
 
+/**
+ * The build this pane was served from, in the header, before anything is run.
+ *
+ * It already reaches the RUN RECORD through `hostEnvironment()` — but a run
+ * record exists only once a run has finished, and the question this answers is
+ * asked before one starts: PowerPoint caches the pane's HTML for about ten
+ * minutes, so opening it too soon after a deploy tests code the host never
+ * fetched, and the result reads as a clean run of the wrong build.
+ *
+ * That is not hypothetical here. The build immediately before this one never
+ * loaded Office.js and showed a header and nothing else; anyone testing the fix
+ * has the broken one cached, and the two are told apart by this line or not at
+ * all.
+ *
+ * In the HEADER rather than in the pane, because the layout rule the pane was
+ * approved on is that the primary button is the last element in the view. A
+ * footer would take that away for a diagnostic.
+ */
+function showBuild(): void {
+  const build = hostEnvironment().build;
+  const header = document.querySelector("header");
+  if (!header || !build || build === "unknown") return;
+  const span = document.createElement("span");
+  span.className = "build";
+  span.textContent = build;
+  // Named, because six hex characters in a header is a mystery otherwise.
+  span.title = `SSF Merge was built from commit ${build}`;
+  header.append(span);
+}
+
 void Office.onReady(() => {
   applyTheme();
+  // Before the floor check: a host that cannot run the add-in is exactly the
+  // case where somebody needs to say which build refused them.
+  showBuild();
   const check = hostReady();
   if (!check.ok) {
     // Said out loud rather than swallowed: a pane that renders a dead UI on an

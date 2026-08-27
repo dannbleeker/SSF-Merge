@@ -115,6 +115,7 @@ const STATES = [
     state: {
       ...full,
       added: 720,
+      deckSize: 732,
       notice: "720 slides added after slide 12 · no placeholders were filled — check the spelling in your template.",
       log: [
         "   0.0s  host  issued    call=counting the deck's slides budget=15000",
@@ -127,9 +128,27 @@ const STATES = [
     },
   },
   {
+    // `deckSize` is the deck AFTER the merge, and two fixtures here were missing
+    // that: they kept `full`'s pre-merge 12 beside an `added` of 720, and the
+    // undo card obediently rendered `Remove slides -707 to 12`. Nobody had a
+    // product bug and somebody was going to spend a morning finding that out —
+    // the trap this script's own comments name twice, sprung a third time.
+    //
+    // The impossible state IS worth a shot; it just is not this one. See
+    // "4-merge-nothing-to-take-back" below, where the deck is genuinely too
+    // small and the card is correctly not drawn.
     name: "4-merge-done",
     step: "merge",
-    state: { ...full, added: 720, notice: "720 slides added after slide 12." },
+    state: { ...full, added: 720, deckSize: 732, notice: "720 slides added after slide 12." },
+  },
+  {
+    // The slides went back by hand, or with Ctrl+Z, between the merge and this
+    // draw — which the crash crumb makes reachable, because it offers a run
+    // back on the NEXT open of the pane. No undo card: `sweepPlan` would refuse
+    // it, so offering it would be a promise the next press breaks.
+    name: "4-merge-nothing-to-take-back",
+    step: "merge",
+    state: { ...full, added: 720, deckSize: 12, notice: "720 slides added after slide 12." },
   },
   {
     name: "2-fields-two-missing",
