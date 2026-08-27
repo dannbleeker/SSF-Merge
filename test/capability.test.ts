@@ -2,12 +2,14 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   API_FLOOR,
+  KNOWN_SETS,
   blockFromSelection,
   blockIds,
   canSelectSlides,
   checkFloor,
   chooseDeckSource,
   deckIdForSelectedSlide,
+  environmentLine,
   templateOffset,
 } from "../src/host/capability.js";
 
@@ -226,5 +228,44 @@ describe("the template block a selection names", () => {
     const read = blockFromSelection(["257#b", "999#z"], deck);
     expect(read.ok).toBe(false);
     expect(!read.ok && read.why).toContain("would not say");
+  });
+});
+
+describe("the environment line", () => {
+  it("lists EVERY set the host publishes, not only the ones we gate on", () => {
+    // The gap between what a host HAS and what this add-in uses is where the
+    // next unusable API is hiding, and a list filtered to what we already call
+    // could never show it.
+    const env = environmentLine({ supports: upTo("1.10") });
+    expect(env.sets).toContain("1.1");
+    expect(env.sets).toContain("1.10");
+    expect(env.sets.length).toBe(KNOWN_SETS.length);
+  });
+
+  it("carries which route the template will come from", () => {
+    // The two routes return different things, so a run log that does not say
+    // which one was taken cannot be read at all.
+    expect(environmentLine({ supports: upTo("1.10") }).deckSource).toBe("subset");
+    expect(environmentLine({ supports: upTo("1.9") }).deckSource).toBe("file");
+  });
+
+  it("says unknown rather than blank for a reading the host would not give", () => {
+    // A blank in a run log reads as a field nobody wrote. This one was written
+    // and had no answer, which is a different fact.
+    const env = environmentLine({ supports: upTo("1.5") });
+    expect(env.build).toBe("unknown");
+    expect(env.platform).toBe("unknown");
+    expect(env.host).toBe("unknown");
+  });
+
+  it("carries the build stamp when there is one", () => {
+    // PowerPoint caches the pane's HTML for ten minutes, so a round can test
+    // code the host never fetched with nothing saying so.
+    expect(environmentLine({ build: "0009a7d", supports: upTo("1.10") }).build).toBe("0009a7d");
+  });
+
+  it("says whether the host clears the floor, and what the floor is", () => {
+    expect(environmentLine({ supports: upTo("1.10") })).toMatchObject({ floor: "1.2", clearsFloor: true });
+    expect(environmentLine({ supports: upTo("1.1") }).clearsFloor).toBe(false);
   });
 });

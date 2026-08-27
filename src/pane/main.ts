@@ -6,10 +6,17 @@
  * PowerPoint anywhere. `test/architecture.test.ts` holds that seam: a decision
  * that migrates into this file becomes untestable the moment it arrives.
  */
-import { canReadSelection, ready as hostReady, selectedBlock, slideCount } from "../office/powerpoint.js";
+import {
+  canReadSelection,
+  hostEnvironment,
+  ready as hostReady,
+  selectedBlock,
+  slideCount,
+} from "../office/powerpoint.js";
 import { inspectBlock, runMerge, undoMerge, type MergeOutcome } from "../office/merge.js";
 import { readable } from "../host/errors.js";
-import { beginRun, onTrace, traceText } from "../core/trace.js";
+import { clearCrumb, dropCrumb, readCrumb } from "./crumb.js";
+import { beginRun, onTrace, trace, traceText } from "../core/trace.js";
 import { render } from "./render.js";
 import { describeMerge, plural } from "./summary.js";
 import {
@@ -389,6 +396,11 @@ async function merge(): Promise<void> {
   // one run's numbers with another run's failures is the wrong turn that costs
   // an hour.
   beginRun();
+  // AFTER the mark, never at wiring time. A sibling project's environment line
+  // was emitted when the pane loaded and the run's slice began later, so it
+  // reached NONE of its archived rounds — present in the code, absent from
+  // every artefact anyone read.
+  trace("pane", "run starting", { ...hostEnvironment(), deck: state.deckSize ?? "unknown" });
   // The WINDOW, which is a different need from the record: a run log can only
   // be handed over once the run ends, and the runs worth explaining are the
   // ones that never do. What is on screen survives a host that takes the pane
@@ -403,6 +415,12 @@ async function merge(): Promise<void> {
   });
   draw();
   try {
+    // BEFORE the call that makes an undo necessary. `deckAtStart` is the floor
+    // every sweep is clamped to and it lives in a module variable, so a tab
+    // that dies during the insert leaves the deck holding the slides and the
+    // pane unable to take them back. `added` is 0 until the deck answers; the
+    // crumb is rewritten with the real number below.
+    dropCrumb({ deckAtStart: state.deckSize ?? 0, added: 0, runId: "pending" });
     const outcome = await runMerge({
       from: block.from,
       to: block.to,
@@ -410,6 +428,8 @@ async function merge(): Promise<void> {
       ...(conditions ? { conditions } : {}),
     });
     last = outcome;
+    if (outcome.added > 0) dropCrumb({ deckAtStart: outcome.deckAtStart, added: outcome.added, runId: outcome.runId });
+    else clearCrumb();
     state = {
       ...state,
       deckSize: outcome.deckAtStart + outcome.added,
@@ -436,6 +456,7 @@ async function merge(): Promise<void> {
     const before = state.deckSize;
     const added = deckAfter !== undefined && before !== undefined ? Math.max(0, deckAfter - before) : 0;
     if (added > 0 && before !== undefined) {
+      dropCrumb({ deckAtStart: before, added, runId: "recovered" });
       last = {
         ok: false,
         detail: readable(e),
@@ -558,6 +579,10 @@ async function undoRun(): Promise<void> {
     }
     const remaining = outcome.added - removed;
     last = remaining > 0 ? { ...outcome, added: remaining } : undefined;
+    // The slides are the crumb's whole reason. Gone, and it is noise that would
+    // offer a stale recovery on the next open.
+    if (remaining > 0) dropCrumb({ deckAtStart: outcome.deckAtStart, added: remaining, runId: outcome.runId });
+    else clearCrumb();
     state = {
       ...state,
       deckSize: (state.deckSize ?? outcome.deckAtStart + outcome.added) - removed,
@@ -657,6 +682,30 @@ void Office.onReady(() => {
   void slideCount().then(
     (deckSize) => {
       state = { ...state, deckSize };
+      // A run that never finished, offered back.
+      //
+      // The crumb only matters once the deck's real size is in hand: the offer
+      // is a positional sweep, and `sweepPlan` refuses outright if the deck has
+      // moved on since. So this is checked HERE rather than at boot — with the
+      // count, the refusal is the sweep's own and the user gets a sentence
+      // instead of a button that does nothing.
+      const crumb = readCrumb();
+      if (crumb) {
+        last = {
+          ok: false,
+          detail: "recovered from a run that did not finish",
+          added: crumb.added,
+          deckAtStart: crumb.deckAtStart,
+          runId: crumb.runId,
+          fields: [],
+          unknownConditions: [],
+        };
+        state = {
+          ...state,
+          added: crumb.added,
+          notice: `A merge from ${crumb.startedAt.slice(0, 10)} added ${crumb.added} slide(s) and the pane closed before you could take them back.`,
+        };
+      }
       draw();
     },
     () => undefined,

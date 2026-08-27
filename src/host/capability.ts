@@ -246,3 +246,55 @@ export function blockFromSelection(rangeIds: string[], deckIds: string[]): Selec
   }
   return { ok: true, from, to };
 }
+
+/** Every PowerPointApi version this add-in ever asks about. */
+export const KNOWN_SETS = ["1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "1.7", "1.8", "1.9", "1.10"] as const;
+
+export interface Environment {
+  build: string;
+  platform: string;
+  host: string;
+  /** EVERY set the host publishes, not only the ones we gate on. */
+  sets: string[];
+  floor: string;
+  clearsFloor: boolean;
+  deckSource: DeckSource;
+  canSelect: boolean;
+}
+
+/**
+ * What this host IS, as one line at the top of a run.
+ *
+ * The first three questions of any investigation are which build, which host
+ * and which API — and answering them costs one line that a reader gets for
+ * free. A sibling project's rounds carry this and it has paid for itself; the
+ * rounds that DON'T are the ones where somebody had to ask.
+ *
+ * **Every set the host publishes, not only the ones we gate on.** The gap
+ * between what a host HAS and what this add-in uses is where the next unusable
+ * API is hiding, and a list filtered to what we already call can never show it.
+ *
+ * Pure: the caller passes the readings in, so the whole thing is checkable
+ * without a PowerPoint. `src/office` is where they are gathered — and each one
+ * individually, because a host that throws reading its own version must not
+ * cost the round the rest of the line.
+ */
+export function environmentLine(o: {
+  build?: string;
+  platform?: string;
+  host?: string;
+  supports: Supports;
+}): Environment {
+  return {
+    // "unknown" rather than an empty string: a blank in a run log reads as a
+    // field nobody wrote, and this one was written and had no answer.
+    build: o.build ?? "unknown",
+    platform: o.platform ?? "unknown",
+    host: o.host ?? "unknown",
+    sets: KNOWN_SETS.filter((v) => o.supports(v)),
+    floor: API_FLOOR,
+    clearsFloor: checkFloor(o.supports).ok,
+    deckSource: chooseDeckSource(o.supports).source,
+    canSelect: canSelectSlides(o.supports),
+  };
+}
