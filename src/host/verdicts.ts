@@ -272,3 +272,73 @@ export function offsetVerdict(
     detail: `neither model predicts ${JSON.stringify(after)}. Record it and do not guess: queue right to left, which is correct under both.`,
   };
 }
+
+export interface ExportPartsObservation {
+  /** False when the host has no `exportAsBase64Presentation` at all. */
+  supported?: boolean;
+  sourceParts?: number;
+  exportParts?: number;
+  /** In the file-route package and not in the export. Capped by the probe. */
+  missing?: string[];
+  sourceHasAuthors?: boolean;
+  exportHasAuthors?: boolean;
+  sourceComments?: number;
+  exportComments?: number;
+  error?: string;
+}
+
+/**
+ * Whether the export this add-in reads its template through keeps every part.
+ *
+ * office-js#6867 reports `Slide.exportAsBase64` omitting modern comments and
+ * `ppt/authors.xml`. A sibling project triaged that as no exposure and was
+ * right to — it calls the API for a PICTURE of a slide. Here the
+ * presentation-level export is how the TEMPLATE IS READ before it is cloned, so
+ * a part the export drops is a part every merged slide is missing, silently, in
+ * a file that opens cleanly.
+ *
+ * THREE STATES, and the third is the one that matters. A deck with no comments
+ * cannot answer this question, and an export with no `authors.xml` taken from
+ * such a deck is not evidence that the export dropped anything. Reporting that
+ * as "keeps everything" would be the `no-scratch-slide` mistake in a new place:
+ * a question the run could not put, recorded as an answer.
+ */
+export function exportPartsVerdict(o: ExportPartsObservation): { verdict: Verdict; detail: string } {
+  if (o.supported === false) {
+    return {
+      verdict: "unknown",
+      detail:
+        "NOT ASKED — this host has no exportAsBase64Presentation, so the template is read through getFileAsync and this question does not arise here.",
+    };
+  }
+  if (o.error !== undefined) return { verdict: "threw", detail: `the comparison threw: ${o.error}` };
+  if (o.sourceParts === undefined || o.exportParts === undefined) {
+    return { verdict: "unknown", detail: "NOT ASKED — this sheet predates the arm." };
+  }
+  const hadAuthors = o.sourceHasAuthors === true;
+  const hadComments = (o.sourceComments ?? 0) > 0;
+  if (!hadAuthors && !hadComments) {
+    return {
+      verdict: "unknown",
+      detail: `NOT ASKED — this deck carries no comments and no authors part, so there was nothing for the export to drop. Re-run on a deck with comments. (${o.sourceParts} parts in, ${o.exportParts} out.)`,
+    };
+  }
+  const lostAuthors = hadAuthors && o.exportHasAuthors !== true;
+  const lostComments = hadComments && (o.exportComments ?? 0) < (o.sourceComments ?? 0);
+  if (lostAuthors || lostComments) {
+    const lost = [
+      lostAuthors ? "ppt/authors.xml" : "",
+      lostComments ? `${(o.sourceComments ?? 0) - (o.exportComments ?? 0)} comment part(s)` : "",
+    ]
+      .filter(Boolean)
+      .join(" and ");
+    return {
+      verdict: "yes",
+      detail: `the export DROPS ${lost} — office-js#6867 reaches the presentation-level call too, so a merged deck loses them. ${o.sourceParts} parts in, ${o.exportParts} out.`,
+    };
+  }
+  return {
+    verdict: "no",
+    detail: `the export kept the comments and the authors part this deck carries (${o.sourceParts} parts in, ${o.exportParts} out${(o.missing ?? []).length > 0 ? `, ${(o.missing ?? []).length} other part(s) not carried over` : ""}).`,
+  };
+}

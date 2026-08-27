@@ -7,6 +7,30 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added — the probe asks whether the template export drops parts
+
+The one open risk the sibling sweep surfaced, now a question rather than a note.
+
+This add-in reads its template through `exportAsBase64Presentation` and clones
+what comes back. office-js#6867 reports the slide-level `exportAsBase64` omitting
+modern comments and `ppt/authors.xml` — a sibling project triaged that as no
+exposure and was right to, because it calls the API for a PICTURE of a slide.
+Here a part the export drops is a part every merged slide is missing, silently,
+in a file that opens cleanly. Nobody had checked whether the
+presentation-level call behaves the same way.
+
+The arm exports **every slide in the deck** and diffs its part list against the
+same deck read through `getFileAsync`, which returns the package unfiltered.
+Both cover the same slides, or the export would legitimately lack the parts of
+slides it was not asked for. **Part names only, never content** — a part list is
+structure, and the sheet is written to be pasted into an issue.
+
+**Three states, and the third is the point.** A deck with no comments cannot
+answer this, so `exportPartsVerdict` says NOT ASKED rather than reading the
+absence as "the export keeps everything" — the same mistake as recording a
+question the run never put as a `no`. Run it on a deck somebody has commented
+on; `docs/PROBE.md` says so.
+
 ### Added — a merge can be taken back
 
 `undoInsert` and `sweepPlan` were built, clamped and tested, and reachable from
