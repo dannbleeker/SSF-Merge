@@ -93,6 +93,18 @@ const STATES = [
   {
     // The run record, collapsed. It must not bury the sentence above it.
     // The way back, which nothing rendered until 2026-08-27.
+    // A run the pane never got to finish, offered back on the next open. The
+    // slides are in the deck and the numbers were the only thing missing.
+    name: "4-merge-recovered",
+    step: "merge",
+    state: {
+      ...full,
+      added: 720,
+      deckSize: 732,
+      notice: "A merge from 2026-08-27 added 720 slide(s) and the pane closed before you could take them back.",
+    },
+  },
+  {
     name: "4-merge-done-undo",
     step: "merge",
     state: { ...full, added: 720, deckSize: 732, notice: "720 slides added after slide 12 · 480 placeholders filled." },

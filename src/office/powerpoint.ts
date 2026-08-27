@@ -26,10 +26,12 @@ import {
   blockFromSelection,
   blockIds,
   canSelectSlides,
-  chooseDeckSource,
   checkFloor,
+  chooseDeckSource,
+  environmentLine,
   templateOffset,
   type DeckSource,
+  type Environment,
   type SelectedBlock,
   type Supports,
 } from "../host/capability.js";
@@ -43,6 +45,35 @@ export const hostSupports: Supports = (version) => Office.context.requirements.i
 /** Whether this host can run the add-in at all. Ask before anything else. */
 export function ready(): { ok: boolean; detail: string } {
   return checkFloor(hostSupports);
+}
+
+/**
+ * What this host is, gathered from it.
+ *
+ * The readings are taken here and the SHAPE is decided in `src/host` — the same
+ * split as everything else, so what an environment line contains is checkable
+ * without a PowerPoint.
+ *
+ * Each read is individually guarded. A host that throws reading its own version
+ * must not cost the round the rest of the line, and the whole value of this is
+ * that it always arrives.
+ */
+export function hostEnvironment(): Environment {
+  const read = (f: () => string | undefined): string | undefined => {
+    try {
+      return f();
+    } catch {
+      return undefined;
+    }
+  };
+  return environmentLine({
+    // Substituted by Vite at build time. Undefined in the suite and under tsc,
+    // which is why `environmentLine` answers "unknown" rather than blank.
+    ...(typeof __BUILD_STAMP__ === "string" ? { build: __BUILD_STAMP__ } : {}),
+    ...((p) => (p ? { platform: p } : {}))(read(() => String(Office.context.platform))),
+    ...((h) => (h ? { host: h } : {}))(read(() => Office.context.diagnostics?.version)),
+    supports: hostSupports,
+  });
 }
 
 export async function slideCount(): Promise<number> {

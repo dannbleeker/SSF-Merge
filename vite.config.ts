@@ -1,5 +1,31 @@
+import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import { defineConfig } from "vite";
+
+/**
+ * Which commit the pane was built from.
+ *
+ * PowerPoint caches the pane's HTML for ten minutes. Open it too soon after a
+ * deploy and the round tests code the host never fetched — and there is no way
+ * to tell from the result, because the pane looks identical and the run log
+ * reads as a clean run of the wrong build. A sibling project records whole
+ * rounds lost to it.
+ *
+ * So the stamp is on screen and in the run record, and the owner can check it
+ * against the commit they meant to test before spending ten minutes of a real
+ * PowerPoint on it.
+ *
+ * Falls back to "unknown" rather than failing the build: a checkout with no git
+ * (a release tarball, a CI runner without history) still has to produce a pane.
+ * "unknown" is honest and a wrong commit hash would not be.
+ */
+function buildStamp(): string {
+  try {
+    return execFileSync("git", ["rev-parse", "--short", "HEAD"], { encoding: "utf8" }).trim() || "unknown";
+  } catch {
+    return "unknown";
+  }
+}
 
 /**
  * The task pane, built for GitHub Pages.
@@ -10,6 +36,9 @@ import { defineConfig } from "vite";
  * page, so one build produces the whole site.
  */
 export default defineConfig({
+  // Replaced at build time, so the pane can say what it is. Stringified because
+  // `define` substitutes source text, not values.
+  define: { __BUILD_STAMP__: JSON.stringify(buildStamp()) },
   // The pane is the root, so it builds to dist/taskpane.html rather than to
   // dist/src/pane/taskpane.html. The manifest points at that URL and a
   // manifest change is the one kind that costs the owner a re-sideload, so the

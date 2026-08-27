@@ -24,6 +24,19 @@ const office = vi.hoisted(() => ({
   ready: vi.fn(() => ({ ok: true, detail: "fine" })),
   selectedBlock: vi.fn<() => Promise<unknown>>(),
   canReadSelection: vi.fn(() => true),
+  // The environment line the run emits after its mark. Mocked flat rather than
+  // omitted: this module is mocked EXPLICITLY, so a new export is a loud
+  // failure rather than an undefined the pane trips over at run time.
+  hostEnvironment: vi.fn(() => ({
+    build: "test",
+    platform: "PC",
+    host: "16.0.0",
+    sets: ["1.2"],
+    floor: "1.2",
+    clearsFloor: true,
+    deckSource: "file" as const,
+    canSelect: true,
+  })),
   inspectBlock: vi.fn<(r: { from: number; to: number }) => Promise<unknown>>(),
   runMerge: vi.fn<(r: unknown) => Promise<unknown>>(),
   undoMerge: vi.fn<(o: unknown) => Promise<unknown>>(),
@@ -34,6 +47,7 @@ vi.mock("../src/office/powerpoint.js", () => ({
   slideCount: office.slideCount,
   selectedBlock: office.selectedBlock,
   canReadSelection: office.canReadSelection,
+  hostEnvironment: office.hostEnvironment,
 }));
 vi.mock("../src/office/merge.js", () => ({
   inspectBlock: office.inspectBlock,

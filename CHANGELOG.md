@@ -7,6 +7,44 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added — a merge that never finished can still be taken back
+
+`undoInsert` is clamped against the deck's size BEFORE the run inserted
+anything, and those numbers lived in a module variable. So a tab that died
+during a merge left the user's deck holding 720 new slides and the pane with no
+way to take them back — the slides were there, and the only thing missing was
+two integers.
+
+They go to `localStorage` before the insert now, and the next open offers the
+run back. One key, one write. The sibling project's answer to the same shape is
+445 lines because it is preserving a 300-entry narrative of a fifteen-minute
+run; this is preserving `{deckAtStart, added, runId}`.
+
+Three rules borrowed whole, all cheap: **never throw** (a store can be absent,
+blocked by policy — a task pane is a third-party frame — or full, and none of
+that is a reason for a merge to fail); **probe with a READ**, because a full
+store answers no to "is there room" and yes to "is there a record", and the
+record is the half that matters; and **validate on the way out**, since these
+numbers authorise deleting part of a presentation.
+
+### Added — a build stamp and an environment line
+
+**PowerPoint caches the pane's HTML for ten minutes.** Open it too soon after a
+deploy and a round tests code the host never fetched, with nothing saying so —
+the pane looks identical and the log reads as a clean run of the wrong build.
+The commit is now stamped in at build time and carried in the run record.
+
+The run also opens with what the host IS: platform, version, **every**
+PowerPointApi set it publishes, whether it clears the floor, which template
+route it will take, and whether it can read the selection. Every set, not only
+the ones we gate on — the gap between what a host has and what this add-in uses
+is where the next unusable API is hiding.
+
+Emitted **after** the run's mark, never at wiring time: the sibling's
+environment line was written when its pane loaded and its run slice began
+later, so it reached none of its archived rounds. Present in the code, absent
+from every artefact anyone read.
+
 ### Fixed — a partial insert is reported in ROWS
 
 `insertVerdict` grades slides, and for the probe that is right: it inserts a
