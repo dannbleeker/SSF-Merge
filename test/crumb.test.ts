@@ -92,7 +92,7 @@ describe("a store that will not cooperate", () => {
         throw new Error("blocked by policy");
       },
     };
-    useStorage(hostile as unknown as Storage);
+    useStorage(hostile);
     expect(() => {
       dropCrumb({ deckAtStart: 12, added: 720, runId: "r1" });
     }).not.toThrow();
@@ -111,7 +111,7 @@ describe("a store that will not cooperate", () => {
       },
       removeItem: () => undefined,
     };
-    useStorage(full as unknown as Storage);
+    useStorage(full);
     expect(readCrumb()).toMatchObject({ added: 720 });
     expect(() => {
       dropCrumb({ deckAtStart: 1, added: 1, runId: "r2" });
