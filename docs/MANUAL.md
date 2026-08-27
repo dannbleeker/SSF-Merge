@@ -192,7 +192,6 @@ PowerPoint tags.
 | `SSF_MERGE_BLOCK` | a template or merged slide | Which template block it belongs to |
 | `SSF_MERGE_SEQ` | a template or merged slide | Its position within the block |
 | `SSF_MERGE_RECORD` | a merged slide | Which row it was made from |
-| `SSF_MERGE_TEMPLATE` | a shape, during preview | The text to put back when preview ends |
 
 Tags that other tools wrote are kept. SSF Merge merges its own keys into an
 existing tag list rather than replacing it.
@@ -206,7 +205,7 @@ much is left, which is the question a first-time user actually has.
 | --- | --- |
 | 1 · Template | Name the first and last slide of the set that repeats. They must be next to each other. |
 | 2 · Fields | See the placeholders found in those slides, and which ones have no column behind them. |
-| 3 · Preview | Put one row's values on the real slide, then put the template back. *(planned)* |
+| 3 · Preview | Merge the first row into your deck so you can look at it, then remove it. |
 | 4 · Merge | Add the slides, with the count on the button. |
 
 Three things about it are deliberate and worth knowing.
@@ -233,15 +232,34 @@ and forward again, which is the way a wizard usually lets you start the same
 long job twice. Once a merge has added its slides the button says how many and
 stays down; change the block or the data and it arms again.
 
-*Partly planned.* Steps 1, 2 and 4 are built and reachable from the screen: name
-the block, paste the rows, press the button. Pressing "Use slides N to M" reads
+All four steps are built and reachable from the screen: name the block, paste
+the rows, look at one, press the button. Pressing "Use slides N to M" reads
 those slides out of the open deck and lists the placeholders it actually found
 in them, so step 2 shows the real fields rather than a guess.
 
-**Step 3 is not built.** Writing one row onto the real slide and putting the
-template back is real work and it is not done; the screen says so and its button
-carries you on to the merge rather than promising a preview. The merge does not
-need it.
+### What a preview actually is
+
+**It merges.** Pressing "Preview the first row" runs the ordinary merge over
+your first row and puts the result at the end of your deck, exactly as the full
+merge would. "Remove the preview" deletes those slides again.
+
+That is the point rather than an implementation detail. What you are looking at
+was produced by the code that will produce the other 239 slides, so if it looks
+right, the rest will be right. A preview drawn some other way is a preview of
+something nobody is going to get.
+
+**Your template is never touched.** The obvious way to build this — write the
+row's values onto your template slide and put the original text back afterwards
+— would have damaged the one thing this add-in exists to protect. Setting a
+shape's text through the PowerPoint API re-authors it, so the text would come
+back and the formatting would not: silently, on the master copy every merged
+slide is cloned from.
+
+Two consequences worth knowing. The preview lands at the **end of the deck**,
+not next to your template, because that is the one insertion point this add-in
+has tested on a real host. And if you close the pane while a preview is showing,
+those slides simply stay — they are ordinary slides and you can delete them.
+The card names them for that reason.
 
 The pane follows PowerPoint's theme, read once when it opens. There is no
 theme-change event for a PowerPoint task pane — the one in the Office typings

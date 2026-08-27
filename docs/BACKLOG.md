@@ -10,19 +10,14 @@ is to build.
 
 ## Next
 
-### The preview step — one row on the real slide
-**Priority: high.** Feasibility: medium.
-Step 3 of the pane is the one thing in the wizard that is not built. It has to
-write one record's values onto the real template slide, store what was there in
-a `SSF_MERGE_TEMPLATE` shape tag, and put it back — which means editing shapes
-through Office.js rather than in the package, the one place this project does
-that. The screen says so out loud today and its button carries the user past it;
-the merge does not need it.
-
-The other half is picking the block by CLICKING slides rather than typing two
-numbers. `getSelectedSlides` is the obvious route and this host is documented to
-wedge its whole selection subsystem after `setSelectedShapes`, so it needs a
-probe question before it needs code.
+### Picking the block by clicking slides
+**Priority: medium.** Feasibility: unknown until a probe answers.
+Two typed slide numbers work and are checked as they are entered, but clicking
+the slides is what a user reaches for. `getSelectedSlides` is the obvious route
+and this host is documented to wedge its whole selection subsystem after
+`setSelectedShapes`, so it needs a probe question before it needs code — the
+question being whether the SLIDE selection API is affected at all, or only the
+shape one.
 
 ### The delimiter sniff reads only as far as the first newline
 **Priority: low.** Feasibility: high.
@@ -82,6 +77,14 @@ about word length. English ships first because the Marketplace listing is Englis
 
 ## Rejected — do not re-propose
 
+- **A preview that writes onto the template slide and restores it.** This was
+  the specified design and it is refused for the reason immediately below:
+  setting a shape's text through Office.js re-authors it, and RESTORING goes
+  through the same API that did the damage, so the text returns and the
+  formatting does not — silently, on the master copy every merged slide is
+  cloned from. A preview is an ordinary one-row merge, inserted and then swept
+  by the same clamped positional sweep an undo uses. The `SSF_MERGE_TEMPLATE`
+  tag that existed only to hold the text to put back is gone with it.
 - **Merging through the PowerPoint API, shape by shape.** Setting text
   re-authors it (office-js#5858), and a sibling add-in measured a 680-second run
   that shipped duplicate slides. The whole architecture is the answer to this.

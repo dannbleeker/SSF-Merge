@@ -59,7 +59,11 @@ const STATES = [
       rows: 2,
     },
   },
-  { name: "3-preview", step: "preview", state: { ...full, previewing: true } },
+  {
+    name: "3-preview-showing",
+    step: "preview",
+    state: { ...full, previewing: true, previewSlides: { from: 13, to: 15 } },
+  },
   { name: "3-preview-idle", step: "preview", state: full },
   { name: "4-merge", step: "merge", state: full },
   { name: "4-merge-blocked", step: "merge", state: { fields: [], previewing: false } },

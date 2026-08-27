@@ -12,7 +12,6 @@ export {
   TAG_RECORD,
   TAG_RUN,
   TAG_SEQ,
-  TAG_TEMPLATE,
   mergeTagPart,
   nextTagNumber,
   readSlideTags,

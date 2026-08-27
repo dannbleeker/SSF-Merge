@@ -319,3 +319,10 @@ button.back {
 .notice {
   color: var(--text);
 }
+
+/* The forward link on the preview step, whose primary acts rather than
+   advances. Same weight as Back, on the other side, so the pair reads as
+   navigation and neither competes with the one filled button. */
+button.forward {
+  align-self: flex-end;
+}

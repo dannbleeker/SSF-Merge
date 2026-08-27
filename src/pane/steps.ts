@@ -70,6 +70,14 @@ export interface PaneState {
    */
   running?: "inspect" | "merge";
   /**
+   * Where a preview landed, in the numbering the thumbnail rail shows.
+   *
+   * The card names the slides rather than saying only "a preview is showing",
+   * because a user who closes the pane mid-preview has no other way to find
+   * out which slides to delete.
+   */
+  previewSlides?: Block;
+  /**
    * What the last merge added, once it has.
    *
    * The merge screen is redrawn after a successful run, and without this it
@@ -306,13 +314,13 @@ export function primary(state: PaneState, step: StepId): Primary {
         ? { label: `Use ${state.rows} row${state.rows === 1 ? "" : "s"}`, enabled: reachable }
         : { label: "Attach data", enabled: false };
     case "preview":
-      // NOT "Preview the first row". Nothing writes a preview to the slide
-      // yet, and a button naming something that does not happen is worse than
-      // one that names the step it does. The previewing branch is untouched
-      // because putting a preview BACK is the half that is built.
+      // "Remove", not "Put the template back". The template is never touched:
+      // a preview is one row merged through the ORDINARY path and inserted, so
+      // ending it deletes slides rather than restoring anything. The old label
+      // described a design this project's own rejected list forbids.
       return state.previewing
-        ? { label: "Put the template back", enabled: true }
-        : { label: "Continue to merge", enabled: reachable };
+        ? { label: "Remove the preview", enabled: true }
+        : { label: "Preview the first row", enabled: reachable };
     case "merge": {
       // A run that already landed. Re-arming this button beside a notice
       // saying the slides were added is how a deck gets them twice.
@@ -363,4 +371,19 @@ export function orangeHolder(state: PaneState, step: StepId): OrangeHolder {
   if (state.previewing) return "preview";
   if (step === "fields" && unmatchedFields(state).length > 0) return "unmatched";
   return "tick";
+}
+
+/**
+ * The first row on its own, as a RecordSet the merge can run.
+ *
+ * A preview is not a separate rendering path — it is the REAL merge over one
+ * record, inserted, looked at, and deleted again. That is what makes it worth
+ * anything: what the user sees is produced by the code that will produce the
+ * other 239 slides, not by a second implementation that can disagree with it.
+ *
+ * Named rather than inlined at the call site because "which row does a preview
+ * show" is a decision, and an empty set has to answer something.
+ */
+export function firstRowOnly(records: RecordSet): RecordSet {
+  return { columns: records.columns, rows: records.rows.slice(0, 1) };
 }

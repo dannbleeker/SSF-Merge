@@ -4,6 +4,7 @@ import {
   STEPS,
   blockedReason,
   chosenBlock,
+  firstRowOnly,
   nextStep,
   primary,
   readBlockDraft,
@@ -61,9 +62,10 @@ describe("what blocks a step", () => {
     expect(why).not.toContain("First");
   });
 
-  it("refuses to merge while a preview is still on the slide", () => {
-    // The preview REPLACES the template's text and puts it back afterwards.
-    // Merging mid-preview would take one row's values as the template.
+  it("refuses to merge while a preview is still in the deck", () => {
+    // A preview is one row already inserted. Merging on top of it would leave
+    // the user with 241 sets of slides where they asked for 240, and the
+    // preview's own slides are indistinguishable from the merge's afterwards.
     expect(blockedReason({ ...ready, previewing: true }, "merge")).toContain("preview");
   });
 
@@ -95,8 +97,14 @@ describe("the one primary button", () => {
     expect(primary(EMPTY, "merge").enabled).toBe(false);
   });
 
-  it("offers to put the template back while previewing, not to preview again", () => {
-    expect(primary({ ...ready, previewing: true }, "preview").label).toContain("back");
+  it("offers to REMOVE the preview while previewing, not to preview again", () => {
+    // "Put the template back" was the old design's language, and the old
+    // design is on this project's rejected list: it wrote the row onto the
+    // template through an API that re-authors text. Nothing is taken from the
+    // template now, so nothing is put back — slides are deleted.
+    const label = primary({ ...ready, previewing: true }, "preview").label;
+    expect(label).toBe("Remove the preview");
+    expect(label).not.toContain("template");
   });
 
   it("gives every step exactly one label, and never an empty one", () => {
@@ -299,12 +307,32 @@ describe("what the primary says once there is data", () => {
     expect(primary(noData, "fields")).toEqual({ label: "Attach data", enabled: false });
   });
 
-  it("does not offer a preview nothing writes", () => {
-    // Putting one row onto the slide is not built. A button naming something
-    // that does not happen is the one thing a user cannot check before
-    // pressing it.
-    expect(primary(ready, "preview").label).toBe("Continue to merge");
-    // The half that IS built — putting the template back — is untouched.
-    expect(primary({ ...ready, previewing: true }, "preview").label).toContain("back");
+  it("offers the preview, now that pressing it shows one", () => {
+    expect(primary(ready, "preview").label).toBe("Preview the first row");
+    expect(primary(ready, "preview").enabled).toBe(true);
+    // And is not offerable before there is a row to show.
+    expect(primary(EMPTY, "preview").enabled).toBe(false);
+  });
+});
+
+describe("which row a preview shows", () => {
+  const records = {
+    columns: [{ name: "First", type: "text" as const }],
+    rows: [{ First: "Ada" }, { First: "Grace" }, { First: "Katherine" }],
+  };
+
+  it("is the first, and only the first", () => {
+    const one = firstRowOnly(records);
+    expect(one.rows).toEqual([{ First: "Ada" }]);
+  });
+
+  it("keeps every column, so the merge binds what it would bind", () => {
+    // A preview that dropped a column would report unmatched placeholders the
+    // real merge does not have — a preview of something nobody is going to get.
+    expect(firstRowOnly(records).columns).toEqual(records.columns);
+  });
+
+  it("answers an empty set with an empty set rather than a row of nothing", () => {
+    expect(firstRowOnly({ columns: records.columns, rows: [] }).rows).toEqual([]);
   });
 });
