@@ -39,8 +39,31 @@ import { insertVerdict, type InsertVerdict } from "../host/verdicts.js";
 import { sweepPlan } from "../host/undo.js";
 import { BUDGET, withTimeout } from "../host/timeout.js";
 
-/** What the host says it supports, as the pure layer wants it. */
-export const hostSupports: Supports = (version) => Office.context.requirements.isSetSupported("PowerPointApi", version);
+/**
+ * What the host says it supports, as the pure layer wants it.
+ *
+ * **Answers false rather than throwing when it cannot ask.** `Office.context`
+ * or its `requirements` being absent is not a supported host reporting an
+ * absent set — it is a host that cannot answer the question — and every caller
+ * here wants the same thing from both: treat it as unsupported and say so.
+ *
+ * The guard is at the root because this is called before the pane has decided
+ * anything. `ready()` uses it to render the "this PowerPoint is too old"
+ * message, and `hostEnvironment()` uses it to say which build was refused; a
+ * raise from either leaves the user with a blank pane on precisely the host
+ * that needed the sentence. That was live for the length of one commit, when
+ * `showBuild()` moved an `isSetSupported` call ahead of the floor check.
+ *
+ * The rest of `hostEnvironment`'s reads have been individually guarded since it
+ * was written, with a docstring saying so. This one was the exception.
+ */
+export const hostSupports: Supports = (version) => {
+  try {
+    return Office.context.requirements.isSetSupported("PowerPointApi", version);
+  } catch {
+    return false;
+  }
+};
 
 /** Whether this host can run the add-in at all. Ask before anything else. */
 export function ready(): { ok: boolean; detail: string } {
