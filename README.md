@@ -79,6 +79,7 @@ slide looks finished; `{{Territory}}` does not, and that is the point.
 | [docs/BACKLOG.md](docs/BACKLOG.md) | What is open, what it would cost, and what has been rejected |
 | [CHANGELOG.md](CHANGELOG.md) | What changed, newest first |
 | [docs/PROBE.md](docs/PROBE.md) | How to run the host probe, and what each answer decides |
+| [docs/SIBLING.md](docs/SIBLING.md) | What we know from PowerChart, what was done about each item, and how new findings get here |
 | [CLAUDE.md](CLAUDE.md) | Project memory: architecture, host rules, conventions |
 
 These are kept in step with the code by `test/docs.test.ts`, which reads the

@@ -114,8 +114,9 @@ will say whether it is worth answering; nothing has asked for it yet.
 - **Waiting after `slides.add()`.** Tried on the sibling project; it cost 18 of
   19 probe answers in one round. This host is not the one the issue describes.
 - **Raising the batch timeout to survive a stall.** A stall is death, not
-  slowness: of 327 answered batches the slowest took 31s against a 45s budget,
-  and seventeen abandoned calls never came back.
+  slowness. On the sibling project the batches that ANSWERED topped out at
+  31.1s against a 45s budget, nothing has ever landed in the band between, and
+  no abandoned call has ever come back late.
 
   Not contradicted by the probe's insert budget going 30s to 60s, though it
   looks like it. That call ANSWERED — the deck delta showed both slides had

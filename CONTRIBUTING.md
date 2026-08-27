@@ -50,3 +50,6 @@ is genuinely open.
 Before writing anything that talks to PowerPoint, read the host rules in
 `CLAUDE.md`. They are recordings from a sibling project's field rounds, not
 opinions, and several of them are the reason the architecture is what it is.
+`docs/SIBLING.md` is the fuller ledger: every finding that came across, what was
+done about it, and the ones that are **no exposure** here — which is worth
+reading before concluding that something has been missed.

@@ -56,9 +56,10 @@ export const API_FLOOR = "1.2";
  * boxes still work and the shortcut is simply not offered. A control that
  * always fails is worse than one that is not there.
  *
- * This was shipped unguarded — the call went in on the strength of 174 rounds
- * of evidence that it is not WEDGED, without anyone asking which version
- * introduced it. Being safe to call and being present are different questions.
+ * This was shipped unguarded — the call went in on the strength of a sibling
+ * project's rounds showing it is not WEDGED, without anyone asking which
+ * version introduced it. Being safe to call and being present are different
+ * questions.
  */
 export function canSelectSlides(supports: Supports): boolean {
   return supports("1.5");
@@ -193,7 +194,7 @@ export type SelectedBlock = { ok: true; from: number; to: number } | { ok: false
  * works. Reported on Windows desktop and closed `not planned`.
  *
  * On the web host this project targets the ids happen to round-trip today, and
- * a sibling add-in has 174 consecutive rounds of a selection read succeeding to
+ * a sibling add-in's selection read has succeeded in every archived round to
  * say so — which is exactly why this must not be left to luck on a host nobody
  * here has run. The repair is the issue's own observation as a rule: the deck's
  * id is the range's id plus a `#suffix`, so an id absent from the deck's list is

@@ -2,9 +2,9 @@
  * Every host call is bounded.
  *
  * On PowerPoint for the web a call that stops answering does not come back:
- * a sibling project recorded seventeen abandoned calls across nine rounds and
- * not one late answer. So a call that has not answered inside its budget is
- * treated as lost rather than waited on.
+ * across a sibling project's archived rounds every abandoned call stayed
+ * abandoned, and not one has ever answered late. So a call that has not
+ * answered inside its budget is treated as lost rather than waited on.
  *
  * The budget is not the same for every call, and that is the point of passing
  * it in. The probe's third sheet timed out at thirty seconds on an insert whose

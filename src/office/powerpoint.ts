@@ -327,12 +327,14 @@ export async function undoInsert(deckAtStart: number, added: number): Promise<Un
  * Safe to call on this host, and that is measured rather than assumed. A
  * sibling add-in runs a "selection ladder" — a read, `setSelectedSlides`, a
  * read, `setSelectedShapes([id])`, a read, `setSelectedShapes([])`, a read —
- * in every round of its self-test battery, and across **174 consecutive
- * archived rounds every rung answered**, in 550-710ms, with zero refusals and
- * zero silences. Its "edit the chart the user selected" scenario, which reads
- * `getSelectedSlides` exactly as this does, passed 174 of 174 — and it runs
- * AFTER the ladder, so the read survives even the call that office-js#3698
- * says wedges the subsystem.
+ * in every round of its self-test battery, and **every rung has answered in
+ * every archived round**, in 550-710ms, with zero refusals and zero silences.
+ * Its "edit the chart the user selected" scenario, which reads
+ * `getSelectedSlides` exactly as this does, has never failed one. Both counts
+ * stood at 174 of 174 when this was measured on 2026-08-27; the claim is the
+ * unbroken run, not the total, because the total moves and nothing here would
+ * say so (see `docs/SIBLING.md`). The scenario runs AFTER the ladder, so the
+ * read survives even the call that office-js#3698 says wedges the subsystem.
  *
  * This add-in never calls `setSelectedShapes` at all, which is the only call
  * ever implicated in that wedge, so it is on the safest part of a surface that

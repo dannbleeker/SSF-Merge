@@ -2,7 +2,9 @@
 
 Mail merge for PowerPoint, as an Office.js task pane add-in. Part of the SSF
 add-in family. Sibling project: PowerChart, which is where most of what this
-repo knows about the PowerPoint host was learned.
+repo knows about the PowerPoint host was learned — `docs/SIBLING.md` is the
+ledger of what came across, what was done about each item, and the rules that
+keep a borrowed fact from going quietly bad.
 
 ## Architecture in one paragraph
 
@@ -124,7 +126,10 @@ Measured on PowerPoint for the web, 2026-08-26, two sheets under
 ## Host rules, learned the expensive way
 
 These come from PowerChart's field rounds against PowerPoint on the web. They
-are recordings, not opinions. Do not re-derive them.
+are recordings, not opinions. Do not re-derive them — and do not re-copy them
+either: `docs/SIBLING.md` carries each one with its source and what was done
+about it, including the findings that turned out to be **no exposure** here,
+which is a real answer and the one nobody writes down.
 
 - **A slide the run just added does not resolve by id.** `slides.getItem(id)`
   refuses it, and `deleteSlideByPosition`'s `indexOf(id) < 0` reads "not listed"
@@ -204,6 +209,17 @@ Any feature change updates, in the same PR:
 - **A guard that goes red for the wrong reason is worse than no guard.** The
   no-Office-imports test first matched the word "Office.js" in the comments
   explaining why the engine avoids it, and failed on four correct files.
+- **A number copied from a live counter carries the date it was taken.**
+  Otherwise it is a claim that rots. Four places said "174 consecutive archived
+  rounds" and one said "passed 174 of 174"; PowerChart's archive held exactly
+  174 that morning, so all five were right, and round 175 makes every one of
+  them wrong with nothing anywhere to say so. Dated, the same number is a
+  recording — it never becomes false, only older, and a reader can judge that.
+  Two corollaries: where the number adds nothing, prefer the phrasing that
+  cannot decay ("every rung answered in every archived round" is both stronger
+  and permanent); and never pair figures from two measurements, which is how
+  `docs/BACKLOG.md` came to carry a count from the run that measured 29.2s
+  beside a maximum of 31.1s from a later one. `docs/SIBLING.md` has the sort.
 - **Test files are named by topic, never by increment.**
 - **Compare a .pptx by its PARTS, never by the archive's bytes.** JSZip stamps an
   entry time whenever a file is written, so two builds of identical content hash

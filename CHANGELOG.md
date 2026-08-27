@@ -7,6 +7,41 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added — a ledger for what we know from the sibling project, and a rule that keeps it honest
+
+Most of what this repo knows about the PowerPoint host was learned by
+PowerChart, a sibling add-in, over roughly 175 real-host rounds. SSF Merge has
+run zero real merges. That debt was being paid by hand-copying facts, and
+hand-copied facts go bad quietly.
+
+**`docs/SIBLING.md`** is now the single place that knowledge lives: every
+finding, where in PowerChart it came from, and what was done about it —
+including the ones that are **no exposure** here, which is a real answer and the
+one nobody writes down. An untriaged finding is indistinguishable from an
+unnoticed one.
+
+**The drift was measured, not assumed.** There were 44 citations across 24
+files. Sorting them found two kinds: a single run's observation ("a by-id
+clean-up reported 45 deletes and removed nothing") is true forever, and most
+citations are that. A COUNT OF ROUNDS is a live counter. Four source comments
+said "174 consecutive archived rounds" and one said "passed 174 of 174" — all
+correct the morning they were written, all wrong the moment round 175 runs. One
+had already drifted: the backlog paired a batch count from the measurement that
+reported 29.2s with a maximum of 31.1s from a later round.
+
+**The rule: a number copied from a live counter carries the date it was taken.**
+Dated, it stops being a claim and becomes a recording — never false, only older,
+and a reader can judge that. Where the number adds nothing, the phrasing that
+cannot decay is preferred instead ("every rung answered in every archived
+round"), and figures from two measurements are never paired.
+
+`test/sibling.test.ts` holds it. Two things it had to learn the hard way, both
+of which this repo already had a rule for: it is scoped to source comments and
+skips its own file, because the files that STATE the rule quote the sentences
+that break it — and it scans with comment prefixes stripped and lines joined,
+because the claim that actually rotted wrapped across two lines and a
+line-by-line version passed against the unfixed file.
+
 ### Removed — a Danish locale is no longer planned
 
 Dropped at the owner's decision. The backlog entry that carried it was wrong
