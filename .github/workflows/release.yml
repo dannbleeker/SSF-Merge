@@ -1,0 +1,94 @@
+name: Release
+
+# Manual only. A release is a decision, not a consequence of merging — and the
+# thing it publishes is a manifest somebody sideloads, which is the one artifact
+# in this repo that reaches a user's PowerPoint directly.
+#
+# The tag is created server-side by `gh release create`, because pushing a tag
+# from a session is rejected by the git proxy this project is developed through.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, without a leading v — e.g. 0.1.0"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+
+      # Everything `test` runs, because a release must not be the first thing to
+      # discover a red suite.
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run coverage
+      - run: npm run test:count
+
+      # The manifests about to be attached are regenerated from their source and
+      # compared. `test` already gates staleness — but "current in the tree" and
+      # "what this job is about to upload" are different questions, and a
+      # sibling project spent twelve days with a release whose manifests were
+      # neither.
+      - name: Manifests are current
+        run: |
+          node scripts/build-manifests.mjs
+          git diff --exit-code -- 'manifest*.xml' 'manifest*.json'
+
+      # Microsoft's own validator, on exactly the file being shipped.
+      - name: Manifests are valid
+        run: npx --yes office-addin-manifest validate manifest-prod.xml
+
+      # Production only, no localhost, and every manifest the documentation
+      # tells a reader to download is actually attached.
+      - name: Release assets are the ones the docs promise
+        run: node scripts/check-release.mjs
+
+      # Written to a file rather than piped, so the heredoc's indentation
+      # cannot reach the notes. An indented heredoc body keeps its leading
+      # spaces, which markdown renders as a code block — the whole release note
+      # in a grey box.
+      - name: Write the release notes
+        run: |
+          cat > /tmp/notes.md <<'NOTES'
+          Sideload **`manifest-prod.xml`** below. In PowerPoint on the web:
+          Home → Add-ins → More Add-ins → **My Add-ins** → Upload My Add-in.
+          Other platforms, and what does and does not need re-installing later,
+          are in [the manual](https://github.com/dannbleeker/SSF-Merge/blob/main/docs/MANUAL.md#installing-it).
+
+          Administrators deploying to a tenant want **`manifest-prod.json`**.
+
+          The pane itself is served from
+          <https://ssf-merge.struktureretsundfornuft.dk>, so most changes reach
+          you without re-installing anything. Only a change to the manifest
+          costs you a re-sideload, and the changelog says when that is.
+
+          The manifest's own `<Version>` is deliberately not this release
+          number: it is a separate sequence, bumped only when the manifest
+          changes, because that is exactly when Office needs to be told an
+          installed add-in has been updated.
+          NOTES
+          sed -i 's/^          //' /tmp/notes.md
+          cat /tmp/notes.md
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          gh release create "v${VERSION}" \
+            --target "${GITHUB_SHA}" \
+            --title "v${VERSION}" \
+            --notes-file /tmp/notes.md \
+            manifest-prod.xml manifest-prod.json

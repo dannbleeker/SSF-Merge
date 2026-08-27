@@ -1,0 +1,129 @@
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+// @ts-expect-error — plain .mjs tools with no types. The rules live THERE so the
+// workflow and this test cannot read different ones.
+import { RELEASE_ASSETS, assetsPromisedByDocs, releaseProblems } from "../scripts/release-assets.mjs";
+
+/**
+ * What a release ships.
+ *
+ * Every other gate in this repo reads the WORKING TREE; a user downloads the
+ * RELEASE. A sibling project had those diverge twice — once shipping the dev
+ * manifests, once with the README pointing at a `manifest-prod.xml` that was
+ * not in the release at all, for twelve days, with a correct release workflow
+ * sitting un-run. Both directions are checked here.
+ */
+const read = (name: string) => readFileSync(name, "utf8");
+const assets = RELEASE_ASSETS as string[];
+
+describe("the release as it stands", () => {
+  it("has nothing wrong with it", () => {
+    expect(releaseProblems(read)).toEqual([]);
+  });
+
+  it("ships the manifests and nothing else, because the pane is hosted", () => {
+    // A release of this repo is small on purpose: the only thing a user
+    // downloads is a manifest. Anything else here would be a second copy of
+    // something Pages already serves.
+    expect(assets).toEqual(["manifest-prod.xml", "manifest-prod.json"]);
+  });
+});
+
+describe("the documentation and the release cannot disagree", () => {
+  it("attaches every production manifest the docs tell people to download", () => {
+    // Read out of the PROSE, not from a list — the failure being guarded
+    // against is exactly a second list that drifts from the first.
+    const promised = (assetsPromisedByDocs() as string[]).filter((n) => n.includes("-prod"));
+    expect(promised.length).toBeGreaterThan(0);
+    for (const name of promised) expect(assets, `${name} is promised by the docs`).toContain(name);
+  });
+
+  it("catches the docs promising something the release does not carry", () => {
+    // The twelve-day failure, in one line.
+    expect(releaseProblems(read, ["manifest-prod.xml"], ["manifest-prod.xml", "manifest-prod.json"])).toEqual([
+      expect.stringContaining("does not attach it"),
+    ]);
+  });
+
+  it("does not demand a DEV manifest just because the docs mention one", () => {
+    // `manifest.xml` appears in contributor documentation. It is for people
+    // running the pane locally, and shipping it would point every installer at
+    // a localhost port nothing is listening on.
+    expect(releaseProblems(read, assets, ["manifest.xml", "manifest-prod.xml", "manifest-prod.json"])).toEqual([]);
+  });
+});
+
+describe("what a release must never ship", () => {
+  it("refuses a development manifest outright", () => {
+    expect(releaseProblems(read, ["manifest.xml"], [])).toEqual([expect.stringContaining("not a production manifest")]);
+  });
+
+  it("refuses a production manifest that points at localhost", () => {
+    // A release can be perfectly current and still be built from an origin that
+    // stopped being the production one.
+    const localhost = (name: string) =>
+      read(name).replaceAll("https://ssf-merge.struktureretsundfornuft.dk", "https://localhost:3000");
+    expect(releaseProblems(localhost, ["manifest-prod.xml"], [])).toEqual([expect.stringContaining("localhost")]);
+  });
+
+  it("refuses a manifest Office would reject", () => {
+    // Every rule the offline checker holds applies to the file being shipped,
+    // not only to the one in the tree.
+    const broken = (name: string) => read(name).replace("<Version>1.0.0.0</Version>", "<Version>0.1.0</Version>");
+    expect(releaseProblems(broken, ["manifest-prod.xml"], [])).toEqual([expect.stringContaining("below 1.0")]);
+  });
+
+  it("refuses an asset that is not there at all", () => {
+    const missing = () => {
+      throw new Error("no such file");
+    };
+    expect(releaseProblems(missing, ["manifest-prod.xml"], [])).toEqual([expect.stringContaining("is not there")]);
+  });
+});
+
+describe("the release workflow", () => {
+  /**
+   * The workflow with its prose removed.
+   *
+   * The comment at the top of the file EXPLAINS why the tag is created by
+   * `gh release create`, and the first version of these tests matched that
+   * sentence instead of the step — so "runs the pre-flight first" compared the
+   * comment's position with the check's and reported the order backwards.
+   * Third time in this repo that a guard has read prose as code; same fix as
+   * `manifest-rules.mjs` and `architecture.test.ts`.
+   */
+  const workflow = read(".github/workflows/release.yml")
+    .split("\n")
+    .filter((line) => !/^\s*#/.test(line))
+    .join("\n");
+
+  it("is manual only — a release is a decision, not a consequence of merging", () => {
+    expect(workflow).toContain("workflow_dispatch");
+    expect(workflow).not.toMatch(/^\s+push:/m);
+  });
+
+  it("runs the pre-flight before it creates anything", () => {
+    // The order is the guarantee. A tag created before the checks is a release
+    // that has to be yanked rather than refused.
+    const check = workflow.indexOf("scripts/check-release.mjs");
+    const create = workflow.indexOf("gh release create");
+    expect(check).toBeGreaterThan(-1);
+    expect(create).toBeGreaterThan(check);
+  });
+
+  it("regenerates the manifests and fails if the tree was stale", () => {
+    expect(workflow).toContain("scripts/build-manifests.mjs");
+    expect(workflow).toContain("git diff --exit-code");
+  });
+
+  it("validates with Microsoft's own tool, on the file it is shipping", () => {
+    expect(workflow).toContain("office-addin-manifest validate manifest-prod.xml");
+  });
+
+  it("attaches exactly the assets the rules name", () => {
+    // The workflow's own upload list, against the list every check above used.
+    const upload = workflow.slice(workflow.indexOf("gh release create"));
+    expect(upload.length, "the create step is in the file").toBeGreaterThan(20);
+    for (const name of assets) expect(upload, `${name} is uploaded`).toContain(name);
+  });
+});

@@ -19,7 +19,8 @@
     "dev": "vite",
     "build": "vite build",
     "icons": "node scripts/build-icons.mjs",
-    "manifests": "node scripts/build-manifests.mjs"
+    "manifests": "node scripts/build-manifests.mjs",
+    "release:check": "node scripts/check-release.mjs"
   },
   "dependencies": {
     "@xmldom/xmldom": "^0.9.8",

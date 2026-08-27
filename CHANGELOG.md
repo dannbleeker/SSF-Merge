@@ -7,6 +7,52 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added — a release workflow, and a gate on the thing every other gate misses
+
+Every check in this repo reads the WORKING TREE. A user downloads the RELEASE,
+and on a sibling project those two diverged twice — once shipping the DEV
+manifests, and once with the README pointing at a `manifest-prod.xml` that was
+not in the release at all. That second one stood for twelve days with a correct
+release workflow sitting un-run, because nothing compared the documentation with
+what was actually attached.
+
+`scripts/release-assets.mjs` compares them, in both directions:
+
+- an asset that is not a production manifest is refused outright — shipping a
+  dev manifest points every installer at a localhost port nothing is listening
+  on;
+- every rule `scripts/manifest-rules.mjs` holds is applied to the FILE BEING
+  SHIPPED rather than to the one in the tree, through an injected reader, so
+  the workflow checks the bytes it is about to upload;
+- and every production manifest the documentation tells a reader to download
+  must be attached. The list of those is read out of the PROSE in
+  `docs/MANUAL.md` and `README.md`, not written down a second time — a second
+  list is a third thing that can disagree with the other two.
+
+The workflow (`.github/workflows/release.yml`) is manual only, because a release
+is a decision rather than a consequence of merging. It runs everything `test`
+runs, regenerates the manifests and fails if the tree was stale, validates with
+Microsoft's own tool on the exact file being shipped, runs the asset pre-flight,
+and only then creates the tag — server-side through `gh release create`, since
+the git proxy this project is developed through rejects a pushed tag. A tag made
+before the checks is a release that has to be yanked instead of refused, and
+there is a test on that ORDER.
+
+Two bugs were caught in the workflow before it ever ran. `--generate-notes`
+alongside `--notes-file` is ambiguous, and an indented heredoc keeps its leading
+spaces — so the whole release note would have rendered as a grey code block. The
+notes are written to a file and dedented now.
+
+And the test for it read the workflow's own COMMENT rather than its steps: the
+comment explains why the tag is created by `gh release create`, so "the
+pre-flight runs first" compared the comment's position with the check's and
+reported the order backwards. Third time in this repo that a guard has read
+prose as code — after `manifest-rules.mjs` and `architecture.test.ts` — and the
+same fix each time.
+
+The manual now points at the latest release rather than at a raw file in the
+repository.
+
 ### Added — the preview step, and a refusal of the design it was specified with
 
 Step 3 shows one row on real slides, so all four steps of the pane are built.
