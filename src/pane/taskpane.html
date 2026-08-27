@@ -5,6 +5,25 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>SSF Merge</title>
     <link rel="stylesheet" href="./taskpane.css" />
+
+    <!-- Office.js, and it is NOT optional: a task pane is an ordinary web page
+         and the host injects nothing into it. Without this line `Office` is
+         undefined, `main.ts` throws `ReferenceError` on its first statement,
+         and the pane renders the header and nothing else — on every host, with
+         no message anywhere. It was missing until 2026-08-27 and nothing here
+         could see it, because `scripts/pane-shots.mjs` imports `render.ts`
+         directly and never loads `main.ts` at all: every screenshot was
+         perfect and the entry point had never run.
+
+         Classic script, not a module, and deliberately not `async`: `main.ts`
+         is `type="module"` and therefore deferred, so a blocking script here
+         is guaranteed to have defined `Office` before it executes. Mark this
+         `async` and the ordering becomes a race the pane loses intermittently.
+
+         Pinned to the /lib/1/ CDN path Microsoft documents, which is the only
+         supported way to load it — a copy vendored into the bundle is not
+         serviceable and Microsoft's own guidance is against it. -->
+    <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
   </head>
   <body>
     <header><b>SSF</b><span>Merge</span></header>
@@ -13,5 +32,34 @@
          in step with render.ts, and it would be the copy nobody updates. -->
     <div id="pane"></div>
     <script type="module" src="./main.ts"></script>
+
+    <!-- What the pane says when Office.js did not arrive.
+         The script above it is fetched from Microsoft's CDN, and a corporate
+         proxy, an offline laptop or a blocked egress rule all end the same way:
+         `Office` undefined, `main.ts` dead on its first statement, and a pane
+         showing its own header and nothing else. That is the worst thing this
+         add-in can do, because there is nothing for the user to report and
+         nothing for anyone to search for.
+
+         Conditioned on BOTH facts, never on the timer alone: if `Office`
+         arrived then `main.ts` owns the pane, and if the pane already has
+         content something rendered, so this must not paint over it.
+
+         Deliberately inline and dependency-free — it exists precisely for the
+         case where fetching a script failed, so it may not fetch one. -->
+    <script>
+      window.addEventListener("load", function () {
+        var pane = document.getElementById("pane");
+        if (typeof Office !== "undefined" || !pane || pane.innerHTML !== "") return;
+        var p = document.createElement("p");
+        p.className = "blocked";
+        p.textContent =
+          "SSF Merge could not load Office.js from Microsoft's servers " +
+          "(appsforoffice.microsoft.com), so it cannot talk to PowerPoint. " +
+          "This is usually a network or proxy rule rather than a fault in the " +
+          "add-in. Check that address is reachable, then close and reopen the pane.";
+        pane.append(p);
+      });
+    </script>
   </body>
 </html>

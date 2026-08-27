@@ -3,10 +3,15 @@
 Mail merge for PowerPoint. You build one slide, or one block of slides, put
 placeholders where the data goes, and SSF Merge produces one copy per row.
 
-> **Status.** The engine is built and tested; the task pane is not written yet.
-> Sections marked *planned* describe behaviour that is designed and agreed but
-> not yet shipped. Nothing here is aspirational: a section moves out of
-> *planned* in the same change that makes it true.
+> **Status.** The engine, the task pane and the four steps are built and
+> shipped. What is still *planned* is marked, and it is now single options
+> inside sections rather than whole sections: sending the merge somewhere other
+> than this deck, doing anything to the template afterwards, and reading data
+> from a file or from Excel.
+>
+> Nothing here is aspirational: a line moves out of *planned* in the same change
+> that makes it true. This block said the pane was not written for some days
+> after it shipped, which is the failure it exists to prevent.
 
 ## Contents
 
@@ -15,9 +20,9 @@ placeholders where the data goes, and SSF Merge produces one copy per row.
 - [Formats](#formats)
 - [What repeats](#what-repeats)
 - [Your data](#your-data)
-- [Where the merged slides go](#where-the-merged-slides-go) *(planned)*
-- [What happens to the template](#what-happens-to-the-template) *(planned)*
-- [The pane](#the-pane) *(partly planned)*
+- [Where the merged slides go](#where-the-merged-slides-go) *(one of three)*
+- [What happens to the template](#what-happens-to-the-template) *(default only)*
+- [The pane](#the-pane)
 - [Installing it](#installing-it)
 - [Tags SSF Merge writes](#tags-ssf-merge-writes)
 - [Limits](#limits)
@@ -184,22 +189,31 @@ clears the filter, because a row number means nothing against different data.
 
 ## Where the merged slides go
 
-*Planned.* Three choices:
+**Into this deck, after the template block.** That is what ships, it is not a
+setting, and the merge screen says where the slides will land and how large the
+deck will be afterwards before you press anything.
 
-1. **Into this deck**, after the template block.
-2. **Into a new presentation**, which opens beside the current one. Better for
-   large merges, because a very long deck is slow to edit.
-3. **One file per row**, saved to OneDrive. Requires signing in.
+Two more destinations are designed and not built:
+
+- **Into a new presentation**, which would open beside the current one. Better
+  for large merges, because a very long deck is slow to edit. *Planned.*
+- **One file per row**, saved to OneDrive. *Planned*, and blocked rather than
+  merely unbuilt: a task pane cannot hand you a downloaded file
+  ([office-js#1511](https://github.com/OfficeDev/office-js/issues/1511)), so it
+  needs an upload-and-link route.
 
 ## What happens to the template
 
-*Planned.* When merging into the same deck, the template block can:
+**Nothing. It stays exactly where it is**, which is what ships and what makes a
+merge re-runnable: change a row, run it again. A merge only ever ADDS slides.
 
-- **stay where it is** (default) — you can run the merge again later;
-- **move to the end** — out of the way, still re-runnable. PowerPoint's add-in
-  API cannot hide a slide, so this is as close as it gets;
-- **be deleted** — one way. Deleting ends re-run for that deck, and it happens
-  only after the merge is confirmed to have landed.
+Two alternatives are designed and not built, both of them one-way enough to be
+worth doing carefully rather than quickly:
+
+- **move it to the end** — out of the way, still re-runnable. PowerPoint's
+  add-in API cannot hide a slide, so this is as close as it gets. *Planned.*
+- **delete it** — ends re-run for that deck, so it would happen only after the
+  merge is confirmed to have landed. *Planned.*
 
 ## Tags SSF Merge writes
 
@@ -366,9 +380,18 @@ itself, which is hosted at
 <https://ssf-merge.struktureretsundfornuft.dk>. Nothing is installed onto
 your machine.
 
-Download **`manifest-prod.xml`** from the
-[latest release](https://github.com/dannbleeker/SSF-Merge/releases/latest) and
-sideload it:
+Get **`manifest-prod.xml`** and sideload it. Two places to get it, and the
+second one only once a version has been cut:
+
+- [the file on `main`](https://github.com/dannbleeker/SSF-Merge/raw/main/manifest-prod.xml)
+  — always current, and the right one while the add-in is still being tested;
+- the [latest release](https://github.com/dannbleeker/SSF-Merge/releases/latest),
+  once there is one. **There is none yet**, so that link is a 404 today; this
+  manual said to use it before anybody checked.
+
+Both name the same hosted page, so the pane you get is the same either way — the
+manifest is only a pointer, and it is the pointer that is versioned, not the
+add-in.
 
 | where | how |
 | --- | --- |
@@ -409,7 +432,7 @@ missing and what it costs you, which is worth more than a silent absence.
 **The cost of that choice, stated plainly.** Because the manifest declares
 nothing, Microsoft's own validator reports the add-in as installable on every
 PowerPoint back to **2013 on Windows** — and PowerPoint 2013 does not have
-PowerPointApi 1.3. So on an old enough PowerPoint the add-in installs, appears
+PowerPointApi 1.2. So on an old enough PowerPoint the add-in installs, appears
 on the Home tab, opens, and then tells you it cannot run and why. That is the
 trade: a message you can read and act on, instead of a button that was never
 there.

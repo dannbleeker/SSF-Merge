@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { STEP_TITLE } from "../src/pane/steps.js";
 
 /**
  * The lockstep guard.
@@ -47,6 +48,29 @@ describe("the manual keeps up with the code", () => {
     // The manual documents a design that is ahead of the code. That is fine as
     // long as it never claims to be behind it.
     expect(manual).toContain("planned");
+  });
+
+  it("names every step the pane actually renders", () => {
+    for (const title of Object.values(STEP_TITLE)) {
+      expect(manual, `step ${title} is not in the manual`).toContain(title);
+    }
+  });
+
+  it("does not call the pane planned, because the pane is built", () => {
+    /**
+     * The direction the test above cannot see. It asserts the word "planned"
+     * APPEARS, which stays true forever and is satisfied by a manual describing
+     * shipped work as unbuilt — which is what happened: the status block said
+     * "the task pane is not written yet" for days after the pane shipped, on
+     * the first screen of the document somebody reads before installing.
+     *
+     * Claiming less than you have is not the harmless direction. It tells a
+     * reader not to look for the thing that is there.
+     */
+    const section = manual.slice(manual.indexOf("## The pane"));
+    const body = section.slice(0, section.indexOf("\n## ", 3));
+    expect(body.toLowerCase(), "the pane section is marked planned").not.toContain("planned");
+    expect(manual).not.toContain("the task pane is not written");
   });
 });
 
