@@ -70,11 +70,6 @@ Blocked by WebView2: blob downloads from a task pane do not work
 ([office-js#1511](https://github.com/OfficeDev/office-js/issues/1511)). The
 route is Graph upload plus a link, or `openBrowserWindow` to a download page.
 
-### Row filters
-**Priority: medium.** Feasibility: high.
-A checkbox list with search ships first. An expression language on a 340 px pane
-is a v2 question, and usage will say whether it is worth answering.
-
 ### Charts and SmartArt
 **Priority: medium.** Feasibility: low to medium.
 Text lives in `charts/chart*.xml` and `diagrams/data*.xml` with embedded
@@ -82,9 +77,24 @@ workbooks. Until it is built, the pane must say so out loud rather than skipping
 a field the user placed.
 
 ### Danish locale
-**Priority: low.** Feasibility: high.
-The string table exists from the first pane commit; the layout assumes nothing
-about word length. English ships first because the Marketplace listing is English.
+**Priority: low.** Feasibility: medium.
+**There is no string table.** This entry claimed one "exists from the first pane
+commit" and it does not: every user-visible string in `steps.ts`, `render.ts` and
+`summary.ts` is an inline literal, and several are assembled from fragments
+(counts, pluralisation, "slide" versus "slides"). Extracting them is the bulk of
+this item, and the assembled ones do not survive extraction unchanged — Danish
+pluralises and inflects differently, so a sentence built by concatenating an
+English count onto an English noun has to become a whole-sentence lookup first.
+The layout does assume nothing about word length, which is the half of the
+original claim that holds. English ships first because the Marketplace listing
+is English.
+
+### A filter expression language
+**Priority: low.** Feasibility: medium.
+Row filters shipped as a searchable checkbox list. An expression — `Region =
+"North" and Revenue > 1000` — is the thing a checkbox list cannot do on 400 rows,
+and it is a parser, an evaluator and an error surface on a 340 px pane. Usage
+will say whether it is worth answering; nothing has asked for it yet.
 
 ## Rejected — do not re-propose
 

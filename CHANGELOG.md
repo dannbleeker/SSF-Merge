@@ -7,6 +7,29 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added — row filters
+
+**A searchable checkbox list picks which rows merge.** Pasting 400 rows and
+wanting 380 of them was previously a trip back to Excel to delete twenty and
+paste again. The list is closed by default — a 340 px pane with 400 checkboxes
+open is not a pane — and it says how many rows are in and how many are out on
+its own header, so the state is readable without opening it.
+
+The search box filters by any cell in the row, not only the first column, and
+filtering does not change what is ticked: the ticks are the filter, the search
+is a way to reach them. Untick a row while a search is narrowing the list and
+that row stays unticked when the search is cleared.
+
+**The list is capped at 60 rows shown and SAYS SO.** A pane that silently draws
+the first 60 of 400 looks exactly like a pane that has 60 rows, so the
+remainder is counted out loud under the list, with the suggestion to search.
+
+**Every count downstream is the INCLUDED count.** The merge summary, the button
+("Add 380 slides"), and the preview all read the filtered set, not the pasted
+one. Unticking every row blocks the merge with a sentence saying so rather than
+running a merge that adds nothing. A new paste clears the filter, because the
+row numbers a filter holds are meaningless against different data.
+
 ### Added — two probe questions, and the deck read paged against the answer
 
 **`deckSlideIds` pages the deck's id list, by position.**

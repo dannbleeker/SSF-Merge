@@ -333,3 +333,47 @@ button.use-selection {
   align-self: flex-start;
   margin-top: -4px;
 }
+
+/* The row picker. Closed it is one link; open it is a search box and a list
+   that scrolls inside itself rather than pushing the button off the pane. */
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+button.rows-toggle {
+  align-self: flex-start;
+}
+.rowlist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--hair);
+  border-radius: 4px;
+  background: var(--surface);
+}
+.rowlist li {
+  border-bottom: 1px solid var(--hair);
+}
+.rowlist li:last-child {
+  border-bottom: none;
+}
+.rowlist label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  cursor: pointer;
+  /* One line per row: a long first column must not wrap the list into a wall. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rowlist input {
+  width: auto;
+  flex: none;
+  margin: 0;
+  accent-color: var(--blue);
+}

@@ -339,3 +339,82 @@ describe("the merge card is a forecast", () => {
     expect(paneFor(ready, "merge").querySelectorAll(".card.summary")).toHaveLength(1);
   });
 });
+
+describe("the row picker", () => {
+  const records = {
+    columns: [{ name: "Name", type: "text" as const }],
+    rows: [{ Name: "Ada" }, { Name: "Grace" }, { Name: "Katherine" }],
+  };
+  const withData: PaneState = { ...ready, records, rows: 3 };
+
+  it("is CLOSED by default — 240 rows is not a screen", () => {
+    const pane = paneFor(withData, "merge");
+    expect(pane.querySelector('[data-action="rows"]')).not.toBeNull();
+    expect(pane.querySelectorAll(".rowlist")).toHaveLength(0);
+  });
+
+  it("says how many rows there are while it is shut", () => {
+    expect(paneFor(withData, "merge").querySelector('[data-action="rows"]')?.textContent).toContain("All 3 rows");
+  });
+
+  it("says how many were taken out, once some were", () => {
+    const some = { ...withData, excluded: [1] };
+    expect(paneFor(some, "merge").querySelector('[data-action="rows"]')?.textContent).toContain("1 row taken out");
+  });
+
+  it("lists the rows with a checkbox each when open", () => {
+    const pane = paneFor({ ...withData, rowsOpen: true }, "merge");
+    const boxes = pane.querySelectorAll<HTMLInputElement>('.rowlist input[type="checkbox"]');
+    expect(boxes).toHaveLength(3);
+    expect(Array.from(boxes).every((b) => b.checked)).toBe(true);
+  });
+
+  it("unticks the rows that are out, as a PROPERTY not an attribute", () => {
+    // Same reason the slide-number boxes use the property: `checked` as an
+    // attribute is the default a control reverts to, and this pane rebuilds
+    // itself on every change.
+    const pane = paneFor({ ...withData, rowsOpen: true, excluded: [1] }, "merge");
+    const boxes = pane.querySelectorAll<HTMLInputElement>('.rowlist input[type="checkbox"]');
+    expect(Array.from(boxes).map((b) => b.checked)).toEqual([true, false, true]);
+    expect(boxes[1]?.hasAttribute("checked")).toBe(false);
+  });
+
+  it("filters the list by the search box", () => {
+    const pane = paneFor({ ...withData, rowsOpen: true, rowSearch: "grace" }, "merge");
+    expect(pane.querySelectorAll(".rowlist li")).toHaveLength(1);
+    expect(pane.querySelector(".rowlist li")?.textContent).toContain("Grace");
+  });
+
+  it("says so when nothing matches, rather than showing an empty box", () => {
+    const pane = paneFor({ ...withData, rowsOpen: true, rowSearch: "zzz" }, "merge");
+    expect(pane.textContent).toContain("No row matches that");
+  });
+
+  it("COUNTS what it did not show rather than dropping it silently", () => {
+    // A list that stops without saying so is one the user believes they have
+    // read. 80 rows against a cap of 60.
+    const many = {
+      columns: records.columns,
+      rows: Array.from({ length: 80 }, (_, i) => ({ Name: `Person ${i}` })),
+    };
+    const pane = paneFor({ ...ready, records: many, rows: 80, rowsOpen: true }, "merge");
+    expect(pane.querySelectorAll(".rowlist li")).toHaveLength(60);
+    expect(pane.textContent).toContain("80 matches");
+  });
+
+  it("puts the INCLUDED count in the summary card, not the pasted one", () => {
+    const some = { ...withData, excluded: [1, 2], deckSize: 12 };
+    // 1 row x 3 slides.
+    expect(paneFor(some, "merge").querySelector(".facts")?.textContent).toContain("3 slides added");
+  });
+
+  it("writes a row's label as TEXT — it came from a pasted file", () => {
+    const nasty = "<img src=x onerror=alert(1)>";
+    const pane = paneFor(
+      { ...ready, records: { columns: records.columns, rows: [{ Name: nasty }] }, rows: 1, rowsOpen: true },
+      "merge",
+    );
+    expect(pane.querySelectorAll("img")).toHaveLength(0);
+    expect(pane.querySelector(".rowlist li")?.textContent).toContain(nasty);
+  });
+});

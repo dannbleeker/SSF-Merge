@@ -29,6 +29,7 @@ one set of slides per row. All four steps of the pane are built.
 | Picking the template block by selecting slides | done |
 | Ribbon icons, drawn in code rather than checked in as binaries | done |
 | Preview: the first row merged into the deck, then swept | done |
+| Row filters — a searchable checkbox list picking which rows merge | done |
 
 ## How it works
 

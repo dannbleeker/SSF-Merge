@@ -16,12 +16,16 @@ import {
   STEP_TITLE,
   blockedReason,
   chosenBlock,
+  includedCount,
+  rowIncluded,
+  rowLabel,
   orangeHolder,
   primary,
   readBlockDraft,
   readPastedTable,
   slidesPerRecord,
   statusOf,
+  visibleRows,
   unmatchedFields,
 } from "./steps.js";
 import type { OrangeHolder, PaneState, StepId } from "./steps.js";
@@ -252,8 +256,12 @@ function body(doc: Document, state: PaneState, current: StepId, orange: OrangeHo
     // screen say "240 rows x 3 slides" twice, which reads as a rendering bug.
     // The card carries the CONSEQUENCE, which is the other half of the answer.
     const card = el(doc, "div", { class: "card summary" });
-    card.append(el(doc, "p", { class: "facts", text: mergeSummary(block, state.rows, state.deckSize ?? 0) }));
+    card.append(el(doc, "p", { class: "facts", text: mergeSummary(block, includedCount(state), state.deckSize ?? 0) }));
     out.push(card);
+  }
+
+  if (current === "merge" && state.records && state.rows) {
+    out.push(rowPicker(doc, state));
   }
   return out;
 }
@@ -330,6 +338,85 @@ function dataControl(doc: Document, state: PaneState): HTMLElement {
       el(doc, "p", {
         class: "muted",
         text: `${plural(state.rows, "row")} · ${state.columns.join(", ")}`,
+      }),
+    );
+  }
+  return wrap;
+}
+
+/**
+ * Which rows to merge.
+ *
+ * CLOSED by default, and that is the whole shape of the control: 240 rows is
+ * not a screen, and the overwhelmingly common case is "merge all of them". A
+ * user who never opens it should not pay a single pixel for it, so shut it
+ * reads as one line of summary and a link.
+ *
+ * A checkbox list with a search box, which is what the backlog specified and
+ * what usage should get a chance to argue with before anything cleverer is
+ * built. An expression language on a 320-pixel pane is a v2 question.
+ *
+ * The list is capped: a search that matches two hundred rows renders two
+ * hundred checkboxes, and at that point the pane is a scroll bar. What is over
+ * the cap is COUNTED rather than silently dropped — a list that stops without
+ * saying so is one the user believes they have read.
+ */
+const ROW_LIST_CAP = 60;
+
+function rowPicker(doc: Document, state: PaneState): HTMLElement {
+  const records = state.records;
+  const wrap = el(doc, "div", { class: "rows" });
+  const total = records ? records.rows.length : 0;
+  const taken = total - includedCount(state);
+
+  const summary = el(doc, "button", {
+    class: "back rows-toggle",
+    text: state.rowsOpen
+      ? "Hide the rows"
+      : taken === 0
+        ? `All ${plural(total, "row")} — choose which`
+        : `${plural(taken, "row")} taken out — choose which`,
+    attrs: { "data-action": "rows" },
+  });
+  wrap.append(summary);
+  if (!state.rowsOpen || !records) return wrap;
+
+  const label = el(doc, "label", { class: "field" });
+  label.append(el(doc, "span", { class: "caption", text: "Search the rows" }));
+  label.append(
+    el(doc, "input", {
+      value: state.rowSearch ?? "",
+      attrs: { type: "text", autocomplete: "off", "data-field": "rowSearch" },
+    }),
+  );
+  wrap.append(label);
+
+  const matches = visibleRows(records, state.rowSearch ?? "");
+  const shown = matches.slice(0, ROW_LIST_CAP);
+  const list = el(doc, "ul", { class: "rowlist" });
+  for (const index of shown) {
+    const item = el(doc, "li");
+    const line = el(doc, "label");
+    const box = el(doc, "input", { attrs: { type: "checkbox", "data-row": String(index) } });
+    // The PROPERTY, not the attribute — same reason the two slide-number boxes
+    // use it: `checked` as an attribute is the default a control reverts to,
+    // and this pane rebuilds itself on every change.
+    box.checked = rowIncluded(state, index);
+    line.append(box);
+    line.append(el(doc, "span", { text: rowLabel(records, index) }));
+    item.append(line);
+    list.append(item);
+  }
+  wrap.append(list);
+
+  if (matches.length === 0) {
+    wrap.append(el(doc, "p", { class: "muted", text: "No row matches that." }));
+  } else if (matches.length > shown.length) {
+    // Counted, never silently dropped.
+    wrap.append(
+      el(doc, "p", {
+        class: "muted",
+        text: `Showing ${shown.length} of ${plural(matches.length, "match", "matches")} — search to narrow it.`,
       }),
     );
   }

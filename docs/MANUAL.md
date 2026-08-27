@@ -165,6 +165,23 @@ Each column's type is detected from its values: a column is a number only if
 every filled cell is one, and a date only if every filled cell is an
 unambiguous date. One "n/a" makes the column text, which is the safe answer.
 
+### Choosing which rows merge
+
+Every pasted row is in by default. Under the paste box is a line saying how many
+rows are in and how many are out; opening it shows a checkbox per row, labelled
+with that row's first column, and a search box above them.
+
+Search matches any cell in a row, not only the first column. It changes what the
+list SHOWS, never what is ticked — so you can search for a region, untick the
+three rows you do not want, clear the search, and those three stay out.
+
+The list shows at most 60 rows at a time and says how many it did not show.
+Search to reach the rest.
+
+The merge button, the summary and the preview all count the ticked rows. Untick
+everything and the button says so instead of merging nothing. Pasting new data
+clears the filter, because a row number means nothing against different data.
+
 ## Where the merged slides go
 
 *Planned.* Three choices:

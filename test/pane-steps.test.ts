@@ -4,14 +4,19 @@ import {
   STEPS,
   blockedReason,
   chosenBlock,
+  firstIncludedRow,
   firstRowOnly,
+  includedCount,
+  includedRecords,
   nextStep,
   primary,
   readBlockDraft,
   readPastedTable,
+  rowLabel,
   slidesPerRecord,
   statusOf,
   unmatchedFields,
+  visibleRows,
 } from "../src/pane/steps.js";
 import type { PaneState, StepId } from "../src/pane/steps.js";
 
@@ -334,5 +339,104 @@ describe("which row a preview shows", () => {
 
   it("answers an empty set with an empty set rather than a row of nothing", () => {
     expect(firstRowOnly({ columns: records.columns, rows: [] }).rows).toEqual([]);
+  });
+});
+
+describe("taking rows out of the merge", () => {
+  const records = {
+    columns: [
+      { name: "Name", type: "text" as const },
+      { name: "City", type: "text" as const },
+    ],
+    rows: [
+      { Name: "Ada", City: "London" },
+      { Name: "Grace", City: "New York" },
+      { Name: "", City: "Aarhus" },
+      { Name: "Katherine", City: "Hampton" },
+    ],
+  };
+  const withData: PaneState = { ...ready, records, rows: 4 };
+
+  it("labels a row by its first column", () => {
+    expect(rowLabel(records, 0)).toBe("Ada");
+  });
+
+  it("falls back to the position when that cell is empty", () => {
+    // The row still needs something to click.
+    expect(rowLabel(records, 2)).toBe("Row 3");
+  });
+
+  it("searches EVERY column, not just the labelled one", () => {
+    // Someone looking for Aarhus is looking for the row with Aarhus in it, and
+    // whether that is the column the label came from is not something they
+    // should have to know.
+    expect(visibleRows(records, "aarhus")).toEqual([2]);
+    expect(visibleRows(records, "ada")).toEqual([0]);
+  });
+
+  it("matches case-insensitively, and everything on an empty query", () => {
+    expect(visibleRows(records, "LONDON")).toEqual([0]);
+    expect(visibleRows(records, "")).toEqual([0, 1, 2, 3]);
+    expect(visibleRows(records, "   ")).toEqual([0, 1, 2, 3]);
+  });
+
+  it("merges everything when nothing has been touched", () => {
+    // The default has to be "all", which is why the state holds the EXCLUDED
+    // rows: an included-list would default to empty and merge nothing.
+    expect(includedCount(withData)).toBe(4);
+    expect(includedRecords(withData)?.rows).toHaveLength(4);
+  });
+
+  it("leaves out the rows that were taken out, keeping order and columns", () => {
+    const some: PaneState = { ...withData, excluded: [1, 3] };
+    expect(includedCount(some)).toBe(2);
+    const left = includedRecords(some);
+    expect(left?.rows.map((r) => r.Name)).toEqual(["Ada", ""]);
+    // A filter removes rows and nothing else.
+    expect(left?.columns).toEqual(records.columns);
+  });
+
+  it("counts a duplicate exclusion once", () => {
+    // A repeated index would otherwise subtract the same row twice and report
+    // fewer rows than will merge.
+    expect(includedCount({ ...withData, excluded: [1, 1, 1] })).toBe(3);
+  });
+
+  it("ignores an exclusion that is not a row", () => {
+    expect(includedCount({ ...withData, excluded: [-1, 99] })).toBe(4);
+  });
+
+  it("counts from `rows` when the state has a count but no records", () => {
+    // A state can carry the count without the data — the pane knows how many
+    // rows it has before it needs them. Reading only `records` made this
+    // answer ZERO for every such state, which blocked the merge and emptied
+    // the button's number.
+    expect(includedCount({ ...ready, rows: 240 })).toBe(240);
+    expect(includedCount({ ...ready, rows: 240, excluded: [0, 1] })).toBe(238);
+  });
+
+  it("puts the INCLUDED count on the button, not the pasted one", () => {
+    const some: PaneState = { ...withData, excluded: [1, 3] };
+    // 2 rows x 3 slides.
+    expect(primary(some, "merge").label).toBe("Add 6 slides");
+  });
+
+  it("blocks the merge when every row is unticked, and says which it is", () => {
+    // Not the same as having no data at all: this was deliberate, so the
+    // sentence has to name what the user did rather than say "attach data".
+    const none: PaneState = { ...withData, excluded: [0, 1, 2, 3] };
+    expect(blockedReason(none, "merge")).toContain("unticked");
+    expect(primary(none, "merge").enabled).toBe(false);
+  });
+
+  it("previews the first row that will MERGE, not the first pasted", () => {
+    // A preview of a row the user has unticked is a preview of something
+    // nobody is going to get.
+    const some: PaneState = { ...withData, excluded: [0] };
+    expect(firstIncludedRow(some)?.rows).toEqual([{ Name: "Grace", City: "New York" }]);
+  });
+
+  it("has no row to preview when they are all out", () => {
+    expect(firstIncludedRow({ ...withData, excluded: [0, 1, 2, 3] })).toBeUndefined();
   });
 });
