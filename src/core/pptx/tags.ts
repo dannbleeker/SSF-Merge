@@ -24,7 +24,14 @@ export const TAG_RUN = "SSF_MERGE_RUN";
 export const TAG_BLOCK = "SSF_MERGE_BLOCK";
 export const TAG_SEQ = "SSF_MERGE_SEQ";
 export const TAG_RECORD = "SSF_MERGE_RECORD";
-export const TAG_TEMPLATE = "SSF_MERGE_TEMPLATE";
+// There was a TAG_TEMPLATE here, "the text to put back when preview ends". It
+// existed for a preview that wrote one row onto the real template slide through
+// Office.js and restored it afterwards — a design this repo's own rejected list
+// forbids in the same breath, because setting a shape's text that way
+// re-authors it (office-js#5858) and restoring goes through the same API that
+// did the damage. The text would come back; the formatting would not, silently,
+// on the master copy every merged slide is cloned from. A preview is an
+// ordinary one-row merge now, inserted and then swept, so nothing is stored.
 
 function xmlAttr(s: string): string {
   return s

@@ -9,8 +9,8 @@ Part of the SSF add-in family from
 ## Status
 
 Early, and installable: sideload `manifest-prod.xml`, press **Mail merge** on
-the Home tab, name a block of slides, paste a table, and get one set of slides
-per row. The preview step is the one part of the wizard still to build.
+the Home tab, name a block of slides, paste a table, look at one row, and get
+one set of slides per row. All four steps of the pane are built.
 
 | Piece | State |
 | --- | --- |
@@ -26,7 +26,7 @@ per row. The preview step is the one part of the wizard still to build.
 | Task pane — four steps, the block control, the paste box, the merge button | done |
 | Manifests — XML and unified JSON, dev and prod, from one source | done |
 | Ribbon icons, drawn in code rather than checked in as binaries | done |
-| Preview: one row on the real slide, then the template back | not started |
+| Preview: the first row merged into the deck, then swept | done |
 
 ## How it works
 

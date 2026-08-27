@@ -24,10 +24,15 @@ const office = vi.hoisted(() => ({
   ready: vi.fn(() => ({ ok: true, detail: "fine" })),
   inspectBlock: vi.fn<(r: { from: number; to: number }) => Promise<unknown>>(),
   runMerge: vi.fn<(r: unknown) => Promise<unknown>>(),
+  undoMerge: vi.fn<(o: unknown) => Promise<unknown>>(),
 }));
 
 vi.mock("../src/office/powerpoint.js", () => ({ ready: office.ready, slideCount: office.slideCount }));
-vi.mock("../src/office/merge.js", () => ({ inspectBlock: office.inspectBlock, runMerge: office.runMerge }));
+vi.mock("../src/office/merge.js", () => ({
+  inspectBlock: office.inspectBlock,
+  runMerge: office.runMerge,
+  undoMerge: office.undoMerge,
+}));
 
 /** A promise plus the handles to settle it, so a call can be held open. */
 function deferred<T>() {
@@ -104,13 +109,16 @@ async function reachMerge(): Promise<void> {
   await settle();
   type("paste", "First\tLast\nAda\tLovelace\nGrace\tHopper");
   primary().click(); // fields -> preview
-  primary().click(); // preview -> merge
+  // The preview step's primary SHOWS a row rather than advancing, so the way
+  // forward is the link beside it.
+  (pane().querySelector("[data-forward]") as HTMLElement).click();
 }
 
 beforeEach(() => {
   office.slideCount.mockReset().mockResolvedValue(12);
   office.inspectBlock.mockReset();
   office.runMerge.mockReset();
+  office.undoMerge.mockReset();
   office.ready.mockReturnValue({ ok: true, detail: "fine" });
 });
 
@@ -202,7 +210,7 @@ describe("a merge that is still running", () => {
     (pane().querySelector("[data-back]") as HTMLElement).click(); // fields
     type("paste", "First\tLast\nAda\tLovelace");
     primary().click(); // fields -> preview
-    primary().click(); // preview -> merge
+    (pane().querySelector("[data-forward]") as HTMLElement).click(); // -> merge
     expect(primary().textContent).toBe("Add 3 slides");
     expect(primary().disabled).toBe(false);
   });
@@ -325,5 +333,129 @@ describe("the caret", () => {
       expect(field(name).getAttribute("type"), name).toBe("text");
       expect(field(name).getAttribute("inputmode"), name).toBe("numeric");
     }
+  });
+});
+
+describe("the preview", () => {
+  /** Walk to the preview step with a block and two rows in hand. */
+  async function reachPreview(): Promise<void> {
+    await openPane();
+    await settle();
+    type("from", "4");
+    type("to", "6");
+    office.inspectBlock.mockResolvedValueOnce(REPORT);
+    primary().click();
+    await settle();
+    type("paste", "First\tLast\nAda\tLovelace\nGrace\tHopper");
+    primary().click(); // fields -> preview
+  }
+
+  const PREVIEW = { ...OUTCOME, added: 3, detail: "3 slides added after slide 12." };
+
+  it("runs the ORDINARY merge over one row", async () => {
+    // The whole value of the step. A preview rendered by some other route is a
+    // preview of something nobody is going to get — and writing the row onto
+    // the template through Office.js, which is what the backlog specified,
+    // re-authors the text (office-js#5858) on the one slide the product exists
+    // to preserve.
+    await reachPreview();
+    office.runMerge.mockResolvedValueOnce(PREVIEW);
+    primary().click();
+    await settle();
+
+    expect(office.runMerge).toHaveBeenCalledTimes(1);
+    const req = office.runMerge.mock.calls[0]?.[0] as { records: { rows: unknown[] }; from: number; to: number };
+    expect(req.records.rows, "one row, not all of them").toHaveLength(1);
+    expect(req.from).toBe(4);
+    expect(req.to).toBe(6);
+  });
+
+  it("names the slides it landed on", async () => {
+    await reachPreview();
+    office.runMerge.mockResolvedValueOnce(PREVIEW);
+    primary().click();
+    await settle();
+    // deckAtStart 12, added 3 — so slides 13 to 15.
+    expect(pane().querySelector(".card.undo")?.textContent).toContain("Slides 13 to 15");
+    expect(primary().textContent).toBe("Remove the preview");
+  });
+
+  it("takes it back with the same clamped sweep an undo uses", async () => {
+    await reachPreview();
+    office.runMerge.mockResolvedValueOnce(PREVIEW);
+    primary().click();
+    await settle();
+
+    office.undoMerge.mockResolvedValueOnce({ removed: 3, detail: "removed 3 slide(s) from index 12" });
+    primary().click();
+    await settle();
+
+    expect(office.undoMerge).toHaveBeenCalledWith(expect.objectContaining({ deckAtStart: 12, added: 3 }));
+    expect(pane().querySelectorAll(".card.undo")).toHaveLength(0);
+    expect(primary().textContent).toBe("Preview the first row");
+  });
+
+  it("says so when the sweep left some of it behind", async () => {
+    // A sweep that removed fewer slides than it asked for leaves part of the
+    // preview in the deck, and the user is the only one who can finish it.
+    await reachPreview();
+    office.runMerge.mockResolvedValueOnce(PREVIEW);
+    primary().click();
+    await settle();
+
+    office.undoMerge.mockResolvedValueOnce({ removed: 1, detail: "asked for 3 slide(s) and the deck shrank by 1" });
+    primary().click();
+    await settle();
+
+    expect(said().join(" ")).toContain("still there");
+    // And it is still a preview, so the merge stays blocked.
+    expect(pane().querySelectorAll(".card.undo")).toHaveLength(1);
+  });
+
+  it("does not leave the button dead when the preview raises", async () => {
+    await reachPreview();
+    office.runMerge.mockRejectedValueOnce(new Error("the host would not export the slides"));
+    primary().click();
+    await settle();
+    expect(said().join(" ")).toContain("would not export");
+    expect(primary().disabled).toBe(false);
+    expect(primary().textContent).toBe("Preview the first row");
+  });
+
+  it("cannot be started twice, and SAYS it is running", async () => {
+    // Inserting a preview is a real merge and can take a minute on this host.
+    // A button reading "Preview the first row", greyed out, for the whole of it
+    // is the state a user cannot tell from a pane that has stopped responding —
+    // and the other two long calls already named themselves.
+    await reachPreview();
+    const held = deferred<unknown>();
+    office.runMerge.mockReturnValueOnce(held.promise);
+    primary().click();
+    await settle();
+    expect(primary().textContent).toBe("Previewing…");
+    expect(primary().disabled).toBe(true);
+    primary().click();
+    await settle();
+    expect(office.runMerge).toHaveBeenCalledTimes(1);
+    held.resolve(PREVIEW);
+    await settle();
+  });
+
+  it("says it is REMOVING while the sweep is out", async () => {
+    await reachPreview();
+    office.runMerge.mockResolvedValueOnce(PREVIEW);
+    primary().click();
+    await settle();
+
+    const held = deferred<unknown>();
+    office.undoMerge.mockReturnValueOnce(held.promise);
+    primary().click();
+    await settle();
+    expect(primary().textContent).toBe("Removing…");
+    expect(primary().disabled).toBe(true);
+
+    held.resolve({ removed: 3, detail: "removed 3 slide(s) from index 12" });
+    await settle();
+    expect(primary().textContent).toBe("Preview the first row");
   });
 });

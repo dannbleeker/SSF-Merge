@@ -274,20 +274,48 @@ describe("what the host said", () => {
 });
 
 describe("the preview step", () => {
-  it("says the preview is not built rather than offering it, in the HEADING too", () => {
-    // The heading was the last thing on this screen still promising a preview
-    // after the button stopped. A screen whose heading and whose button
-    // disagree is one the user trusts neither half of.
+  it("says what pressing it will do, with the number in it", () => {
     const pane = paneFor(ready, "preview");
-    expect(pane.querySelector("h1")?.textContent).toBe("Preview is not built yet");
-    expect(pane.textContent).toContain("not done");
-    expect(pane.querySelector("button.primary")?.textContent).toBe("Continue to merge");
+    expect(pane.querySelector("h1")?.textContent).toBe("See one row before you commit");
+    expect(pane.textContent).toContain("Adds 3 slides");
+    expect(pane.querySelector("button.primary")?.textContent).toBe("Preview the first row");
   });
 
-  it("still carries the undo card while a preview IS showing", () => {
-    const pane = paneFor({ ...ready, previewing: true }, "preview");
+  it("offers a way past it, because its primary does not advance", () => {
+    // Every other step's primary carries the user forward; this one shows a
+    // row. Without a forward link the wizard has no exit from step 3 at all,
+    // which is exactly what making the preview real took away.
+    const pane = paneFor(ready, "preview");
+    expect(pane.querySelector("[data-forward]")?.getAttribute("data-forward")).toBe("merge");
+  });
+
+  it("does not offer that way past when the merge is not reachable anyway", () => {
+    const missing: PaneState = { ...ready, fields: ["First", "Nickname"] };
+    expect(paneFor(missing, "preview").querySelector("[data-forward]")).toBeNull();
+  });
+
+  it("names the slides a preview landed on, so a closed pane is recoverable", () => {
+    // A user who closes the pane mid-preview has no other way to find out
+    // which slides to delete.
+    const pane = paneFor({ ...ready, previewing: true, previewSlides: { from: 13, to: 15 } }, "preview");
     expect(pane.querySelectorAll(".card.undo")).toHaveLength(1);
-    expect(pane.querySelector("h1")?.textContent).toBe("A row is on the slide");
+    expect(pane.querySelector(".card.undo")?.textContent).toContain("Slides 13 to 15");
+    expect(pane.querySelector("h1")?.textContent).toBe("The first row is in your deck");
+  });
+
+  it("says the template is untouched, which is the obvious fear", () => {
+    const card = paneFor({ ...ready, previewing: true, previewSlides: { from: 13, to: 13 } }, "preview").querySelector(
+      ".card.undo",
+    );
+    expect(card?.textContent).toContain("template is untouched");
+    // Singular, because one slide is one slide.
+    expect(card?.textContent).toContain("Slide 13 ");
+  });
+
+  it("hides the forward link while a preview is showing", () => {
+    // It would carry the user to a merge step that refuses to merge.
+    const pane = paneFor({ ...ready, previewing: true, previewSlides: { from: 13, to: 15 } }, "preview");
+    expect(pane.querySelector("[data-forward]")).toBeNull();
   });
 });
 

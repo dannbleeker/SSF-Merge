@@ -7,9 +7,18 @@
  * that migrates into this file becomes untestable the moment it arrives.
  */
 import { ready as hostReady, slideCount } from "../office/powerpoint.js";
-import { inspectBlock, runMerge, type MergeOutcome } from "../office/merge.js";
+import { inspectBlock, runMerge, undoMerge, type MergeOutcome } from "../office/merge.js";
 import { render } from "./render.js";
-import { EMPTY, EMPTY_DRAFT, chosenBlock, nextStep, readPastedTable, type PaneState, type StepId } from "./steps.js";
+import {
+  EMPTY,
+  EMPTY_DRAFT,
+  chosenBlock,
+  firstRowOnly,
+  nextStep,
+  readPastedTable,
+  type PaneState,
+  type StepId,
+} from "./steps.js";
 
 let state: PaneState = EMPTY;
 let step: StepId = "template";
@@ -135,6 +144,17 @@ function onClick(event: Event): void {
     return;
   }
 
+  const forward = target.closest("[data-forward]")?.getAttribute("data-forward");
+  if (forward) {
+    // Only rendered on a step whose primary does not advance, and only when the
+    // destination is reachable — `render` asks `blockedReason` before drawing
+    // it, so this does not re-decide what the screen already decided.
+    step = forward as StepId;
+    state = { ...state, notice: undefined };
+    draw();
+    return;
+  }
+
   const action = target.closest("[data-action]")?.getAttribute("data-action");
   if (!action) return;
   if (action === "merge") {
@@ -143,6 +163,10 @@ function onClick(event: Event): void {
   }
   if (action === "template") {
     void useBlock();
+    return;
+  }
+  if (action === "preview") {
+    void (state.previewing ? endPreview() : preview());
     return;
   }
   advance(action as StepId);
@@ -322,6 +346,104 @@ async function merge(): Promise<void> {
     draw();
   }
 }
+
+/**
+ * Show one row on the real slides, and take it back.
+ *
+ * The preview is the ORDINARY merge over a one-row set, inserted by the same
+ * call and removed by the same positional sweep an undo uses. Nothing is
+ * written to the template, which is the whole point: setting a shape's text
+ * through Office.js re-authors it — office-js#5858, custom bullets reverting
+ * to default discs — and the template is the one slide this product exists to
+ * preserve.
+ *
+ * The design this replaced is in the backlog and in this repo's own REJECTED
+ * list at the same time: "write one record's values onto the real template
+ * slide, store what was there in a tag, and put it back". Putting it back goes
+ * through the same API that did the damage, so the text would return and the
+ * formatting would not — silently, to the master copy every merged slide is
+ * cloned from.
+ *
+ * What the user sees is therefore produced by the code that will produce the
+ * other 239 slides. A preview that renders by some other route is a preview of
+ * something nobody is going to get.
+ */
+async function preview(): Promise<void> {
+  const block = chosenBlock(state);
+  const records = state.records;
+  if (!block || !records || state.running) return;
+  state = { ...state, running: "preview", notice: undefined };
+  draw();
+  try {
+    const outcome = await runMerge({
+      from: block.from,
+      to: block.to,
+      records: firstRowOnly(records),
+      ...(state.conditions ? { conditions: state.conditions } : {}),
+    });
+    if (!outcome.ok || outcome.added === 0) {
+      state = { ...state, notice: outcome.detail };
+      return;
+    }
+    shown = outcome;
+    // Where they landed, so the card can name them. The insert is anchored
+    // after the last slide, so they are the last `added` in the deck.
+    const from = outcome.deckAtStart + 1;
+    state = {
+      ...state,
+      previewing: true,
+      previewSlides: { from, to: outcome.deckAtStart + outcome.added },
+      deckSize: outcome.deckAtStart + outcome.added,
+      ...(outcome.fields.length > 0 ? { fields: outcome.fields } : {}),
+      notice: undefined,
+    };
+  } catch (e) {
+    state = { ...state, notice: `The preview did not run: ${readable(e)}` };
+  } finally {
+    state = { ...state, running: undefined };
+    draw();
+  }
+}
+
+/**
+ * Take the preview back.
+ *
+ * `undoMerge` is positional and clamped against the count taken before the
+ * preview was inserted, so it cannot reach a slide the user owned first — the
+ * same guarantee, and the same code, as undoing a real merge.
+ */
+async function endPreview(): Promise<void> {
+  const outcome = shown;
+  if (!outcome || state.running) return;
+  state = { ...state, running: "preview" };
+  draw();
+  try {
+    const { removed, detail } = await undoMerge(outcome);
+    if (removed < outcome.added) {
+      // Said out loud rather than assumed. A sweep that removed fewer slides
+      // than it asked for leaves some of the preview in the deck, and the user
+      // is the only one who can finish the job.
+      state = { ...state, notice: `Some of the preview is still there — ${detail}` };
+      return;
+    }
+    shown = undefined;
+    state = {
+      ...state,
+      previewing: false,
+      previewSlides: undefined,
+      deckSize: outcome.deckAtStart,
+      notice: undefined,
+    };
+  } catch (e) {
+    state = { ...state, notice: `The preview could not be removed: ${readable(e)}` };
+  } finally {
+    state = { ...state, running: undefined };
+    draw();
+  }
+}
+
+/** The preview currently on the slides, so it can be taken back exactly. */
+let shown: MergeOutcome | undefined;
 
 /** The last run, so an undo has the numbers it is clamped against. */
 let last: MergeOutcome | undefined;

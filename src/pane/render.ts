@@ -20,11 +20,12 @@ import {
   primary,
   readBlockDraft,
   readPastedTable,
+  slidesPerRecord,
   statusOf,
   unmatchedFields,
 } from "./steps.js";
 import type { OrangeHolder, PaneState, StepId } from "./steps.js";
-import { blockSummary, mergeArithmetic, mergeSummary, plural } from "./summary.js";
+import { blockName, blockSummary, mergeArithmetic, mergeSummary, plural } from "./summary.js";
 
 function el<K extends keyof HTMLElementTagNameMap>(
   doc: Document,
@@ -80,7 +81,18 @@ export function render(root: HTMLElement, state: PaneState, current: StepId): vo
 
   if (state.previewing) {
     const card = el(doc, "div", { class: "card undo" });
-    card.append(el(doc, "p", { text: "A preview is on the slide. The template's own text is stored and put back." }));
+    // Names the SLIDES, because a user who closes the pane mid-preview has no
+    // other way to find out which ones to delete. And says the template is
+    // untouched, because the obvious fear about a preview on a real deck is
+    // that it has edited the thing being previewed — which is exactly what the
+    // design on this project's rejected list would have done.
+    card.append(
+      el(doc, "p", {
+        text: state.previewSlides
+          ? `${blockName(state.previewSlides)} ${state.previewSlides.from === state.previewSlides.to ? "is" : "are"} a preview of the first row. Your template is untouched — removing the preview deletes them.`
+          : "A preview is in your deck. Your template is untouched — removing the preview deletes it.",
+      }),
+    );
     main.append(card);
   }
 
@@ -109,6 +121,20 @@ export function render(root: HTMLElement, state: PaneState, current: StepId): vo
     );
   }
 
+  // The preview step is the only one whose primary ACTS rather than advances —
+  // it shows a row — so it is the only one that needs a way forward that is not
+  // the button. Without this the wizard has no exit from step 3 at all, which
+  // is what making the preview real took away.
+  if (current === "preview" && !state.previewing && blockedReason(state, "merge") === null) {
+    main.append(
+      el(doc, "button", {
+        class: "back forward",
+        text: "Skip to the merge",
+        attrs: { "data-forward": "merge" },
+      }),
+    );
+  }
+
   const action = primary(state, current);
   const button = el(doc, "button", { class: "primary", text: action.label, attrs: { "data-action": current } });
   button.disabled = !action.enabled;
@@ -130,11 +156,7 @@ function headline(state: PaneState, current: StepId): string {
       // only ever renders three, so nothing showed it either.
       return state.fields.length === 0 ? "No placeholders found" : plural(state.fields.length, "placeholder");
     case "preview":
-      // NOT "See one row on the slide". The heading was the last thing on this
-      // screen still promising a preview after the button stopped: a screen
-      // whose heading and whose button disagree is one the user reads twice
-      // and trusts neither half of.
-      return state.previewing ? "A row is on the slide" : "Preview is not built yet";
+      return state.previewing ? "The first row is in your deck" : "See one row before you commit";
     case "merge": {
       const block = chosenBlock(state);
       return block && state.rows ? mergeArithmetic(block, state.rows) : "Nothing to merge yet";
@@ -188,14 +210,13 @@ function body(doc: Document, state: PaneState, current: StepId, orange: OrangeHo
   }
 
   if (current === "preview" && !state.previewing) {
+    const previewBlock = chosenBlock(state);
     out.push(
       el(doc, "p", {
         class: "muted",
-        // Said out loud rather than left to a button that promises it. Writing
-        // a row onto the slide and putting the template back is real work and
-        // it is not done; a screen that implies otherwise is the one thing a
-        // user cannot check before pressing.
-        text: "Writing a row onto the slide and putting the template back is real work and it is not done. The merge does not need it.",
+        text: previewBlock
+          ? `Adds ${plural(slidesPerRecord(previewBlock), "slide")} to the end of the deck — the first row, merged the way every row will be. Look at them, then remove them.`
+          : "Choose the slides that repeat first.",
       }),
     );
     return out;

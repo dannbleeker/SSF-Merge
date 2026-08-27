@@ -7,6 +7,57 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added — the preview step, and a refusal of the design it was specified with
+
+Step 3 shows one row on real slides, so all four steps of the pane are built.
+
+**It merges.** Pressing "Preview the first row" runs the ordinary merge over a
+one-row set and inserts the result at the end of the deck; "Remove the preview"
+sweeps it away with the same clamped positional sweep an undo uses. What the
+user looks at was produced by the code that will produce the other 239 slides,
+which is the only thing that makes a preview worth having — a preview rendered
+by some other route is a preview of something nobody is going to get.
+
+**The specified design was refused, and the backlog and the rejected list said
+so at the same time.** The backlog asked for "write one record's values onto the
+real template slide, store what was there in a `SSF_MERGE_TEMPLATE` shape tag,
+and put it back"; four items below, the rejected list forbids merging through
+the PowerPoint API because setting a shape's text re-authors it
+(office-js#5858 — custom bullets reverting to default discs, mixed runs
+collapsing). Putting it back goes through the same API that did the damage, so
+the TEXT would return and the FORMATTING would not — silently, on the master
+copy every merged slide is cloned from, which is the one thing this product
+exists to preserve. `TAG_TEMPLATE` is gone with the design that needed it, and
+the refusal is written into the rejected list so it is not re-proposed.
+
+Consequences of the design that ships, both stated on the screen rather than
+discovered: the preview lands at the END of the deck, because that is the one
+insertion point this add-in has tested on a real host; and a preview left behind
+by a closed pane is just slides, so the card NAMES them ("Slides 13 to 15 are a
+preview of the first row") rather than only saying one is showing.
+
+Two labels changed with the design. "Put the template back" described restoring
+something that is never taken, and is now "Remove the preview". The heading
+"Preview is not built yet" is now "See one row before you commit".
+
+**Making the preview real took the wizard's way forward with it.** Every other
+step's primary advances; this one acts. Without a forward affordance step 3 was
+a dead end, so the preview step carries a "Skip to the merge" link — rendered
+only when the merge is actually reachable, so it cannot carry the user to a step
+that refuses them.
+
+The preview names itself while it runs — "Previewing…" and "Removing…" — like
+the other two long host calls. Inserting a preview IS a real merge and can take
+a minute on this host, and a button reading "Preview the first row", greyed out,
+for the whole of it is the state a user cannot tell from a pane that has stopped
+responding. Third instance of that gap; found by re-reading the diff rather than
+by a failure.
+
+`endPreview` checks the sweep's count rather than believing it. A sweep that
+removed fewer slides than it asked for leaves part of the preview in the deck,
+and the user is the only one who can finish that; the pane says so and stays in
+the previewing state, which keeps the merge blocked.
+
 ### Added — the manifests, and an add-in somebody can install
 
 Four files from one definition (`scripts/manifest-source.mjs`): the XML manifest
