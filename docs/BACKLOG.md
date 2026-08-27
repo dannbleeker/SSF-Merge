@@ -104,6 +104,19 @@ will say whether it is worth answering; nothing has asked for it yet.
   listing is English and nothing has asked for Danish. Reviving this means
   reviving the string-table work, which is the larger half.
 
+  **This is about the pane's OWN TEXT, and it does not cover reading Danish
+  DATA.** Confirmed by the owner on 2026-08-27, when the month-name table
+  shipped: `looksLikeDate` has admitted `ÆØÅ` since it was written, so a Danish
+  date column was always going to reach the parser, and until that table it was
+  read by accident — `new Date` matches an English three-letter prefix, so
+  `marts` worked and `maj` did not, in the same column. Fixing that is
+  correctness, not localisation.
+
+  The distinction to carry forward: **what the user's SPREADSHEET says is data
+  and gets read properly; what SSF Merge says back is English.** A merged deck's
+  month names come out English too, and changing that is the string-table work
+  above rather than an extension of the table.
+
 - **A preview that writes onto the template slide and restores it.** This was
   the specified design and it is refused for the reason immediately below:
   setting a shape's text through Office.js re-authors it, and RESTORING goes
