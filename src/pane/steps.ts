@@ -12,6 +12,7 @@
  * cheap to render. That was settled with the owner when the layout was.
  */
 
+import { canBeField } from "../core/merge/text.js";
 import { parseDelimited, toRecordSet } from "../core/data/recordset.js";
 import type { RecordSet } from "../core/data/recordset.js";
 
@@ -381,6 +382,28 @@ export function danglingConditions(state: PaneState): string[] {
  */
 export function fieldToken(column: string): string {
   return `{{${column}}}`;
+}
+
+/**
+ * The columns this template can actually carry a field for, and the ones it
+ * cannot.
+ *
+ * `canBeField` is the ENGINE's own reader, asked rather than restated. The
+ * first version of the Insert control offered a button per column with no such
+ * check, and shipped a defect within the hour: a header holding a brace or a
+ * pipe produces a token `FIELD` reads as a different, shorter name, so the
+ * button would put a placeholder on the slide that binds to nothing and says
+ * nothing.
+ *
+ * Split rather than filtered, because a column that cannot be a field is worth
+ * NAMING — the fix is to rename the column, and a chip that is simply missing
+ * tells the user nothing about which one or why.
+ */
+export function insertableColumns(state: PaneState): { can: string[]; cannot: string[] } {
+  const can: string[] = [];
+  const cannot: string[] = [];
+  for (const column of state.columns ?? []) (canBeField(column) ? can : cannot).push(column);
+  return { can, cannot };
 }
 
 /**

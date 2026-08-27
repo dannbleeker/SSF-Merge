@@ -28,8 +28,54 @@ import { A_NS, elements } from "../pptx/xml.js";
  * ASCII-only under `u`; the flag alone would have changed nothing. A column
  * name arrives verbatim from the header and the resolver already answers for
  * it, so the pattern was the only thing in the way.
+ *
+ * **A name may contain SPACES, and refusing them refused most real data.** The
+ * class above was a list of allowed characters and a space was not on it, so
+ * `{{Row Labels}}`, `{{Min. of cost}}` and `{{Sum of quantity monthly}}` — the
+ * literal default headers of an Excel pivot table, which is the commonest thing
+ * anybody pastes into this add-in — were invisible to the engine. Reported from
+ * a real run, on a deck whose slides plainly carried them, where the pane
+ * answered "these slides carry no fields yet" about fields it had itself put
+ * there.
+ *
+ * The rule is now stated the other way round, which is what it always meant: a
+ * name is anything that is not a brace, a pipe or a line break, and it has to
+ * contain **at least one letter or digit**. That keeps the refusals the
+ * previous widening was written for — `{{ }}` and `{{!!}}` are not fields —
+ * while `{{a b}}`, which was swept in with them, is one. Leading and trailing
+ * whitespace is eaten by the `\s*` either side, so `{{ Name }}` and `{{Name}}`
+ * are the same field and match a header the parse has already trimmed.
+ *
+ * Excluding `{`, `}` and `|` is what keeps it from running away: a match cannot
+ * cross into the next placeholder, and the format pipe still splits. The one
+ * thing it costs is a paragraph writing ABOUT the syntax — "use {{ and }} to
+ * mark a field" now reads as a field called "and". That is a template author
+ * documenting the tool inside the tool, and it is worth the pivot headers.
  */
-export const FIELD = /\{\{\s*([\p{L}\p{M}\p{N}_.]+)\s*(?:\|\s*([^{}]+?)\s*)?\}\}/gu;
+export const FIELD = /\{\{\s*([^{}|\r\n]*?[\p{L}\p{N}][^{}|\r\n]*?)\s*(?:\|\s*([^{}\r\n]+?)\s*)?\}\}/gu;
+
+/**
+ * Whether a column name can be written as a field at all.
+ *
+ * The pane offers a button per column that puts `{{Column}}` on the slide, and
+ * the engine reads it back with `FIELD`. Those two must agree, and for an hour
+ * they did not: the button happily produced a token the reader could not see.
+ * A shared function is the only version of "these two agree" that cannot rot —
+ * a second predicate in the pane would drift the first time this pattern moved.
+ *
+ * Answers by ASKING the reader rather than by restating it: the token is built
+ * and matched, and the name that comes back has to be the column that went in.
+ * That catches the interesting case as well as the obvious one — a header
+ * carrying a pipe or a brace does not merely fail to match, it matches a
+ * DIFFERENT, shorter name, which would put a field on the slide that silently
+ * binds to nothing.
+ */
+export function canBeField(column: string): boolean {
+  const token = `{{${column}}}`;
+  // A fresh regex: `FIELD` is global and carries `lastIndex` between calls.
+  const hits = [...token.matchAll(new RegExp(FIELD.source, FIELD.flags))];
+  return hits.length === 1 && hits[0]?.[0] === token && hits[0]?.[1] === column;
+}
 
 /** Answers the value for a field, or null to leave the placeholder visible. */
 export type Resolve = (name: string, format?: string) => string | null;

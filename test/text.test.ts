@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fieldsIn, mergeDocument, mergeParagraph } from "../src/core/merge/text.js";
+import { canBeField, fieldsIn, mergeDocument, mergeParagraph } from "../src/core/merge/text.js";
 import { A_NS, elements, parseXml, serializeXml } from "../src/core/pptx/xml.js";
 
 const A = `xmlns:a="${A_NS}"`;
@@ -145,9 +145,76 @@ describe("a placeholder that is not written in English", () => {
     ]);
   });
 
-  it("still refuses a name made of punctuation or spaces, which is not a field", () => {
-    // The widening must not turn every brace pair into a placeholder.
-    const { doc } = paragraph("{{ }} {{!!}} {{a b}}");
+  it("still refuses a name made of nothing but punctuation or spaces", () => {
+    // The widening must not turn every brace pair into a placeholder. A name
+    // has to carry at least one letter or digit.
+    const { doc } = paragraph("{{ }} {{!!}} {{ - }}");
     expect(fieldsIn(doc)).toEqual([]);
+  });
+});
+
+describe("a column name with spaces in it", () => {
+  /**
+   * Reported from a real run, and the defect was the pane and the engine
+   * disagreeing about what a field is.
+   *
+   * `Row Labels`, `Min. of cost` and `Sum of quantity monthly` are the literal
+   * default headers of an Excel pivot table — the commonest thing anybody
+   * pastes into this add-in. The reader's character class had no space on it,
+   * so the pane's own Insert buttons put those tokens on the slide and the
+   * read-back reported the slides carried no fields at all. Visibly on the
+   * slide, invisible to the engine, and the pane said so as a fact.
+   */
+  it("reads the headers an Excel pivot table actually produces", () => {
+    const { doc } = paragraph("{{Min. of cost}} {{Row Labels}} {{Sum of quantity monthly}}");
+    expect(fieldsIn(doc)).toEqual(["Min. of cost", "Row Labels", "Sum of quantity monthly"]);
+  });
+
+  it("merges one, keeping the spaces inside the name and not around it", () => {
+    const { p } = paragraph("Total: {{ Sum of quantity }} units");
+    const seen: string[] = [];
+    mergeParagraph(p, (name) => {
+      seen.push(name);
+      return "42";
+    });
+    // Trimmed at the edges, so `{{ Name }}` and `{{Name}}` are one field and
+    // both match a header the parse has already trimmed.
+    expect(seen).toEqual(["Sum of quantity"]);
+    expect(text(p)).toBe("Total: 42 units");
+  });
+
+  it("still splits on the format pipe, and does not run into the next field", () => {
+    const { doc } = paragraph("{{Min. of cost|money}} and {{Row Labels}}");
+    expect(fieldsIn(doc)).toEqual(["Min. of cost", "Row Labels"]);
+    const { p } = paragraph("{{Min. of cost|money}}");
+    const seen: [string, string | undefined][] = [];
+    mergeParagraph(p, (name, format) => {
+      seen.push([name, format]);
+      return "x";
+    });
+    expect(seen).toEqual([["Min. of cost", "money"]]);
+  });
+});
+
+describe("a column the pane may not offer as a field", () => {
+  /**
+   * The guard that stops this defect coming back by another route. The Insert
+   * button builds `{{Column}}` and the engine reads it with `FIELD`, and for an
+   * hour nothing checked that those two agree.
+   *
+   * The interesting case is not a header that fails to match — it is one that
+   * matches a DIFFERENT, shorter name. `Total|EUR` would put a field called
+   * "Total" on the slide, bound to a column that does not exist, silently.
+   */
+  it("accepts the ordinary ones, spaces and dots included", () => {
+    for (const column of ["First", "Row Labels", "Min. of cost", "Beløb", "Sum of quantity monthly", "Q1 2026"]) {
+      expect(canBeField(column), column).toBe(true);
+    }
+  });
+
+  it("refuses one that would read back as a different name, or as none", () => {
+    for (const column of ["Total|EUR", "a}}b", "{{x", "", "   ", "!!"]) {
+      expect(canBeField(column), column).toBe(false);
+    }
   });
 });

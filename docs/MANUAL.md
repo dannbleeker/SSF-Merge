@@ -77,7 +77,7 @@ offers to take them straight back out again.
    When the fields are all on the slides, press **Check the slides for
    fields**. The pane reads them again and lists what it found, with any chip
    that has no column behind it outlined. If it finds none, the braces are
-   probably curly quotes, or the field name has a space in it.
+   probably curly quotes.
 
 6. **Step 4 — Preview.** Press **Preview the first row**. One row is merged
    into your deck so you can look at it, and **Remove the preview** takes it
@@ -125,8 +125,18 @@ finished; a visible placeholder does not, which is the point.
 
 A field name may be written in any language — `{{Beløb}}`, `{{Größe}}`,
 `{{Πλήθος}}` — and matches the column header exactly as the sheet spells it.
-Letters, digits, underscores and dots; a name made only of spaces or punctuation
-is not a field.
+
+**Spaces are fine.** `{{Row Labels}}`, `{{Min. of cost}}` and
+`{{Sum of quantity monthly}}` are all fields — which matters, because those are
+the headers an Excel pivot table produces by default, and they are the
+commonest thing anybody pastes in here. Space either side of the name is
+ignored, so `{{ Name }}` and `{{Name}}` are the same field.
+
+The two characters a name may **not** contain are a brace and a pipe: the pipe
+starts the format, and a brace would run into the next placeholder. A name made
+of nothing but spaces or punctuation is not a field either — `{{ }}` and
+`{{!!}}` are just text. The Fields step will not offer a button for a column it
+cannot write as a field, and says which one and why.
 
 ## Formats
 

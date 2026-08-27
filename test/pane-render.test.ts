@@ -572,6 +572,52 @@ describe("the Insert buttons", () => {
     expect(text).toContain("Not on a slide yet: City");
   });
 
+  it("does not offer a column the engine could not read back", () => {
+    /**
+     * The defect this closes shipped: the button built `{{Column}}` and the
+     * engine read it with `FIELD`, and nothing checked that those two agree.
+     *
+     * The dangerous case is not a header that fails to match — it is one that
+     * matches a DIFFERENT, shorter name. `Total|EUR` puts a field called
+     * "Total" on the slide, bound to a column that does not exist, silently.
+     */
+    const pane = paneFor({ ...withData, columns: ["First", "Total|EUR"] }, "fields");
+    expect(pane.querySelector('[data-insert="First"]')).not.toBeNull();
+    expect(pane.querySelector('[data-insert="Total|EUR"]'), "offered a token the engine misreads").toBeNull();
+  });
+
+  it("names the column it will not offer, and why", () => {
+    // Named rather than silently dropped: the fix is to rename the column, and
+    // a chip that is simply absent says nothing about which one or why.
+    const text = paneFor({ ...withData, columns: ["First", "Total|EUR"] }, "fields").textContent ?? "";
+    expect(text).toContain("Total|EUR cannot be a field");
+    expect(text).toContain("Rename the column");
+  });
+
+  it("offers the headers an Excel pivot table produces", () => {
+    // Reported from a real run. `Row Labels` and `Min. of cost` are the literal
+    // defaults, and the reader's character class had no space on it, so the
+    // pane put tokens on the slide that it then could not see.
+    const columns = ["Row Labels", "Min. of cost", "Sum of quantity monthly"];
+    const chips = Array.from(paneFor({ ...withData, columns }, "fields").querySelectorAll("[data-insert]"));
+    expect(chips.map((c) => c.getAttribute("data-insert"))).toEqual(columns);
+  });
+
+  it("withholds the stale empty-slides line while a note is up", () => {
+    /**
+     * An insert lands on the SLIDE and tells the pane nothing, so between a
+     * fresh note and a sentence read off the last template read, the note is
+     * the current one. Without this the screen said "{{City}} put on the
+     * slide" directly above "these slides carry no fields yet" — contradicting
+     * itself about something the user had just done.
+     */
+    const pane = paneFor({ ...withData, fields: [], fieldNote: "{{City}} put on the slide." }, "fields");
+    expect(pane.textContent).toContain("put on the slide");
+    expect(pane.textContent, "said both at once").not.toContain("carry no fields yet");
+    // And it is back the moment there is no note to contradict it.
+    expect(paneFor({ ...withData, fields: [] }, "fields").textContent).toContain("carry no fields yet");
+  });
+
   it("says nothing about unused columns before anything is placed", () => {
     // Before the first insert every column is unused and the line says nothing.
     expect(paneFor(withData, "fields").textContent).not.toContain("Not on a slide yet");
