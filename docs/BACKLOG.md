@@ -47,29 +47,6 @@ the insert landed anyway. It never SELECTS anything: the obvious workaround is
 history of wedging the host, so nothing is built for this until there is a
 reason.
 
-### A control that sets a slide's condition
-**Priority: high.** Feasibility: high — the engine is already built.
-`prepare.ts` takes `conditions` as a `Record<slideNumber, columnName>`,
-`runPlan` reports `unknownConditions`, `PaneState` carries the field and
-`main.ts` passes it through on both the preview and the merge path. **Nothing
-writes it.** No control in the pane sets a condition, so `state.conditions` is
-undefined in every run and the whole feature is unreachable — the same shape as
-undo before #40: built, tested, and rendered by nothing.
-
-The manual described it as shipped for as long as it has existed, which is the
-worse half: a reader goes looking for a control that is not there and concludes
-the add-in is broken. It is marked *planned* there now.
-
-What is undecided is where it goes, and that is a design question rather than a
-coding one. The block is a run of slides the user named by number, so the
-natural home is a row per slide on step 2 beside the placeholder chips — "slide
-5 only when [column]" — which is also where the columns are known, so the
-control can offer them rather than take free text. Step 1 knows the slide
-numbers but not the columns yet.
-
-`unknownConditions` already exists to report a condition naming a column the
-data does not have, and today it can never fire.
-
 ## After the first release
 
 ### Image fields

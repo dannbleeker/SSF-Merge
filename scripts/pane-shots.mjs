@@ -151,6 +151,40 @@ const STATES = [
     state: { ...full, added: 720, deckSize: 12, notice: "720 slides added after slide 12." },
   },
   {
+    // The condition control, shut and open. Shut it is one line that states the
+    // current answer; open it is a select per template slide.
+    name: "2-conditions-shut",
+    step: "fields",
+    state: { ...full, paste: PASTE, columns: ["First", "Last", "Email"], rows: 2 },
+  },
+  {
+    name: "2-conditions-open",
+    step: "fields",
+    state: {
+      ...full,
+      paste: PASTE,
+      columns: ["First", "Last", "Email"],
+      rows: 2,
+      conditionsOpen: true,
+      conditions: { 5: "Email" },
+    },
+  },
+  {
+    // A condition naming a column this paste does not have — reachable by
+    // choosing one and then pasting different data. The option is kept rather
+    // than silently rewritten to "Always".
+    name: "2-conditions-dangling",
+    step: "fields",
+    state: {
+      ...full,
+      paste: PASTE,
+      columns: ["First", "Last", "Email"],
+      rows: 2,
+      conditionsOpen: true,
+      conditions: { 4: "Renewal", 6: "Email" },
+    },
+  },
+  {
     name: "2-fields-two-missing",
     step: "fields",
     state: { ...full, fields: ["First", "Nickname", "Badge"], paste: PASTE, columns: ["First", "Last"], rows: 2 },

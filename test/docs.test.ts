@@ -76,6 +76,9 @@ describe("the manual keeps up with the code", () => {
       "Skip to the merge",
       "Remove these slides",
       "What this run did, step by step",
+      // The condition control's shut line, which is the only thing naming the
+      // feature on screen.
+      "Every slide, every row",
     ]) {
       expect(source, `the pane no longer has a "${label}" button`).toContain(label);
       expect(prose, `the manual does not mention "${label}"`).toContain(label);

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  blockSlides,
+  conditionFor,
+  danglingConditions,
+  withCondition,
   EMPTY,
   STEPS,
   blockedReason,
@@ -438,5 +442,77 @@ describe("taking rows out of the merge", () => {
 
   it("has no row to preview when they are all out", () => {
     expect(firstIncludedRow({ ...withData, excluded: [0, 1, 2, 3] })).toBeUndefined();
+  });
+});
+
+describe("conditional slides", () => {
+  const block = { from: 4, to: 6 };
+  const base: PaneState = {
+    block,
+    fields: ["First"],
+    previewing: false,
+    columns: ["First", "Last", "Email"],
+    rows: 2,
+  };
+
+  it("names the slides in the block the way the user sees them", () => {
+    // The key the engine reads back: `prepareBlock` looks up
+    // `conditions[req.from + i]`, so pane and engine agree on "slide 5" without
+    // either converting. A block of one slide is one number, not none.
+    expect(blockSlides(base)).toEqual([4, 5, 6]);
+    expect(blockSlides({ ...base, block: { from: 2, to: 2 } })).toEqual([2]);
+    expect(blockSlides({ fields: [], previewing: false })).toEqual([]);
+  });
+
+  it("stores a choice and reads it back", () => {
+    const conditions = withCondition(undefined, 5, "Email");
+    expect(conditions).toEqual({ 5: "Email" });
+    expect(conditionFor({ ...base, conditions }, 5)).toBe("Email");
+    expect(conditionFor({ ...base, conditions }, 4)).toBe("");
+  });
+
+  it("deletes rather than storing a blank, and carries no empty object", () => {
+    /**
+     * `prepareBlock` tests the value for truthiness, so a stored "" behaves as
+     * "always" — right by accident, and still counted as a condition by
+     * anything reading keys, which is what the summary line does.
+     *
+     * `undefined` rather than `{}` for the same reason one meaning gets one
+     * spelling: two readers comparing "has conditions" would otherwise
+     * disagree.
+     */
+    const one = withCondition(undefined, 5, "Email");
+    expect(withCondition(one, 5, "")).toBeUndefined();
+    expect(withCondition({ 4: "Last", 5: "Email" }, 5, "")).toEqual({ 4: "Last" });
+  });
+
+  it("does not mutate the conditions it was given", () => {
+    // The pane rebuilds its state from the old one on every change; a mutated
+    // record would be shared with the state a host call is about to answer
+    // into.
+    const before = { 5: "Email" };
+    withCondition(before, 4, "Last");
+    expect(before).toEqual({ 5: "Email" });
+  });
+
+  it("reports a condition naming a column the data does not have", () => {
+    // Reachable without anyone typing a name: choose a column, then paste
+    // different data. The engine emits the slide anyway rather than hiding an
+    // authoring mistake, so the pane says so while it is still free to fix.
+    const state = { ...base, conditions: { 4: "Renewal", 6: "Email" } };
+    expect(danglingConditions(state)).toEqual(["Renewal"]);
+    expect(danglingConditions({ ...base, conditions: { 6: "Email" } })).toEqual([]);
+  });
+
+  it("says nothing about conditions on slides outside the block", () => {
+    // A stale key cannot be reported as a problem the user can act on: there is
+    // no control for slide 9 while the block is 4 to 6, so naming it would send
+    // them looking for one.
+    expect(danglingConditions({ ...base, conditions: { 9: "Renewal" } })).toEqual([]);
+  });
+
+  it("cannot report anything before data is attached", () => {
+    // Every column is unknown with no data, which would flag every condition.
+    expect(danglingConditions({ ...base, columns: undefined, conditions: { 4: "Renewal" } })).toEqual([]);
   });
 });

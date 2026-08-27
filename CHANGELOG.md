@@ -7,6 +7,89 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added — the package the engine hands over is checked as a package
+
+Everything else in the suite tests a decision: does this paragraph merge, does
+that plan skip the right row. None of it asked the question PowerPoint asks,
+which is whether the file is a legal OOXML package — and that answer is binary
+and expensive, because a deck that opens as "repaired" has lost whatever
+PowerPoint decided to drop, in somebody's presentation.
+
+`test/package-valid.test.ts` runs four real merges and checks the bytes: every
+relationship resolves to a part that exists, no duplicate rIds, every part has a
+content type, no override naming a part that is gone, slide ids unique and in
+the format's range, and no slide part the deck does not list. Then it runs the
+whole-deck route — keep what the run produced, drop the rest — and checks it
+again, because that is where #38 lived and it is the only path that takes parts
+OUT of a package.
+
+**The content-type rule was toothless when first written, and injecting a defect
+is what showed it.** A real .pptx declares `Default Extension="xml"`, so every
+XML part passed. Deleting the clone's `addContentTypeOverride` — which would
+ship every merged slide untyped — left the gate green. Slides and notes slides
+are checked for an override of their own now, and both injected defects fail
+four tests and one respectively.
+
+### Fixed — a relationships path for a part at the package root
+
+`Pkg.relsPathFor` used `lastIndexOf("/")` without handling -1, so a root part
+answered `[Content_Types].xm/_rels/[Content_Types].xml.rels` — the last
+character dropped and a directory invented. Nothing calls it that way today; it
+would have failed silently when something did.
+
+### Fixed — an impossible date was silently rolled forward
+
+`2026-02-29` merged as **1 March** and `31 Feb 2026` as **3 March**, on every
+slide, with nothing said. The manual promised the opposite and the engine's own
+`utcDate` was written to enforce it.
+
+The guard could never have fired on that path. `parseDate` handed the cell to
+`new Date`, which NORMALISES, and then read the components back off the result —
+by which time they were valid ones that round-tripped perfectly. It only ever
+saw numbers something else had already made correct. The slash spellings took
+their components from the string and were right all along, which is why the
+manual's examples were all slash dates.
+
+The two remaining spellings `looksLikeDate` admits now take their components
+from the string too. A month NAME still needs the platform, and it is resolved
+by parsing the first of that month — a day that exists in every month, so the
+answer is the name's month and never a rollover. Asking `new Date` about the
+whole cell is what let `31 Feb 2026` through as 3 March: the month had already
+moved by the time anything looked at it, and the components then agreed with
+themselves.
+
+Found by running every accepting date form through the parser and diffing what
+came back against what went in, rather than by reading it.
+
+### Added — conditional slides, which the engine has always done
+
+`prepare.ts` implemented conditional slides, `runPlan` reported
+`unknownConditions`, `PaneState` carried `conditions`, and `main.ts` passed it
+to both the preview and the merge. Nothing wrote it. The field was undefined in
+every run that had ever happened, and the manual described the feature as
+shipped — so a reader went looking for a control that was not there.
+
+It is on **step 2**, under a line reading *Every slide, every row*: one dropdown
+per slide in the block, offering the columns of the data attached. Step 2 rather
+than step 1, because a condition names a COLUMN and only this step knows them.
+
+A select, never free text. The engine matches a condition against a column name
+exactly, so a typed name is a silent no-op discovered by counting slides in the
+output. It does not remove the unknown-column case and is not meant to: a
+condition is chosen from THIS paste's columns and the next paste may not have
+them, which is said under the dropdowns before the merge and in the sentence
+after it. That second half was missing too — `unknownConditions` reached the
+pane from the day it was written and was read by nothing.
+
+Conditions belong to the template, so a new paste keeps them; they are keyed by
+slide number, so a changed block clears them. The test for that had to move to
+an OVERLAPPING block before it could fail: with the old block 4-6 and a new one
+7-9, a stale key of 5 is outside the block and the engine ignores it, so the
+guard passed against the unfixed code and proved nothing.
+
+`test/architecture.test.ts`'s known-unreachable list is empty again. It held one
+entry, for exactly one change.
+
 ### Added — a merge that never finished can still be taken back
 
 `undoInsert` is clamped against the deck's size BEFORE the run inserted

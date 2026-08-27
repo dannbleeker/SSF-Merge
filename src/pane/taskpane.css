@@ -285,7 +285,8 @@ button[disabled] {
 }
 
 input,
-textarea {
+textarea,
+select {
   font: inherit;
   font-variant-numeric: tabular-nums;
   width: 100%;
@@ -306,7 +307,8 @@ textarea {
   line-height: 1.45;
 }
 input:focus,
-textarea:focus {
+textarea:focus,
+select:focus {
   outline: 2px solid var(--blue);
   outline-offset: -1px;
   border-color: var(--blue);
@@ -352,6 +354,28 @@ button.use-selection {
 button.rows-toggle {
   align-self: flex-start;
 }
+.conditions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.conditionlist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+/* Caption above the control, like every other field on this pane. A template
+   block is a handful of slides, so this list is not the scroller the row list
+   has to be. */
+.conditionlist label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .rowlist {
   list-style: none;
   margin: 0;
