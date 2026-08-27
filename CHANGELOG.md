@@ -7,6 +7,40 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — the delimiter sniff, and two things a review against the sibling project found
+
+**The sniff sampled half a cell.** `parseDelimited` decided tab-versus-comma
+from `src.slice(0, src.indexOf("\n") + 1)` — and that first newline can be
+INSIDE the first header cell, because Excel writes a quoted newline whenever a
+cell holds a line break and it is legal CSV. The sample then never reached the
+tab, and a whole tab-separated table parsed as ONE column: every placeholder
+unmatched, the merge button down, and nothing on screen saying why. It walks
+with the same quote rule the parser uses now, which is the only sample that
+cannot disagree with it.
+
+A branch was written for the escaped-quote case and then removed when a revert
+proved it could not fail: `""` toggles twice and nets to zero, which is the same
+state the parser reaches by skipping both.
+
+**The version floor was wrong, in the direction that turns users away.** It said
+**1.3**, justified by `slide.tags` — and nothing in this add-in calls it. Merge
+metadata goes into the PACKAGE, as `ppt/tags/tagN.xml` related from the slide,
+which is the entire reason the engine never asks the host for something it can
+put in the file. Every call `src/office` actually makes is **1.2**. Declaring a
+floor higher than the truth excludes hosts that would have run the add-in
+perfectly well, and does it by telling the user their PowerPoint is too old when
+it is not. There is a test on the CLASS of error now, not just the instance: the
+floor may not be justified by a call `src/office` does not contain.
+
+**And the selection shortcut shipped unguarded.** `getSelectedSlides` is
+PowerPointApi **1.5**, against a floor of 1.2. It went in on the strength of 174
+rounds of evidence that it is not WEDGED — without anyone asking which version
+introduced it. Safe to call and present are different questions. `canSelectSlides`
+gates it now, the control is drawn only where the host has it, and
+`selectedBlock` refuses with a sentence rather than a TypeError for a caller
+that skipped the check. The two slide-number boxes work everywhere, which is
+what makes the shortcut safe to be absent.
+
 ### Added — pick the template block by selecting slides
 
 **Unblocked by evidence that already existed.** The backlog said this needed a

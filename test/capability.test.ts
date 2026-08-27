@@ -1,8 +1,10 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   API_FLOOR,
   blockFromSelection,
   blockIds,
+  canSelectSlides,
   checkFloor,
   chooseDeckSource,
   deckIdForSelectedSlide,
@@ -20,24 +22,48 @@ function upTo(top: string) {
 }
 
 describe("the version floor", () => {
-  it("is 1.3, which is where slide tags arrived", () => {
-    // Read off the calls the add-in makes rather than picked. Everything else
-    // it needs — slides, getItemAt, insertSlidesFromBase64, slide.delete — is
-    // 1.2, and getFileAsync is a Common API that PowerPointApi does not gate.
-    expect(API_FLOOR).toBe("1.3");
+  it("is 1.2 — everything this add-in requires is 1.2", () => {
+    // Read off the calls the add-in MAKES rather than picked: slides,
+    // getCount, getItemAt, slide.id, slide.delete, insertSlidesFromBase64 and
+    // load("items/id") are all 1.2, and getFileAsync is a Common API that
+    // PowerPointApi does not gate.
+    //
+    // This said 1.4, then 1.3, and both were wrong the same way. 1.3 was
+    // justified by `slide.tags` — and nothing here calls it: merge metadata
+    // goes into the PACKAGE. Declaring a floor higher than the truth turns
+    // away hosts that would have run the add-in, and does it by telling the
+    // user their PowerPoint is too old when it is not.
+    expect(API_FLOOR).toBe("1.2");
+  });
+
+  it("does not require anything for a call the add-in never makes", () => {
+    // The class of error, not the instance. `slide.tags` is the one that got
+    // through; the check is that the floor is justified by a call that exists
+    // in `src/office`, which is the only place this add-in touches the host.
+    const office = readFileSync("src/office/powerpoint.ts", "utf8") + readFileSync("src/office/merge.ts", "utf8");
+    expect(office, "nothing here reads slide tags through the API").not.toMatch(/\.tags\b/);
   });
 
   it("passes a host that has it", () => {
-    expect(checkFloor(upTo("1.3")).ok).toBe(true);
+    expect(checkFloor(upTo("1.2")).ok).toBe(true);
   });
 
-  it("fails a host that stops at 1.2, and says what that costs", () => {
-    const r = checkFloor(upTo("1.2"));
+  it("fails a host below it, and says what that costs", () => {
+    const r = checkFloor(upTo("1.1"));
     expect(r.ok).toBe(false);
     // The message has to be usable by whoever reads it in the pane: a bare
     // "unsupported" sends them nowhere.
     expect(r.detail).toContain(API_FLOOR);
-    expect(r.detail).toMatch(/tags/i);
+    expect(r.detail).toMatch(/insert|deck|read/i);
+  });
+
+  it("treats reading the selection as an EXTRA, not a requirement", () => {
+    // getSelectedSlides is 1.5. A host at the floor runs the add-in and simply
+    // does not get the shortcut — which is why it must not be in checkFloor.
+    expect(canSelectSlides(upTo("1.2"))).toBe(false);
+    expect(canSelectSlides(upTo("1.4"))).toBe(false);
+    expect(canSelectSlides(upTo("1.5"))).toBe(true);
+    expect(checkFloor(upTo("1.2")).ok, "still runs without it").toBe(true);
   });
 
   it("passes every host above the floor", () => {

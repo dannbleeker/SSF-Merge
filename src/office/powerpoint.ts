@@ -25,6 +25,7 @@
 import {
   blockFromSelection,
   blockIds,
+  canSelectSlides,
   chooseDeckSource,
   checkFloor,
   templateOffset,
@@ -289,6 +290,12 @@ export async function undoInsert(deckAtStart: number, added: number): Promise<Un
  * is measured safe.
  */
 export async function selectedBlock(): Promise<SelectedBlock> {
+  // 1.5, against a floor of 1.2. Asked here as well as before the control is
+  // drawn, because `selectedBlock` is exported and a caller that skipped the
+  // check would otherwise get a TypeError dressed up as a host refusal.
+  if (!canSelectSlides(hostSupports)) {
+    return { ok: false, why: "This PowerPoint cannot say which slides are selected — type the two numbers instead." };
+  }
   try {
     return await withTimeout(
       PowerPoint.run(async (context) => {
@@ -313,4 +320,9 @@ export async function selectedBlock(): Promise<SelectedBlock> {
     // adversarial review already found in this pane once.
     return { ok: false, why: e instanceof Error ? e.message : String(e) };
   }
+}
+
+/** Whether to offer the select-slides shortcut at all. See `canSelectSlides`. */
+export function canReadSelection(): boolean {
+  return canSelectSlides(hostSupports);
 }
