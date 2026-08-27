@@ -79,7 +79,10 @@ all. `tagVerdict` guards it now.
 | 2 | Does a tag written into the **package** read back through Office.js? | Undo, re-run, and every piece of merge metadata |
 | 3 | Does `getSubstring(a, n).text = v` keep the run's formatting? | Whether live preview can be targeted, or has to redraw whole shapes |
 | 4 | Do two writes queued in one batch interfere? | Whether replacements can be queued in any order or must go right to left |
-| 5 | Does `fill.setImage` stretch or preserve aspect? | Image fields, and only those. **Nothing reads this back**, so it is a look-at-the-slide question for later |
+| 5 | Does `exportAsBase64Presentation` drop parts the file route keeps? | The template is READ through that export. A part it drops is a part every merged slide is missing, in a file that opens cleanly |
+| 6 | Does a collection load of the deck's slides answer in full? | `deckSlideIds`, and through it every block lookup. A short read past the ceiling refuses a block; a scrambled one clones slides nobody chose |
+| 7 | Does a slide insert survive a **standing selection**? | Whether the preview step must call `setSelectedShapes` — the one call in this family with a measured history of wedging the host |
+| 8 | Does `fill.setImage` stretch or preserve aspect? | Image fields, and only those. **Nothing reads this back**, so it is a look-at-the-slide question for later |
 
 Question 1 has **four arms**, and that is the point. One deck carries two slides
 with different creation ids, which is what the engine produces; the other
@@ -147,8 +150,7 @@ pretending it is clean.
 
 ## What it has answered so far
 
-Two sheets, both PowerPoint for the web, 2026-08-26, filed under
-`docs/host-answers/`.
+Four sheets, all PowerPoint for the web, filed under `docs/host-answers/`.
 
 The first answered nothing about the host and three things about the probe: it
 gave a verdict on a question it had not asked, it named none of the four calls
@@ -165,8 +167,30 @@ It also caught the reader believing an error over a measurement: an insert timed
 out and had landed both its slides anyway, and reading the error as decisive
 produced three false statements in one run. The delta is the evidence.
 
-So all five questions are answered, and the package path is measured rather than
-assumed.
+The fourth added three arms and answered NONE of them, which is the honest
+outcome rather than a wasted round:
+
+- **the export** (question 5) ran on a deck with no comments and no
+  `ppt/authors.xml`, so there was nothing for it to drop. It did leave five
+  parts behind — the two web-extension parts and their rels, `changesInfo1.xml`
+  and `revisionInfo.xml` — none of which is content, all of which the host
+  rebuilds. That is worth knowing and it is not the question. **Re-run it on a
+  deck carrying comments.**
+- **the deck read** (question 6) answered all 8 of 8, in order. The ceiling
+  [office-js#4272](https://github.com/officedev/office-js/issues/4272) describes
+  is around fifty, so an eight-slide deck says the collection is not broken
+  outright and says nothing about the case `ID_PAGE = 20` exists for. **Re-run
+  it on a deck of more than fifty slides.**
+- **the standing selection** (question 7) ran with nothing selected. The arm is
+  read-only about the selection by design — the workaround it would justify is
+  `setSelectedShapes` — so it can only observe a condition the user made.
+  **Re-run it with a shape clicked.**
+
+Each of those reports `unknown` with the re-run named. A question the run could
+not put is never recorded as an answer.
+
+So questions 0 to 4 are answered and the package path is measured rather than
+assumed; 5 to 7 are asked and waiting on a deck that can answer them.
 
 ## One answer is not evidence about your host
 

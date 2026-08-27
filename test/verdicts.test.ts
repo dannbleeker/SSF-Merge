@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   PROBE_RUN_TAG,
   creationIdReading,
+  deckReadVerdict,
   exportPartsVerdict,
   insertVerdict,
   insertionBlame,
   offsetVerdict,
+  selectedInsertVerdict,
   substringVerdict,
   tagVerdict,
   tornInsert,
@@ -349,5 +351,99 @@ describe("undo after a torn insert", () => {
     const landed = 719; // one slide short of 720
     const plan = sweepPlan({ deckAtStart, deckNow: deckAtStart + landed, added: landed });
     expect(plan).toEqual({ from: deckAtStart, count: landed });
+  });
+});
+
+describe("whether a collection load of the deck answers in full", () => {
+  it("will not call a small deck an answer", () => {
+    // The arm this closes was live-run and reported nothing at all. When it
+    // finally spoke, its first real sheet had EIGHT slides — a full read that
+    // says the collection is not broken outright and says nothing whatever
+    // about the ~50 ceiling office-js#4272 describes.
+    const v = deckReadVerdict({
+      deckSize: 8,
+      items: 8,
+      short: false,
+      empty: false,
+      canAnswerFiftyQuestion: false,
+      byPosition: 8,
+      prefixOk: true,
+    });
+    expect(v.verdict).toBe("unknown");
+    expect(v.detail).toContain("NOT PUT");
+    expect(v.detail).toContain("8");
+  });
+
+  it("answers yes only above the ceiling", () => {
+    const v = deckReadVerdict({
+      deckSize: 60,
+      items: 60,
+      short: false,
+      empty: false,
+      canAnswerFiftyQuestion: true,
+      prefixOk: true,
+    });
+    expect(v.verdict).toBe("yes");
+  });
+
+  it("separates a bounded short read from a scrambled one", () => {
+    const bounded = deckReadVerdict({ deckSize: 60, items: 50, short: true, prefixOk: true });
+    const scrambled = deckReadVerdict({ deckSize: 60, items: 50, short: true, prefixOk: false });
+    expect(bounded.verdict).toBe("no");
+    expect(scrambled.verdict).toBe("no");
+    // The difference is the whole point of the arm: a prefix-stable short read
+    // refuses a block past it, a scrambled one clones slides nobody chose.
+    expect(bounded.detail).toContain("DECK ORDER");
+    expect(scrambled.detail).toContain("wrong slide number");
+  });
+
+  it("names the empty read as the sync-succeeded case", () => {
+    const v = deckReadVerdict({ deckSize: 8, items: 0, short: true, empty: true });
+    expect(v.verdict).toBe("no");
+    expect(v.detail).toContain("6363");
+  });
+
+  it("says nothing when the arm was never run", () => {
+    expect(deckReadVerdict({}).verdict).toBe("unknown");
+    expect(deckReadVerdict({ error: "timed out" }).verdict).toBe("threw");
+  });
+});
+
+describe("whether a slide insert survives a standing selection", () => {
+  it("refuses to answer when nothing was selected", () => {
+    // The trap this exists for: the insert lands cleanly, the sheet looks like
+    // a pass, and the CONDITION was never present. The arm is read-only about
+    // the selection by design, so it can only observe what the user made.
+    const v = selectedInsertVerdict({ shapesSelected: 0, landed: 2, expected: 2 });
+    expect(v.verdict).toBe("unknown");
+    expect(v.detail).toContain("NOT ASKED");
+    expect(v.detail).toContain("Re-run with a shape clicked");
+  });
+
+  it("answers no when a selection was standing and the slides landed", () => {
+    const v = selectedInsertVerdict({ shapesSelected: 3, landed: 2, expected: 2 });
+    expect(v.verdict).toBe("no");
+    expect(v.detail).toContain("setSelectedShapes");
+  });
+
+  it("answers yes when a standing selection cost slides", () => {
+    const v = selectedInsertVerdict({ shapesSelected: 3, landed: 0, expected: 2 });
+    expect(v.verdict).toBe("yes");
+    expect(v.detail).toContain("BLOCKS");
+  });
+
+  it("distinguishes a host that would not say from a deck with nothing selected", () => {
+    // getSelectedShapes is 1.5 and the floor is 1.2, so an older host cannot
+    // answer — which is a different unknown from "nothing was selected", and
+    // sends the next run somewhere else.
+    const v = selectedInsertVerdict({
+      shapesSelected: -1,
+      selectionReadError: "not supported",
+      landed: 2,
+      expected: 2,
+    });
+    expect(v.verdict).toBe("unknown");
+    expect(v.detail).toContain("1.5");
+    expect(v.detail).not.toContain("Re-run with a shape clicked");
   });
 });

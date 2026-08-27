@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 // @ts-expect-error — plain .mjs with no types, shared with the scripts.
-import { withoutHashComments, withoutTsProse, withoutXmlComments } from "../scripts/without-prose.mjs";
+import * as prose from "../scripts/without-prose.mjs";
+
+const { withoutHashComments, withoutTsComments, withoutTsProse, withoutXmlComments } = prose;
 
 /**
- * The three cases that caught the three guards.
+ * The cases that caught the guards.
  *
  * Each `it` below is a real file shape from this repo's own history, not an
  * invented one. A stripper that stops handling its own case puts the guard that
@@ -83,5 +85,24 @@ export const x = 1;`;
   it("does not eat code that merely follows a comment", () => {
     const file = "const a = 1; // note\nconst b = 2;";
     expect(ts(file)).toContain("const b = 2;");
+  });
+});
+
+describe("withoutTsComments", () => {
+  it("drops the comments and KEEPS the strings", () => {
+    // The split that made this a separate export. `read-answers.mjs` reads half
+    // its sheet inside template literals, so a guard that checked it through
+    // `withoutTsProse` had those reads stripped out from under it and reported
+    // a correct file as broken — the same false-red this module exists to stop,
+    // in a fourth syntax.
+    const src = [
+      "/* sheet.deckRead is explained here */",
+      "// and here: sheet.deckRead",
+      "console.log(`${sheet.deckRead}`);",
+    ].join("\n");
+    const out = withoutTsComments(src);
+    expect(out).toContain("sheet.deckRead}`");
+    expect(out).not.toContain("explained here");
+    expect(out).not.toContain("and here");
   });
 });

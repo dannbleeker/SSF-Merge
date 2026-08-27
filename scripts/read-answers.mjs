@@ -14,12 +14,14 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import {
   creationIdReading,
+  deckReadVerdict,
   exportPartsVerdict,
   insertionBlame,
   insertVerdict,
   offsetVerdict,
   Q3,
   Q4,
+  selectedInsertVerdict,
   substringVerdict,
   tagVerdict,
 } from "../dist-lib/host/verdicts.js";
@@ -109,7 +111,19 @@ console.log("\n5. Does exportAsBase64Presentation drop parts the file route keep
   if (missing.length > 0) line("not carried over", missing.join(", "));
 }
 
-console.log("\n6. Does fill.setImage stretch or preserve aspect ratio?");
+console.log("\n6. Does a collection load of the deck's slides answer in full?");
+{
+  const v = deckReadVerdict(sheet.deckRead ?? {});
+  line("verdict", `${v.verdict} — ${v.detail}`);
+}
+
+console.log("\n7. Does a slide insert survive a STANDING selection?");
+{
+  const v = selectedInsertVerdict({ ...(sheet.insertWhileSelected ?? {}), expected: 2 });
+  line("verdict", `${v.verdict} — ${v.detail}`);
+}
+
+console.log("\n8. Does fill.setImage stretch or preserve aspect ratio?");
 line(
   "verdict",
   "not asked here — no API reads it back. It is a look-at-the-slide question, and it gates image fields only.",

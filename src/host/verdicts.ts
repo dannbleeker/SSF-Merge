@@ -411,3 +411,118 @@ export function tornInsert(slidesPerRecord: number[], landed: number): TornInser
       : `${complete} of ${rows} row(s) landed complete; ${absent} row(s) got nothing`;
   return { complete, torn, absent, ...(firstIncomplete !== undefined ? { firstIncomplete } : {}), detail };
 }
+
+export interface DeckReadObservation {
+  deckSize?: number;
+  items?: number;
+  short?: boolean;
+  empty?: boolean;
+  canAnswerFiftyQuestion?: boolean;
+  byPosition?: number;
+  prefixOk?: boolean;
+  error?: string;
+}
+
+/**
+ * Whether a collection load of the deck's slides answers in full.
+ *
+ * Three separate failures ride on this one arm, which is why the detail names
+ * which one it saw rather than reporting a bare yes. office-js#4272 reports a
+ * load of more than ~50 items answering short; #6363 reports a batched load
+ * coming back with nothing after a sync that SUCCEEDED. `deckSlideIds` pages at
+ * twenty for the first and has no defence at all against the second.
+ *
+ * **A DECK SMALLER THAN THE CEILING CANNOT ANSWER THE CEILING QUESTION.** A
+ * full read of eight slides says the collection is not broken outright; it says
+ * nothing whatever about what fifty would do, and reporting it as "yes" full
+ * stop is the `no-scratch-slide` mistake — a question the run could not put,
+ * recorded as an answer. The size is in every detail string for that reason.
+ */
+export function deckReadVerdict(o: DeckReadObservation): { verdict: Verdict; detail: string } {
+  if (o.error !== undefined) return { verdict: "threw", detail: `the read threw: ${o.error}` };
+  if (o.deckSize === undefined) {
+    return { verdict: "unknown", detail: "NOT ASKED — this sheet predates the arm." };
+  }
+  const size = o.deckSize;
+  const got = o.items ?? 0;
+  if (o.empty === true) {
+    return {
+      verdict: "no",
+      detail: `the load came back EMPTY after a sync that succeeded, on a deck of ${size} — office-js#6363. Every reader here that batches a load and reads it after one sync is exposed.`,
+    };
+  }
+  if (o.short === true) {
+    const bounded =
+      o.prefixOk === true
+        ? "the slides it did answer are the first n IN DECK ORDER, so a block inside the prefix is right and one past it is refused"
+        : "and NOT in deck order — indexOf on these ids returns the wrong slide number, silently, so the merge would clone slides nobody chose";
+    return {
+      verdict: "no",
+      detail: `the load answered ${got} of ${size}; ${bounded}.`,
+    };
+  }
+  if (o.canAnswerFiftyQuestion !== true) {
+    return {
+      verdict: "unknown",
+      detail: `the load answered all ${size} — but a deck of ${size} is below the ~50 ceiling office-js#4272 describes, so THE QUESTION THIS ARM EXISTS FOR WAS NOT PUT. Re-run on a deck of more than fifty slides.`,
+    };
+  }
+  return {
+    verdict: "yes",
+    detail: `the load answered all ${size}, above the ~50 ceiling office-js#4272 describes, in deck order.`,
+  };
+}
+
+export interface SelectedInsertObservation {
+  /** How many shapes were selected when the arm ran. -1 when the host would not say. */
+  shapesSelected?: number;
+  selectionReadError?: string;
+  /** The insert's own observation, graded by `insertVerdict`. */
+  landed?: number;
+  expected: number;
+}
+
+/**
+ * Whether a slide insert survives a STANDING selection.
+ *
+ * office-js#2775 has `addTextBox` deleting the selected shape and #3698 has a
+ * picture refusing to insert while one is selected — both about SHAPES, and
+ * this add-in inserts SLIDES, which is neither. The reason to ask rather than
+ * assume is that the alternative costs more: dropping the selection first means
+ * calling `setSelectedShapes`, the one call in this family with a measured
+ * history of wedging the host.
+ *
+ * **THE ARM IS READ-ONLY ABOUT THE SELECTION, so it can only observe a
+ * condition the user happened to create.** A run with nothing selected did not
+ * ask this question, however cleanly the insert landed, and says so.
+ */
+export function selectedInsertVerdict(o: SelectedInsertObservation): {
+  verdict: Verdict;
+  detail: string;
+} {
+  const selected = o.shapesSelected ?? -1;
+  const landed = o.landed ?? 0;
+  const ok = landed === o.expected;
+  if (selected < 0) {
+    return {
+      verdict: "unknown",
+      detail: `NOT ASKED — the host would not say what was selected${o.selectionReadError !== undefined ? ` (${o.selectionReadError})` : ""}; getSelectedShapes is 1.5 and the floor here is 1.2. The insert itself landed ${landed} of ${o.expected}.`,
+    };
+  }
+  if (selected === 0) {
+    return {
+      verdict: "unknown",
+      detail: `NOT ASKED — nothing was selected when the arm ran, so the insert never met the condition. It landed ${landed} of ${o.expected}, which is the ordinary case being confirmed, not this question. Re-run with a shape clicked.`,
+    };
+  }
+  if (!ok) {
+    return {
+      verdict: "yes",
+      detail: `a standing selection BLOCKS the insert — ${selected} shape(s) selected and ${landed} of ${o.expected} slide(s) landed. The preview step must drop the selection before inserting.`,
+    };
+  }
+  return {
+    verdict: "no",
+    detail: `${selected} shape(s) were selected and all ${o.expected} slide(s) landed anyway — a slide insert is not the shape case #2775 and #3698 describe, and no setSelectedShapes call is needed.`,
+  };
+}
