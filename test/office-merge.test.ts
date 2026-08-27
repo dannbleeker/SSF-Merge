@@ -24,6 +24,8 @@ const host = vi.hoisted(() => ({
 vi.mock("../src/office/powerpoint.js", () => host);
 
 const { inspectBlock, runMerge } = await import("../src/office/merge.js");
+const { Pkg } = await import("../src/core/pptx/pkg.js");
+const { makeDeck } = await import("./fixtures/deck.js");
 
 const records = { columns: [{ name: "First", type: "text" as const }], rows: [{ First: "Ada" }] };
 
@@ -95,5 +97,89 @@ describe("runMerge answers rather than raising", () => {
     const outcome = await runMerge({ from: 1, to: 1, records: { columns: [], rows: [] } });
     expect(outcome.detail).toContain("no rows");
     expect(host.readTemplate).not.toHaveBeenCalled();
+  });
+});
+
+describe("the whole-deck route sends only the merged slides", () => {
+  /**
+   * The defect this describes was live, and it is the one a real-host round on
+   * an older PowerPoint would have found the expensive way.
+   *
+   * `readTemplate` has two routes. On `subset` — PowerPointApi 1.10 and up —
+   * `exportAsBase64Presentation` hands back a package holding ONLY the template
+   * block, and `templateOffset` is 0. On `file` — everything below 1.10, which
+   * this add-in supports, since its floor is 1.2 — `getFileAsync` hands back
+   * the USER'S ENTIRE PRESENTATION, and the offset says where in it the block
+   * begins.
+   *
+   * `runMerge` removed `prepared.block.slides` and nothing else, so on the file
+   * route the package handed to `insertSlidesFromBase64` was the user's whole
+   * deck, minus the template block, plus the clones. Merging three rows into a
+   * forty-slide deck would have inserted forty-six slides: a second copy of
+   * everything the user had.
+   *
+   * It is not silent — `insertVerdict` compares the deck delta against
+   * `expected` and would report the mismatch — but by then the slides are in
+   * the deck, and "the merge duplicated my presentation" is not a diagnosis
+   * anyone should have to make from a verdict line.
+   */
+  const rows = {
+    columns: [{ name: "First", type: "text" as const }],
+    rows: [{ First: "Ada" }, { First: "Grace" }],
+  };
+
+  /** A five-slide deck whose block is slide 3 — the file route's shape. */
+  async function wholeDeck(): Promise<string> {
+    const bytes = await makeDeck([
+      { paragraphs: [["Title"]] },
+      { paragraphs: [["Agenda"]] },
+      { paragraphs: [["Hello ", "{{First}}"]] },
+      { paragraphs: [["Appendix"]] },
+      { paragraphs: [["Thanks"]] },
+    ]);
+    return Buffer.from(bytes).toString("base64");
+  }
+
+  it("sends two slides, not the user's whole deck plus two", async () => {
+    // offset 2 = the block starts at the third slide of the package, which is
+    // exactly what `templateOffset("file", 2)` answers.
+    host.readTemplate.mockResolvedValueOnce({ base64: await wholeDeck(), offset: 2 });
+    host.insertDeck.mockResolvedValueOnce({ verdict: "yes", detail: "landed", landed: 2, before: 5, after: 7 });
+
+    const out = await runMerge({ from: 3, to: 3, records: rows });
+    expect(out.ok).toBe(true);
+
+    const sent = host.insertDeck.mock.calls[0]?.[0] as string;
+    const pkg = await Pkg.open(sent);
+    // The package's OWN count, not what the caller believed it built. The four
+    // slides the user already had must not be in it.
+    expect(await pkg.slidePaths()).toHaveLength(2);
+  });
+
+  it("tells the host how many slides the package HOLDS", async () => {
+    // `expected` is what `insertVerdict` grades the deck delta against, so a
+    // number taken from anywhere but the package is a verdict about the wrong
+    // thing. Measure the artefact you hand over, not your intent.
+    host.readTemplate.mockResolvedValueOnce({ base64: await wholeDeck(), offset: 2 });
+    host.insertDeck.mockResolvedValueOnce({ verdict: "yes", detail: "landed", landed: 2, before: 5, after: 7 });
+
+    await runMerge({ from: 3, to: 3, records: rows });
+
+    const sent = host.insertDeck.mock.calls[0]?.[0] as string;
+    const expected = host.insertDeck.mock.calls[0]?.[1] as number;
+    expect(expected).toBe((await (await Pkg.open(sent)).slidePaths()).length);
+  });
+
+  it("still sends only the clones on the subset route", async () => {
+    // The route that already worked, so the fix cannot have been a wash: here
+    // the package IS the block, and removing it leaves the clones alone.
+    const bytes = await makeDeck([{ paragraphs: [["Hello ", "{{First}}"]] }]);
+    host.readTemplate.mockResolvedValueOnce({ base64: Buffer.from(bytes).toString("base64"), offset: 0 });
+    host.insertDeck.mockResolvedValueOnce({ verdict: "yes", detail: "landed", landed: 2, before: 3, after: 5 });
+
+    await runMerge({ from: 1, to: 1, records: rows });
+
+    const sent = host.insertDeck.mock.calls[0]?.[0] as string;
+    expect(await (await Pkg.open(sent)).slidePaths()).toHaveLength(2);
   });
 });

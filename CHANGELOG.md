@@ -7,6 +7,34 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a merge on an older PowerPoint would have duplicated the user's whole deck
+
+`readTemplate` has two routes and only one of them was handled past the merge.
+On `subset` — PowerPointApi 1.10 and up — `exportAsBase64Presentation` returns a
+package holding only the template block, so removing that block leaves the
+merged slides alone. On `file` — **every host below 1.10, and this add-in's
+floor is 1.2** — `getFileAsync` returns the user's ENTIRE PRESENTATION, and the
+merge removed only the template block from it.
+
+So the package handed to `insertSlidesFromBase64` was the user's whole deck,
+minus the template block, plus the merged slides. Three rows merged into a
+forty-slide deck would have inserted **forty-six** slides: a second copy of
+everything they had.
+
+Not silent — the deck delta would not have matched and `insertVerdict` would
+have said so — but by then the slides are in the deck, and "the merge duplicated
+my presentation" is not a diagnosis anyone should have to make from a verdict
+line.
+
+The merged slides are kept now rather than the template block removed, computed
+from the package's own `sldIdLst`, which makes both routes one case. And the
+count handed to the host is the package's own, not the plan's: `insertVerdict`
+grades the deck delta against it, so a number taken from anywhere but the
+artefact makes the verdict a statement about the wrong thing — on the file route
+the two disagreed by the size of the user's deck.
+
+Found by reading the sibling project's debugging apparatus, not by a round.
+
 ### Added — the sibling sweep, and two findings it surfaced on its first run
 
 `scripts/sibling-watch.mjs` reads PowerChart's curated tables — its triaged
