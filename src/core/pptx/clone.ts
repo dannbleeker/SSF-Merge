@@ -68,7 +68,7 @@ export async function cloneSlide(pkg: Pkg, sourcePath: string, opts: CloneOption
  * back-reference is repointed too. Left alone it names the template, and
  * PowerPoint then shows one slide's notes on another.
  */
-async function cloneNotesSlide(pkg: Pkg, slidePath: string, n: number): Promise<void> {
+async function cloneNotesSlide(pkg: Pkg, slidePath: string, slideNumber: number): Promise<void> {
   const relsPath = Pkg.relsPathFor(slidePath);
   if (!pkg.has(relsPath)) return;
   const rels = await pkg.doc(relsPath);
@@ -79,6 +79,11 @@ async function cloneNotesSlide(pkg: Pkg, slidePath: string, n: number): Promise<
   const oldPath = resolve(slidePath, oldTarget);
   if (!pkg.has(oldPath)) return;
 
+  // Numbered from the NOTES parts, never from the slide. The two sequences are
+  // independent — a deck with one slide can keep its notes in `notesSlide2.xml`
+  // — and taking the slide's number lands on a part that is already there. See
+  // `nextNotesNumber`, which records what that cost.
+  const n = pkg.nextNotesNumber();
   const newPath = `ppt/notesSlides/notesSlide${n}.xml`;
   await pkg.copyPart(oldPath, newPath);
   await pkg.addContentTypeOverride(
@@ -92,7 +97,7 @@ async function cloneNotesSlide(pkg: Pkg, slidePath: string, n: number): Promise<
     await pkg.copyPart(oldNotesRels, Pkg.relsPathFor(newPath));
     const notesRels = await pkg.doc(Pkg.relsPathFor(newPath));
     for (const rel of elements(notesRels, PKG_REL_NS, "Relationship")) {
-      if (rel.getAttribute("Type") === SLIDE_REL_TYPE) rel.setAttribute("Target", `../slides/slide${n}.xml`);
+      if (rel.getAttribute("Type") === SLIDE_REL_TYPE) rel.setAttribute("Target", `../slides/slide${slideNumber}.xml`);
     }
   }
 }

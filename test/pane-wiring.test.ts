@@ -1223,3 +1223,81 @@ describe("a template with no fields on it yet", () => {
     expect(office.runMerge).not.toHaveBeenCalled();
   });
 });
+
+describe("a run the pane never came back from", () => {
+  /**
+   * The crumb's whole reason, driven through the real `main.ts`.
+   *
+   * `merge()` writes `{added: 0}` BEFORE handing the package to PowerPoint,
+   * because a tab that dies during that call never comes back to write the real
+   * number. `readCrumb` refused zero, so the record was write-only in exactly
+   * that window — readable only after the run it was insurance against had
+   * already succeeded, which is the one case it is not needed for.
+   *
+   * What it may do with it is bounded. Nothing here knows how many slides
+   * landed: taking the deck's growth as the answer would sweep whatever has
+   * been appended since, which `sweepPlan` refuses by design. So the user is
+   * TOLD, with both numbers and where to look, and never offered a delete.
+   */
+  const KEY = "ssf-merge.run.v1";
+
+  // The store survives `vi.resetModules`, and earlier tests in this file run
+  // real merges that drop crumbs of their own.
+  beforeEach(() => localStorage.removeItem(KEY));
+
+  it("says a merge did not finish, with the deck's size either side of it", async () => {
+    localStorage.setItem(
+      KEY,
+      JSON.stringify({
+        kind: "ssf-merge-run",
+        deckAtStart: 4,
+        added: 0,
+        runId: "pending",
+        startedAt: "2026-08-27T10:00:00.000Z",
+      }),
+    );
+    office.slideCount.mockReset().mockResolvedValue(16);
+    await openPane();
+    await settle();
+
+    const text = pane().textContent ?? "";
+    expect(text, "said nothing about the run that died").toContain("did not finish");
+    expect(text).toContain("4 slide(s) before it");
+    expect(text).toContain("16");
+    // Told, never offered. There is deliberately no assertion here that the
+    // undo card is absent: it is drawn on the merge step and this is the
+    // template step, so it would pass whatever the branch did — the vacuous
+    // shape this repo keeps finding. What makes it true is that the branch
+    // sets no `added` and no `last`, which is `crumb.test.ts`'s to check and
+    // `sweepPlan`'s to enforce.
+  });
+
+  it("says it once, because there is no action attached to it", async () => {
+    localStorage.setItem(
+      KEY,
+      JSON.stringify({ kind: "ssf-merge-run", deckAtStart: 4, added: 0, runId: "pending", startedAt: "2026-08-27" }),
+    );
+    office.slideCount.mockReset().mockResolvedValue(16);
+    await openPane();
+    await settle();
+    expect(pane().textContent).toContain("did not finish");
+
+    // A second open. Left in the store the same sentence would greet the user
+    // on every open for ever, about a run they have already dealt with.
+    await openPane();
+    await settle();
+    expect(pane().textContent, "repeats on every open").not.toContain("did not finish");
+  });
+
+  it("still OFFERS the way back when the run got as far as counting", async () => {
+    // The other branch, unchanged: a crumb carrying a real count can be swept.
+    localStorage.setItem(
+      KEY,
+      JSON.stringify({ kind: "ssf-merge-run", deckAtStart: 12, added: 6, runId: "r1", startedAt: "2026-08-27" }),
+    );
+    office.slideCount.mockReset().mockResolvedValue(18);
+    await openPane();
+    await settle();
+    expect(pane().textContent).toContain("added 6 slide(s)");
+  });
+});

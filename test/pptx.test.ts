@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { cloneSlide, creationIdOf, setCreationId } from "../src/core/pptx/clone.js";
+import JSZip from "jszip";
+import { cloneSlide, creationIdOf, notesPathFor, setCreationId } from "../src/core/pptx/clone.js";
+import { buildPlan } from "../src/core/merge/plan.js";
+import { runPlan } from "../src/core/merge/run.js";
+import { toRecordSet } from "../src/core/data/recordset.js";
 import { Pkg } from "../src/core/pptx/pkg.js";
 import {
   TAG_BLOCK,
@@ -387,5 +391,79 @@ describe("relating a part that had no relationships at all", () => {
     const rId = await pkg.addRel(owner, "http://example.invalid/rel", "../media/image1.png");
     expect(rId).toBe("rId1");
     expect(await pkg.relTarget(owner, rId)).toBe("ppt/media/image1.png");
+  });
+});
+
+describe("a deck whose notes parts are numbered ahead of its slides", () => {
+  /**
+   * Part names in a package are arbitrary, and the slide and notes sequences
+   * drift apart the moment a slide is deleted — so a one-slide deck can
+   * perfectly well keep its notes in `notesSlide2.xml`. `cloneNotesSlide` named
+   * the copy after the SLIDE number, which lands straight on that part.
+   *
+   * Nothing complains. `copyPart` overwrites silently and
+   * `addContentTypeOverride` no-ops on an override that is already there, so the
+   * package stays structurally valid and is wrong in two ways at once. Both were
+   * reproduced on real bytes before the fix, and both are asserted here.
+   */
+  async function collidingDeck(): Promise<Pkg> {
+    const bytes = await makeDeck([{ paragraphs: [["Hello {{First}}"]], notes: "Ring {{First}}" }]);
+    const zip = await JSZip.loadAsync(bytes);
+    const notes = await zip.file("ppt/notesSlides/notesSlide1.xml")!.async("uint8array");
+    zip.remove("ppt/notesSlides/notesSlide1.xml");
+    zip.file("ppt/notesSlides/notesSlide2.xml", notes);
+    for (const path of ["ppt/slides/_rels/slide1.xml.rels", "[Content_Types].xml"]) {
+      const s = await zip.file(path)!.async("string");
+      zip.file(path, s.replaceAll("notesSlide1.xml", "notesSlide2.xml"));
+    }
+    return Pkg.open(await zip.generateAsync({ type: "uint8array" }));
+  }
+
+  it("gives the clone a notes page of its own rather than sharing the template's", async () => {
+    const pkg = await collidingDeck();
+    const template = await notesPathFor(pkg, "ppt/slides/slide1.xml");
+    const clone = await cloneSlide(pkg, "ppt/slides/slide1.xml");
+    expect(await notesPathFor(pkg, clone)).not.toBe(template);
+  });
+
+  it("does not put the FIRST record's notes on the second record's slide", async () => {
+    /**
+     * The consequence, and the one a user would actually meet. A clone sharing
+     * the template's notes page has that page merged into it — so the next
+     * clone copies notes whose placeholders are already gone, and ships the
+     * record before it.
+     */
+    const pkg = await collidingDeck();
+    const records = toRecordSet([["First"], ["Ada"], ["Grace"]]);
+    const block = { id: "b", slides: [{ path: "ppt/slides/slide1.xml", seq: 1 }] };
+    const result = await runPlan(pkg, buildPlan(block, records, { runId: "r" }), records);
+
+    const second = result.slides[1];
+    const notes = second === undefined ? undefined : await notesPathFor(pkg, second);
+    expect(notes, "the second clone has no notes page").toBeDefined();
+    expect((await pkg.doc(notes as string)).documentElement?.textContent).toBe("Ring Grace");
+  });
+
+  it("leaves no notes relationship pointing at a part that is not there", async () => {
+    /**
+     * The other consequence, and the one PowerPoint reports as a damaged file
+     * without saying which part it could not find. The template is removed on
+     * the way out — that is how the clones end up alone in the package — and
+     * removing a slide takes its notes page with it. Shared, that page was the
+     * clone's too.
+     */
+    const pkg = await collidingDeck();
+    const records = toRecordSet([["First"], ["Ada"]]);
+    const block = { id: "b", slides: [{ path: "ppt/slides/slide1.xml", seq: 1 }] };
+    const result = await runPlan(pkg, buildPlan(block, records, { runId: "r" }), records);
+
+    const keep = new Set(result.slides);
+    for (const path of await pkg.slidePaths()) if (!keep.has(path)) await pkg.removeSlide(path);
+
+    for (const slide of result.slides) {
+      const notes = await notesPathFor(pkg, slide);
+      expect(notes, `${slide} lost its notes page`).toBeDefined();
+      expect(pkg.has(notes as string), `${slide} points at a notes part that is gone`).toBe(true);
+    }
   });
 });

@@ -35,7 +35,16 @@ export interface Crumb {
   kind: "ssf-merge-run";
   /** The deck's size before the insert. The floor every sweep is clamped to. */
   deckAtStart: number;
-  /** What the run believes it added. Zero until the insert answers. */
+  /**
+   * What the run believes it added. ZERO until the insert answers.
+   *
+   * Zero is a real state and not a broken record: the crumb is written BEFORE
+   * the insert precisely so a tab that dies during it leaves something behind.
+   * A reader must not sweep on it — `sweepPlan` refuses a count of zero, and
+   * deriving one from the deck's growth would delete whatever has been appended
+   * since, which is the inference this whole file exists to refuse. What it CAN
+   * do is say a run did not finish and how big the deck was before it.
+   */
   added: number;
   runId: string;
   startedAt: string;
@@ -97,7 +106,17 @@ export function readCrumb(): Crumb | undefined {
     // Both numbers, or neither. A crumb carrying one of them cannot clamp a
     // sweep, and a sweep that cannot be clamped is not offered.
     if (!Number.isInteger(c.deckAtStart) || !Number.isInteger(c.added)) return undefined;
-    if ((c.deckAtStart ?? -1) < 0 || (c.added ?? -1) <= 0) return undefined;
+    // Zero added is ALLOWED, and refusing it made this file write-only in the
+    // one window it was built for. `merge()` writes `{added: 0}` before the
+    // insert — that is the whole point, because a tab that dies during the
+    // insert never gets to write the real number — and this line then threw it
+    // away on the way back in. A crumb was therefore readable only after the
+    // run it was insurance against had already succeeded.
+    //
+    // Zero still authorises nothing: `sweepPlan` refuses a count of zero, so
+    // the caller gets a sentence rather than a button. Negative is still a
+    // broken record.
+    if ((c.deckAtStart ?? -1) < 0 || (c.added ?? -1) < 0) return undefined;
     return {
       kind: "ssf-merge-run",
       deckAtStart: c.deckAtStart as number,

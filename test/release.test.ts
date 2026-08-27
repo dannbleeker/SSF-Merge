@@ -109,8 +109,38 @@ describe("the release workflow", () => {
     expect(workflow).toContain("git diff --exit-code");
   });
 
-  it("validates with Microsoft's own tool, on the file it is shipping", () => {
-    expect(workflow).toContain("office-addin-manifest validate manifest-prod.xml");
+  it("validates with Microsoft's own tool, on EVERY file it is shipping", () => {
+    // Both, not just the XML. The release attaches `manifest-prod.json` too and
+    // the note points administrators deploying to a whole tenant at it, so the
+    // highest-consequence artifact here was the one no external authority read.
+    expect(workflow).toContain("office-addin-manifest validate");
+    for (const asset of RELEASE_ASSETS) {
+      expect(workflow, `${asset} is shipped and not validated`).toMatch(
+        new RegExp(`for m in[^\\n]*${asset.replace(".", "\\.")}`),
+      );
+    }
+  });
+
+  it("fetches the URLs the manifest points at, so a release cannot ship a dead host", () => {
+    // `checkManifest` asks whether a production manifest points at localhost,
+    // which is a different question and passes cleanly for one pointing at a
+    // domain that 404s — an add-in that installs perfectly and shows a blank
+    // ribbon button and an empty pane.
+    expect(workflow).toContain("scripts/manifest-urls.mjs");
+    expect(workflow).toContain("curl --fail");
+    // Into a variable, never `… | while read`: a loop on the right of a pipe
+    // runs in a subshell, and a curl that fails inside one is a step that goes
+    // green while the host is down.
+    expect(workflow, "a piped loop swallows the failure").not.toMatch(/manifest-urls\.mjs[^\n]*\|\s*while/);
+    // And an empty list is a failure rather than a silent pass.
+    expect(workflow).toContain('test -n "$urls"');
+  });
+
+  it("keeps the URL check OUT of CI, where a third-party outage would block merges", () => {
+    // The same reasoning that already keeps Microsoft's validator out of the
+    // `test` job. A gate that fails for somebody else's uptime is a gate that
+    // gets switched off after the first bad week.
+    expect(readFileSync(".github/workflows/ci.yml", "utf8")).not.toContain("manifest-urls.mjs");
   });
 
   it("attaches exactly the assets the rules name", () => {

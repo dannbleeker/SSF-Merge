@@ -909,7 +909,7 @@ void Office.onReady(() => {
       // count, the refusal is the sweep's own and the user gets a sentence
       // instead of a button that does nothing.
       const crumb = readCrumb();
-      if (crumb) {
+      if (crumb && crumb.added > 0) {
         last = {
           ok: false,
           detail: "recovered from a run that did not finish",
@@ -924,6 +924,28 @@ void Office.onReady(() => {
           added: crumb.added,
           notice: `A merge from ${crumb.startedAt.slice(0, 10)} added ${crumb.added} slide(s) and the pane closed before you could take them back.`,
         };
+      } else if (crumb) {
+        // A run that died DURING the insert, which is the window the crumb was
+        // built for and the one it served least: it is written with `added: 0`
+        // before the call, and the tab never comes back to write the real
+        // number.
+        //
+        // Told, not offered. The slides may well be in the deck, but nothing
+        // here knows how many: taking the deck's growth as the answer would
+        // sweep whatever has been appended since, which is exactly the
+        // inference `sweepPlan` refuses. So the user gets the two numbers and
+        // the place to look, and does it themselves.
+        const grew = (deckSize ?? crumb.deckAtStart) - crumb.deckAtStart;
+        state = {
+          ...state,
+          notice:
+            `A merge from ${crumb.startedAt.slice(0, 10)} did not finish — the pane closed while PowerPoint was ` +
+            `taking the slides. Your deck had ${crumb.deckAtStart} slide(s) before it and has ${deckSize ?? "an unknown number of"} now` +
+            `${grew > 0 ? `, so ${grew} may be from that run` : ""}. Check the end of the deck.`,
+        };
+        // Said once. There is no action attached to it, so leaving the crumb
+        // would repeat the same sentence on every open for ever.
+        clearCrumb();
       }
       draw();
     },

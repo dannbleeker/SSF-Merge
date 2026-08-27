@@ -55,9 +55,26 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      # The JSON manifests are in this loop and were not, for the whole life of
+      # the repo — while `manifest-prod.json` is a RELEASE ASSET and the release
+      # note points administrators deploying to a tenant at it. The highest-
+      # consequence artifact here was the one no external authority read.
+      #
+      # Measured before it was added rather than assumed: the validator reads a
+      # JSON manifest against its schema OFFLINE, needs no service for it, and
+      # exits 1 on one missing `id`, missing `version` and carrying a wrong
+      # `manifestVersion`. It exits 1 on an unreachable service too, so this
+      # step cannot go green without a verdict.
       - name: Manifests are valid
         run: |
-          for m in manifest.xml manifest-prod.xml; do
+          for m in manifest.xml manifest-prod.xml manifest.json manifest-prod.json; do
             echo "--- $m"
             npx --yes office-addin-manifest validate "$m"
+            # The tool prints "The manifest is valid." for XML and NOTHING AT
+            # ALL for JSON, so a JSON line in this log is otherwise a filename
+            # followed by silence — indistinguishable from a file it skipped.
+            # It does validate them: a JSON manifest missing `id`, missing
+            # `version` and carrying a wrong `manifestVersion` exits 1 with all
+            # three named. This line is so the log says which happened.
+            echo "$m: validated"
           done
