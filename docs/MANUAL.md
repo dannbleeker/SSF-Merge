@@ -132,8 +132,8 @@ Add a format after a pipe:
 
 | Format | Argument | Notes |
 | --- | --- | --- |
-| `number` | decimal places, default 0 | Space for thousands, comma for decimals |
-| `date` | a pattern, default `dd-MM-yyyy` | `yyyy` `yy` `MMM` `MM` `dd` `d` |
+| `number` | decimal places, default 0 | Space for thousands, comma for decimals. Digits only — `number:1e2` is not a count and leaves the cell alone |
+| `date` | a pattern, default `dd-MM-yyyy` | `yyyy` `yy` `MMMM` `MMM` `MM` `dd` `d`, and nothing else. Any other text in the pattern is printed as written |
 | `upper` | none | Locale-aware, so `måned` becomes `MÅNED` |
 | `lower` | none | Locale-aware |
 

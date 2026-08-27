@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyFormat, formatNumber, numericValue, parseDate } from "../src/core/data/format.js";
+import { applyFormat, formatDate, formatNumber, numericValue, parseDate } from "../src/core/data/format.js";
 import { detectType, looksLikeDate, parseDelimited, toRecordSet } from "../src/core/data/recordset.js";
 
 describe("parseDelimited", () => {
@@ -421,5 +421,52 @@ describe("month names the date gate already admits", () => {
     // cell while `marts` formatted, in the same column, on the same deck.
     const column = ["1 marts 2026", "3 maj 2026", "1 desember 2026"];
     expect(column.map((c) => applyFormat(c, "date:dd-MM-yyyy"))).toEqual(["01-03-2026", "03-05-2026", "01-12-2026"]);
+  });
+});
+
+describe("formats that were wrong in small ways", () => {
+  it("does not print minus zero", () => {
+    // The sign came from the INPUT, not the rounded value, so `-0.4` at no
+    // decimal places printed `-0` — a quantity that does not exist, on a
+    // slide, from an ordinary cell.
+    expect(applyFormat("-0.4", "number")).toBe("0");
+    expect(applyFormat("-0.04", "number:1")).toBe("0,0");
+    // And still keeps the sign where there is one to keep.
+    expect(applyFormat("-1.5", "number")).toBe("-2");
+    expect(applyFormat("-0.4", "number:1")).toBe("-0,4");
+  });
+
+  it("takes only a count of places as a decimal count", () => {
+    // `Number` also reads `1e2`, so `number:1e2` asked for a hundred decimal
+    // places and got them: a legal `toFixed` call producing a number no slide
+    // has room for. A spec that is not a count is not a count, and the cell is
+    // returned as it stands like every other unreadable format.
+    expect(applyFormat("1234.5", "number:1e2")).toBe("1234.5");
+    expect(applyFormat("1234.5", "number:0x2")).toBe("1234.5");
+    expect(applyFormat("1234.5", "number:-1")).toBe("1234.5");
+    expect(applyFormat("1234.5", "number:101")).toBe("1234.5");
+    // The forms that ARE a count still work, surrounding space included.
+    expect(applyFormat("1234.5", "number:2")).toBe("1 234,50");
+    expect(applyFormat("1234.5", "number: 2 ")).toBe("1 234,50");
+  });
+
+  it("writes a full month name for MMMM", () => {
+    // It printed `MarM` — `MMM` replaced and the fourth `M` left standing.
+    // Supported rather than refused, since a full month is a thing to want.
+    const d = parseDate("2026-03-01");
+    expect(d && formatDate(d, "MMMM")).toBe("March");
+    expect(d && formatDate(d, "d MMMM yyyy")).toBe("1 March 2026");
+    // And the shorter tokens still mean what they meant.
+    expect(d && formatDate(d, "MMM")).toBe("Mar");
+    expect(d && formatDate(d, "yyyy-MM-dd")).toBe("2026-03-01");
+  });
+
+  it("leaves the letters of a literal alone", () => {
+    // The `\b` around the single `d` is load-bearing: without it a pattern of
+    // `Ends d` prints "En1s 1". Longest-token-first is the other half — swap
+    // `yyyy` and `yy` and the year becomes "2626".
+    const d = parseDate("2026-03-01");
+    expect(d && formatDate(d, "Ends d")).toBe("Ends 1");
+    expect(d && formatDate(d, "yyyy")).toBe("2026");
   });
 });

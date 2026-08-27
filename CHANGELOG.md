@@ -7,6 +7,19 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — three small format defects
+
+- **`-0`.** `formatNumber` took the sign from the input rather than the rounded
+  value, so `-0.4` at no decimal places printed `-0` — a quantity that does not
+  exist, on a slide, from an ordinary cell.
+- **`number:1e2` asked for a hundred decimal places and got them.** `Number`
+  reads `1e2`, `0x10` and padded strings, so a spec that is not a count of
+  places was used as one. Digits only now; anything else returns the cell as it
+  stands, like every other unreadable format.
+- **`date:MMMM` printed `MarM`** — `MMM` replaced and the fourth `M` left
+  standing. `MMMM` is a full month name now rather than being refused, since it
+  is a thing to want. The supported tokens are exactly the six the manual lists.
+
 ### Added — a placeholder in a chart is named instead of passed over
 
 A chart's labels live in `ppt/charts/chartN.xml` and SmartArt's in

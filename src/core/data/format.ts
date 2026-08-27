@@ -9,6 +9,25 @@
 import { looksLikeDate } from "./recordset.js";
 
 const MONTHS_EN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/**
+ * For `MMMM`. English on the way OUT whatever the cell was read in, because the
+ * pattern is the template author's to choose and they can write the month
+ * themselves if they want another language.
+ */
+const MONTHS_FULL_EN = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
 
 /** Parse the number forms a spreadsheet actually produces, including the European one. */
 export function numericValue(raw: string): number | undefined {
@@ -210,10 +229,26 @@ function pad(n: number): string {
   return String(n).padStart(2, "0");
 }
 
+/**
+ * A date written to a pattern.
+ *
+ * The replacements run LONGEST TOKEN FIRST, which is what keeps them from
+ * eating each other: `yyyy` before `yy`, `MMMM` before `MMM` before `MM`, `dd`
+ * before `d`. Reorder them and `yyyy` becomes `2626`.
+ *
+ * The single `d` is bounded by `\b` so a literal keeps its letters — a pattern
+ * of `Ends d` prints "Ends 1" and not "En1s 1". The multi-letter tokens need no
+ * such guard: nobody writes `MM` inside a word.
+ *
+ * Only the tokens the manual lists are tokens. `MMMM` was not one until
+ * 2026-08-27 and printed `MarM` — `MMM` replaced and the fourth `M` left
+ * standing — which is the shape of every undocumented repeat here.
+ */
 export function formatDate(d: Date, pattern: string): string {
   return pattern
     .replace(/yyyy/g, String(d.getUTCFullYear()))
     .replace(/yy/g, pad(d.getUTCFullYear() % 100))
+    .replace(/MMMM/g, MONTHS_FULL_EN[d.getUTCMonth()] ?? "")
     .replace(/MMM/g, MONTHS_EN[d.getUTCMonth()] ?? "")
     .replace(/MM/g, pad(d.getUTCMonth() + 1))
     .replace(/dd/g, pad(d.getUTCDate()))
@@ -224,7 +259,11 @@ export function formatNumber(n: number, decimals: number, group: string, point: 
   const fixed = Math.abs(n).toFixed(decimals);
   const [whole = "0", frac] = fixed.split(".");
   const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, group);
-  return `${n < 0 ? "-" : ""}${grouped}${frac ? point + frac : ""}`;
+  // The sign comes from the ROUNDED value, not the input. `-0.4` at no decimal
+  // places rounds to zero, and taking the sign from `n` printed it as `-0` —
+  // a quantity that does not exist, on a slide, from an ordinary cell.
+  const negative = n < 0 && Number(fixed) !== 0;
+  return `${negative ? "-" : ""}${grouped}${frac ? point + frac : ""}`;
 }
 
 /**
@@ -249,8 +288,14 @@ export function applyFormat(raw: string, spec: string | undefined): string {
       // thing to write — Excel's ROUND takes negative digits. Thrown, it kills
       // the whole merge with a message naming neither slide nor placeholder,
       // on a path whose own contract is to return the value unchanged.
-      const decimals = arg === "" ? 0 : Math.trunc(Number(arg));
-      if (!Number.isFinite(decimals) || decimals < 0 || decimals > 100) return raw;
+      // Plain digits only. `Number` also reads `1e2`, `0x10` and ` 2 `, so
+      // `number:1e2` asked for a hundred decimal places and got them — a legal
+      // `toFixed` call producing a number no slide has room for. A format spec
+      // that is not a count of places is not a count of places.
+      const trimmed = arg.trim();
+      if (trimmed !== "" && !/^\d+$/.test(trimmed)) return raw;
+      const decimals = trimmed === "" ? 0 : Number(trimmed);
+      if (decimals > 100) return raw;
       return formatNumber(n, decimals, " ", ",");
     }
     case "date": {
