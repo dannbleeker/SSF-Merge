@@ -171,6 +171,33 @@ describe("placeholders the engine does not reach", () => {
   });
 });
 
+describe("the word PowerPoint has already taken", () => {
+  it("names the syntax rather than saying 'no placeholders'", async () => {
+    /**
+     * PowerPoint calls its own empty content boxes placeholders — "Click to add
+     * title" IS a placeholder in its vocabulary. So the old refusal told a user
+     * staring at two of them that the slide had none, on first contact with the
+     * add-in, on a fresh deck. It reads as the thing being broken, and it was
+     * reported as exactly that.
+     *
+     * The refusal has to name what to TYPE. This asserts both halves: the
+     * syntax is there, and the bare word that collides is not.
+     */
+    const deck = await makeDeck([{ paragraphs: [["Click to add title"]] }, { paragraphs: [["after"]] }]);
+    const pkg = await Pkg.open(deck);
+    const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "run1");
+    expect(prepared.ok).toBe(false);
+    if (prepared.ok) return;
+    expect(prepared.why).toContain("{{fields}}");
+    // Where the names COME FROM, not an invented one: the user has not attached
+    // data at this step and does not know their column headers yet, which is
+    // the objection this sentence was rewritten to answer.
+    expect(prepared.why, "tells the user what to type").toContain("column headers");
+    expect(prepared.why).toContain("{{First}}");
+    expect(prepared.why, "PowerPoint's word for its own empty boxes").not.toMatch(/\bno placeholders\b/);
+  });
+});
+
 describe("placeholders in the speaker notes", () => {
   /**
    * `runPlan` merges the notes page and always has — a template whose notes
@@ -215,6 +242,6 @@ describe("placeholders in the speaker notes", () => {
     const pkg = await Pkg.open(deck);
     const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "run1");
     expect(prepared.ok).toBe(false);
-    expect(prepared.ok || prepared.why).toContain("no placeholders");
+    expect(prepared.ok || prepared.why).toContain("no {{fields}}");
   });
 });

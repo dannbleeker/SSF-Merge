@@ -135,7 +135,7 @@ describe("describeMerge says what the merge DID", () => {
     // nothing is filled, and the deck delta reports a perfect success.
     const line = describeMerge({ added: 720, deckAtStart: 12, paragraphsMerged: 0 });
     expect(line).toContain("720 slides added after slide 12");
-    expect(line).toMatch(/no placeholders were filled/i);
+    expect(line).toMatch(/no \{\{fields\}\} were filled/i);
     expect(line).toMatch(/spelling/i);
   });
 

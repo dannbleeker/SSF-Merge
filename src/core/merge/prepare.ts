@@ -126,7 +126,19 @@ export async function prepareBlock(pkg: Pkg, req: BlockRequest, runId: string): 
           `itself, or mark a block that has a placeholder on the slide.`,
       };
     }
-    return { ok: false, why: `${where} has no placeholders, so every copy would be identical.` };
+    // Says the SYNTAX, not the word "placeholder".
+    //
+    // PowerPoint calls its own empty content boxes placeholders — "Click to add
+    // title" IS a placeholder in its vocabulary — so a user looking at two of
+    // them was being told there are none. First contact with this add-in, on a
+    // fresh deck, is exactly the moment that reads as the thing being broken.
+    return {
+      ok: false,
+      why:
+        `${where} has no {{fields}}, so every copy would be identical. Type your column headers onto ` +
+        `the slides in double braces — {{First}}, {{City}} — then press again. PowerPoint's own empty ` +
+        `"Click to add title" boxes are not fields.`,
+    };
   }
 
   return { ok: true, block: { id: runId, slides }, fields, unmergeable };

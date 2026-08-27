@@ -129,7 +129,7 @@ export function describeMerge(r: MergeReport): string {
   if (r.paragraphsMerged !== undefined) {
     parts.push(
       r.paragraphsMerged === 0
-        ? "no placeholders were filled — check the spelling in your template"
+        ? "no {{fields}} were filled — check the spelling in your template"
         : `${plural(r.paragraphsMerged, "placeholder")} filled`,
     );
   }
