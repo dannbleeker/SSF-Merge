@@ -562,3 +562,95 @@ describe("a host too old to read the selection", () => {
     expect(pane().querySelector('[data-action="selection"]')).not.toBeNull();
   });
 });
+
+describe("taking rows out, through the real pane", () => {
+  /** Reach the merge step with three rows pasted. */
+  async function reachRows(): Promise<void> {
+    await openPane();
+    await settle();
+    type("from", "4");
+    type("to", "6");
+    office.inspectBlock.mockResolvedValueOnce(REPORT);
+    primary().click();
+    await settle();
+    type("paste", "First\tLast\nAda\tLovelace\nGrace\tHopper\nKay\tMcNulty");
+    primary().click(); // fields -> preview
+    (pane().querySelector("[data-forward]") as HTMLElement).click(); // -> merge
+    (pane().querySelector('[data-action="rows"]') as HTMLElement).click(); // open the list
+    await settle();
+  }
+
+  const box = (i: number) => pane().querySelector(`[data-row="${i}"]`) as HTMLInputElement;
+
+  it("takes a row out and puts the new number on the button", async () => {
+    await reachRows();
+    expect(primary().textContent).toBe("Add 9 slides");
+    box(1).click();
+    await settle();
+    expect(primary().textContent).toBe("Add 6 slides");
+    expect(box(1).checked).toBe(false);
+  });
+
+  it("puts it back on a second click", async () => {
+    await reachRows();
+    box(1).click();
+    await settle();
+    box(1).click();
+    await settle();
+    expect(primary().textContent).toBe("Add 9 slides");
+  });
+
+  it("merges only the rows left ticked", async () => {
+    await reachRows();
+    box(0).click();
+    await settle();
+    office.runMerge.mockResolvedValueOnce({ ...OUTCOME, added: 6 });
+    primary().click();
+    await settle();
+    const req = office.runMerge.mock.calls[0]?.[0] as { records: { rows: { First: string }[] } };
+    expect(req.records.rows.map((r) => r.First)).toEqual(["Grace", "Kay"]);
+  });
+
+  it("FORGETS the filter when a new table is pasted", async () => {
+    // Row 2 of the old paste is not row 2 of the new one. Carrying an
+    // exclusion across would take out a row the user never looked at.
+    await reachRows();
+    box(1).click();
+    await settle();
+    expect(primary().textContent).toBe("Add 6 slides");
+
+    (pane().querySelector("[data-back]") as HTMLElement).click(); // preview
+    (pane().querySelector("[data-back]") as HTMLElement).click(); // fields
+    type("paste", "First\tLast\nZoe\tZed\nYan\tYates");
+    primary().click();
+    (pane().querySelector("[data-forward]") as HTMLElement).click();
+    await settle();
+    // Two rows, both in. The list stays OPEN across the paste — the disclosure
+    // is a UI state about the pane, not about the data — so the boxes are
+    // already on screen and clicking the toggle here would shut them.
+    expect(primary().textContent).toBe("Add 6 slides");
+    expect(box(0).checked).toBe(true);
+    expect(box(1).checked).toBe(true);
+    expect(pane().querySelectorAll(".rowlist li")).toHaveLength(2);
+  });
+
+  it("refuses a row click while a host call is out", async () => {
+    // The answer on its way back is about the rows as they were when it left.
+    // The BUTTON cannot show this — it reads "Merging…" either way — so the
+    // checkbox is what says whether the click was taken.
+    await reachRows();
+    const held = deferred<unknown>();
+    office.runMerge.mockReturnValueOnce(held.promise);
+    primary().click();
+    await settle();
+    expect(primary().textContent).toBe("Merging…");
+
+    box(1).click();
+    await settle();
+    expect(box(1).checked, "the click was refused").toBe(true);
+
+    held.resolve({ ...OUTCOME, added: 9 });
+    await settle();
+    expect(box(1).checked).toBe(true);
+  });
+});

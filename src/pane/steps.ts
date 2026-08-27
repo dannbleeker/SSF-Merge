@@ -50,6 +50,19 @@ export interface PaneState {
   deckSize?: number;
   /** The parsed data, once attached. `rows` is its length, kept for the labels. */
   records?: RecordSet;
+  /**
+   * Rows the user has taken OUT, by index into `records.rows`.
+   *
+   * Excluded rather than included, so that the empty state means "merge
+   * everything" — which is what a user who never opens the list wants, and
+   * what a new paste must go back to. An included-list would default to empty
+   * and merge nothing.
+   */
+  excluded?: number[];
+  /** What is typed in the row search box. */
+  rowSearch?: string;
+  /** Whether the row list is open. Closed by default: 240 rows is not a screen. */
+  rowsOpen?: boolean;
   /** Conditions the user set, keyed by SLIDE NUMBER — the numbering they can see. */
   conditions?: Record<number, string>;
   /** What the two slide-number boxes hold right now, as typed. */
@@ -264,6 +277,9 @@ export function blockedReason(state: PaneState, step: StepId): string | null {
     case "merge": {
       if (!chosenBlock(state)) return "Choose the slides that repeat first.";
       if (!state.rows) return "Attach your data first.";
+      // Not the same as having no data. A user who unticked every row has
+      // done something deliberate and needs telling what, not "attach data".
+      if (includedCount(state) === 0) return "Every row is unticked, so there is nothing to merge.";
       const missing = unmatchedFields(state);
       if (missing.length > 0) {
         // Name them. A count alone sends the user back through every slide.
@@ -343,7 +359,10 @@ export function primary(state: PaneState, step: StepId): Primary {
       if (state.added !== undefined) {
         return { label: `Added ${state.added} slide${state.added === 1 ? "" : "s"}`, enabled: false };
       }
-      const n = block && state.rows ? slidesPerRecord(block) * state.rows : 0;
+      // The INCLUDED rows, never the pasted ones. A user who has taken three
+      // rows out and reads "Add 720 slides" has been told the wrong thing
+      // about the button they are pressing.
+      const n = block ? slidesPerRecord(block) * includedCount(state) : 0;
       return { label: n > 0 ? `Add ${n} slide${n === 1 ? "" : "s"}` : "Add slides", enabled: reachable && n > 0 };
     }
   }
@@ -402,4 +421,89 @@ export function orangeHolder(state: PaneState, step: StepId): OrangeHolder {
  */
 export function firstRowOnly(records: RecordSet): RecordSet {
   return { columns: records.columns, rows: records.rows.slice(0, 1) };
+}
+
+/**
+ * The row a preview shows, once rows can be taken out.
+ *
+ * The first row that will actually MERGE, not the first that was pasted. A
+ * preview of a row the user has unticked is a preview of something nobody is
+ * going to get — which is the same reason the preview runs the real merge in
+ * the first place.
+ */
+export function firstIncludedRow(state: PaneState): RecordSet | undefined {
+  const records = includedRecords(state);
+  return records && records.rows.length > 0 ? firstRowOnly(records) : undefined;
+}
+
+/**
+ * What a row is CALLED in the picker.
+ *
+ * The first column, because that is where a name, an id or an invoice number
+ * lives in every table anyone pastes here — and if it is empty the row still
+ * needs something to click, so it falls back to its position. Never the whole
+ * row: at 320 pixels one column is what fits.
+ */
+export function rowLabel(records: RecordSet, index: number): string {
+  const first = records.columns[0]?.name;
+  const value = first === undefined ? "" : (records.rows[index]?.[first] ?? "");
+  return value.trim() === "" ? `Row ${index + 1}` : value;
+}
+
+/**
+ * The rows a search shows, as indices into `records.rows`.
+ *
+ * Matches across EVERY column, not just the labelled one. Someone looking for
+ * "Aarhus" is looking for the row with Aarhus in it, and whether that happens
+ * to be the column the label came from is not something they should have to
+ * know. Case-insensitive; an empty query matches everything.
+ */
+export function visibleRows(records: RecordSet, query = ""): number[] {
+  const q = query.trim().toLowerCase();
+  const all = records.rows.map((_, i) => i);
+  if (q === "") return all;
+  return all.filter((i) => {
+    const row = records.rows[i];
+    if (!row) return false;
+    return records.columns.some((c) => (row[c.name] ?? "").toLowerCase().includes(q));
+  });
+}
+
+/** Whether a row is in the merge. Absent from `excluded` means yes. */
+export function rowIncluded(state: PaneState, index: number): boolean {
+  return !(state.excluded ?? []).includes(index);
+}
+
+/**
+ * How many rows the merge will actually run.
+ *
+ * This is the number on the button and in the arithmetic — never
+ * `records.rows.length`, which is how many were PASTED. A user who has taken
+ * three rows out and reads "240 rows × 3 slides" has been told the wrong thing
+ * about what they are pressing.
+ */
+export function includedCount(state: PaneState): number {
+  // `rows` is the count and `records` is the data, and a state can carry the
+  // first without the second — the pane knows how many rows it has before it
+  // needs them. Reading only `records` made this answer ZERO for every such
+  // state, which blocked the merge and emptied the button's number.
+  const total = state.records ? state.records.rows.length : (state.rows ?? 0);
+  // A Set, because a duplicate index in `excluded` would otherwise subtract
+  // the same row twice and report fewer rows than will merge.
+  const out = new Set((state.excluded ?? []).filter((i) => i >= 0 && i < total));
+  return total - out.size;
+}
+
+/**
+ * The records the merge runs on, with the excluded rows gone.
+ *
+ * A new RecordSet rather than a flag the engine has to honour: the engine's
+ * whole contract is "one set of slides per row of what you give me", and
+ * filtering at the boundary keeps it that way. Column order and types are the
+ * ones the parse produced, because a filter removes rows and nothing else.
+ */
+export function includedRecords(state: PaneState): RecordSet | undefined {
+  if (!state.records) return undefined;
+  const rows = state.records.rows.filter((_, i) => rowIncluded(state, i));
+  return { columns: state.records.columns, rows };
 }

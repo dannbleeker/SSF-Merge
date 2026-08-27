@@ -13,7 +13,8 @@ import {
   EMPTY,
   EMPTY_DRAFT,
   chosenBlock,
-  firstRowOnly,
+  firstIncludedRow,
+  includedRecords,
   nextStep,
   readPastedTable,
   type PaneState,
@@ -155,6 +156,14 @@ function onClick(event: Event): void {
     return;
   }
 
+  // A row checkbox. Read before `data-action`, because the box sits inside the
+  // picker and a `closest` for an action would walk past it to the toggle.
+  const row = target.closest("[data-row]")?.getAttribute("data-row");
+  if (row !== null && row !== undefined) {
+    toggleRow(Number(row));
+    return;
+  }
+
   const action = target.closest("[data-action]")?.getAttribute("data-action");
   if (!action) return;
   if (action === "merge") {
@@ -163,6 +172,11 @@ function onClick(event: Event): void {
   }
   if (action === "template") {
     void useBlock();
+    return;
+  }
+  if (action === "rows") {
+    state = { ...state, rowsOpen: !state.rowsOpen };
+    draw();
     return;
   }
   if (action === "selection") {
@@ -206,6 +220,12 @@ function onInput(event: Event): void {
     return;
   }
 
+  if (field === "rowSearch") {
+    state = { ...state, rowSearch: target.value };
+    draw();
+    return;
+  }
+
   if (field === "paste") {
     const read = readPastedTable(target.value);
     state = {
@@ -213,6 +233,11 @@ function onInput(event: Event): void {
       paste: target.value,
       notice: undefined,
       added: undefined,
+      // The filter goes with the data it was about. Row 7 of the old paste is
+      // not row 7 of the new one, and silently carrying an exclusion across
+      // would take out a row the user never looked at.
+      excluded: undefined,
+      rowSearch: undefined,
       ...(read.records
         ? { records: read.records, columns: read.columns, rows: read.rows }
         : { records: undefined, columns: undefined, rows: undefined }),
@@ -305,6 +330,32 @@ async function useBlock(): Promise<void> {
   }
 }
 
+/**
+ * Take a row out of the merge, or put it back.
+ *
+ * Stored as EXCLUDED indices, so an untouched state means "merge everything"
+ * — which is what a user who never opens the list wants. Refused while a host
+ * call is out, like every other input: the answer on its way back is about the
+ * rows as they were when it left.
+ */
+function toggleRow(index: number): void {
+  if (!Number.isInteger(index)) return;
+  if (state.running) {
+    // REDRAW, not a bare return. A checkbox flips itself before the handler
+    // runs — that is the control's own default action, in jsdom and in every
+    // browser — so refusing without redrawing leaves the box visually unticked
+    // while the state says the row is still in. The next draw would put it
+    // back, and there is no next draw until the host answers.
+    draw();
+    return;
+  }
+  const out = new Set(state.excluded ?? []);
+  if (out.has(index)) out.delete(index);
+  else out.add(index);
+  state = { ...state, excluded: [...out].sort((a, b) => a - b), added: undefined };
+  draw();
+}
+
 /** A raise as a sentence. */
 function readable(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -323,9 +374,10 @@ function readable(e: unknown): string {
  */
 async function merge(): Promise<void> {
   const block = chosenBlock(state);
-  const records = state.records;
+  // The rows the user left ticked, never everything they pasted.
+  const records = includedRecords(state);
   const conditions = state.conditions;
-  if (!block || !state.rows || !records || state.running) return;
+  if (!block || !records || records.rows.length === 0 || state.running) return;
   // In the STATE. The first version disabled the button by hand, on a DOM node
   // every later `draw()` replaces with one `primary()` had re-enabled — so a
   // Back and a Continue during a two-minute merge handed the user a live
@@ -411,15 +463,16 @@ async function merge(): Promise<void> {
  */
 async function preview(): Promise<void> {
   const block = chosenBlock(state);
-  const records = state.records;
-  if (!block || !records || state.running) return;
+  // The first row that will actually MERGE, not the first that was pasted.
+  const preview = firstIncludedRow(state);
+  if (!block || !preview || state.running) return;
   state = { ...state, running: "preview", notice: undefined };
   draw();
   try {
     const outcome = await runMerge({
       from: block.from,
       to: block.to,
-      records: firstRowOnly(records),
+      records: preview,
       ...(state.conditions ? { conditions: state.conditions } : {}),
     });
     if (!outcome.ok || outcome.added === 0) {
