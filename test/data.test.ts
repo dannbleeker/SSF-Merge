@@ -215,3 +215,50 @@ describe("a cell the engine must not quietly rewrite", () => {
     expect(b.rows[0]?.["Column 1"]).toBe("y");
   });
 });
+
+describe("which delimiter a paste uses", () => {
+  it("reads a quoted FIRST header cell containing a newline", () => {
+    // The sniff sampled `src.slice(0, src.indexOf("\n") + 1)`, and that first
+    // newline is INSIDE the first header cell here — so it never reached the
+    // tab and the whole table parsed as one column. Excel writes a quoted
+    // newline whenever a cell holds a line break, and it is legal CSV.
+    expect(parseDelimited('"a\nb"\tc\nx\ty')).toEqual([
+      ["a\nb", "c"],
+      ["x", "y"],
+    ]);
+  });
+
+  it("still reads a comma paste whose first cell wraps", () => {
+    expect(parseDelimited('"a\nb",c\nx,y')).toEqual([
+      ["a\nb", "c"],
+      ["x", "y"],
+    ]);
+  });
+
+  it("is not fooled by a doubled quote inside the first cell", () => {
+    // `""` is an escaped quote, not the end of the quoted run. Getting that
+    // wrong flips the state and the newline after it looks unquoted again.
+    expect(parseDelimited('"say ""hi""\nagain"\tc\nx\ty')).toEqual([
+      ['say "hi"\nagain', "c"],
+      ["x", "y"],
+    ]);
+  });
+
+  it("reads a tab paste with no quotes at all, as before", () => {
+    expect(parseDelimited("First\tLast\nAda\tLovelace")).toEqual([
+      ["First", "Last"],
+      ["Ada", "Lovelace"],
+    ]);
+  });
+
+  it("reads a one-line paste, where there is no newline to find", () => {
+    expect(parseDelimited("First\tLast")).toEqual([["First", "Last"]]);
+    expect(parseDelimited("First,Last")).toEqual([["First", "Last"]]);
+  });
+
+  it("still lets the caller name the delimiter outright", () => {
+    // The pane passes "\t" explicitly for a pasted Excel range; the sniff is
+    // only for when nobody said.
+    expect(parseDelimited('"a\nb",c', "\t")).toEqual([["a\nb,c"]]);
+  });
+});

@@ -23,6 +23,7 @@ const office = vi.hoisted(() => ({
   slideCount: vi.fn<() => Promise<number>>(),
   ready: vi.fn(() => ({ ok: true, detail: "fine" })),
   selectedBlock: vi.fn<() => Promise<unknown>>(),
+  canReadSelection: vi.fn(() => true),
   inspectBlock: vi.fn<(r: { from: number; to: number }) => Promise<unknown>>(),
   runMerge: vi.fn<(r: unknown) => Promise<unknown>>(),
   undoMerge: vi.fn<(o: unknown) => Promise<unknown>>(),
@@ -32,6 +33,7 @@ vi.mock("../src/office/powerpoint.js", () => ({
   ready: office.ready,
   slideCount: office.slideCount,
   selectedBlock: office.selectedBlock,
+  canReadSelection: office.canReadSelection,
 }));
 vi.mock("../src/office/merge.js", () => ({
   inspectBlock: office.inspectBlock,
@@ -125,6 +127,7 @@ beforeEach(() => {
   office.runMerge.mockReset();
   office.undoMerge.mockReset();
   office.selectedBlock.mockReset();
+  office.canReadSelection.mockReset().mockReturnValue(true);
   office.ready.mockReturnValue({ ok: true, detail: "fine" });
 });
 
@@ -534,5 +537,28 @@ describe("filling the boxes from the slides the user selected", () => {
     await settle();
     // The old block's placeholders must not stand behind the new numbers.
     expect(primary().textContent).toBe("Use slides 7 to 9");
+  });
+});
+
+describe("a host too old to read the selection", () => {
+  it("does not offer the shortcut at all", async () => {
+    // `getSelectedSlides` is PowerPointApi 1.5 and the floor is 1.2, so this
+    // is an EXTRA. It shipped unguarded — the call went in on 174 rounds of
+    // evidence that it is not wedged, without anyone asking which version
+    // introduced it. Safe to call and present are different questions.
+    office.canReadSelection.mockReturnValue(false);
+    await openPane();
+    await settle();
+    expect(pane().querySelector('[data-action="selection"]')).toBeNull();
+    // And the boxes still work, which is the whole reason it can be absent.
+    type("from", "4");
+    type("to", "6");
+    expect(primary().textContent).toBe("Use slides 4 to 6");
+  });
+
+  it("offers it where the host has it", async () => {
+    await openPane();
+    await settle();
+    expect(pane().querySelector('[data-action="selection"]')).not.toBeNull();
   });
 });

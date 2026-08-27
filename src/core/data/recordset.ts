@@ -60,9 +60,38 @@ export function detectType(values: string[]): ColumnType {
  * and pasted into the pane, and that arrives tab-separated. Quoted fields are
  * honoured so a comma inside a company name does not split a row.
  */
+/**
+ * The first row, as the PARSER will see it.
+ *
+ * `src.indexOf("\n")` is not where the first row ends. A quoted cell may
+ * contain a newline — Excel writes one whenever a cell holds a line break, and
+ * it is legal CSV — so the first `\n` in the text can be INSIDE the first
+ * header cell. The sniff below then samples half a cell, never reaches the tab
+ * that separates the columns, and reads a whole tab-separated table as one
+ * column: every placeholder unmatched, the merge button down, and nothing on
+ * screen saying why.
+ *
+ * Walking with the same quote rule the parser uses is the only sample that
+ * cannot disagree with it.
+ */
+function firstRow(src: string): string {
+  let quoted = false;
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    // A bare toggle is enough, and the escaped-quote case needs no branch of
+    // its own: `""` toggles twice and nets to zero, which is the same state
+    // the parser reaches by skipping both. A branch that cannot change the
+    // answer was written here first and removed when a revert proved it could
+    // not fail.
+    if (c === '"') quoted = !quoted;
+    else if (c === "\n" && !quoted) return src.slice(0, i);
+  }
+  return src;
+}
+
 export function parseDelimited(text: string, delimiter?: string): string[][] {
   const src = text.replace(/\r\n?/g, "\n").replace(/\n$/, "");
-  const d = delimiter ?? (src.slice(0, src.indexOf("\n") + 1 || undefined).includes("\t") ? "\t" : ",");
+  const d = delimiter ?? (firstRow(src).includes("\t") ? "\t" : ",");
   const rows: string[][] = [];
   let row: string[] = [];
   let cell = "";

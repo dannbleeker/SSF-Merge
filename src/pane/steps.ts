@@ -59,6 +59,14 @@ export interface PaneState {
   /** Something the pane has to say that is not a blocked step — a host answer. */
   notice?: string;
   /**
+   * Whether this host can say which slides are selected (PowerPointApi 1.5).
+   *
+   * Undefined until the pane has asked, and the control is drawn only when it
+   * is TRUE — an unasked host is treated the same as one that cannot, because
+   * offering a shortcut that always fails is worse than not offering it.
+   */
+  canSelect?: boolean;
+  /**
    * A host call this pane is waiting on.
    *
    * In the STATE, not on the button. The first version disabled the primary by

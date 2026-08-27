@@ -94,7 +94,9 @@ describe("the requirement floor is checked at runtime, never declared", () => {
   // no ribbon entry, no error, nothing for the user to report. checkFloor can
   // say which version is missing and what it costs them.
   it("names a floor in the code", () => {
-    expect(API_FLOOR).toBe("1.3");
+    // 1.2, and corrected from 1.3: that was justified by `slide.tags`, which
+    // nothing in this add-in calls. See `capability.ts`.
+    expect(API_FLOOR).toBe("1.2");
   });
 
   it("declares no requirement set in any manifest", () => {

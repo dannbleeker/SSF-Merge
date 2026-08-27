@@ -23,17 +23,46 @@ export type Supports = (version: string) => boolean;
  * | `slides.getCount` / `getItemAt` / `getItem` | 1.2 |
  * | `slide.id`, `slide.delete`               | 1.2 |
  * | `presentation.insertSlidesFromBase64`    | 1.2 |
- * | `slide.tags`                             | 1.3 |
+ * | `slides.load("items/id")`                | 1.2 |
  *
- * So the floor is the tag collection, at **1.3**. `getFileAsync` is a Common
- * API and is not gated by PowerPointApi at all, which is what makes the deck
- * readable on every host that clears this bar.
+ * So the floor is **1.2**. `getFileAsync` is a Common API and is not gated by
+ * PowerPointApi at all, which is what makes the deck readable on every host
+ * that clears this bar.
  *
- * `docs/BACKLOG.md` said 1.4 until this was worked out. Nothing the add-in does
- * needs 1.4, and declaring a floor higher than the truth excludes hosts that
- * would have run it perfectly well.
+ * This said 1.4, then 1.3, and both were wrong in the same direction. 1.3 was
+ * justified by `slide.tags` — and **nothing here calls it.** Merge metadata is
+ * written into the PACKAGE, as `ppt/tags/tagN.xml` with a relationship from the
+ * slide, which is the whole reason the engine never asks the host for anything
+ * it can put in the file. The reasoning was right ("read the floor off the
+ * calls the add-in actually makes") and the fact was not; a repo-wide grep for
+ * `.tags` finds no caller.
+ *
+ * Declaring a floor higher than the truth excludes hosts that would have run
+ * the add-in perfectly well, and it does it SILENTLY — `checkFloor` tells the
+ * user their PowerPoint is too old when it is not.
+ *
+ * Two calls sit ABOVE the floor and are each guarded where they are used, never
+ * declared: `exportAsBase64Presentation` (1.10, `chooseDeckSource` falls back to
+ * the file API) and `getSelectedSlides` (1.5, `canSelectSlides` hides the
+ * control). An optional call is not a floor.
  */
-export const API_FLOOR = "1.3";
+export const API_FLOOR = "1.2";
+
+/**
+ * Whether this host can say which slides are selected.
+ *
+ * `getSelectedSlides` is **PowerPointApi 1.5** and the floor is 1.2, so it is
+ * an EXTRA rather than a requirement: on an older host the two slide-number
+ * boxes still work and the shortcut is simply not offered. A control that
+ * always fails is worse than one that is not there.
+ *
+ * This was shipped unguarded — the call went in on the strength of 174 rounds
+ * of evidence that it is not WEDGED, without anyone asking which version
+ * introduced it. Being safe to call and being present are different questions.
+ */
+export function canSelectSlides(supports: Supports): boolean {
+  return supports("1.5");
+}
 
 export interface Readiness {
   ok: boolean;
@@ -54,7 +83,7 @@ export function checkFloor(supports: Supports): Readiness {
   }
   return {
     ok: false,
-    detail: `SSF Merge needs PowerPointApi ${API_FLOOR} and this host does not have it. Merge metadata lives in slide tags, which arrived in ${API_FLOOR}; without them a merged deck cannot be recognised, undone or re-run.`,
+    detail: `SSF Merge needs PowerPointApi ${API_FLOOR} and this host does not have it. Reading the deck, inserting the merged slides and taking them back again all need it; without it there is nothing the add-in can do.`,
   };
 }
 

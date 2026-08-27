@@ -6,7 +6,7 @@
  * PowerPoint anywhere. `test/architecture.test.ts` holds that seam: a decision
  * that migrates into this file becomes untestable the moment it arrives.
  */
-import { ready as hostReady, selectedBlock, slideCount } from "../office/powerpoint.js";
+import { canReadSelection, ready as hostReady, selectedBlock, slideCount } from "../office/powerpoint.js";
 import { inspectBlock, runMerge, undoMerge, type MergeOutcome } from "../office/merge.js";
 import { render } from "./render.js";
 import {
@@ -514,6 +514,8 @@ void Office.onReady(() => {
   const node = root();
   node.addEventListener("click", onClick);
   node.addEventListener("input", onInput);
+  // Asked once, before the first draw: it is a version check, not a host call.
+  state = { ...state, canSelect: canReadSelection() };
   draw();
   // The deck's size, so the template boxes can warn about a block that runs
   // past the end before a template read is spent on it. Failing is not fatal:

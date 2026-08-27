@@ -303,8 +303,14 @@ the page the button opens. Those changes are called out in the changelog.
 ### Why it does not say which PowerPoint it needs
 
 The manifest declares no `<Requirements>` block, deliberately. SSF Merge needs
-**PowerPointApi 1.3** — merge metadata lives in slide tags, which arrived in 1.3
-— and that is checked when the pane opens, not declared in the manifest.
+**PowerPointApi 1.2** — reading the deck, inserting the merged slides and taking
+them back again — and that is checked when the pane opens, not declared in the
+manifest.
+
+Two things sit above that floor and are simply absent on an older PowerPoint
+rather than blocking it: reading just the template slides instead of the whole
+file (1.10), and the **Use the slides I have selected** shortcut (1.5). Typing
+the two slide numbers works everywhere.
 
 A declared requirement set that your PowerPoint does not meet makes the add-in
 **vanish from the ribbon** with no message at all: nothing to see, nothing to
