@@ -183,3 +183,74 @@ describe("the whole-deck route sends only the merged slides", () => {
     expect(await (await Pkg.open(sent)).slidePaths()).toHaveLength(2);
   });
 });
+
+describe("a torn insert is reported in rows", () => {
+  /** Three rows, two template slides each — six slides expected. */
+  const rows = {
+    columns: [{ name: "First", type: "text" as const }],
+    rows: [{ First: "Ada" }, { First: "Grace" }, { First: "Katherine" }],
+  };
+
+  async function block(): Promise<string> {
+    const bytes = await makeDeck([{ paragraphs: [["Hello ", "{{First}}"]] }, { paragraphs: [["Bye ", "{{First}}"]] }]);
+    return Buffer.from(bytes).toString("base64");
+  }
+
+  it("names the ROW that is incomplete, not the slide count", () => {
+    // "5 of 6 slides landed" is true and useless: rows 1 and 2 look perfect
+    // and the user finds the short one at the end of the deck.
+    return (async () => {
+      host.readTemplate.mockResolvedValueOnce({ base64: await block(), offset: 0 });
+      host.insertDeck.mockResolvedValueOnce({
+        verdict: "no",
+        detail: "5 of 6 slide(s) landed",
+        landed: 5,
+        before: 2,
+        after: 7,
+      });
+
+      const out = await runMerge({ from: 1, to: 2, records: rows });
+      expect(out.ok).toBe(false);
+      expect(out.detail).toContain("2 of 3 row(s) landed complete");
+      expect(out.detail).toContain("row 3 got 1 of its 2 slide(s)");
+      // The action, which does not depend on WHICH row tore.
+      expect(out.detail).toMatch(/take the slides back/i);
+    })();
+  });
+
+  it("carries the row counts for anything else that reports", async () => {
+    host.readTemplate.mockResolvedValueOnce({ base64: await block(), offset: 0 });
+    host.insertDeck.mockResolvedValueOnce({ verdict: "no", detail: "5 of 6", landed: 5, before: 2, after: 7 });
+
+    const out = await runMerge({ from: 1, to: 2, records: rows });
+    expect(out).toMatchObject({ rowsComplete: 2, rowsTorn: 1, rowsAbsent: 0 });
+  });
+
+  it("still says the host took NOTHING when it took nothing", async () => {
+    // A refusal and a tear are different failures. Reading a refusal as
+    // "0 of 3 rows landed complete" buries the fact that the call was rejected.
+    host.readTemplate.mockResolvedValueOnce({ base64: await block(), offset: 0 });
+    host.insertDeck.mockResolvedValueOnce({
+      verdict: "no",
+      detail: "the call raised nothing and the deck did not grow",
+      landed: 0,
+      before: 2,
+      after: 2,
+    });
+
+    const out = await runMerge({ from: 1, to: 2, records: rows });
+    expect(out.detail).toContain("did not take it");
+    expect(out.detail).not.toMatch(/row\(s\) landed complete/);
+  });
+
+  it("says nothing about rows when every row landed", async () => {
+    // 240 of 240 rows is noise beside "720 slides added".
+    host.readTemplate.mockResolvedValueOnce({ base64: await block(), offset: 0 });
+    host.insertDeck.mockResolvedValueOnce({ verdict: "yes", detail: "all 6 landed", landed: 6, before: 2, after: 8 });
+
+    const out = await runMerge({ from: 1, to: 2, records: rows });
+    expect(out.ok).toBe(true);
+    expect(out).toMatchObject({ rowsComplete: 3, rowsTorn: 0, rowsAbsent: 0 });
+    expect(out.detail).not.toMatch(/row\(s\) landed complete/);
+  });
+});

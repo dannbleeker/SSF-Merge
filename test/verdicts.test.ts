@@ -8,7 +8,9 @@ import {
   offsetVerdict,
   substringVerdict,
   tagVerdict,
+  tornInsert,
 } from "../src/host/verdicts.js";
+import { sweepPlan } from "../src/host/undo.js";
 
 describe("insertVerdict", () => {
   it("reads a matching delta as success", () => {
@@ -281,5 +283,71 @@ describe("whether the export drops parts the file route keeps", () => {
     // Older sheets under docs/host-answers/ carry no `exportParts` at all, and
     // an absent field is not a finding.
     expect(exportPartsVerdict({}).verdict).toBe("unknown");
+  });
+});
+
+describe("a partial insert read in ROWS", () => {
+  /** 240 rows, three slides each — the shape the pane's summary describes. */
+  const uniform = (rows: number, each = 3): number[] => Array.from({ length: rows }, () => each);
+
+  it("says every row is whole when everything landed", () => {
+    expect(tornInsert(uniform(240), 720)).toMatchObject({ complete: 240, torn: 0, absent: 0 });
+  });
+
+  it("turns 719 of 720 into one incomplete ROW", () => {
+    // The whole point. "719 of 720 slides" is true and useless: every later row
+    // still looks correct and the user finds it at slide 141.
+    const t = tornInsert(uniform(240), 719);
+    expect(t).toMatchObject({ complete: 239, torn: 1, absent: 0, firstIncomplete: 239 });
+    expect(t.detail).toContain("239 of 240 row(s) landed complete");
+    expect(t.detail).toContain("got 2 of its 3 slide(s)");
+  });
+
+  it("counts a row that got NOTHING apart from one that got some", () => {
+    // Torn is the worse of the two, because a row with two of three slides
+    // looks finished.
+    const t = tornInsert(uniform(4), 6);
+    expect(t).toMatchObject({ complete: 2, torn: 0, absent: 2 });
+    expect(t.detail).toContain("2 row(s) got nothing");
+  });
+
+  it("reports both a torn row and the ones behind it", () => {
+    const t = tornInsert(uniform(4), 7);
+    expect(t).toMatchObject({ complete: 2, torn: 1, absent: 1 });
+    expect(t.detail).toContain("row 3 got 1 of its 3 slide(s)");
+    expect(t.detail).toContain("1 row(s) got nothing");
+  });
+
+  it("handles rows of DIFFERENT sizes, which a condition produces", () => {
+    // A conditional slide leaves a row shorter, so the counts are not uniform
+    // and the arithmetic cannot assume a single slides-per-row.
+    const t = tornInsert([3, 1, 3, 2], 5);
+    expect(t).toMatchObject({ complete: 2, torn: 1, firstIncomplete: 2 });
+    expect(t.detail).toContain("row 3 got 1 of its 3 slide(s)");
+  });
+
+  it("says nothing landed when nothing landed", () => {
+    expect(tornInsert(uniform(240), 0)).toMatchObject({ complete: 0, torn: 0, absent: 240 });
+  });
+
+  it("counts a one-slide-per-row merge exactly", () => {
+    // No torn row is possible when a row is one slide: it either landed or it
+    // did not, and reporting a tear there would be inventing one.
+    const t = tornInsert(uniform(5, 1), 3);
+    expect(t).toMatchObject({ complete: 3, torn: 0, absent: 2 });
+  });
+});
+
+describe("undo after a torn insert", () => {
+  it("takes back everything that landed, leaving no orphan", () => {
+    // Checked rather than assumed: a review claimed a torn insert would leave
+    // "orphan slides from a half-landed record" because sweepPlan clamps on
+    // counts. It does not. `added` is the MEASURED delta, not what the plan
+    // hoped for, so the sweep removes exactly what arrived — the partial row
+    // included.
+    const deckAtStart = 12;
+    const landed = 719; // one slide short of 720
+    const plan = sweepPlan({ deckAtStart, deckNow: deckAtStart + landed, added: landed });
+    expect(plan).toEqual({ from: deckAtStart, count: landed });
   });
 });

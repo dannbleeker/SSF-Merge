@@ -287,6 +287,21 @@ theme-change event for a PowerPoint task pane — the one in the Office typings
 belongs to Outlook — so switching PowerPoint between light and dark while the
 pane is open needs the pane reopened.
 
+## If PowerPoint takes only part of the merge
+
+It reports in ROWS, not slides, because rows are what you pasted:
+
+> PowerPoint took only part of the merge: 2 of 3 rows landed complete; row 3 got
+> 1 of its 2 slides. Take the slides back and run it again.
+
+That last sentence is the advice. A row with some of its slides is worse than a
+row with none — it looks finished, and every row after it looks correct too, so
+a short merge is easy to miss until somebody reads slide 141.
+
+**Undo takes back everything that landed**, including the incomplete row. It
+removes the slides the deck actually gained, not the number the merge was
+aiming for, so there is nothing left stranded.
+
 ## Taking a merge back
 
 After a merge lands, the pane offers **"Remove slides 13 to 732, which this

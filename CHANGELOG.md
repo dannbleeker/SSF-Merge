@@ -7,6 +7,42 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a partial insert is reported in ROWS
+
+`insertVerdict` grades slides, and for the probe that is right: it inserts a
+two-slide fixture and the slides are the whole question. For a merge it is the
+wrong unit and says almost nothing. **"719 of 720 slides landed"** means one
+row's three-slide block became two — and every row after it still looks
+correct, so the user finds the short one at slide 141 with no idea it was ever
+going to be there.
+
+It now reads **"2 of 3 rows landed complete; row 3 got 1 of its 2 slides. Take
+the slides back and run it again."** Rows that got nothing are counted apart
+from rows that got some, because a row with two of three slides is the worse of
+the two — it looks finished.
+
+Per-row slide counts come from the plan rather than being assumed uniform, since
+a condition leaves a row shorter than its neighbours.
+
+**The prefix assumption is named rather than hidden.** The count walks rows in
+order and stops where the slides ran out, which is the reading if the host
+truncated the package; nothing establishes that a partial insert truncates
+rather than dropping a slide from the middle. It is stated and not measured
+because it changes no advice — the answer is to undo and retry whichever row
+tore — and where every row is the same size the count is position-independent
+anyway.
+
+**A refusal still reads as a refusal.** Zero slides landing is not "0 of 3 rows
+complete"; that wording would bury the fact that the call was rejected.
+
+### Checked — undo after a torn insert leaves no orphans
+
+A review claimed a torn insert would strand "orphan slides from a half-landed
+record" because `sweepPlan` clamps on counts. Checked rather than accepted: it
+does not. `added` is the MEASURED deck delta, not what the plan hoped for, so
+the sweep removes exactly what arrived, the partial row included. There is a
+test saying so now.
+
 ### Added — the probe asks whether the template export drops parts
 
 The one open risk the sibling sweep surfaced, now a question rather than a note.

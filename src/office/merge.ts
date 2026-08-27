@@ -25,6 +25,7 @@ import type { RecordSet } from "../core/data/recordset.js";
 import type { EmptyPolicy } from "../core/merge/resolve.js";
 import { insertDeck, readTemplate, slideCount, undoInsert } from "./powerpoint.js";
 import { readable } from "../host/errors.js";
+import { tornInsert } from "../host/verdicts.js";
 import { trace } from "../core/trace.js";
 
 export interface MergeRequest {
@@ -67,6 +68,23 @@ export interface MergeOutcome {
   skippedRecords?: number;
   /** Individual slides skipped by a condition. */
   skippedSlides?: number;
+  /**
+   * Rows whose every slide landed.
+   *
+   * On BOTH outcomes, not only the partial one. A first version carried these
+   * on the failure path alone, which is the defect this project has recorded
+   * four times over: a value present only when something went wrong cannot be
+   * compared against anything and is not yet a measurement.
+   *
+   * The SENTENCE still says nothing about rows on a whole insert — "240 of 240
+   * rows" is noise beside "720 slides added" — but the numbers are there for
+   * the run log and for anything that reports later.
+   */
+  rowsComplete?: number;
+  /** Rows that got some slides but not all — the ones that LOOK finished. */
+  rowsTorn?: number;
+  /** Rows that got nothing at all. */
+  rowsAbsent?: number;
 }
 
 /** A run id that does not need a clock, so the engine stays deterministic. */
@@ -235,6 +253,20 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
   const insert = await insertDeck(base64, sending.length);
   const added = insert.landed;
 
+  // How many slides each ROW produced, in plan order — the unit a torn insert
+  // has to be read in. Grouped from the steps rather than assumed uniform: a
+  // condition leaves a row shorter than its neighbours.
+  const perRecord: number[] = [];
+  let lastRecord = -1;
+  for (const step of plan.steps) {
+    if (step.recordIndex !== lastRecord) {
+      perRecord.push(0);
+      lastRecord = step.recordIndex;
+    }
+    perRecord[perRecord.length - 1] = (perRecord[perRecord.length - 1] ?? 0) + 1;
+  }
+  const rows = tornInsert(perRecord, added);
+
   if (insert.verdict !== "yes") {
     // The RECIPE, so the package can be rebuilt without another round.
     //
@@ -255,16 +287,24 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
     trace("merge", "the host refused the package", {
       verdict: insert.verdict,
       block: `${req.from}-${req.to}`,
-      rows: req.records.rows.length,
+      rowsPasted: req.records.rows.length,
       columns: req.records.columns.map((c) => `${c.name}:${c.type}`),
       conditions: Object.keys(req.conditions ?? {}).length,
       slides: sending.length,
+      landed: added,
+      rowsLanded: `${rows.complete} whole, ${rows.torn} torn, ${rows.absent} absent`,
       bytes: base64.length,
       runId,
     });
     return {
       ok: false,
-      detail: `The merge was built but PowerPoint did not take it: ${insert.detail}`,
+      // In ROWS. `insert.detail` grades slides — "719 of 720 slides landed" is
+      // true and tells the user nothing they can act on, because every row
+      // after the torn one still looks correct.
+      detail:
+        added > 0
+          ? `PowerPoint took only part of the merge: ${rows.detail}. Take the slides back and run it again.`
+          : `The merge was built but PowerPoint did not take it: ${insert.detail}`,
       added,
       deckAtStart,
       runId,
@@ -273,6 +313,9 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
       paragraphsMerged: result.paragraphsMerged,
       skippedRecords: plan.skippedRecords.length,
       skippedSlides: plan.skippedSlides.length,
+      rowsComplete: rows.complete,
+      rowsTorn: rows.torn,
+      rowsAbsent: rows.absent,
     };
   }
 
@@ -290,6 +333,9 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
     paragraphsMerged: result.paragraphsMerged,
     skippedRecords: plan.skippedRecords.length,
     skippedSlides: plan.skippedSlides.length,
+    rowsComplete: rows.complete,
+    rowsTorn: rows.torn,
+    rowsAbsent: rows.absent,
   };
 }
 
