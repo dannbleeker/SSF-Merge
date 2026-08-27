@@ -26,6 +26,7 @@ is what lets it run in the pane, in a CLI and in the suite with no PowerPoint.
 | `src/core/pptx/` | `pkg.ts` (the zip, parts, rels, content types, slide ids), `clone.ts` (slide cloning), `tags.ts` (tags written into the file), `xml.ts` (one parser everywhere) |
 | `src/core/merge/` | `text.ts` (run-aware replacement) |
 | `src/core/data/` | `recordset.ts` (parsing, type detection), `format.ts` (numbers, dates, case) |
+| `src/core/trace.ts` | the run record — a capped array cleared per run, one clock origin, one formatter for the screen and the file. In `src/core` because the coverage `include` is a fixed list of three globs and a new top-level directory would be measured by nothing |
 | `src/host/` | the DECISIONS about talking to a host, all pure and all tested: `capability.ts` (version floor, where the template's bytes come from), `verdicts.ts` (what an observation means), `undo.ts` (which slides a run may take back), `timeout.ts` (what each call is allowed to cost) |
 | `src/office/` | the Office.js CALLS, and nothing else. Every judgement is imported from `src/host` |
 | `src/pane/` | `steps.ts` (which step is reachable, what the one button says), `summary.ts` (the sentences numbers go into), `render.ts` (the DOM), `main.ts` (**the only file here allowed to touch Office.js**), plus the HTML and the SSF stylesheet |
@@ -173,9 +174,20 @@ weekly on its own and files one issue, reopened rather than duplicated.
   so in the docs; do not try to detect it.
 - **A custom XML part written at the package root is invisible to Office.js.**
   Relate it from `ppt/presentation.xml`.
+- **The two template routes return DIFFERENT things, and only one of them is
+  the block.** `exportAsBase64Presentation` (1.10 and up) hands back a package
+  holding only the slides asked for; `getFileAsync` — every host below 1.10, and
+  the floor is 1.2 — hands back the USER'S ENTIRE PRESENTATION. The merge
+  removed the template block and nothing else, so on the file route it sent the
+  whole deck back plus the clones: three rows into a forty-slide deck would have
+  inserted forty-six. Keep the merged slides rather than remove the block, and
+  the two routes become one case.
 - **Blob downloads from the task pane are blocked in WebView2**
   (office-js#1511). Output goes into the deck, into a new presentation, or
-  through `Office.context.ui.openBrowserWindow`.
+  through `Office.context.ui.openBrowserWindow` — and the RUN RECORD goes on
+  screen as selectable text between markers, which is the channel the probe
+  already proved. A task pane also has no devtools a user can open, so anything
+  a maintainer needs has to survive being copied out by hand.
 
 ## The lockstep rule (CI-enforced)
 
@@ -222,6 +234,40 @@ Any feature change updates, in the same PR:
   and permanent); and never pair figures from two measurements, which is how
   `docs/BACKLOG.md` came to carry a count from the run that measured 29.2s
   beside a maximum of 31.1s from a later one. `docs/SIBLING.md` has the sort.
+- **Record a diagnostic on BOTH populations, or it is not yet a measurement.**
+  A value written only when something failed cannot be compared against
+  anything. This repo shipped it twice: `withTimeout`'s call name reached only a
+  `Timeout` message, so no successful call said what it was or how long it took
+  and every number in `BUDGET` was a guess; and the row counts on a torn insert
+  went out on the failure path alone until a test caught it. Ask the second
+  question too — on how many of the runs that WORK is the field actually there?
+- **Measure the artefact you hand over, not your intent.** `insertDeck` was told
+  how many slides the plan BUILT where the package's own `sldIdLst` was the only
+  honest answer, and on the file route the two disagreed by the size of the
+  user's deck. The same rule caught the route defect above: what the code
+  believes it produced and what it is actually sending are different numbers
+  wherever anything can go wrong between them.
+- **An instrument built before the failure that shapes it is built against a
+  guess.** The debugging plan for this repo started as a port of a sibling
+  project's apparatus — a 2000-entry ring with slice arithmetic and histograms,
+  span subjects, a 445-line crash log — all of it sized to ITS failure history:
+  276-entry runs, eight charts making per-chart host calls that all logged
+  `index: 0`. A merge emits about ten entries and the per-row loop makes ZERO
+  host calls, so most of it was cut and the 80% that closed the actual gap was
+  fifteen lines at the `withTimeout` chokepoint. Take the sibling's RULES, which
+  are free; take its code only where the same failure has happened here.
+- **A probe's rule and a user's button need different rules.** `sweepPlan` capped
+  its count when the deck had grown by more than the run added, reasoning the
+  extras "are not ours". Sound for a probe sweeping seconds after it appends;
+  wrong for an undo pressed after a coffee break, because the sweep removes the
+  LAST slides and those now belong to whoever added the others. Before exposing
+  a tested internal, re-ask its assumptions against the new caller's timescale.
+- **Values never leave the pane.** Anything written to be copied out — the run
+  record, a failure recipe — carries STRUCTURE only: column names and types, row
+  counts, part names, block bounds. A mail merge's rows are salaries and
+  customer lists, and this record is written to be pasted into an issue. Values
+  do not change the parts, the relationships or the content types, which is
+  where a rejected package goes wrong.
 - **Test files are named by topic, never by increment.**
 - **Compare a .pptx by its PARTS, never by the archive's bytes.** JSZip stamps an
   entry time whenever a file is written, so two builds of identical content hash
@@ -262,3 +308,15 @@ Milestone zero, and nothing should be built on a guess about any of them:
 2. Does `getSubstring(start, len).text = v` keep the run's font and bullet?
 3. Within one batch, do substring writes shift the offsets of later writes?
 4. Does `fill.setImage` stretch, or preserve aspect ratio?
+5. Does `exportAsBase64Presentation` drop modern comments and
+   `ppt/authors.xml` the way office-js#6867 reports the slide-level call
+   doing? This add-in reads its TEMPLATE through that call and then clones
+   what comes back, so a dropped part is a part every merged slide is
+   missing. **Needs a deck somebody has actually commented on** — the arm
+   compares against the same deck read through `getFileAsync`, and a deck
+   with no comments answers NOT ASKED rather than giving it a clean bill.
+
+Everything above is asked by the probe; `docs/PROBE.md` says how to run it and
+`scripts/read-answers.mjs` reads the sheet. **Run it twice when an answer
+decides something expensive** — one sheet is evidence about this host in that
+minute, not about this host.
