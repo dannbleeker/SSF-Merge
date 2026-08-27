@@ -106,6 +106,30 @@ package at all. One is a morning's work; the other ends the package path. So:
 `insertionBlame` is the reading, and it says CANNOT TELL rather than guessing
 when the control did not run.
 
+### Does the export drop parts the file route keeps?
+
+This add-in reads its template through `exportAsBase64Presentation` on any host
+that has it, and then clones what comes back. office-js#6867 reports the
+slide-level `exportAsBase64` omitting modern comments and `ppt/authors.xml`.
+Nobody has checked whether the presentation-level call does the same — and if it
+does, every merged slide is missing those parts, silently, in a file that opens
+cleanly.
+
+The arm exports **every slide in the deck** and compares its part list against
+the same deck read through `getFileAsync`, which returns the package unfiltered.
+Both arms cover the same slides, or the export would legitimately lack the parts
+belonging to slides it was not asked for.
+
+Part NAMES only, never content: a part list is structure, and this sheet is
+written to be pasted into an issue where the merged values would be somebody's
+salary review.
+
+**It needs a deck with comments in it.** A deck that has none cannot answer the
+question, and `exportPartsVerdict` says NOT ASKED rather than reporting the
+absence as "the export keeps everything" — which would be the same mistake as
+reading a question the run never put as a `no`. Run this one on a deck somebody
+has actually commented on.
+
 ## What it does to your deck
 
 It appends four slides, asks its questions, and removes them again by

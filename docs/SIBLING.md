@@ -138,10 +138,12 @@ that API to get a PICTURE of a slide. We call the presentation-level export to
 read the TEMPLATE WE THEN CLONE, so any part the export drops is a part every
 merged slide is missing — silently, in a file that opens cleanly.
 
-Different call in the same family, and the presentation-level one has never been
-tested for it. It wants a probe question before the first real merge on a deck
-that has comments. Recorded here rather than fixed because guessing at which
-parts are affected would be worse than measuring.
+Different call in the same family, and the presentation-level one had never been
+tested for it. **The probe asks it now** (`exportParts`, added 2026-08-27): it
+exports every slide and diffs the part list against the same deck read through
+`getFileAsync`. It needs a deck with comments in it — `exportPartsVerdict` says
+NOT ASKED on one that has none, rather than reading the absence as a clean bill.
+Still open until a round answers it.
 
 ### What reading it found in OUR code
 

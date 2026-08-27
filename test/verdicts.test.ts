@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   PROBE_RUN_TAG,
   creationIdReading,
+  exportPartsVerdict,
   insertVerdict,
   insertionBlame,
   offsetVerdict,
@@ -197,5 +198,88 @@ describe("an insert that raised and landed anyway", () => {
     const v = insertVerdict({ before: 2, after: 3, expected: 2, error: "InvalidArgument" });
     expect(v.verdict).toBe("threw");
     expect(v.detail).toContain("1 slide(s) landed anyway");
+  });
+});
+
+describe("whether the export drops parts the file route keeps", () => {
+  const kept = {
+    supported: true,
+    sourceParts: 66,
+    exportParts: 66,
+    sourceHasAuthors: true,
+    exportHasAuthors: true,
+    sourceComments: 2,
+    exportComments: 2,
+  };
+
+  it("says NOT ASKED when the deck has nothing to drop", () => {
+    // The whole reason this arm has a control. An export with no authors part,
+    // taken from a deck that never had one, is not evidence that the export
+    // dropped anything — and recording it as "keeps everything" is the
+    // never-asked-read-as-an-answer mistake in a new place.
+    const v = exportPartsVerdict({
+      ...kept,
+      sourceHasAuthors: false,
+      exportHasAuthors: false,
+      sourceComments: 0,
+      exportComments: 0,
+    });
+    expect(v.verdict).toBe("unknown");
+    expect(v.detail).toMatch(/NOT ASKED/);
+    expect(v.detail).toMatch(/deck with comments/i);
+  });
+
+  it("says NOT ASKED when the host has no such call, and says WHY", () => {
+    // Below 1.10 the template is read through getFileAsync and the question
+    // does not arise. A "no" here would claim a behaviour nobody exercised.
+    //
+    // The DETAIL is what this asserts, and that is not fussiness. Asserting
+    // only `unknown` passed against a build with the branch removed — an
+    // absent `sourceParts` reaches the same verdict by another route — so the
+    // test proved nothing about the guard it named. "This host has no
+    // exportAsBase64Presentation" and "this sheet predates the arm" are
+    // different facts that send a reader to different places.
+    const v = exportPartsVerdict({ supported: false });
+    expect(v.verdict).toBe("unknown");
+    expect(v.detail).toContain("no exportAsBase64Presentation");
+  });
+
+  it("names the authors part when it goes missing", () => {
+    const v = exportPartsVerdict({ ...kept, exportHasAuthors: false, exportParts: 65 });
+    expect(v.verdict).toBe("yes");
+    expect(v.detail).toContain("ppt/authors.xml");
+    expect(v.detail).toContain("6867");
+  });
+
+  it("counts the comment parts that went", () => {
+    const v = exportPartsVerdict({ ...kept, exportComments: 0, exportParts: 64 });
+    expect(v.verdict).toBe("yes");
+    expect(v.detail).toContain("2 comment part(s)");
+  });
+
+  it("reports both when both go", () => {
+    const v = exportPartsVerdict({ ...kept, exportHasAuthors: false, exportComments: 0, exportParts: 63 });
+    expect(v.detail).toContain("ppt/authors.xml");
+    expect(v.detail).toContain("comment part(s)");
+  });
+
+  it("answers NO only when the deck HAD something and the export kept it", () => {
+    // The one reading that clears the API, and it is only earned by a deck
+    // that could have shown the defect.
+    const v = exportPartsVerdict(kept);
+    expect(v.verdict).toBe("no");
+    expect(v.detail).toMatch(/kept the comments/);
+  });
+
+  it("carries a throw rather than reading it as a drop", () => {
+    const v = exportPartsVerdict({ supported: true, error: "GeneralException" });
+    expect(v.verdict).toBe("threw");
+    expect(v.detail).toContain("GeneralException");
+  });
+
+  it("says NOT ASKED for a sheet taken before the arm existed", () => {
+    // Older sheets under docs/host-answers/ carry no `exportParts` at all, and
+    // an absent field is not a finding.
+    expect(exportPartsVerdict({}).verdict).toBe("unknown");
   });
 });

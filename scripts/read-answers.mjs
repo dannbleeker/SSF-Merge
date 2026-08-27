@@ -14,6 +14,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import {
   creationIdReading,
+  exportPartsVerdict,
   insertionBlame,
   insertVerdict,
   offsetVerdict,
@@ -97,7 +98,18 @@ if (sub.skipped) {
   line("text", JSON.stringify(sub.twoWrites.after));
 }
 
-console.log("\n5. Does fill.setImage stretch or preserve aspect ratio?");
+console.log("\n5. Does exportAsBase64Presentation drop parts the file route keeps?");
+{
+  const v = exportPartsVerdict(sheet.exportParts ?? {});
+  line("verdict", `${v.verdict} — ${v.detail}`);
+  const missing = sheet.exportParts?.missing ?? [];
+  // Named rather than counted. "4 parts not carried over" sends a reader
+  // hunting; the names say at a glance whether it is a theme the export
+  // rebuilt or the comments this question is about.
+  if (missing.length > 0) line("not carried over", missing.join(", "));
+}
+
+console.log("\n6. Does fill.setImage stretch or preserve aspect ratio?");
 line(
   "verdict",
   "not asked here — no API reads it back. It is a look-at-the-slide question, and it gates image fields only.",

@@ -339,6 +339,116 @@ async function deckReadProbe(): Promise<Record<string, unknown>> {
 }
 
 /**
+ * The part names in a package, read from its zip central directory.
+ *
+ * Names only — never content. A part list is structure, and this sheet is
+ * written to be copied out of a console and pasted into an issue, where the
+ * merged values would be somebody's salary review.
+ *
+ * The central directory rather than a scan for local headers: the four-byte
+ * signature occurs inside compressed data often enough that a scan invents
+ * parts, and an instrument that invents findings is worse than none. The
+ * end-of-central-directory record says where the real list starts and how many
+ * entries it has, so the walk is exact.
+ *
+ * Works on the binary string \`atob\` returns rather than a Uint8Array: a deck
+ * is tens of megabytes and the copy buys nothing here.
+ */
+function partNamesOf(base64: string): string[] {
+  const s = atob(base64);
+  const u16 = (i: number): number => s.charCodeAt(i) | (s.charCodeAt(i + 1) << 8);
+  const u32 = (i: number): number => u16(i) + u16(i + 2) * 0x10000;
+  // The EOCD is last, after a comment of at most 65535 bytes.
+  let eocd = -1;
+  for (let i = s.length - 22; i >= 0 && i >= s.length - 22 - 65535; i--) {
+    if (s.charCodeAt(i) === 0x50 && s.charCodeAt(i + 1) === 0x4b && s.charCodeAt(i + 2) === 0x05 && s.charCodeAt(i + 3) === 0x06) {
+      eocd = i;
+      break;
+    }
+  }
+  if (eocd < 0) throw new Error("no end-of-central-directory record — this is not a zip");
+  const count = u16(eocd + 10);
+  let at = u32(eocd + 16);
+  const names: string[] = [];
+  for (let n = 0; n < count; n++) {
+    if (s.charCodeAt(at) !== 0x50 || s.charCodeAt(at + 1) !== 0x4b || s.charCodeAt(at + 2) !== 0x01 || s.charCodeAt(at + 3) !== 0x02) {
+      throw new Error("central directory entry " + n + " is not where the header said");
+    }
+    const nameLen = u16(at + 28);
+    names.push(s.substr(at + 46, nameLen));
+    at += 46 + nameLen + u16(at + 30) + u16(at + 32);
+  }
+  return names;
+}
+
+/**
+ * Does \`exportAsBase64Presentation\` drop parts the file route keeps?
+ *
+ * office-js#6867 reports \`Slide.exportAsBase64\` omitting modern comments and
+ * \`ppt/authors.xml\`. A sibling project triaged it as no exposure and was right
+ * to: it calls that API for a PICTURE of a slide. This add-in calls the
+ * presentation-level export to read the TEMPLATE IT THEN CLONES, so a part the
+ * export drops is a part every merged slide is missing — silently, in a file
+ * that opens cleanly. Nobody has checked whether the presentation-level call
+ * behaves like the slide-level one.
+ *
+ * THE CONTROL IS THE POINT. \`getFileAsync\` returns the package unfiltered, so
+ * it says what the deck actually holds. Without it, an export with no
+ * \`authors.xml\` is indistinguishable from a deck that never had one — and this
+ * project has already recorded a sheet that reported a metadata scheme broken
+ * on the strength of a read that fell on the wrong slide.
+ *
+ * Both arms cover the SAME slides, every id in the deck, or the export would
+ * legitimately lack the parts belonging to the slides it was not asked for.
+ */
+async function exportPartsProbe(): Promise<Record<string, unknown>> {
+  const out: Record<string, unknown> = {};
+  if (!Office.context.requirements.isSetSupported("PowerPointApi", "1.10")) {
+    // Not a "no". The call does not exist here, so the question was never put,
+    // and reporting that as "it drops nothing" would be an answer this run did
+    // not earn.
+    out.supported = false;
+    return out;
+  }
+  out.supported = true;
+  try {
+    const source = partNamesOf(await withTimeout(currentDeckBase64(), 60000, "reading the deck's own bytes"));
+    const exported = partNamesOf(
+      await withTimeout(
+        PowerPoint.run(async (context) => {
+          const slides = context.presentation.slides;
+          slides.load("items/id");
+          await context.sync();
+          const bytes = slides.exportAsBase64Presentation(slides.items.map((s) => s.id));
+          await context.sync();
+          return bytes.value;
+        }),
+        60000,
+        "exporting every slide in the deck",
+      ),
+    );
+    const inExport = new Set(exported);
+    const inSource = new Set(source);
+    const comments = (names: string[]): number =>
+      names.filter((n) => n.indexOf("ppt/comments/") === 0 || n.indexOf("ppt/modernComments/") === 0).length;
+
+    out.sourceParts = source.length;
+    out.exportParts = exported.length;
+    // Capped: a deck with two hundred dropped media parts must not push the
+    // one part this question is about off the end of the list.
+    out.missing = source.filter((n) => !inExport.has(n)).slice(0, 40);
+    out.addedByExport = exported.filter((n) => !inSource.has(n)).slice(0, 40);
+    out.sourceHasAuthors = inSource.has("ppt/authors.xml");
+    out.exportHasAuthors = inExport.has("ppt/authors.xml");
+    out.sourceComments = comments(source);
+    out.exportComments = comments(exported);
+  } catch (e) {
+    out.error = e instanceof Error ? e.message : String(e);
+  }
+  return out;
+}
+
+/**
  * Does an insert land while a SHAPE is selected?
  *
  * office-js#2775 reports \`addTextBox\` deleting the selected shape on the web,
@@ -415,6 +525,12 @@ async function main() {
   // around: the workaround would be setSelectedShapes, which is the call with
   // the measured wedging history.
   answers.insertWhileSelected = await insertWhileSelectedProbe();
+  // Whether the export this add-in reads its template through keeps every part
+  // the file route does. Asked LAST of the reads, because both arms walk the
+  // whole deck and the earlier arms have added to it — which costs time and
+  // changes nothing, since the comparison is between two reads of the same
+  // deck at the same moment.
+  answers.exportParts = await exportPartsProbe();
 
   const deckNow = await slideCount();
   answers.sweep = await sweep(deckAtStart, deckNow - deckAtStart);
