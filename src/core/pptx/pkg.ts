@@ -135,6 +135,32 @@ export class Pkg {
    * edited; `save` serialises every document handed out this way. Nothing else
    * writes the same part, so the cache cannot go stale behind a caller.
    */
+  /**
+   * The next free number for a family of parts named `<prefix>N<suffix>`.
+   *
+   * Every family gets its OWN counter, read from the package rather than
+   * carried alongside it. Part names are arbitrary and the sequences drift the
+   * moment anything is deleted, so a deck with one chart can perfectly well
+   * keep it in `chart3.xml` — and naming a copy after the slide, or after
+   * another family's count, lands on a part that is already there. `copyPart`
+   * then overwrites it silently and `addContentTypeOverride` no-ops on the
+   * override already present, so the package stays structurally valid while two
+   * slides share one chart. That is exactly the defect this whole file's
+   * `nextNotesNumber` comment records, generalised so the next family cannot
+   * repeat it.
+   *
+   * Never reuses a gap: the highest existing number plus one.
+   */
+  nextNumber(prefix: string, suffix = ".xml"): number {
+    let max = 0;
+    const pattern = new RegExp(`^${escapeRegExp(prefix)}(\\d+)${escapeRegExp(suffix)}$`);
+    this.zip.forEach((path) => {
+      const n = Number(pattern.exec(path)?.[1] ?? 0);
+      if (n > max) max = n;
+    });
+    return max + 1;
+  }
+
   async doc(path: string): Promise<Document> {
     const cached = this.docs.get(path);
     if (cached) return cached;
@@ -294,6 +320,17 @@ export class Pkg {
    * presentation relationship, the content-type override, its own
    * relationships, and the part. A notes page belongs to exactly one slide, so
    * it goes with it.
+   *
+   * So do its charts and its SmartArt, and those need a check rather than a
+   * rule. Both used to be SHARED with every clone, so removing the template
+   * left them referenced and alive; now each copy has its own, so the
+   * template's would be left in the package with nothing pointing at it — a
+   * whole chart and its embedded workbook per template slide, in a file the
+   * host has to swallow as one base64 string. What may NOT go is the half that
+   * is still shared on purpose: a diagram's layout, quick style and colours are
+   * read-only styling every copy points at, and sweeping those would leave
+   * every merged slide referencing a part that is not there. `orphanedParts`
+   * is that distinction, asked of the package rather than assumed.
    */
   async removeSlide(slidePath: string): Promise<void> {
     const pres = await this.doc(PRESENTATION);
@@ -326,9 +363,53 @@ export class Pkg {
         const target = rel.getAttribute("Target");
         if (target) await this.removePart(resolveTarget(slidePath, target));
       }
+      // Read BEFORE the slide's own relationships go, because that is what
+      // makes them orphans: while this part exists it is one of the referrers.
+      const orphans = await this.orphanedParts(slidePath);
       await this.removePart(relsPath);
+      for (const path of orphans) await this.removePart(path);
     }
     await this.removePart(slidePath);
+  }
+
+  /**
+   * The chart and SmartArt parts only this slide keeps alive.
+   *
+   * "Only this slide" is counted rather than assumed: every `.rels` in the
+   * package is read, and a part any OTHER part references is left where it is.
+   * That is what separates a template's own chart — which nothing else points
+   * at once its slide goes — from a diagram's layout, which every merged copy
+   * points at.
+   *
+   * Follows one hop further out from each one, because a chart owns its
+   * workbook and a diagram's model owns the drawing: those are unreachable the
+   * moment their owner goes, and are the bulk of the weight.
+   */
+  private async orphanedParts(slidePath: string): Promise<string[]> {
+    const owned: string[] = [];
+    for (const part of await this.relatedParts(slidePath)) {
+      if (!/^ppt\/(charts\/chart|diagrams\/data)\d+\.xml$/.test(part) || !this.has(part)) continue;
+      owned.push(part);
+      for (const child of await this.relatedParts(part)) {
+        if (this.has(child) && !owned.includes(child)) owned.push(child);
+      }
+    }
+    if (owned.length === 0) return [];
+
+    // Every referrer in the package except the ones going with the slide.
+    const referenced = new Set<string>();
+    const relsPaths: string[] = [];
+    this.zip.forEach((path) => {
+      if (path.includes("/_rels/") && path.endsWith(".rels")) relsPaths.push(path);
+    });
+    const ownerOf = (rels: string): string =>
+      `${rels.slice(0, rels.indexOf("/_rels/"))}/${rels.slice(rels.indexOf("/_rels/") + 7, -".rels".length)}`;
+    for (const rels of relsPaths) {
+      const owner = ownerOf(rels);
+      if (owner === slidePath || owned.includes(owner)) continue;
+      for (const target of await this.relatedParts(owner)) referenced.add(target);
+    }
+    return owned.filter((path) => !referenced.has(path));
   }
 
   /** Drop a part, its own relationships and its content-type override. */
@@ -484,4 +565,8 @@ export function resolveTarget(ownerPart: string, target: string): string {
     else if (seg !== ".") parts.push(seg);
   }
   return parts.join("/");
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

@@ -54,15 +54,6 @@ export interface PaneState {
   block?: Block;
   /** Placeholders found in the block, in the order they appear. */
   fields: string[];
-  /**
-   * Placeholders the engine found in a chart or SmartArt and will not merge.
-   *
-   * Kept apart from `fields` rather than folded in: these are not candidates
-   * for a column, so counting them among the placeholders would make the
-   * fields step ask for data that could never be used, and mark them unmatched
-   * for a reason the user cannot act on.
-   */
-  unmergeable?: string[];
   /** Column names in the data the user attached, if any. */
   columns?: string[];
   /** Rows in that data. */

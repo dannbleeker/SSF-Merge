@@ -628,14 +628,41 @@ slide, with nothing said. A real leap day — `2024-02-29` — is still a date.
 Dates are read and written in the same zone, so `1 Mar 2026` prints as
 `01 Mar 2026` wherever you are.
 
+## Charts and SmartArt
+
+Placeholders inside a chart or a SmartArt graphic are merged like any other.
+Put `{{Region}}` in a chart's title, in its category labels, or in a SmartArt
+box, and each merged slide gets that row's value.
+
+Every copy gets a chart of its own, so the slides differ — which is the whole
+point, and is why a merged deck with charts is bigger than one without.
+
+**What is merged**: the chart title, axis titles, data labels, the category and
+series NAMES, and every SmartArt box. The workbook behind the chart is merged
+too, so the labels are still right if you click Edit Data on a merged slide.
+
+**What is not**: the numbers. A bar's height comes from a cell that has to hold
+a number, and `{{Revenue}}` is not one — so a placeholder written into the
+values is left exactly as you typed it rather than replaced with something the
+chart cannot plot. Every merged copy plots the template's figures. A chart per
+recipient with that recipient's numbers is a different feature and is not built
+yet.
+
+**Type the placeholder where the text is**, not where it is displayed. In a
+chart, click the title or the category axis and type there — or type it into the
+chart's data sheet for a category name, which is the same string and merges the
+same way. In SmartArt, use the text pane.
+
+**If the chart's own data cannot be opened** — an embedded object another tool
+wrote — the slides are still merged and still read correctly, and the pane says
+so once. Only the chart's Edit Data will still show your placeholders.
+
 ## Limits
 
-- **Charts and SmartArt are not merged.** Their text lives in separate parts
-  with their own embedded workbooks. Placeholders inside them are left alone —
-  and **step 2 names them**, so you find out while you can still move the text
-  onto the slide rather than by reading the merged deck. If a block's only
-  placeholders are in a chart, step 1 says that instead of "no placeholders",
-  which is true and useless when you are looking at one.
+- **A chart's NUMBERS are not merged**, only its text. See "Charts and
+  SmartArt" above: a bar's height comes from a cell that has to hold a number,
+  and `{{Revenue}}` is not one. Every merged copy of a chart plots the same
+  figures the template plots.
 - **Cut and paste on PowerPoint for the web loses shape tags**
   ([office-js#3784](https://github.com/OfficeDev/office-js/issues/3784)). A
   merged slide cut and pasted into another deck loses its run tag, so undo will

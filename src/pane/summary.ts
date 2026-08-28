@@ -102,6 +102,14 @@ export interface MergeReport {
   added: number;
   deckAtStart: number;
   paragraphsMerged?: number;
+  /**
+   * Workbooks behind a chart that could not be opened.
+   *
+   * Worth a clause of its own because the chart itself is RIGHT: what the
+   * reader sees is the merged label, and only "Edit Data" shows the template's
+   * placeholder. Silence would leave that to be discovered by a recipient.
+   */
+  workbooksUnreadable?: number;
   skippedRecords?: number;
   skippedSlides?: number;
   /** Conditions naming a column the data did not have. */
@@ -131,6 +139,12 @@ export function describeMerge(r: MergeReport): string {
       r.paragraphsMerged === 0
         ? "no {{fields}} were filled — check the spelling in your template"
         : `${plural(r.paragraphsMerged, "placeholder")} filled`,
+    );
+  }
+  if (r.workbooksUnreadable) {
+    parts.push(
+      `the data behind ${plural(r.workbooksUnreadable, "chart")} could not be merged — the slides read correctly, ` +
+        `but Edit Data still shows your placeholders`,
     );
   }
   // Skips are why "8 rows" and "6 slides" can both be right, and a user who

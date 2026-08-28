@@ -160,4 +160,18 @@ describe("describeMerge says what the merge DID", () => {
     // it would report a failure that did not happen.
     expect(describeMerge({ added: 6, deckAtStart: 3 })).toBe("6 slides added after slide 3.");
   });
+
+  it("names a chart whose own data could not be merged, and says the slides are fine", () => {
+    // The chart READS correctly — the cache is what PowerPoint draws — and only
+    // "Edit Data" shows the template's placeholder. Silence would leave that to
+    // be found by whoever the deck is sent to.
+    const line = describeMerge({ added: 6, deckAtStart: 3, paragraphsMerged: 12, workbooksUnreadable: 2 });
+    expect(line).toContain("the data behind 2 charts could not be merged");
+    expect(line).toContain("the slides read correctly");
+  });
+
+  it("says nothing about workbooks when every one of them merged", () => {
+    const line = describeMerge({ added: 6, deckAtStart: 3, paragraphsMerged: 12, workbooksUnreadable: 0 });
+    expect(line).toBe("6 slides added after slide 3 · 12 placeholders filled.");
+  });
 });

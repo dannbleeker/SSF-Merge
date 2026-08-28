@@ -19,6 +19,10 @@ export const P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
 export const R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 /** The `.rels` parts themselves, which use a different namespace from `r:id`. */
 export const PKG_REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships";
+/** DrawingML charts: the plot, and the cached strings behind its labels. */
+export const C_NS = "http://schemas.openxmlformats.org/drawingml/2006/chart";
+/** SpreadsheetML, for the workbook embedded behind a chart. */
+export const SSML_NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
 /** `[Content_Types].xml`. */
 export const CT_NS = "http://schemas.openxmlformats.org/package/2006/content-types";
 

@@ -86,18 +86,21 @@ describe("turning slide numbers into a block", () => {
   });
 });
 
-describe("placeholders the engine does not reach", () => {
+describe("placeholders in a chart or SmartArt", () => {
   /**
-   * A chart's labels live in `ppt/charts/chartN.xml` with an embedded workbook
-   * behind them; SmartArt's live in `ppt/diagrams/dataN.xml`. Neither is a
-   * `<a:p>` on the slide, so `mergeDocument` never touches them and `fieldsIn`
-   * never reports them.
+   * They are ORDINARY fields now. Until picture fields shipped they were
+   * reported as unfillable — correctly, and the pane said so — and this scan
+   * kept them in a list of their own so the fields step would not ask for data
+   * that could never be used.
    *
-   * Not merging them is a stated limit. Not SAYING so was the defect: the
-   * author puts `{{Region}}` in a chart title, the pane counts the placeholders
-   * it can see, and 240 slides ship with the braces on them.
+   * What matters is the property that outlived both behaviours: **this scan and
+   * `runPlan` must read the same parts.** A scan that reads fewer refuses a
+   * block it would have merged; a scan that reads more asks for a column
+   * nothing will fill. It has been wrong in both directions — notes were
+   * missing from the scan, charts were in it and not in the merge — so the
+   * tests below are about the two lists agreeing.
    */
-  it("reports a placeholder in a chart instead of passing over it", async () => {
+  it("counts a placeholder in a chart as a field", async () => {
     const deck = await makeDeck([
       { paragraphs: [["Hello {{First}}"]], chart: "Sales for {{Region}}" },
       { paragraphs: [["after"]] },
@@ -106,28 +109,41 @@ describe("placeholders the engine does not reach", () => {
     const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "run1");
     expect(prepared.ok).toBe(true);
     if (!prepared.ok) return;
-    // Kept APART from the fields, not folded in: it is not a candidate for a
-    // column, so counting it would make the fields step ask for data that
-    // could never be used.
-    expect(prepared.fields).toEqual(["First"]);
-    expect(prepared.unmergeable).toEqual(["Region"]);
+    expect(prepared.fields).toEqual(["First", "Region"]);
   });
 
-  it("does not say a block has no placeholders when one is in its chart", async () => {
-    /**
-     * "No placeholders" is true — the engine cannot fill a chart — and useless:
-     * the author placed one, is looking at it, and is being told it is not
-     * there. The complaint this pass exists for, arriving on the one path
-     * where it reads as the engine being broken.
-     */
+  it("counts one in a chart's category labels, which are not paragraphs", async () => {
+    // The labels a user writes are `<c:v>` in a string cache. The merge fills
+    // them, so the scan has to see them — or the pane offers no column for the
+    // one field the template most obviously has.
+    const deck = await makeDeck([
+      { paragraphs: [["Hello {{First}}"]], chart: { categories: ["{{Region}}", "Other"] } },
+      { paragraphs: [["after"]] },
+    ]);
+    const pkg = await Pkg.open(deck);
+    const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "run1");
+    expect(prepared.ok && prepared.fields).toEqual(["First", "Region"]);
+  });
+
+  it("counts one in SmartArt", async () => {
+    const deck = await makeDeck([
+      { paragraphs: [["Hello"]], smartArt: ["{{Region}} team"] },
+      { paragraphs: [["after"]] },
+    ]);
+    const pkg = await Pkg.open(deck);
+    const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "run1");
+    expect(prepared.ok && prepared.fields).toEqual(["Region"]);
+  });
+
+  it("accepts a block whose ONLY placeholder is in a chart", async () => {
+    // This was a refusal — "move the text onto the slide itself" — and the
+    // merge it refused is the merge that now runs. A stale refusal is worse
+    // than none: it sends the author to undo the thing that works.
     const deck = await makeDeck([{ paragraphs: [["a title"]], chart: "{{Region}}" }, { paragraphs: [["after"]] }]);
     const pkg = await Pkg.open(deck);
     const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "run1");
-    expect(prepared.ok).toBe(false);
-    if (prepared.ok) return;
-    expect(prepared.why).toContain("Region");
-    expect(prepared.why).toContain("chart or SmartArt");
-    expect(prepared.why, "the unhelpful sentence").not.toContain("no placeholders");
+    expect(prepared.ok).toBe(true);
+    expect(prepared.ok && prepared.fields).toEqual(["Region"]);
   });
 
   it("finds one the host has split across runs", async () => {
@@ -141,17 +157,7 @@ describe("placeholders the engine does not reach", () => {
     ]);
     const pkg = await Pkg.open(deck);
     const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "run1");
-    expect(prepared.ok && prepared.unmergeable).toEqual(["LongFieldName"]);
-  });
-
-  it("says nothing when no chart holds a placeholder", async () => {
-    const deck = await makeDeck([
-      { paragraphs: [["{{First}}"]], chart: "Sales by quarter" },
-      { paragraphs: [["after"]] },
-    ]);
-    const pkg = await Pkg.open(deck);
-    const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "run1");
-    expect(prepared.ok && prepared.unmergeable).toEqual([]);
+    expect(prepared.ok && prepared.fields).toEqual(["OnTheSlide", "LongFieldName"]);
   });
 
   it("ignores a chart on a slide outside the block", async () => {
@@ -159,7 +165,7 @@ describe("placeholders the engine does not reach", () => {
      * The reason this reads the parts THIS slide relates to rather than the
      * package at large. On the route below API 1.10 the template comes back as
      * the WHOLE deck, so a package-wide scan would name a chart on slide 40 and
-     * send the user hunting through a template that is fine.
+     * ask for a column the block has no use for.
      */
     const deck = await makeDeck([
       { paragraphs: [["{{First}}"]] },
@@ -167,7 +173,7 @@ describe("placeholders the engine does not reach", () => {
     ]);
     const pkg = await Pkg.open(deck);
     const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "run1");
-    expect(prepared.ok && prepared.unmergeable).toEqual([]);
+    expect(prepared.ok && prepared.fields).toEqual(["First"]);
   });
 });
 

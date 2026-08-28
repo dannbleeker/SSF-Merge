@@ -32,17 +32,18 @@ Blocked by WebView2: blob downloads from a task pane do not work
 ([office-js#1511](https://github.com/OfficeDev/office-js/issues/1511)). The
 route is Graph upload plus a link, or `openBrowserWindow` to a download page.
 
-### Charts and SmartArt
-**Priority: medium.** Feasibility: low to medium.
-Text lives in `charts/chart*.xml` and `diagrams/data*.xml` with embedded
-workbooks. Merging them is still open.
+### A chart's numbers, per recipient
+**Priority: medium.** Feasibility: medium.
+Chart and SmartArt TEXT merges (shipped 2026-08-28). The numbers do not: a
+bar's height comes from a `<c:numCache>` cell that has to parse as a number, so
+`{{Revenue}}` cannot be written there — a placeholder in one is deliberately
+left alone rather than replaced with something the chart cannot plot.
 
-**The half that said "the pane must say so out loud rather than skipping a
-field the user placed" SHIPPED on 2026-08-27.** `prepareBlock` reads the parts
-each block slide relates to and reports what it finds there, step 2 names them,
-and a block whose only placeholders are in a chart gets that sentence instead of
-"no placeholders". So the silent case is closed and what is left is the feature
-itself.
+Doing it means a syntax that is not a placeholder in the text (there is nowhere
+in the values to put one), writing both the cache and the embedded workbook's
+cells, and deciding what a non-numeric cell does. The workbook writer already
+exists — the text merge opens and rewrites it — so the missing half is the
+syntax and the numeric path, not the plumbing.
 
 ### A filter expression language
 **Priority: low.** Feasibility: medium.

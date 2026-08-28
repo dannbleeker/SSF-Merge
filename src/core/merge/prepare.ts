@@ -10,6 +10,7 @@
 import type { Pkg } from "../pptx/pkg.js";
 import type { Block, BlockSlide } from "./plan.js";
 import { notesPathFor } from "../pptx/clone.js";
+import { graphicPartsOf } from "../pptx/graphics.js";
 import { fieldsIn } from "./text.js";
 
 export interface BlockRequest {
@@ -41,21 +42,7 @@ export interface BlockRequest {
   allowEmpty?: boolean;
 }
 
-export type Prepared = { ok: true; block: Block; fields: string[]; unmergeable: string[] } | { ok: false; why: string };
-
-/**
- * Parts that hold text this engine does not merge.
- *
- * A chart's labels live in `ppt/charts/chartN.xml` with an embedded workbook
- * behind them, and SmartArt's live in `ppt/diagrams/dataN.xml`. Neither is a
- * `<a:p>` on the slide, so `mergeDocument` never reaches them and `fieldsIn`
- * never reports them.
- *
- * Not merging them is a stated limit. Not SAYING so is the defect: the author
- * puts `{{Name}}` in a chart title, the pane counts the placeholders it can see
- * and says nothing about that one, and 240 slides ship with the braces on them.
- */
-const UNMERGED_PARTS = /^ppt\/(charts\/chart\d+|diagrams\/data\d+)\.xml$/;
+export type Prepared = { ok: true; block: Block; fields: string[] } | { ok: false; why: string };
 
 /**
  * Build the block, or refuse with a sentence the pane can show as it stands.
@@ -89,7 +76,6 @@ export async function prepareBlock(pkg: Pkg, req: BlockRequest, runId: string): 
 
   const slides: BlockSlide[] = [];
   const fields: string[] = [];
-  const unmergeable: string[] = [];
   for (let i = 0; i < count; i++) {
     const path = paths[start + i];
     if (!path) return { ok: false, why: `Slide ${req.from + i} is not in the deck that came back.` };
@@ -105,23 +91,23 @@ export async function prepareBlock(pkg: Pkg, req: BlockRequest, runId: string): 
     // pane reported fields it cannot merge, here it hid fields it can and
     // blocked the merge on the strength of it.
     const notes = await notesPathFor(pkg, path);
+    // The slide, its speaker notes, and the charts and SmartArt it shows.
+    //
+    // All three are places `runPlan` fills, so all three belong in the same
+    // list: a scan that reads fewer parts than the merge writes REFUSES a block
+    // it would have merged, with "no placeholders" about a slide the author is
+    // looking at a placeholder on. That happened twice — first for notes, then
+    // for charts, which were reported as unfillable right up until they became
+    // fillable. The one rule that keeps it from happening a third time is that
+    // this list and `runPlan`'s are the same list.
+    //
+    // A chart's WORKBOOK is deliberately not read. Its strings are the same
+    // strings as the chart's own cache, so reading it would name nothing new,
+    // and unzipping every embedding to answer "what is on these slides" is a
+    // cost paid on a screen the user is waiting at.
     const own = [...fieldsIn(await pkg.doc(path)), ...(notes ? fieldsIn(await pkg.doc(notes)) : [])];
+    for (const part of await graphicPartsOf(pkg, path)) own.push(...fieldsIn(await pkg.doc(part)));
     for (const f of own) if (!fields.includes(f)) fields.push(f);
-    // Fields the author placed somewhere this engine does not reach. Read from
-    // the parts THIS slide relates to, never from the package at large: on the
-    // route where the template came back as the whole deck, a chart on slide 40
-    // is not this block's problem and naming it would send the user hunting.
-    for (const part of await pkg.relatedParts(path)) {
-      if (!UNMERGED_PARTS.test(part) || !pkg.has(part)) continue;
-      // `fieldsIn`, not a regex over the raw XML. Chart and SmartArt text is
-      // DrawingML — the same `<a:p>` and `<a:t>` the slide uses — so the same
-      // reader finds a placeholder PowerPoint has split across runs, which is
-      // the ordinary state of one after an edit. A regex over the markup would
-      // miss exactly those and report the tidy ones.
-      for (const name of fieldsIn(await pkg.doc(part))) {
-        if (!unmergeable.includes(name)) unmergeable.push(name);
-      }
-    }
     const condition = req.conditions?.[req.from + i];
     slides.push({ path, seq: i + 1, fields: own, ...(condition ? { condition } : {}) });
   }
@@ -131,19 +117,6 @@ export async function prepareBlock(pkg: Pkg, req: BlockRequest, runId: string): 
     // identical copies, which is never what anybody meant and is expensive to
     // undo once it is in the deck.
     const where = count === 1 ? `Slide ${req.from}` : `Slides ${req.from} to ${req.to}`;
-    // The block whose ONLY placeholders are in a chart. "No placeholders" is
-    // true and useless: the author placed one, is looking at it, and is being
-    // told it is not there. Which is the whole complaint this pass exists for,
-    // arriving on the one path where it reads as the engine being wrong.
-    if (unmergeable.length > 0) {
-      return {
-        ok: false,
-        why:
-          `${where} has ${unmergeable.length === 1 ? "a placeholder" : "placeholders"} only inside a chart or ` +
-          `SmartArt (${unmergeable.join(", ")}), which SSF Merge cannot fill. Move the text onto the slide ` +
-          `itself, or mark a block that has a placeholder on the slide.`,
-      };
-    }
     // Says the SYNTAX, not the word "placeholder".
     //
     // PowerPoint calls its own empty content boxes placeholders — "Click to add
@@ -159,5 +132,5 @@ export async function prepareBlock(pkg: Pkg, req: BlockRequest, runId: string): 
     };
   }
 
-  return { ok: true, block: { id: runId, slides }, fields, unmergeable };
+  return { ok: true, block: { id: runId, slides }, fields };
 }

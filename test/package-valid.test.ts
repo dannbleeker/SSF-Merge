@@ -152,6 +152,27 @@ const CASES: { name: string; slides: SlideSpec[]; conditions?: Record<number, st
     name: "a slide with notes",
     slides: [{ paragraphs: [["{{First}}"]], notes: "note for {{Last}}" }],
   },
+  {
+    // A chart is FOUR parts per copy — the chart, its rels, its own workbook,
+    // and the content-type override — and the workbook is a package inside the
+    // package, declared by extension rather than by name. Every one of them is
+    // a way to hand PowerPoint a file it calls damaged without saying which
+    // part was wrong.
+    name: "a slide with a chart and its workbook",
+    slides: [
+      {
+        paragraphs: [["{{First}}"]],
+        chart: { title: "Sales for {{Last}}", categories: ["{{First}}"], workbook: ["{{First}}"] },
+      },
+    ],
+  },
+  {
+    // SmartArt relates to four parts and owns a fifth through one of them. The
+    // drawing is the one a naive clone misses, and a copy pointing at a drawing
+    // that is not there is a repair prompt.
+    name: "a slide with SmartArt",
+    slides: [{ paragraphs: [["{{First}}"]], smartArt: ["{{First}} and {{Last}}"] }],
+  },
 ];
 
 describe("the package the engine hands over", () => {

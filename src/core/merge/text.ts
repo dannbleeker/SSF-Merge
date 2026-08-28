@@ -12,7 +12,7 @@
  * spellcheck pass, so a per-node search finds nothing and silently merges
  * nothing. Every match here is computed against the paragraph's joined text.
  */
-import { A_NS, elements } from "../pptx/xml.js";
+import { A_NS, C_NS, SSML_NS, children, elements } from "../pptx/xml.js";
 
 /**
  * `{{Field}}` or `{{Field|format}}`.
@@ -86,15 +86,20 @@ interface Span {
   to: number;
 }
 
-function spansOf(paragraph: Element): { spans: Span[]; joined: string } {
+function spansOf(nodes: Element[]): { spans: Span[]; joined: string } {
   const spans: Span[] = [];
   let joined = "";
-  for (const node of elements(paragraph, A_NS, "t")) {
+  for (const node of nodes) {
     const s = node.textContent ?? "";
     spans.push({ node, from: joined.length, to: joined.length + s.length });
     joined += s;
   }
   return { spans, joined };
+}
+
+/** The text nodes of a DrawingML paragraph, which is where a slide's placeholders live. */
+function runsOf(paragraph: Element): Element[] {
+  return elements(paragraph, A_NS, "t");
 }
 
 /**
@@ -107,7 +112,26 @@ function spansOf(paragraph: Element): { spans: Span[]; joined: string } {
  * value to look.
  */
 export function mergeParagraph(paragraph: Element, resolve: Resolve): boolean {
-  const { spans, joined } = spansOf(paragraph);
+  return mergeRuns(runsOf(paragraph), resolve);
+}
+
+/**
+ * Merge one run of text held across several nodes. Returns true if anything changed.
+ *
+ * The engine of `mergeParagraph`, taken out of it because a placeholder does
+ * not only live in a DrawingML paragraph. A chart's category labels are
+ * `<c:v>` inside a string cache, and the workbook behind that chart keeps the
+ * same strings in `<si>` elements that may themselves be split into runs. All
+ * three are the same problem — text a merge has to find across nodes it did not
+ * choose the boundaries of — and one implementation is the only version of
+ * "they behave the same" that cannot rot.
+ *
+ * The caller says which nodes make up the text; everything else is identical,
+ * including the `xml:space` guard, because a chart label ending in a space is
+ * the same support ticket as a slide's.
+ */
+export function mergeRuns(nodes: Element[], resolve: Resolve): boolean {
+  const { spans, joined } = spansOf(nodes);
   if (!spans.length) return false;
 
   const hits = [...joined.matchAll(FIELD)];
@@ -164,15 +188,46 @@ export function mergeParagraph(paragraph: Element, resolve: Resolve): boolean {
  */
 export function mergeDocument(doc: Document, resolve: Resolve): number {
   let n = 0;
-  for (const paragraph of elements(doc, A_NS, "p")) if (mergeParagraph(paragraph, resolve)) n++;
+  for (const nodes of textGroups(doc)) if (mergeRuns(nodes, resolve)) n++;
   return n;
+}
+
+/**
+ * Every group of nodes in a part whose text is read as one string.
+ *
+ * A DrawingML paragraph reaches shape bodies, table cells, grouped shapes,
+ * speaker notes, a chart's titles and a SmartArt node's label, because they all
+ * hold ordinary `<a:p>` elements at some depth. Two more kinds are here because
+ * merging a chart means reaching text that is not in a paragraph at all:
+ *
+ * - a **chart's cached strings**, the series names and category labels, which
+ *   are `<c:v>` inside `<c:strCache>` or `<c:strLit>`. NOT every `<c:v>`: the
+ *   same element holds a chart's NUMBERS inside `<c:numCache>`, where the text
+ *   has to parse as a number and a placeholder cannot go.
+ * - a **workbook's shared strings**, `<si>`, which Excel splits into `<r><t>`
+ *   runs exactly as PowerPoint splits a paragraph.
+ *
+ * One reader for the three, so `fieldsIn` and `mergeDocument` cannot come apart
+ * about what a placeholder is — the pane counts what the engine will fill by
+ * asking the engine.
+ */
+function textGroups(doc: Document): Element[][] {
+  const out: Element[][] = [];
+  for (const paragraph of elements(doc, A_NS, "p")) out.push(runsOf(paragraph));
+  for (const cache of [...elements(doc, C_NS, "strCache"), ...elements(doc, C_NS, "strLit")]) {
+    for (const v of elements(cache, C_NS, "v")) out.push([v]);
+  }
+  // A series name written literally rather than referenced: `<c:tx><c:v>`.
+  for (const tx of elements(doc, C_NS, "tx")) for (const v of children(tx, C_NS, "v")) out.push([v]);
+  for (const si of elements(doc, SSML_NS, "si")) out.push(elements(si, SSML_NS, "t"));
+  return out;
 }
 
 /** Every field name a part refers to, in first-seen order. For the pane's field list. */
 export function fieldsIn(doc: Document): string[] {
   const seen = new Set<string>();
-  for (const paragraph of elements(doc, A_NS, "p")) {
-    const { joined } = spansOf(paragraph);
+  for (const nodes of textGroups(doc)) {
+    const { joined } = spansOf(nodes);
     for (const hit of joined.matchAll(FIELD)) if (hit[1]) seen.add(hit[1]);
   }
   return [...seen];

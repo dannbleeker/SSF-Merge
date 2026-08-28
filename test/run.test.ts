@@ -179,6 +179,32 @@ describe("what a long merge holds in memory", () => {
     expect(await held(20)).toBe(await held(2));
   });
 
+  it("does not keep one parsed chart or diagram per output slide either", async () => {
+    // The same property, on the parts a chart adds. Every copy gets its own
+    // chart, its own workbook, its own SmartArt model and its own rendering —
+    // four more parts per record — so a merge that held them would grow four
+    // times faster than the one this file already measured. The original
+    // measurement was taken on a slide with neither, so it could not have seen
+    // this.
+    const held = async (n: number) => {
+      const pkg = await Pkg.open(
+        await makeDeck([
+          {
+            paragraphs: [["Hello {{Name}}"]],
+            chart: { title: "{{Name}}", categories: ["{{Name}}"], workbook: ["{{Name}}"] },
+            smartArt: ["{{Name}}"],
+          },
+        ]),
+      );
+      const rows = toRecordSet([["Name"], ...Array.from({ length: n }, (_, i) => [`R${i}`])]);
+      const block: Block = { id: "b", slides: [{ path: "ppt/slides/slide1.xml", seq: 1 }] };
+      let id = 0;
+      await runPlan(pkg, buildPlan(block, rows, { runId: "r" }), rows, { clone: { creationId: () => 900 + ++id } });
+      return pkg.cachedParts();
+    };
+    expect(await held(20)).toBe(await held(2));
+  });
+
   it("still writes every part it released", async () => {
     // Releasing serialises back into the zip first. If it did not, the whole
     // merge would come out as the untouched template with nothing to show for

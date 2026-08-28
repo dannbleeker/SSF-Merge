@@ -7,6 +7,73 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added — charts and SmartArt are merged
+
+A placeholder in a chart title, in its category labels, or in a SmartArt box is
+filled like any other. Each merged slide gets a chart of its own, so the copies
+differ — which is the point, and is why a merged deck with charts weighs more
+than one without.
+
+Their text was never unreadable: it is DrawingML, the same `<a:p>` and `<a:t>` a
+slide holds, and `fieldsIn` has reported these placeholders for as long as it
+has existed. What stood in the way was four facts about where the same string is
+kept.
+
+**The parts are shared by every clone.** `cloneSlide` copies a slide's
+relationships wholesale, so all 240 copies point at the template's own
+`chart1.xml`. Merging into that writes one record's values and shows them on the
+whole deck. Notes pages had this defect and were fixed by cloning; comments had
+it and are dropped. The rule the three make: a part a merge writes into may
+never be shared by two slides. What stays shared is the read-only styling — a
+chart's colours and style, a diagram's layout, quick style and colours — because
+copying those per record multiplies a template's styling by the row count for no
+change in what anybody sees.
+
+**A chart's labels are not paragraphs.** The category and series names a user
+actually writes live in `<c:v>` inside a `<c:strCache>`. Not every `<c:v>`: the
+same element holds the chart's NUMBERS inside `<c:numCache>`, where the content
+has to parse as a number, so a merge that took them all would replace a bar's
+height with "Nordics" and produce a chart PowerPoint reads as corrupt.
+
+**A chart's labels are also in the workbook behind it.** The cache is what
+PowerPoint draws; the workbook is what Excel opens on Edit Data, and closing
+that Excel refreshes the cache from the workbook. Merging the cache alone gives
+a deck that is right until somebody clicks the button and watches the labels
+revert to `{{Region}}`. So each copy gets its own workbook and its shared
+strings are merged too — a package inside the package, opened with its own zip
+reader. One that cannot be opened is reported rather than thrown on: the chart
+still merged, and losing 240 slides over an embedded object another tool wrote
+is the wrong trade.
+
+**SmartArt keeps its text twice.** `dataN.xml` is the model and `drawingN.xml`
+is the laid-out rendering PowerPoint puts on the screen. Merging the model alone
+produces a deck whose SmartArt still reads `{{Name}}` to every viewer. The
+drawing hangs off the data part rather than off the slide, which is why cloning
+what the slide names is not enough.
+
+One reader now finds all of it — a DrawingML paragraph, a chart's cached string,
+a workbook's shared string — so what the pane counts and what the merge fills
+cannot come apart.
+
+### Changed — a chart's placeholder is an ordinary field
+
+It was reported as unfillable, in the fields list and in a refusal when a block
+had no other placeholder. Both are gone: the merge fills them, so they are
+counted as fields, and a block whose only placeholder is in a chart merges. A
+chart fill counts into the "N placeholders filled" line for the same reason —
+its zero is the alarm that says a merge added every slide and filled nothing,
+and a template whose fields all live in a chart would otherwise raise it about a
+merge that worked.
+
+### Fixed — a removed template slide no longer strands its chart
+
+The template slides are taken out of the package before it is handed to
+PowerPoint. Their charts used to be shared with the copies and so stayed
+referenced; now each copy has its own, and the template's would have been left
+in the file with nothing pointing at it — a chart and an embedded workbook per
+template slide. They are swept, and only when no other part references them,
+which is what keeps a diagram's shared layout from being swept with them.
+
 ### Added — picture fields
 
 A cell can name a picture file, and the shape the field sits in is filled with
