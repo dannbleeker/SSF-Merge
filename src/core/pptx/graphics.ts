@@ -119,6 +119,15 @@ export async function cloneSlideGraphics(pkg: Pkg, slidePath: string): Promise<v
       await copyWithRels(pkg, source, path, DIAGRAM_DATA_TYPE);
       await cloneDiagramDrawing(pkg, path);
       await repoint(pkg, slidePath, rId, `../diagrams/data${n}.xml`);
+    } else if (type === DIAGRAM_DRAWING_REL_TYPE) {
+      // The shape real PowerPoint writes: the drawing hangs off the SLIDE, and
+      // the data part has no relationships of its own. Handled here rather than
+      // inside `cloneDiagramDrawing` because there is nothing to reach it from —
+      // that function walks the data part, which in this shape is empty.
+      //
+      // Order does not matter. This and the data branch act on two independent
+      // relationships of the same slide, and each repoints only its own.
+      await repoint(pkg, slidePath, rId, `../diagrams/${await copyDiagramDrawing(pkg, source)}`);
     }
   }
 }
@@ -166,13 +175,27 @@ async function cloneChartWorkbook(pkg: Pkg, chartPath: string): Promise<void> {
  * alone and the deck shows the placeholders, because the drawing is what is on
  * the screen.
  *
- * It hangs off the DATA part, not off the slide, which is why this runs here
- * rather than in the loop above: a slide's own relationships name the data, the
- * layout, the quick style and the colours, and never the drawing.
+ * It can hang off EITHER the data part or the slide, and which one is not a
+ * detail: it decides whether this function finds anything at all.
  *
- * `<dsp:dataModelExt relId="…">` inside the data part names this relationship
- * by id. The id is unchanged — only the target moves — so that reference stays
- * correct without the data part being rewritten.
+ * This used to say the slide's relationships "never" name the drawing, and only
+ * looked at the data part. Real PowerPoint does the opposite. A Basic Process
+ * diagram inserted by PowerPoint on 2026-08-28 wrote
+ * `ppt/slides/_rels/slide3.xml.rels` holding the `diagramDrawing` relationship,
+ * `data1.xml` holding `<dsp:dataModelExt relId="rId6"/>` naming it — and **no
+ * `ppt/diagrams/_rels/data1.xml.rels` at all**. So the loop ran over an empty
+ * relationship set, every branch `continue`d, and the function returned having
+ * done nothing, silently. Three merged copies shared one unmerged drawing.
+ *
+ * `test/fixtures/deck.ts` built its fixtures the other way and said so, so the
+ * suite agreed with the reader and neither had met a diagram PowerPoint wrote.
+ *
+ * Both shapes are handled now, because the fixture's shape is legal too and
+ * removing it would be a guess about producers this project has not seen.
+ *
+ * `<dsp:dataModelExt relId="…">` names this relationship by id. The id is left
+ * alone — only the target moves — so that reference stays correct without the
+ * data part being rewritten, whichever part owns the relationship.
  */
 async function cloneDiagramDrawing(pkg: Pkg, dataPath: string): Promise<void> {
   for (const rel of await relsOf(pkg, dataPath)) {
@@ -181,12 +204,25 @@ async function cloneDiagramDrawing(pkg: Pkg, dataPath: string): Promise<void> {
     if (!target) continue;
     const source = resolve(dataPath, target);
     if (!pkg.has(source)) continue;
-    const n = pkg.nextNumber("ppt/diagrams/drawing");
-    const path = `ppt/diagrams/drawing${n}.xml`;
-    await pkg.copyPart(source, path);
-    await pkg.addContentTypeOverride(`/${path}`, DIAGRAM_DRAWING_TYPE);
-    rel.setAttribute("Target", `drawing${n}.xml`);
+    rel.setAttribute("Target", `${await copyDiagramDrawing(pkg, source)}`);
   }
+}
+
+/**
+ * Copy one drawing part, and answer its new file name.
+ *
+ * The name rather than the path, because both callers write it into a
+ * relationship that already sits in `ppt/diagrams/`.
+ *
+ * `copyWithRels`, not `copyPart`: a drawing can carry relationships of its own —
+ * a picture inside a SmartArt node is an image relationship from this part — and
+ * a copy without them points at nothing.
+ */
+async function copyDiagramDrawing(pkg: Pkg, source: string): Promise<string> {
+  const n = pkg.nextNumber("ppt/diagrams/drawing");
+  const path = `ppt/diagrams/drawing${n}.xml`;
+  await copyWithRels(pkg, source, path, DIAGRAM_DRAWING_TYPE);
+  return `drawing${n}.xml`;
 }
 
 /**
@@ -203,10 +239,15 @@ export async function graphicPartsOf(pkg: Pkg, slidePath: string): Promise<strin
     const type = rel.getAttribute("Type") ?? "";
     const target = rel.getAttribute("Target");
     if (!target || (rel.getAttribute("TargetMode") ?? "") === "External") continue;
-    if (type !== CHART_REL_TYPE && type !== DIAGRAM_DATA_REL_TYPE) continue;
+    // DIAGRAM_DRAWING_REL_TYPE is here because PowerPoint hangs the drawing off
+    // the SLIDE. Without it the drawing was cloned per copy but never FILLED,
+    // so each merged slide got its own rendering still reading `{{Region}}`.
+    if (type !== CHART_REL_TYPE && type !== DIAGRAM_DATA_REL_TYPE && type !== DIAGRAM_DRAWING_REL_TYPE) continue;
     const path = resolve(slidePath, target);
     if (!pkg.has(path) || out.includes(path)) continue;
     out.push(path);
+    // Only a data part has a drawing hanging off it to chase. A drawing found
+    // on the slide is already in `out`, and a chart has no such relationship.
     if (type !== DIAGRAM_DATA_REL_TYPE) continue;
     for (const drawing of await relsOf(pkg, path)) {
       if (drawing.getAttribute("Type") !== DIAGRAM_DRAWING_REL_TYPE) continue;

@@ -207,6 +207,60 @@ describe("the workbook behind a chart", () => {
   });
 });
 
+describe("SmartArt the way PowerPoint actually writes it", () => {
+  /**
+   * The same diagram, with the `diagramDrawing` relationship on the SLIDE and
+   * no `dataN.xml.rels` at all — which is what PowerPoint produced when a Basic
+   * Process diagram was inserted by hand on 2026-08-28.
+   *
+   * Until then the engine looked for that relationship on the data part only,
+   * and every fixture here was built to match. So a real diagram merged its
+   * model, left its rendering untouched, and handed three copies one shared
+   * drawing still reading `{{Region}}` — with the whole suite green, because
+   * the reader and the fixtures shared one misreading.
+   */
+  const powerPointShape: SlideSpec = {
+    paragraphs: [["Cover"]],
+    smartArt: ["{{Name}} of {{Region}}", "Second"],
+    smartArtDrawingOn: "slide",
+  };
+
+  /** The rendering, found where PowerPoint puts it: on the slide. */
+  const drawingOf = async (zip: JSZip, slide: string) => (await related(zip, slide, "/diagramDrawing"))[0] ?? "";
+
+  it("has no dataN.xml.rels, which is the condition that hid this", async () => {
+    // Asserted so the fixture cannot quietly drift back to the shape that
+    // agreed with the old reader.
+    const { zip } = await merge(powerPointShape);
+    expect(Object.keys(zip.files).filter((n) => /diagrams\/_rels\/data\d+\.xml\.rels/.test(n))).toEqual([]);
+  });
+
+  it("fills the drawing the slide points at", async () => {
+    const { zip } = await merge(powerPointShape);
+    const drawing = await drawingOf(zip, "ppt/slides/slide2.xml");
+    expect(drawing, "the merged slide names no drawing").not.toBe("");
+    expect((await textOf(zip, drawing, A_NS, "t")).join("")).toContain("Ada of Nordics");
+  });
+
+  it("gives every copy its own drawing, with its own row in it", async () => {
+    const { zip } = await merge(powerPointShape);
+    const first = await drawingOf(zip, "ppt/slides/slide2.xml");
+    const second = await drawingOf(zip, "ppt/slides/slide3.xml");
+    expect(first).not.toBe(second);
+    expect((await textOf(zip, first, A_NS, "t")).join("")).toContain("Ada of Nordics");
+    expect((await textOf(zip, second, A_NS, "t")).join("")).toContain("Grace of Benelux");
+  });
+
+  it("leaves no merged copy pointing at the template's own drawing", async () => {
+    // The failure exactly as it appeared in the round: the copies were made,
+    // the models were filled, and every one of them still named drawing1.
+    const { zip } = await merge(powerPointShape);
+    for (const slide of ["ppt/slides/slide2.xml", "ppt/slides/slide3.xml"]) {
+      expect(await drawingOf(zip, slide), slide).not.toBe("ppt/diagrams/drawing1.xml");
+    }
+  });
+});
+
 describe("SmartArt on a merged slide", () => {
   const withSmartArt: SlideSpec = { paragraphs: [["Cover"]], smartArt: ["{{Name}} of {{Region}}", "Second"] };
 
