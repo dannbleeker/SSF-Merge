@@ -10,42 +10,33 @@ is to build.
 
 ## Next
 
-### What the deck-read probe answers, and what to do about it
-**Priority: medium.** Feasibility: high once the sheet arrives.
-`deckSlideIds` already pages by position, so office-js#4272 cannot bite the way
-it would have — but the probe's `deckRead` block asks three things nobody here
-has measured, and each has a next step:
+### Image fields — the aspect-ratio question
+**Priority: high.** Feasibility: blocked, and blocked on a HUMAN rather than on
+work. Probe question 8 — does `ShapeFill.setImage` stretch or preserve aspect
+ratio — is the one no API reads back, so five sheets have not touched it and a
+sixth will not either. Somebody has to fill a rectangle with an image whose
+aspect ratio differs from the shape's and look at the slide. If it stretches,
+the engine has to letterbox before sending, which is the whole design question.
 
-- `short` — whether a collection load answers short on this host at all. If it
-  never does, the paging is insurance and can stay as insurance.
-- `prefixOk` — whether a short read is the first n IN DECK ORDER. This is the
-  one that decides severity for anyone who reaches for `load("items/id")`
-  again: prefix-stable means a wrong block is REFUSED, scrambled means
-  `indexOf` answers the wrong slide NUMBER and a merge clones slides nobody
-  chose. If it comes back false, that fact belongs in `CLAUDE.md` as a
-  never-do.
-- `empty` — office-js#6363, a read that returns nothing after a sync that
-  succeeded. If it reproduces, `blockIds` and `blockFromSelection` should say
-  "PowerPoint would not list the deck" rather than "the deck has 0 slides",
-  which is what they say today.
+The feature itself is in "After the first release" below; this is the single
+measurement it waits on.
 
-`canAnswerFiftyQuestion` reports whether the deck was big enough to answer the
-first one at all. A nine-slide deck cannot, and a sheet from one must not be
-read as though it did.
+### What `exportAsBase64Presentation` drops, on a deck that can answer
+**Priority: low.** Feasibility: high, and it needs one thing — a deck with
+COMMENTS on it.
 
-### Whether an insert cares that a shape is selected
-**Priority: low.** Feasibility: unknown until the sheet arrives.
-office-js#2775 (a text-box add deletes the selected shape) and #3698 (a picture
-will not insert while one is selected) are both about SHAPES, and this add-in
-inserts SLIDES — so the documented repro does not apply and nothing here is
-known to be wrong. It is unverified rather than safe, and the preview step now
-inserts at a moment when the user may well have something selected.
+Asked twice now and unanswered twice for the same reason: both probe decks
+carried no comments and no `ppt/authors.xml`, so there was nothing for the
+export to drop. What it does leave behind is `ppt/webextensions/*` (which is
+Script Lab's own registration, so the probe's deck will always show it),
+`changesInfo1.xml` and `revisionInfo.xml` — none of them content, all rebuilt
+by the host.
 
-The probe's `insertWhileSelected` block reports what was selected and whether
-the insert landed anyway. It never SELECTS anything: the obvious workaround is
-`setSelectedShapes`, which is the one call in this family with a measured
-history of wedging the host, so nothing is built for this until there is a
-reason.
+It matters only on the `subset` route (1.10), where the exported package is the
+template block the clones are made from: comments on a template slide would be
+dropped from every copy. Low because nobody has asked for comments to survive a
+merge, and because the answer is one probe run away whenever a suitable deck
+exists.
 
 ## After the first release
 
@@ -53,10 +44,10 @@ reason.
 **Priority: high.** Feasibility: medium.
 `{{Photo|image}}` filling a rectangle through `ShapeFill.setImage` (1.8), or a
 picture cloned into the package with its media part. Blocked on probe question
-**5** — the aspect-ratio one, which no API reads back, so somebody has to look
+**8** — the aspect-ratio one, which no API reads back, so somebody has to look
 at a slide. If the host stretches, the engine has to letterbox before sending.
-(This said "question 4" until question 4 was answered and turned out to be the
-offsets one.)
+(The number has moved twice as questions were answered and renumbered; it is the
+aspect-ratio one, whatever it is called this week.)
 
 ### Excel via Microsoft Graph
 **Priority: high.** Feasibility: medium.
