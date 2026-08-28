@@ -45,6 +45,39 @@ cells, and deciding what a non-numeric cell does. The workbook writer already
 exists — the text merge opens and rewrites it — so the missing half is the
 syntax and the numeric path, not the plumbing.
 
+### A security sweep, written down
+**Priority: medium.** Feasibility: high.
+The add-in runs inside PowerPoint, opens whatever deck the user has open, and
+takes a table they pasted from somewhere else. None of that is exotic, and a
+first look says the surfaces are narrow — which is the argument for doing this
+while the answer is still short rather than after something has gone wrong.
+
+Most of the work is confirming and recording a posture, not building one. What
+to sweep, and what a first reading already says:
+
+- **Pasted text reaching XML.** User values enter the package through two
+  `textContent =` assignments, and `@xmldom`'s serialiser escapes on the way
+  out; nothing builds XML by string concatenation today. Confirm that holds, and
+  that a value containing `<`, `&`, `]]>` or a lone surrogate makes a round trip
+  without corrupting the package — the harm here is a deck that will not open,
+  which is the same harm as a bad merge.
+- **The input deck is untrusted.** Zip entry names become part paths. Confirm a
+  crafted name — `../`, absolute, absurdly long — cannot write outside the
+  package, and state the parser's posture on entity expansion for what it reads.
+- **Pasted text reaching the pane.** `render.ts` uses `textContent`, never
+  `innerHTML`, and one test holds it. Confirm that guard covers every path
+  showing a column name, a file name or a placeholder, rather than only the one
+  it was written against.
+- **The dependency surface.** Two runtime dependencies, `@xmldom/xmldom` and
+  `jszip`. Decide how they are watched and write it down; `DEPENDENCY-ALERTS.md`
+  is the obvious home.
+- **What the manifest permits.** There is no `AppDomains` element, so the pane
+  cannot navigate outside its own host. That is the right answer, and it should
+  be the deliberate one rather than the default one.
+
+The output is a page saying what was checked and what the answers were, so the
+next person inherits a posture instead of repeating the reading.
+
 ### A filter expression language
 **Priority: low.** Feasibility: medium.
 Row filters shipped as a searchable checkbox list. An expression — `Region =
