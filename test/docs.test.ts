@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { STEP_TITLE } from "../src/pane/steps.js";
 
@@ -186,5 +186,37 @@ describe("the probe's question numbers", () => {
     // Question 0 is the control arm, which the reader folds into section 1
     // rather than printing on its own line.
     expect(inReader).toStrictEqual(inDoc.filter((n) => n !== 0));
+  });
+});
+
+describe("the round's browser driver", () => {
+  /**
+   * A directory of scripts nobody can name is a directory nobody uses.
+   *
+   * The driver exists so the next round does not rebuild it, and that only
+   * works if the README says what each piece is for. Read from the DIRECTORY,
+   * so a script added without a line about it fails here rather than being
+   * discovered by whoever inherits the round.
+   */
+  const driverReadme = readFileSync("test-kit/driver/README.md", "utf8");
+  const scripts = readdirSync("test-kit/driver").filter((f) => f.endsWith(".mjs"));
+
+  it("has scripts to document", () => {
+    // The guard below passes trivially over an empty directory, and a driver
+    // that has quietly lost its scripts is exactly the state worth catching.
+    expect(scripts.length).toBeGreaterThan(5);
+  });
+
+  it("names every script in its README", () => {
+    const missing = scripts.filter((f) => !driverReadme.includes(f));
+    expect(missing, `undocumented driver scripts: ${missing.join(", ")}`).toEqual([]);
+  });
+
+  it("documents no script that is not there", () => {
+    // The other direction: a line about a script somebody deleted sends the
+    // next reader looking for a file that does not exist.
+    const named = [...driverReadme.matchAll(/`([a-z-]+\.mjs)`/g)].map((m) => m[1] ?? "");
+    const gone = [...new Set(named)].filter((f) => !scripts.includes(f));
+    expect(gone, `README names scripts that are gone: ${gone.join(", ")}`).toEqual([]);
   });
 });
