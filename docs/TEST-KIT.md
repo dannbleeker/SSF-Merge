@@ -103,15 +103,34 @@ rendering is on screen, so if the boxes read `{{Name}}` the wrong half was
 filled.
 
 **5. The pictures.** Each row gets its own photo, filling the orange frame with
-no white bands and no distortion — the circles on them must still be circles.
-The frame is wider than it is tall, so:
+no bands of background and no distortion. Two things on the photo tell you
+which of the three possible outcomes you are looking at.
 
-- `ada.png` is wide: all four yellow dots should survive, or nearly.
-- `grace.png` is tall: the top and bottom dots should be cropped away.
-- `alan.png` is square: the top and bottom dots should be cropped a little.
+**The white border says which axis was cropped.** It runs around the edge of
+each photo, so a correct cover-crop cuts the pair on the short axis and keeps
+the pair on the long one:
 
-That is `image` doing what it should. Bands of background instead means it
-letterboxed; ovals instead of circles means it stretched.
+| Photo | Shape | Border you should see |
+| --- | --- | --- |
+| `ada.png` | wide | **top and bottom only** — left and right cropped away |
+| `grace.png` | tall | **left and right only** — top and bottom cropped away |
+| `alan.png` | square | **left and right only** — the frame is wider than it is tall |
+
+All four edges visible means it did not crop: either a stretch, or a letterbox
+if there are bands of background as well.
+
+**The four yellow dots say whether it distorted.** They sit inside the part of
+each photo that a correct crop keeps, so **all four should be visible on all
+three**, and each one should be **round**. An oval is a stretch, and nothing
+else produces one.
+
+> The dots used to sit at the photo's corners, and this page asked you to
+> confirm they survived. They cannot: a correct crop removes a third of `ada`'s
+> width and nearly two thirds of `grace`'s height, and the dots were within 5%
+> of each corner — so every one of them went, on all three photos, no matter how
+> well the merge worked. The round of 2026-08-28 duly read their absence as a
+> failure. They were moved inward on 2026-08-29; if you are testing an older
+> deck, expect no dots at all and judge by the border.
 
 **6. `{{Nickname}}` is still visible** on each second slide. There is no such
 column, and a placeholder with no column is meant to stay on the slide rather
