@@ -14,6 +14,14 @@ import { CT_NS, PKG_REL_NS, P_NS, R_NS, element, elements, parseXml, serializeXm
 const CONTENT_TYPES = "[Content_Types].xml";
 const PRESENTATION = "ppt/presentation.xml";
 const NOTES_REL_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide";
+/**
+ * A slide's comments, in both spellings — classic `commentN.xml` and the
+ * MODERN ones PowerPoint on the web writes under a Microsoft namespace.
+ */
+const COMMENT_REL_TYPES = [
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments",
+  "http://schemas.microsoft.com/office/2018/10/relationships/comments",
+];
 
 /** The highest value PowerPoint accepts in `<p:sldId id="…">`; the format caps ids below 2^31. */
 const MAX_SLIDE_ID = 2_147_483_647;
@@ -241,14 +249,20 @@ export class Pkg {
       }
     }
 
-    // Its notes page, if it has one. A notes slide belongs to one slide and is
-    // unreachable once that slide is gone, so leaving it behind would ship a
-    // part nothing relates to.
+    // Its notes page and its comments, if it has any. Both belong to ONE slide
+    // and are unreachable once that slide is gone, so leaving either behind
+    // would ship a part nothing relates to.
+    //
+    // Comments joined the notes here when `cloneSlide` stopped copying them: a
+    // clone no longer references the template's comment part, so removing the
+    // template on the way out would otherwise strand it — a part with a
+    // content-type override and nothing pointing at it.
     const relsPath = Pkg.relsPathFor(slidePath);
     if (this.has(relsPath)) {
       const rels = await this.doc(relsPath);
       for (const rel of elements(rels, PKG_REL_NS, "Relationship")) {
-        if (rel.getAttribute("Type") !== NOTES_REL_TYPE) continue;
+        const type = rel.getAttribute("Type") ?? "";
+        if (type !== NOTES_REL_TYPE && !COMMENT_REL_TYPES.includes(type)) continue;
         const target = rel.getAttribute("Target");
         if (target) await this.removePart(resolveTarget(slidePath, target));
       }

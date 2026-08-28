@@ -1,0 +1,90 @@
+{
+  "probe": "ssf-merge",
+  "takenAt": "2026-08-28T05:30:11.703Z",
+  "platform": "OfficeOnline",
+  "host": "0.0.0.0",
+  "requirementSets": [
+    "1.2",
+    "1.3",
+    "1.4",
+    "1.5",
+    "1.6",
+    "1.7",
+    "1.8",
+    "1.9",
+    "1.10"
+  ],
+  "deckAtStart": 4,
+  "insertSelf": {
+    "before": 4,
+    "after": 8
+  },
+  "insertFresh": {
+    "before": 8,
+    "after": 10
+  },
+  "tagReadBack": {
+    "value": "probe-run"
+  },
+  "insertFreshDestTheme": {
+    "before": 10,
+    "after": 12
+  },
+  "insertCollision": {
+    "before": 12,
+    "after": 14
+  },
+  "substring": {
+    "textBefore": "Hello NAME here",
+    "textAfterOne": "Hello Ada here",
+    "boldAfter": true,
+    "twoWrites": {
+      "offsets": [
+        0,
+        4
+      ],
+      "after": "XXXX2BB"
+    }
+  },
+  "deckRead": {
+    "deckSize": 14,
+    "items": 14,
+    "short": false,
+    "empty": false,
+    "canAnswerFiftyQuestion": false,
+    "byPosition": 14,
+    "prefixOk": true
+  },
+  "insertWhileSelected": {
+    "shapesSelected": 0,
+    "insert": {
+      "before": 14,
+      "after": 16
+    },
+    "landed": 2
+  },
+  "exportParts": {
+    "supported": true,
+    "sourceParts": 88,
+    "exportParts": 78,
+    "missing": [
+      "ppt/webextensions/webextension1.xml",
+      "ppt/authors.xml",
+      "ppt/webextensions/taskpanes.xml",
+      "ppt/webextensions/_rels/taskpanes.xml.rels",
+      "ppt/comments/modernComment_106_EB69DA7E.xml",
+      "ppt/comments/modernComment_105_9CE057D5.xml",
+      "ppt/comments/modernComment_103_25A7411D.xml",
+      "ppt/comments/modernComment_101_AEAB9DA1.xml",
+      "ppt/changesInfos/changesInfo1.xml",
+      "ppt/revisionInfo.xml"
+    ],
+    "addedByExport": [],
+    "sourceHasAuthors": true,
+    "exportHasAuthors": false,
+    "sourceComments": 4,
+    "exportComments": 0
+  },
+  "sweep": "removed 12 slide(s) from index 4",
+  "deckAtEnd": 4
+}

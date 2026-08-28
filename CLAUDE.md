@@ -71,7 +71,7 @@ red, not just that one does.
 
 ## What THIS host answered
 
-Measured on PowerPoint for the web, five sheets under `docs/host-answers/`.
+Measured on PowerPoint for the web, six sheets under `docs/host-answers/`.
 Recordings, not opinions.
 
 - **The package path works.** A cloned slide with a fresh creation id inserts.
@@ -107,6 +107,27 @@ Recordings, not opinions.
   buffers built from the original joined text and applies every hit against
   those, so the package path is immune by construction. Do not "fix" it to match
   this finding.
+- **`exportAsBase64Presentation` DROPS comments and `ppt/authors.xml`.** The
+  sixth sheet (2026-08-28) put this on a deck carrying four comments: four
+  comment parts and an authors part went in, none came out. So
+  [office-js#6867](https://github.com/officedev/office-js/issues/6867) reaches
+  the presentation-level call, not just the per-slide one.
+
+  Harmless in itself — the template slides stay in the user's deck untouched, and
+  a reviewer's note is not content a merge should reproduce. What it exposed is
+  that **the two template routes disagreed**: the subset route (1.10) produced
+  comment-free clones because the host dropped them, while the file route (every
+  host below that) copied the slide's rels wholesale and gave EVERY clone a
+  relationship to the template's comment part — three slides, one
+  `modernComment_101_AEAB9DA1.xml`, measured. A "check this with Legal" on all
+  240 merged slides, as one shared thread.
+
+  `cloneSlide` drops comment relationships now, in both spellings — the classic
+  `commentN.xml` and the modern `modernComment_<id>_<hash>.xml` the web writes
+  under a Microsoft namespace — and `removeSlide` takes a comment part away with
+  its slide, as it already did for notes. The routes agree, and they agree on the
+  answer the host had already chosen.
+
 - **A collection load of the deck's slides answers IN FULL, past the ceiling.**
   The fifth sheet (2026-08-28) put this on a 58-slide deck — above the ~50 that
   [office-js#4272](https://github.com/officedev/office-js/issues/4272) describes,

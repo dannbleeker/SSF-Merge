@@ -150,7 +150,7 @@ pretending it is clean.
 
 ## What it has answered so far
 
-Five sheets, all PowerPoint for the web, filed under `docs/host-answers/`.
+Six sheets, all PowerPoint for the web, filed under `docs/host-answers/`.
 
 The first answered nothing about the host and three things about the probe: it
 gave a verdict on a question it had not asked, it named none of the four calls
@@ -203,17 +203,25 @@ idle.
 - **the standing selection** (question 7) ran with **three shapes selected** and
   both slides landed. A slide insert is not the shape case #2775 and #3698
   describe, and nothing here needs `setSelectedShapes`.
-- **the export** (question 5) is still unanswered, for the same reason as
+- **the export** (question 5) was still unanswered here, for the same reason as
   before: the deck carried no comments and no `ppt/authors.xml`, so there was
-  nothing to drop. It left the same five parts behind — the two web-extension
-  parts and their rels, `changesInfo1.xml`, `revisionInfo.xml` — none of them
-  content, all rebuilt by the host. **Re-run it on a deck carrying comments**,
-  and note that Script Lab itself writes the web-extension parts, so the deck
-  the probe runs in will always show those five.
+  nothing to drop.
 
-So questions 0 to 4, 6 and 7 are answered and the package path is measured
-rather than assumed. Question 5 needs a deck with comments on it; question 8 is
-the aspect-ratio one no API reads back, and needs somebody to look at a slide.
+**The sixth sheet answered it, on a deck with four comments on it.** Four comment
+parts and `ppt/authors.xml` went in and **none came out** — so office-js#6867
+reaches the presentation-level call too. What that exposed is in `CLAUDE.md`: the
+two template routes disagreed about comments, and `cloneSlide` was the half that
+was wrong.
+
+Read that sheet for question 5 alone. It was taken on a four-slide deck with
+nothing selected, so its deck-read and standing-selection arms could not put
+their questions — the reader says `unknown` for both, and the fifth sheet's
+answers stand. **A later sheet does not overwrite an earlier answer it could not
+ask.**
+
+So questions 0 to 7 are answered and the package path is measured rather than
+assumed. Question 8 is the aspect-ratio one no API reads back, and needs somebody
+to look at a slide.
 
 ## One answer is not evidence about your host
 
