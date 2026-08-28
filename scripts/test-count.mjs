@@ -21,7 +21,19 @@ const RECORD = "test/fixtures/test-count.json";
 const update = process.argv.includes("--update");
 
 const out = join(mkdtempSync(join(tmpdir(), "ssf-merge-")), "results.json");
-execFileSync("npx", ["vitest", "run", "--reporter=json", `--outputFile=${out}`], { stdio: "inherit" });
+// Vitest's own entry point through the running Node, not `npx`. `execFileSync`
+// does not go through a shell, and on Windows the executable is `npx.cmd`, so
+// spawning `npx` there is `ENOENT` before any test runs — this gate could not
+// be run at all on the owner's machine while CI on ubuntu passed it. Naming the
+// installed entry also guarantees the pinned vitest rather than whatever `npx`
+// would resolve, which is what a floor under the suite wants anyway.
+execFileSync(
+  process.execPath,
+  [join("node_modules", "vitest", "vitest.mjs"), "run", "--reporter=json", `--outputFile=${out}`],
+  {
+    stdio: "inherit",
+  },
+);
 
 const total = JSON.parse(readFileSync(out, "utf8")).numTotalTests;
 const recorded = JSON.parse(readFileSync(RECORD, "utf8")).min;
