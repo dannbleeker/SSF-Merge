@@ -1,0 +1,144 @@
+/**
+ * Fill the placeholders inside a slide's charts and SmartArt.
+ *
+ * Their text is DrawingML — the same `<a:p>` and `<a:t>` a slide holds — so the
+ * reader that finds a placeholder split across runs on a slide finds one split
+ * across runs in a chart title too. What is different is WHERE ELSE the same
+ * string is kept, and every one of those copies has to move together or the
+ * deck contradicts itself:
+ *
+ * - a chart's category and series labels are in its own `<c:strCache>`, which
+ *   is what PowerPoint draws, AND in the workbook behind it, which is what
+ *   Excel opens on "Edit Data". Closing that Excel refreshes the cache from the
+ *   workbook, so a merge that fills only the cache is undone by a click.
+ * - a SmartArt node's text is in `dataN.xml`, the model, AND in `drawingN.xml`,
+ *   the laid-out rendering the host puts on the screen. The drawing is the half
+ *   anybody sees.
+ *
+ * `cloneSlideGraphics` has already given this slide its own copies of all four,
+ * so writing here writes into one record's chart and nobody else's.
+ */
+import JSZip from "jszip";
+import { Pkg } from "../pptx/pkg.js";
+import { chartWorkbooksOf, graphicPartsOf } from "../pptx/graphics.js";
+import { parseXml, serializeXml } from "../pptx/xml.js";
+import { mergeDocument, type Resolve } from "./text.js";
+
+export interface GraphicOutcome {
+  /** Text groups filled in chart and SmartArt parts. */
+  merged: number;
+  /** Workbooks behind a chart whose strings were filled too. */
+  workbooks: number;
+  /** Workbooks the merge could not open, by part path. Reported, never thrown on. */
+  unreadable: string[];
+}
+
+export function emptyGraphicOutcome(): GraphicOutcome {
+  return { merged: 0, workbooks: 0, unreadable: [] };
+}
+
+/**
+ * The parts of a workbook that hold text a merge can fill.
+ *
+ * `sharedStrings.xml` is where Excel keeps every string a cell shows, and it is
+ * where a chart's own labels come from in practice. A worksheet is read too
+ * because a cell may hold its string INLINE (`<is><t>`), which is what a
+ * generator that never built a shared-string table produces — and a chart
+ * written by a tool rather than by Excel is exactly the case that does that.
+ *
+ * Nothing else is touched. A workbook holds styles, a calc chain and a
+ * definition of the range the chart reads; rewriting any of those would change
+ * what the chart plots, where this pass only changes what it says.
+ */
+const WORKBOOK_TEXT = /^xl\/(sharedStrings\.xml|worksheets\/sheet\d+\.xml)$/;
+
+/**
+ * Merge every chart and SmartArt part this slide owns, and the workbooks behind
+ * its charts.
+ *
+ * Returns what it did rather than throwing on what it could not do. A workbook
+ * that will not open is a real thing to report — the chart still merged, and
+ * the deck is right until somebody edits the data — where a throw would lose
+ * the whole run over one unreadable embedding.
+ */
+export async function mergeGraphics(pkg: Pkg, slidePath: string, resolve: Resolve): Promise<GraphicOutcome> {
+  const out = emptyGraphicOutcome();
+  // Both lists BEFORE anything is released, because finding the workbooks
+  // walks the same relationships: releasing as it went re-parsed every chart's
+  // rels a moment later and left them held, one per record per chart. Measured
+  // as two documents per record — the exact growth `release` exists to stop,
+  // reintroduced by the order of two loops.
+  const parts = await graphicPartsOf(pkg, slidePath);
+  const workbooks = await chartWorkbooksOf(pkg, slidePath);
+
+  for (const part of parts) out.merged += mergeDocument(await pkg.doc(part), resolve);
+  for (const path of workbooks) {
+    if (await mergeWorkbook(pkg, path, resolve)) out.workbooks++;
+    else out.unreadable.push(path);
+  }
+
+  // Written back and dropped, the way `runPlan` drops a finished slide: nothing
+  // reads these again, and one live document per chart per record is heap that
+  // grows with the row count inside a task-pane WebView.
+  for (const part of parts) {
+    pkg.release(part);
+    pkg.release(Pkg.relsPathFor(part));
+  }
+  return out;
+}
+
+/**
+ * Fill the placeholders inside one embedded workbook.
+ *
+ * A package inside the package: the part is a whole `.xlsx`, so it is opened
+ * with its own zip reader, its text parts are merged, and it is written back as
+ * bytes. `mergeDocument` is the same reader the slide uses — it knows `<si>` as
+ * a text group precisely so a shared string split into `<r><t>` runs merges the
+ * way a split paragraph does.
+ *
+ * Answers false rather than throwing when the bytes are not a readable zip. An
+ * embedded workbook can legitimately be something else — an OLE object with the
+ * same relationship type, a file another tool wrote — and a merge that loses
+ * 240 slides over one of them is worse than a merge that reports it.
+ */
+async function mergeWorkbook(pkg: Pkg, path: string, resolve: Resolve): Promise<boolean> {
+  let zip: JSZip;
+  try {
+    zip = await JSZip.loadAsync(await pkg.bytes(path));
+  } catch {
+    return false;
+  }
+
+  let changed = false;
+  for (const name of Object.keys(zip.files)) {
+    if (!WORKBOOK_TEXT.test(name)) continue;
+    const file = zip.file(name);
+    if (!file) continue;
+    let doc: Document;
+    try {
+      doc = parseXml(await file.async("string"));
+    } catch {
+      // One unparseable part inside an otherwise good workbook. The others are
+      // still worth merging, and the chart's own cache already carries the
+      // value the reader sees.
+      continue;
+    }
+    if (mergeDocument(doc, resolve) === 0) continue;
+    zip.file(name, serializeXml(doc));
+    changed = true;
+  }
+  if (!changed) return true;
+
+  // DEFLATE, because the original is: a workbook written back stored would
+  // roughly double the deck's weight per record, on a package the host has to
+  // swallow as one base64 string.
+  pkg.setBytes(path, await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" }));
+  return true;
+}
+
+/** Pool one slide's outcome into a run's. */
+export function tallyGraphics(into: GraphicOutcome, from: GraphicOutcome): void {
+  into.merged += from.merged;
+  into.workbooks += from.workbooks;
+  for (const path of from.unreadable) if (!into.unreadable.includes(path)) into.unreadable.push(path);
+}

@@ -10,12 +10,14 @@
  */
 import type { RecordSet } from "../data/recordset.js";
 import { cloneSlide, notesPathFor, type CloneOptions } from "../pptx/clone.js";
+import { cloneSlideGraphics } from "../pptx/graphics.js";
 import { Pkg } from "../pptx/pkg.js";
 import { writeSlideTags } from "../pptx/tags.js";
 import type { MergePlan } from "./plan.js";
 import { makeResolver, type EmptyPolicy } from "./resolve.js";
 import { mergeDocument } from "./text.js";
 import { MediaCache, placeImages, type ImageOutcome, type ResolveImage } from "./images.js";
+import { emptyGraphicOutcome, mergeGraphics, tallyGraphics, type GraphicOutcome } from "./graphics.js";
 
 export interface RunOptions {
   onEmpty?: EmptyPolicy;
@@ -43,6 +45,8 @@ export interface RunResult {
   paragraphsMerged: number;
   /** What the picture pass did, pooled over every slide it touched. */
   images: ImageOutcome;
+  /** What the chart and SmartArt pass did, pooled the same way. */
+  graphics: GraphicOutcome;
 }
 
 /**
@@ -61,6 +65,7 @@ export async function runPlan(
   const slides: string[] = [];
   let paragraphsMerged = 0;
   const images: ImageOutcome = { placed: 0, missing: [], unreadable: [], stretched: [] };
+  const graphics = emptyGraphicOutcome();
   // One cache for the whole run, which is the point of it: a logo on all 240
   // rows becomes ONE media part rather than 240 copies of the same bytes in a
   // package the host has to swallow in a single base64 string.
@@ -74,6 +79,11 @@ export async function runPlan(
     // would leave the template holding one record's values, which is the
     // template destroyed rather than used.
     const target = await cloneSlide(pkg, step.source, opts.clone ?? {});
+    // The copy's charts and SmartArt, before anything is written into them. A
+    // clone inherits the template's relationships wholesale, so without this
+    // every record merges into ONE chart part and the whole deck shows the last
+    // record's labels — the notes-page defect, a third time.
+    await cloneSlideGraphics(pkg, target);
     const resolve = makeResolver(row, { onEmpty: opts.onEmpty });
     // Pictures BEFORE text. To `mergeParagraph` an image field is an ordinary
     // field with a format it does not know, so left to itself it writes the
@@ -88,6 +98,17 @@ export async function runPlan(
     // every merged slide, in the presenter view and on every printed handout.
     const notes = await notesPathFor(pkg, target);
     if (notes) paragraphsMerged += mergeDocument(await pkg.doc(notes), resolve);
+    // Charts and SmartArt. Their text is not on the slide — it is in parts the
+    // slide relates to, and in the workbook behind a chart — so `mergeDocument`
+    // above never reaches it and this pass is the whole of the feature.
+    const drawn = await mergeGraphics(pkg, target, resolve);
+    tallyGraphics(graphics, drawn);
+    // Counted into the SAME total the pane reports. `paragraphsMerged` is what
+    // becomes "12 placeholders filled", and its zero is the alarm that says a
+    // merge added every slide and filled nothing — so a template whose fields
+    // all live in a chart would raise that alarm about a merge that worked.
+    // `graphics` keeps the breakdown for anyone who needs it.
+    paragraphsMerged += drawn.merged;
     await writeSlideTags(pkg, target, step.tags);
 
     // Nothing reads this slide again, so its parsed copy is written back and
@@ -110,7 +131,7 @@ export async function runPlan(
     slides.push(target);
   }
 
-  return { runId: plan.runId, slides, paragraphsMerged, images };
+  return { runId: plan.runId, slides, paragraphsMerged, images, graphics };
 }
 
 /**

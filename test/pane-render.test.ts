@@ -641,26 +641,13 @@ describe("the Insert buttons", () => {
     expect(controls[controls.length - 1]?.className).toContain("primary");
   });
 
-  it("names a placeholder the engine found in a chart, and says what will happen", () => {
-    /**
-     * Found while reworking this step: the card was built, the state field was
-     * carried through `inspectBlock`, and NOTHING in the suite rendered it —
-     * the fourth time in this repo a surface has been reachable from no test.
-     *
-     * "Charts are not supported" would leave the user to work out which of
-     * their placeholders is in one, so it names them and says they will ship as
-     * written.
-     */
-    const text = paneFor({ ...withData, unmergeable: ["Region"] }, "fields").textContent ?? "";
-    expect(text).toContain("Region is inside a chart or SmartArt");
-    expect(text).toContain("stay as written");
-    // Not folded in among the fields: it is not a candidate for a column, so
-    // counting it would ask for data that could never be used.
-    expect(paneFor({ ...withData, unmergeable: ["Region"] }, "fields").querySelectorAll(".fields li")).toHaveLength(0);
-  });
-
-  it("says nothing about charts when the template has none", () => {
-    expect(paneFor(withData, "fields").textContent).not.toContain("SmartArt");
+  it("shows a chart's placeholder as an ordinary chip", () => {
+    // It used to have a card of its own saying it could not be filled. Now the
+    // merge fills it, so it is a field like any other and the step that lists
+    // what is on the slides lists it.
+    const pane = paneFor({ ...withData, fields: ["First", "Region"] }, "fields");
+    expect(Array.from(pane.querySelectorAll(".fields li")).map((n) => n.textContent)).toEqual(["First", "Region"]);
+    expect(pane.textContent, "the stale refusal").not.toContain("SmartArt");
   });
 
   it("says why the list is empty rather than showing nothing", () => {

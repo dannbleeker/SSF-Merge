@@ -233,13 +233,6 @@ const STATES = [
     },
   },
   {
-    // A placeholder the author put in a chart. Not merged, and — until this —
-    // not mentioned either: it is not in `fields`, so the chips never showed it.
-    name: "3-fields-chart-placeholder",
-    step: "fields",
-    state: { ...full, paste: PASTE, columns: ["First", "Last", "Email"], rows: 2, unmergeable: ["Region"] },
-  },
-  {
     // The condition control, shut and open, on the merge step it moved to when
     // the fields step became about putting placeholders onto slides. Shut it is
     // one line that states the current answer; open it is a select per template

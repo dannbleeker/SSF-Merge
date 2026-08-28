@@ -357,21 +357,6 @@ function body(doc: Document, state: PaneState, current: StepId, orange: OrangeHo
       );
       out.push(card);
     }
-    // Placeholders the engine found and will not merge. Shown whether or not
-    // data is attached, because it is a fact about the TEMPLATE and the fix is
-    // in PowerPoint rather than in the paste box.
-    if (state.unmergeable && state.unmergeable.length > 0) {
-      const card = el(doc, "div", { class: "card" });
-      card.append(
-        el(doc, "p", {
-          class: "muted",
-          // Named and told what to do. "Charts are not supported" leaves the
-          // user to work out which of their placeholders is in one.
-          text: `${state.unmergeable.join(", ")} ${state.unmergeable.length === 1 ? "is" : "are"} inside a chart or SmartArt, which SSF Merge cannot fill. ${state.unmergeable.length === 1 ? "It" : "They"} will stay as written on every merged slide — move the text onto the slide itself to merge it.`,
-        }),
-      );
-      out.push(card);
-    }
     return out;
   }
 

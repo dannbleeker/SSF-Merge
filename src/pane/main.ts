@@ -412,7 +412,6 @@ async function useBlock(from: StepId): Promise<void> {
           deckSize,
           block,
           fields: report.fields,
-          unmergeable: report.unmergeable ?? [],
           notice: undefined,
           // The note said "press Check the slides", and this is that press.
           // The list of fields below is the answer now.

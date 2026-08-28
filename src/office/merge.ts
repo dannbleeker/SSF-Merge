@@ -73,6 +73,8 @@ export interface MergeOutcome {
    * did anything, and they are not the same question.
    */
   paragraphsMerged?: number;
+  /** Charts whose embedded workbook the merge could not open. See `describeMerge`. */
+  workbooksUnreadable?: number;
   /** Rows skipped by a condition, so "8 rows" and "6 slides" reconcile. */
   skippedRecords?: number;
   /** Individual slides skipped by a condition. */
@@ -107,15 +109,6 @@ export interface BlockReport {
   detail: string;
   /** Placeholders found in the block, in the order they appear. */
   fields: string[];
-  /**
-   * Placeholders found in a chart or SmartArt, which this engine does not merge.
-   *
-   * Reported rather than dropped. Not merging them is a stated limit; not
-   * saying so is the defect — the author puts `{{Name}}` in a chart title, the
-   * pane counts the placeholders it can see, and the braces ship on every
-   * merged slide.
-   */
-  unmergeable?: string[];
 }
 
 /**
@@ -162,7 +155,6 @@ export async function inspectBlock(req: { from: number; to: number }): Promise<B
       ok: true,
       detail: `${prepared.fields.length} placeholder${prepared.fields.length === 1 ? "" : "s"} in slides ${req.from} to ${req.to}.`,
       fields: prepared.fields,
-      ...(prepared.unmergeable.length > 0 ? { unmergeable: prepared.unmergeable } : {}),
     };
   } catch (e) {
     // `readTemplate` throws its refusals — `blockIds` produced the sentence and
@@ -343,6 +335,7 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
       fields: prepared.fields,
       unknownConditions: plan.unknownConditions,
       paragraphsMerged: result.paragraphsMerged,
+      workbooksUnreadable: result.graphics.unreadable.length,
       skippedRecords: plan.skippedRecords.length,
       skippedSlides: plan.skippedSlides.length,
       rowsComplete: rows.complete,
@@ -363,6 +356,7 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
     // merge that adds every slide and fills no placeholder is the failure this
     // number exists to name, and it arrives looking exactly like a success.
     paragraphsMerged: result.paragraphsMerged,
+    workbooksUnreadable: result.graphics.unreadable.length,
     skippedRecords: plan.skippedRecords.length,
     skippedSlides: plan.skippedSlides.length,
     rowsComplete: rows.complete,
