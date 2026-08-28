@@ -7,6 +7,35 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a comment on the template landed on every merged slide
+
+Found by answering probe question 5 on a deck that finally carried comments.
+`exportAsBase64Presentation` drops comments and `ppt/authors.xml` outright —
+four parts in, none out, so office-js#6867 reaches the presentation-level call.
+
+That is harmless in itself, and it exposed something that was not: **the two
+template routes disagreed.** The subset route (1.10) produced comment-free
+clones because the host had already dropped them; the file route — every host
+below that — copies the slide's relationships wholesale, so every clone got a
+relationship to the TEMPLATE's comment part. Three slides, one
+`modernComment_101_AEAB9DA1.xml`, measured before anything was changed. A
+reviewer's "check this with Legal" would appear on all 240 merged slides, as one
+shared thread.
+
+Copying the part per clone would be worse rather than better: the same note 240
+times, deliberately. A comment is an annotation about the template, not content
+the template produces — which is the answer the 1.10 host had already chosen, so
+dropping them is also what makes the two routes agree.
+
+`cloneSlide` drops comment relationships in both spellings — the classic
+`commentN.xml` and the modern `modernComment_<id>_<hash>.xml` PowerPoint on the
+web writes under a Microsoft namespace — and `removeSlide` now takes a comment
+part away with its slide, as it already did for notes, so removing the template
+on the way out cannot strand one.
+
+The user's own comments are untouched: this drops a COPY's inherited reference,
+never the template's own.
+
 ### Fixed — a clone could share the template's notes page, and ship the wrong record's notes
 
 Found by a bug hunt and reproduced on real bytes before anything was changed.

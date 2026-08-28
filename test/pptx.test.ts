@@ -467,3 +467,84 @@ describe("a deck whose notes parts are numbered ahead of its slides", () => {
     }
   });
 });
+
+describe("a template slide someone has commented on", () => {
+  /**
+   * A comment hangs off the SLIDE, so the wholesale rels copy a clone starts
+   * from hands every copy a relationship to the TEMPLATE's comment part. Three
+   * slides, one `modernComment_101_AEAB9DA1.xml` — measured before the fix.
+   *
+   * That puts a reviewer's "check this with Legal" on all 240 merged slides, as
+   * one shared thread. Copying the part per clone would be worse rather than
+   * better: the same note 240 times, deliberately. A comment is an annotation
+   * about the template, not content the template produces.
+   *
+   * And dropping them is what makes the two template routes AGREE. On a 1.10
+   * host `exportAsBase64Presentation` drops comments and `ppt/authors.xml`
+   * outright (office-js#6867 — measured on this host 2026-08-28, four comment
+   * parts in and none out), so the subset route already produced comment-free
+   * clones while the file route produced shared ones. Two routes, two different
+   * decks, from one template.
+   */
+  const MODERN = "http://schemas.microsoft.com/office/2018/10/relationships/comments";
+  const CLASSIC = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments";
+
+  async function deckWithComment(relType: string, part: string): Promise<Pkg> {
+    const bytes = await makeDeck([{ paragraphs: [["Hello {{First}}"]] }, { paragraphs: [["after"]] }]);
+    const zip = await JSZip.loadAsync(bytes);
+    zip.file(part, '<?xml version="1.0"?><cm/>');
+    const rels = await zip.file("ppt/slides/_rels/slide1.xml.rels")!.async("string");
+    zip.file(
+      "ppt/slides/_rels/slide1.xml.rels",
+      rels.replace(
+        "</Relationships>",
+        `<Relationship Id="rIdC" Type="${relType}" Target="../${part.replace("ppt/", "")}"/></Relationships>`,
+      ),
+    );
+    return Pkg.open(await zip.generateAsync({ type: "uint8array" }));
+  }
+
+  const commentTargets = async (pkg: Pkg, slide: string): Promise<string[]> => {
+    const path = Pkg.relsPathFor(slide);
+    if (!pkg.has(path)) return [];
+    const doc = await pkg.doc(path);
+    return Array.from(doc.getElementsByTagName("Relationship"))
+      .filter((r) => r.getAttribute("Type") === MODERN || r.getAttribute("Type") === CLASSIC)
+      .map((r) => r.getAttribute("Target") ?? "");
+  };
+
+  it("does not put the template's comment on every copy", async () => {
+    const pkg = await deckWithComment(MODERN, "ppt/comments/modernComment_101_AEAB9DA1.xml");
+    const a = await cloneSlide(pkg, "ppt/slides/slide1.xml");
+    const b = await cloneSlide(pkg, "ppt/slides/slide1.xml");
+    expect(await commentTargets(pkg, a), "the first copy inherited it").toEqual([]);
+    expect(await commentTargets(pkg, b), "the second copy inherited it").toEqual([]);
+    // And the template keeps its own. This drops a copy's inherited reference,
+    // never the user's comment.
+    expect(await commentTargets(pkg, "ppt/slides/slide1.xml")).toHaveLength(1);
+  });
+
+  it("does the same for a CLASSIC comment part, not just the web's modern one", async () => {
+    // PowerPoint on the web writes `modernComment_<id>_<hash>.xml` under a
+    // Microsoft namespace; desktop has written `commentN.xml` under the
+    // OpenXML one for years. A rule that knows only the spelling in front of it
+    // is a rule that works on one host.
+    const pkg = await deckWithComment(CLASSIC, "ppt/comments/comment1.xml");
+    const clone = await cloneSlide(pkg, "ppt/slides/slide1.xml");
+    expect(await commentTargets(pkg, clone)).toEqual([]);
+  });
+
+  it("takes the comment part away with the slide it belonged to", async () => {
+    /**
+     * The other half. A comment belongs to ONE slide and is unreachable once
+     * that slide is gone — and now that a clone no longer references the
+     * template's part, removing the template on the way out would strand it: a
+     * part with a content-type override and nothing pointing at it.
+     */
+    const part = "ppt/comments/modernComment_101_AEAB9DA1.xml";
+    const pkg = await deckWithComment(MODERN, part);
+    expect(pkg.has(part)).toBe(true);
+    await pkg.removeSlide("ppt/slides/slide1.xml");
+    expect(pkg.has(part), "the comment part outlived its slide").toBe(false);
+  });
+});

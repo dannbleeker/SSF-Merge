@@ -20,6 +20,18 @@ const SLIDE_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.presen
 const SLIDE_REL_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide";
 const NOTES_REL_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide";
 const TAGS_REL_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/tags";
+/**
+ * A slide's comments, in both spellings PowerPoint uses.
+ *
+ * The classic one is `ppt/comments/commentN.xml`; PowerPoint on the web writes
+ * MODERN comments, `ppt/comments/modernComment_<id>_<hash>.xml`, under a
+ * Microsoft-namespaced relationship. Both hang off the SLIDE, so both are
+ * copied by the wholesale rels copy a clone starts from.
+ */
+const COMMENT_REL_TYPES = [
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments",
+  "http://schemas.microsoft.com/office/2018/10/relationships/comments",
+];
 const PKG_REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships";
 const P14_NS = "http://schemas.microsoft.com/office/powerpoint/2010/main";
 /** The extension slot PowerPoint keeps a slide's creation id in. */
@@ -41,6 +53,23 @@ function randomCreationId(): number {
  * as far as a merge is concerned, and duplicating them would bloat the deck for
  * nothing. A notes slide is the exception, because it is per-slide content and
  * a shared one means two slides editing the same notes page.
+ *
+ * COMMENTS are dropped rather than shared or copied, and the two routes are why.
+ * A comment hangs off the slide, so the wholesale rels copy above hands every
+ * clone a relationship to the TEMPLATE's comment part — measured: three slides,
+ * one `modernComment_101_AEAB9DA1.xml`. A reviewer's "check this with Legal"
+ * then appears on all 240 merged slides, as one shared thread.
+ *
+ * Copying them per clone would be worse, not better: it is the same note 240
+ * times, deliberately. A comment is an annotation about the template, not
+ * content the template produces.
+ *
+ * And dropping them is what makes the two template routes AGREE. On a 1.10 host
+ * `exportAsBase64Presentation` drops comments and `ppt/authors.xml` outright —
+ * office-js#6867, measured on this host on 2026-08-28, four comment parts in and
+ * none out — so the subset route was already producing comment-free clones while
+ * the file route produced shared ones. Two routes, two different decks, from the
+ * same template.
  */
 export async function cloneSlide(pkg: Pkg, sourcePath: string, opts: CloneOptions = {}): Promise<string> {
   const n = pkg.nextSlideNumber();
@@ -193,7 +222,8 @@ async function dropInheritedTags(pkg: Pkg, slidePath: string): Promise<void> {
   if (!pkg.has(relsPath)) return;
   const rels = await pkg.doc(relsPath);
   for (const rel of elements(rels, PKG_REL_NS, "Relationship")) {
-    if (rel.getAttribute("Type") === TAGS_REL_TYPE) rel.parentNode?.removeChild(rel);
+    const type = rel.getAttribute("Type") ?? "";
+    if (type === TAGS_REL_TYPE || COMMENT_REL_TYPES.includes(type)) rel.parentNode?.removeChild(rel);
   }
 }
 

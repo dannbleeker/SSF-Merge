@@ -21,23 +21,6 @@ the engine has to letterbox before sending, which is the whole design question.
 The feature itself is in "After the first release" below; this is the single
 measurement it waits on.
 
-### What `exportAsBase64Presentation` drops, on a deck that can answer
-**Priority: low.** Feasibility: high, and it needs one thing — a deck with
-COMMENTS on it.
-
-Asked twice now and unanswered twice for the same reason: both probe decks
-carried no comments and no `ppt/authors.xml`, so there was nothing for the
-export to drop. What it does leave behind is `ppt/webextensions/*` (which is
-Script Lab's own registration, so the probe's deck will always show it),
-`changesInfo1.xml` and `revisionInfo.xml` — none of them content, all rebuilt
-by the host.
-
-It matters only on the `subset` route (1.10), where the exported package is the
-template block the clones are made from: comments on a template slide would be
-dropped from every copy. Low because nobody has asked for comments to survive a
-merge, and because the answer is one probe run away whenever a suitable deck
-exists.
-
 ## After the first release
 
 ### Image fields
