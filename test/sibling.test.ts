@@ -48,8 +48,14 @@ import { withoutTsProse } from "../scripts/without-prose.mjs";
  * no-Office-imports test matching "Office.js" in the comments explaining why
  * the engine avoids it. Docs are excluded for the same reason and only that
  * reason.
+ *
+ * Built with `join` rather than written as `"test/sibling.test.ts"`, because it
+ * is compared against a path `join` produced. On Windows that literal never
+ * matches `test\sibling.test.ts`, so this file scanned itself and failed on the
+ * two sentences it quotes to show the shape — a guard going red for the wrong
+ * reason, on the owner's own box, while CI on ubuntu stayed green.
  */
-const SELF = "test/sibling.test.ts";
+const SELF = join("test", "sibling.test.ts");
 
 /** Every .ts and .mjs file under the directories that hold justifying comments. */
 function sourceFiles(): string[] {
