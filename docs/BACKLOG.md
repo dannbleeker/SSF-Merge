@@ -13,20 +13,36 @@ is to build.
 ### Image fields — the aspect-ratio question
 **Priority: high.** Feasibility: blocked, and blocked on a HUMAN rather than on
 work. Probe question 8 — does `ShapeFill.setImage` stretch or preserve aspect
-ratio — is the one no API reads back, so five sheets have not touched it and a
-sixth will not either. Somebody has to fill a rectangle with an image whose
-aspect ratio differs from the shape's and look at the slide. If it stretches,
-the engine has to letterbox before sending, which is the whole design question.
+ratio — is the one no API reads back, so six sheets have not touched it and a
+seventh will not either. If it stretches, the engine has to letterbox before
+sending, which is the whole design question.
 
-The feature itself is in "After the first release" below; this is the single
-measurement it waits on.
+**The instrument is built**: `scripts/build-aspect-probe.mjs` renders a square
+test card and a Script Lab snippet that fills three rectangles with it — one
+square, one 2:1 wide, one 1:2 tall, all from the same source. One shape cannot
+answer, because a circle in a square box looks right whatever the host does;
+two off-square boxes say which axis moved.
+
+The card carries a circle, a grid of squares, 45-degree diagonals and a label in
+each corner, so the three outcomes tell each other apart at a glance: an ellipse
+with every corner intact is a STRETCH, a round circle with corners missing is a
+CROP, a round circle with all corners is a LETTERBOX.
+
+What is left is somebody running it and looking. The output is a screenshot,
+not an answer sheet.
+
+**Correction while building it:** `ShapeFill.setImage` is PowerPointApi **1.10**,
+not the 1.8 this backlog said. It is available on the owner's host either way —
+every sheet reports up to 1.10 — but 1.8 would have been the wrong floor to
+design against.
 
 ## After the first release
 
 ### Image fields
 **Priority: high.** Feasibility: medium.
-`{{Photo|image}}` filling a rectangle through `ShapeFill.setImage` (1.8), or a
-picture cloned into the package with its media part. Blocked on probe question
+`{{Photo|image}}` filling a rectangle through `ShapeFill.setImage` (**1.10**,
+read off the typings — this said 1.8 and was wrong), or a picture cloned into
+the package with its media part. Blocked on probe question
 **8** — the aspect-ratio one, which no API reads back, so somebody has to look
 at a slide. If the host stretches, the engine has to letterbox before sending.
 (The number has moved twice as questions were answered and renumbered; it is the
