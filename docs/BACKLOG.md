@@ -10,43 +10,40 @@ is to build.
 
 ## Next
 
-### Image fields — the aspect-ratio question
-**Priority: high.** Feasibility: blocked, and blocked on a HUMAN rather than on
-work. Probe question 8 — does `ShapeFill.setImage` stretch or preserve aspect
-ratio — is the one no API reads back, so six sheets have not touched it and a
-seventh will not either. If it stretches, the engine has to letterbox before
-sending, which is the whole design question.
+**Nothing is waiting on an answer any more.** This section held the probe
+questions, and every one it was built to ask has been put and answered — the
+last of them, the aspect-ratio one, on 2026-08-28. `docs/PROBE.md` has what they
+said.
 
-**The instrument is built**: `scripts/build-aspect-probe.mjs` renders a square
-test card and a Script Lab snippet that fills three rectangles with it — one
-square, one 2:1 wide, one 1:2 tall, all from the same source. One shape cannot
-answer, because a circle in a square box looks right whatever the host does;
-two off-square boxes say which axis moved.
-
-The card carries a circle, a grid of squares, 45-degree diagonals and a label in
-each corner, so the three outcomes tell each other apart at a glance: an ellipse
-with every corner intact is a STRETCH, a round circle with corners missing is a
-CROP, a round circle with all corners is a LETTERBOX.
-
-What is left is somebody running it and looking. The output is a screenshot,
-not an answer sheet.
-
-**Correction while building it:** `ShapeFill.setImage` is PowerPointApi **1.10**,
-not the 1.8 this backlog said. It is available on the owner's host either way —
-every sheet reports up to 1.10 — but 1.8 would have been the wrong floor to
-design against.
+The first release is out, so the section below is not "later" any longer: it is
+the work, in priority order.
 
 ## After the first release
 
 ### Image fields
-**Priority: high.** Feasibility: medium.
-`{{Photo|image}}` filling a rectangle through `ShapeFill.setImage` (**1.10**,
-read off the typings — this said 1.8 and was wrong), or a picture cloned into
-the package with its media part. Blocked on probe question
-**8** — the aspect-ratio one, which no API reads back, so somebody has to look
-at a slide. If the host stretches, the engine has to letterbox before sending.
-(The number has moved twice as questions were answered and renumbered; it is the
-aspect-ratio one, whatever it is called this week.)
+**Priority: high.** Feasibility: medium. **No longer blocked** — probe question 8
+was answered on 2026-08-28.
+
+`{{Photo|image}}` puts a picture where a placeholder is. Two routes, and the
+measurement picks one.
+
+**`ShapeFill.setImage` STRETCHES** (PowerPointApi **1.10**, read off the
+typings — this entry said 1.8 and was wrong). A square card filled into a 2:1
+box comes out a wide ellipse, into a 1:2 box a tall one, with every corner
+surviving: not a crop, not a letterbox. Taking that route means the engine
+letterboxes every image ITSELF — reading each shape's `<a:ext>` and padding the
+image to that aspect ratio so the host's stretch becomes a no-op.
+
+**The package route needs none of that.** A picture cloned in with its media
+part carries its own `<a:blipFill>`, which takes `<a:stretch>` or an
+`<a:srcRect>` crop — the fill mode is ours to write, and the host's behaviour is
+not imposed at all. It is also the route everything else in this add-in already
+takes.
+
+So what is left is the feature, not the question: media parts, content types,
+the `{{Photo|image}}` syntax, and what a missing or unreadable image does.
+`setImage` stays worth knowing about for anything that acts on a LIVE shape
+rather than on the file.
 
 ### Excel via Microsoft Graph
 **Priority: high.** Feasibility: medium.

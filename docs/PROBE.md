@@ -219,9 +219,19 @@ their questions — the reader says `unknown` for both, and the fifth sheet's
 answers stand. **A later sheet does not overwrite an earlier answer it could not
 ask.**
 
-So questions 0 to 7 are answered and the package path is measured rather than
-assumed. Question 8 is the aspect-ratio one no API reads back, and needs somebody
-to look at a slide.
+**Question 8 is answered too, on 2026-08-28, and it is the only one whose
+evidence is a screenshot.** `ShapeFill.setImage` **STRETCHES**: three rectangles
+filled from one square card — 1:1, 2:1 wide, 1:2 tall — put a round circle in
+the square box, a wide ellipse in the wide one and a tall ellipse in the tall
+one, with all four corner labels surviving in every box. Corners intact rules
+out a crop; no bars rules out a letterbox.
+
+`scripts/build-aspect-probe.mjs` rebuilds that instrument. It emits
+`probe/aspect-probe.ts` and the card it fills with, and it is worth keeping
+because the answer is a property of the HOST and hosts change.
+
+So every question this probe was built to ask is answered, and the package path
+is measured rather than assumed.
 
 ## One answer is not evidence about your host
 
