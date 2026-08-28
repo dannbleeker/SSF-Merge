@@ -28,6 +28,11 @@ prompt for that, with what to expect from Playwright against PowerPoint for the
 web. Read its caveats first — the browser can drive the web host only, and the
 merged file is the evidence either way.
 
+`test-kit/driver/` holds the scripts that did it on 2026-08-28: sideload the
+add-in, drive the pane, fetch the merged deck out of the browser, and check the
+package. Its README names the traps, which are not guessable and cost that round
+hours. Start there rather than from scratch.
+
 ## Before you start: add the SmartArt
 
 Nothing outside PowerPoint can author a SmartArt graphic, so this one step is

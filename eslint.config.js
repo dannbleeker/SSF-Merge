@@ -38,7 +38,7 @@ export default tseslint.config(
         // it were a defect in the code. These are small Node scripts; the
         // performance the cap protects is not at stake.
         projectService: {
-          allowDefaultProject: ["*.js", "*.ts", "scripts/*.mjs"],
+          allowDefaultProject: ["*.js", "*.ts", "scripts/*.mjs", "test-kit/driver/*.mjs"],
           maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 40,
         },
         tsconfigRootDir: import.meta.dirname,
@@ -62,6 +62,23 @@ export default tseslint.config(
     // The build scripts run under Node, not in a pane.
     files: ["scripts/**", "*.config.{js,ts}"],
     languageOptions: { globals: globals.node },
+  },
+  {
+    // The round's browser driver: Node scripts whose `page.evaluate` callbacks
+    // are serialised and run inside the browser, so `document` there is real —
+    // the same arrangement as scripts/pane-shots.mjs below.
+    //
+    // Untyped .mjs with no project behind it, so every `JSON.parse` and every
+    // CDP result is `any` and a function returning one is an unsafe return by
+    // construction. These drive a browser; nothing about their types is load
+    // bearing, and what they produce is checked by verify-package.mjs, which is
+    // itself checked by mutate.mjs.
+    files: ["test-kit/driver/**"],
+    languageOptions: { globals: { ...globals.node, ...globals.browser } },
+    rules: {
+      "@typescript-eslint/no-unsafe-return": "off",
+      "@typescript-eslint/no-unsafe-assignment": "off",
+    },
   },
   {
     // ...except this one, which is a Node script whose page.evaluate callbacks

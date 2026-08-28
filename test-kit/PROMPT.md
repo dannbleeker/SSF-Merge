@@ -8,6 +8,13 @@ PowerPoint for the WEB; it cannot drive desktop PowerPoint, and the pane is a
 cross-origin iframe. What the browser half is really for is producing the merged
 deck; the verdict comes from the file.
 
+**There is already a driver: `test-kit/driver/`.** Eleven scripts that sideload
+the add-in, drive the pane, pull the merged deck out of the browser and check the
+package — plus a README naming the traps that cost the last round hours, several
+of which look like your own mistake when you hit them. Read it before writing
+anything. Playwright cannot reach PowerPoint's frames at all, which is the first
+thing you will otherwise rediscover.
+
 ---
 
 ## The prompt
@@ -60,8 +67,13 @@ working around it.
    - screenshot each merged slide (in the browser, or File > Export in desktop)
    - copy the pane's own summary line verbatim
 
-5. Verify the merged deck as a package, with a script you write in
-   test-kit/out/. Do not eyeball the XML. Assert, and print a table of results:
+5. Verify the merged deck as a package. Do not eyeball the XML.
+
+   `node test-kit/driver/verify-package.mjs <deck.pptx>` already does this and
+   prints a table. Run `node test-kit/driver/mutate.mjs` first if you intend to
+   trust its verdict — it breaks a reference deck six ways and checks each is
+   caught, and it has found three bugs in the verifier itself. Extend it rather
+   than starting over. What it asserts:
    - every relationship target resolves to a part that exists
    - three chart parts, three embedded workbooks, three media parts
    - each chart's title and `<c:strCache>` hold a different region, none holds
