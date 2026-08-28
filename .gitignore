@@ -4,3 +4,4 @@ dist-lib/
 coverage/
 *.local
 .DS_Store
+test-kit/out/

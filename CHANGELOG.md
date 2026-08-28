@@ -7,6 +7,25 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added — a test kit for the real-host round
+
+`test-kit/` holds a template carrying a chart, a picture frame, formatted
+numbers and dates, speaker notes and a field with no column, plus three rows and
+three photos; `docs/TEST-KIT.md` is the checklist, and `test-kit/PROMPT.md` is
+the prompt for driving it from a local Claude Code session.
+
+The template's chart was authored by python-pptx rather than by this project.
+That is the point of it: every other fixture here was written by the same author
+as the reader, and a reader built from the same misreading of a chart part
+agrees with itself perfectly. The SmartArt is left for the tester to add in
+PowerPoint for the same reason — nothing outside PowerPoint can author one, and
+a diagram PowerPoint wrote is the stronger test.
+
+`test/test-kit.test.ts` merges that committed template on every CI run — a
+foreign-authored chart in the suite, and a guarantee that the deck a person is
+asked to open has not quietly stopped merging between rounds. What it cannot do
+is open the file in PowerPoint, which is what the round is for.
+
 ### Added — charts and SmartArt are merged
 
 A placeholder in a chart title, in its category labels, or in a SmartArt box is

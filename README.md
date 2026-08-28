@@ -80,6 +80,7 @@ slide looks finished; `{{Territory}}` does not, and that is the point.
 | Document | What it is for |
 | --- | --- |
 | [docs/MANUAL.md](docs/MANUAL.md) | How to use it: placeholders, formats, blocks, data, limits |
+| [docs/TEST-KIT.md](docs/TEST-KIT.md) | The real-host round: a template with a chart, SmartArt and pictures, and what to check |
 | [docs/BACKLOG.md](docs/BACKLOG.md) | What is open, what it would cost, and what has been rejected |
 | [CHANGELOG.md](CHANGELOG.md) | What changed, newest first |
 | [docs/PROBE.md](docs/PROBE.md) | How to run the host probe, and what each answer decides |

@@ -1,0 +1,4 @@
+Name	Region	Revenue	Renewal	Photo
+Ada	Nordics	1250000	2026-03-01	ada.png
+Grace	Benelux	880000	2026-04-15	grace.png
+Alan	DACH	1640000	2026-05-30	alan.png
