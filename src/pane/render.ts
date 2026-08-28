@@ -222,7 +222,20 @@ export function render(root: HTMLElement, state: PaneState, current: StepId): vo
   // names" — an instruction to go BACKWARDS through a wizard. The order is the
   // fix: data comes before fields now, and the template step advances on the
   // two slide numbers alone.
-  if (current === "preview" && !state.previewing && blockedReason(state, "merge") === null) {
+  //
+  // NOT gated on the merge being reachable, and that is the point. It was, and
+  // the combination that produces is a wizard with no way out: a template
+  // carrying a placeholder whose column is missing blocks the merge step, which
+  // withheld this link, which left step 4 offering "Preview the first row" and
+  // "Back to fields" and nothing else, forever. The test kit's own template does
+  // exactly that with `{{Nickname}}`, so its documented run could not be
+  // completed in the real host at all.
+  //
+  // A blocked destination is not a reason to hide the only door. The merge step
+  // draws `blockedReason` as its own first line and always renders "Back to
+  // preview", so arriving there while it is blocked NAMES what is missing —
+  // which is the difference between being told and being stuck.
+  if (current === "preview" && !state.previewing) {
     main.append(
       el(doc, "button", {
         class: "back forward",

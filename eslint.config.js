@@ -16,7 +16,13 @@ export default tseslint.config(
   // `probe/` is generated for Script Lab, not for this project: it has no
   // imports, targets a runtime with its own globals, and is asserted by
   // test/probe.test.ts rather than by the linter.
-  { ignores: ["dist/", "dist-lib/", "coverage/", "public/", "probe/"] },
+  //
+  // `test-kit/out/` joins them for the same reason: `docs/TEST-KIT.md` tells a
+  // tester to write their verification script there, and `.gitignore` already
+  // keeps the directory out of the repo. Without this, following the kit's own
+  // instructions turns `npm run lint` red — nothing in there is inside
+  // tsconfig, and type-aware linting refuses to parse a file no project owns.
+  { ignores: ["dist/", "dist-lib/", "coverage/", "public/", "probe/", "test-kit/out/"] },
   js.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
   {

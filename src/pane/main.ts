@@ -173,9 +173,11 @@ function onClick(event: Event): void {
 
   const forward = target.closest("[data-forward]")?.getAttribute("data-forward");
   if (forward) {
-    // Only rendered on a step whose primary does not advance, and only when the
-    // destination is reachable — `render` asks `blockedReason` before drawing
-    // it, so this does not re-decide what the screen already decided.
+    // Only rendered on a step whose primary does not advance. Deliberately NOT
+    // conditional on the destination being reachable: gating it that way is
+    // what left step 4 with no exit when a placeholder had no column. A step
+    // that cannot run yet still draws its own `blockedReason` and its own way
+    // back, so walking onto it is how the user is TOLD, not how they get stuck.
     step = forward as StepId;
     state = { ...state, notice: undefined };
     draw();

@@ -297,9 +297,25 @@ describe("the preview step", () => {
     expect(pane.querySelector("[data-forward]")?.getAttribute("data-forward")).toBe("merge");
   });
 
-  it("does not offer that way past when the merge is not reachable anyway", () => {
+  it("still offers that way past when the merge is blocked, so step 4 is never a dead end", () => {
+    // This asserted the opposite until 2026-08-28: the link was hidden whenever
+    // the merge was unreachable, "because it is unreachable anyway". That turned
+    // a placeholder with no column into a trap. This step's primary shows a row
+    // rather than advancing, so with the link gone step 4 offered "Preview the
+    // first row" and "Back to fields" and nothing else, forever.
+    //
+    // The test kit's own template does exactly that with `{{Nickname}}`, and a
+    // real run against PowerPoint for the web could not reach step 5 at all.
+    //
+    // Walking onto a blocked step is how the user is TOLD. It names the reason
+    // and keeps its own way back, so nothing is lost by letting them arrive.
     const missing: PaneState = { ...ready, fields: ["First", "Nickname"] };
-    expect(paneFor(missing, "preview").querySelector("[data-forward]")).toBeNull();
+    expect(paneFor(missing, "preview").querySelector("[data-forward]")?.getAttribute("data-forward")).toBe("merge");
+
+    const merge = paneFor(missing, "merge");
+    expect(merge.querySelector(".blocked")?.textContent).toContain("No column for Nickname");
+    expect(merge.querySelector("[data-back]"), "a blocked step must keep its way back").not.toBeNull();
+    expect((merge.querySelector("button.primary") as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("names the slides a preview landed on, so a closed pane is recoverable", () => {
