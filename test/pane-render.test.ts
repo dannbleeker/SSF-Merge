@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { render } from "../src/pane/render.js";
 import type { PaneState } from "../src/pane/steps.js";
+import { readPastedTable } from "../src/pane/steps.js";
 
 const ready: PaneState = {
   block: { from: 4, to: 6 },
@@ -669,5 +670,66 @@ describe("the Insert buttons", () => {
     const pane = paneFor({ ...ready, fields: [], columns: undefined, rows: undefined }, "fields");
     expect(pane.textContent).toContain("Attach your data first");
     expect(pane.querySelector("[data-insert]")).toBeNull();
+  });
+});
+
+describe("the picture picker", () => {
+  const paste = "Name,Photo\nAda,ada.png\nGrace,grace.jpg";
+  const read = readPastedTable(paste);
+  const withPhotos: PaneState = {
+    ...ready,
+    paste,
+    records: read.records ?? undefined,
+    columns: read.columns,
+    rows: read.rows,
+  };
+  const files = (...names: string[]) => new Map(names.map((n) => [n, new Uint8Array([1])]));
+
+  it("appears on the data step, where the rest of the data is collected", () => {
+    expect(paneFor(withPhotos, "data").querySelector('[data-field="images"]')).not.toBeNull();
+  });
+
+  it("stays away when no column names a picture", () => {
+    const plain = "Name,City\nAda,London";
+    const flat = readPastedTable(plain);
+    const state: PaneState = {
+      ...ready,
+      paste: plain,
+      records: flat.records ?? undefined,
+      columns: flat.columns,
+      rows: flat.rows,
+    };
+    expect(paneFor(state, "data").querySelector('[data-field="images"]')).toBeNull();
+  });
+
+  it("says how many pictures the data asks for, and which column asked", () => {
+    expect(paneFor(withPhotos, "data").textContent).toContain("2 pictures named in Photo");
+  });
+
+  it("says what skipping costs, because skipping is allowed", () => {
+    expect(paneFor(withPhotos, "data").textContent).toContain("keep the placeholder");
+  });
+
+  it("reports every picture matched once they are all picked", () => {
+    const pane = paneFor({ ...withPhotos, images: files("ada.png", "grace.jpg") }, "data");
+    expect(pane.textContent).toContain("All 2 pictures matched.");
+    expect(pane.querySelector(".images .blocked")).toBeNull();
+  });
+
+  it("names the missing ones and marks the line, rather than counting them", () => {
+    const pane = paneFor({ ...withPhotos, images: files("ada.png") }, "data");
+    expect(pane.querySelector(".images .blocked")?.textContent).toBe("1 of 2 matched. Missing: grace.jpg.");
+  });
+
+  it("mentions files no row refers to once, and not as a problem", () => {
+    const pane = paneFor({ ...withPhotos, images: files("ada.png", "grace.jpg", "logo.png") }, "data");
+    expect(pane.textContent).toContain("1 file no row refers to — ignored.");
+    expect(pane.querySelector(".images .blocked")).toBeNull();
+  });
+
+  it("takes only the picture types the engine can read", () => {
+    const input = paneFor(withPhotos, "data").querySelector('[data-field="images"]');
+    expect(input?.getAttribute("accept")).toBe("image/png,image/jpeg,image/gif,image/bmp");
+    expect(input?.hasAttribute("multiple")).toBe(true);
   });
 });

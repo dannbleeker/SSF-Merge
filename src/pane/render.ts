@@ -20,6 +20,9 @@ import {
   conditionFor,
   danglingConditions,
   fieldToken,
+  imageColumns,
+  imageTally,
+  imagesWanted,
   includedCount,
   insertableColumns,
   noFieldsHere,
@@ -303,6 +306,10 @@ function body(doc: Document, state: PaneState, current: StepId, orange: OrangeHo
     out.push(dataControl(doc, state));
     const read = readPastedTable(state.paste ?? "");
     if (read.why) out.push(el(doc, "p", { class: "blocked", text: read.why }));
+    // The pictures the data asks for. On the DATA step and not the fields step
+    // because they are data: the cell names a file, and everything the merge
+    // consumes is collected in one place.
+    if (imagesWanted(state).length > 0) out.push(imageControl(doc, state));
     return out;
   }
 
@@ -498,6 +505,75 @@ function dataControl(doc: Document, state: PaneState): HTMLElement {
 }
 
 /**
+ * The pictures a merge needs, and where they come from.
+ *
+ * Files the user picks, never URLs fetched. A task pane is a sandboxed
+ * cross-origin iframe: fetching arbitrary image URLs is refused by CORS for
+ * most hosts, and it would mean the add-in making a network request per row out
+ * of somebody's data. A file picker needs no network, works offline, and keeps
+ * the rule that values do not leave the pane.
+ *
+ * Shown only once the data actually refers to pictures, so a text-only merge
+ * never sees it.
+ */
+function imageControl(doc: Document, state: PaneState): HTMLElement {
+  const wrap = el(doc, "div", { class: "field images" });
+  const tally = imageTally(state);
+  const columns = imageColumns(state);
+
+  wrap.append(
+    el(doc, "span", {
+      class: "caption",
+      text: `${plural(tally.wanted, "picture")} named in ${columns.join(", ")}`,
+    }),
+  );
+  wrap.append(
+    el(doc, "input", {
+      attrs: {
+        type: "file",
+        multiple: "",
+        accept: "image/png,image/jpeg,image/gif,image/bmp",
+        "data-field": "images",
+      },
+    }),
+  );
+
+  if (!state.images || state.images.size === 0) {
+    wrap.append(
+      el(doc, "p", {
+        class: "muted",
+        // Says what happens if they skip it, because skipping is allowed. A
+        // merge with no pictures is not blocked — the frames keep their
+        // placeholders, which is the same rule an unmatched text field follows.
+        text: "Choose them from the folder they are in. Without them the merged slides keep the placeholder.",
+      }),
+    );
+    return wrap;
+  }
+
+  wrap.append(
+    el(doc, "p", {
+      class: tally.missing.length > 0 ? "blocked" : "muted",
+      text:
+        tally.missing.length === 0
+          ? `All ${plural(tally.wanted, "picture")} matched.`
+          : `${tally.matched} of ${tally.wanted} matched. Missing: ${tally.missing.slice(0, 6).join(", ")}${tally.missing.length > 6 ? `, and ${tally.missing.length - 6} more` : ""}.`,
+    }),
+  );
+  // Named once, and not as a problem. Picking a whole folder is the ordinary
+  // way to do this, so most of the files being unused is expected.
+  if (tally.spare.length > 0) {
+    wrap.append(
+      el(doc, "p", {
+        class: "muted",
+        text: `${plural(tally.spare.length, "file")} no row refers to — ignored.`,
+      }),
+    );
+  }
+  return wrap;
+}
+
+/**
  * A button per column, which puts `{{Column}}` where the cursor is.
  *
  * The question this step exists to answer, asked in those words by the first
@@ -539,20 +615,28 @@ function insertControl(doc: Document, state: PaneState): HTMLElement {
   );
   const list = el(doc, "ul", { class: "chips" });
   const placed = new Set(state.fields);
+  const images = new Set(imageColumns(state));
   for (const column of columns) {
+    const kind = images.has(column) ? "image" : undefined;
+    const token = fieldToken(column, kind);
     const item = el(doc, "li");
     item.append(
       el(doc, "button", {
         class: "chip",
-        text: fieldToken(column),
+        text: token,
         attrs: {
           "data-insert": column,
           // Marked, not removed. See above.
           "data-placed": placed.has(column) ? "yes" : "no",
+          // Which chips draw a PICTURE, so the two kinds are told apart before
+          // they are pressed rather than after a merge.
+          "data-kind": kind ?? "text",
           // The chip shows the TOKEN, which is what lands on the slide; the
           // title says what it is for. A user reading `{{Region}}` on a button
           // knows what will appear and not what it will become.
-          title: `Put ${fieldToken(column)} on the slide${placed.has(column) ? " — already on these slides" : ""}`,
+          title: kind
+            ? `Draw a rectangle where the picture goes, then press this to put ${token} in it`
+            : `Put ${token} on the slide${placed.has(column) ? " — already on these slides" : ""}`,
           ...(state.running ? { disabled: "" } : {}),
         },
       }),

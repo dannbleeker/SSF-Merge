@@ -42,6 +42,16 @@ const PASTE = "First\tLast\tEmail\nAda\tLovelace\tada@example.com\nGrace\tHopper
  */
 const PIVOT = ["Row Labels", "Min. of cost", "Sum of quantity monthly"];
 
+/**
+ * Data whose cells name pictures, which is what makes the picker appear.
+ *
+ * Pasted rather than described: the picker is drawn off `records`, which only a
+ * real parse produces, so these fixtures hand the pane the same text a user
+ * pastes and let `readPastedTable` decide — the same rule the "2-data" fixture
+ * follows for its columns and row count.
+ */
+const PHOTO_PASTE = "First\tPhoto\nAda\tada.png\nGrace\tgrace.png\nAlan\talan.png";
+
 const STATES = [
   { name: "1-template-empty", step: "template", state: { fields: [], previewing: false } },
   {
@@ -271,6 +281,31 @@ const STATES = [
     state: { ...full, fields: ["First", "Nickname", "Badge"], paste: PASTE, columns: ["First", "Last"], rows: 2 },
   },
   {
+    // The picker, before anything is chosen. It says what skipping costs,
+    // because skipping is allowed.
+    name: "2-data-pictures-wanted",
+    step: "data",
+    state: { ...full, paste: PHOTO_PASTE },
+    paste: PHOTO_PASTE,
+  },
+  {
+    name: "2-data-pictures-matched",
+    step: "data",
+    state: { ...full, paste: PHOTO_PASTE },
+    paste: PHOTO_PASTE,
+    files: ["ada.png", "grace.png", "alan.png"],
+  },
+  {
+    // The screen that has to be readable: two pictures short, and a folder full
+    // of files no row refers to. The missing ones are NAMED — a count sends the
+    // user back through the spreadsheet to work out which.
+    name: "2-data-pictures-missing",
+    step: "data",
+    state: { ...full, paste: PHOTO_PASTE },
+    paste: PHOTO_PASTE,
+    files: ["ada.png", "logo.png", "banner.png"],
+  },
+  {
     name: "1-template-past-the-end",
     step: "template",
     state: { fields: [], previewing: false, draft: { from: "4", to: "99" }, deckSize: 12 },
@@ -285,15 +320,24 @@ mkdirSync(OUT, { recursive: true });
 const browser = await chromium.launch({ executablePath: EXECUTABLE });
 let taken = 0;
 for (const width of [320, 512]) {
-  for (const { name, step, state } of STATES) {
+  for (const { name, step, state, paste, files } of STATES) {
     const page = await browser.newPage({ viewport: { width, height: 620 } });
     await page.goto(`http://localhost:${PORT}/taskpane.html`);
     await page.evaluate(
-      async ({ state, step }) => {
+      async ({ state, step, paste, files }) => {
         const { render } = await import("/render.ts");
-        render(document.getElementById("pane"), state, step);
+        const shown = { ...state };
+        // Built HERE rather than passed in: a parse result and a Map do not
+        // survive the trip into the page, and a fixture that described its own
+        // columns would be a fixture that can disagree with the parser.
+        if (paste) {
+          const { readPastedTable } = await import("/steps.ts");
+          Object.assign(shown, readPastedTable(paste));
+        }
+        if (files) shown.images = new Map(files.map((name) => [name, new Uint8Array([1])]));
+        render(document.getElementById("pane"), shown, step);
       },
-      { state, step },
+      { state, step, paste, files },
     );
     await page.screenshot({ path: `${OUT}/${width}-${name}.png` });
     await page.close();

@@ -26,6 +26,7 @@ import {
   blockedReason,
   chosenBlock,
   fieldToken,
+  imageColumns,
   firstIncludedRow,
   includedRecords,
   nextStep,
@@ -265,6 +266,14 @@ function onInput(event: Event): void {
   if (!(target instanceof HTMLInputElement) && !(target instanceof HTMLTextAreaElement)) return;
   const field = target.getAttribute("data-field");
   if (!field) return;
+  // The picture picker. Handled before the running guard on purpose: reading
+  // files touches no host and cannot go stale against an answer in flight, and
+  // refusing it would leave the browser's own file dialog having visibly taken
+  // a choice the pane then ignored.
+  if (field === "images" && target instanceof HTMLInputElement) {
+    void takeImages(target.files);
+    return;
+  }
   // A host call is out and its answer is about to be written into this state.
   // Taking the keystroke would make the answer stale before it lands, which is
   // the race `useBlock`'s staleness check exists to notice.
@@ -438,6 +447,46 @@ async function useBlock(from: StepId): Promise<void> {
 }
 
 /**
+ * Read the pictures the user picked.
+ *
+ * Bytes, held in the pane and handed to the engine as a map. Nothing is
+ * uploaded and nothing is fetched: the files come off the user's own disk
+ * through the browser's picker, which is the only route a sandboxed
+ * cross-origin iframe has to them and — for a merge whose whole premise is that
+ * the data does not leave — the right one anyway.
+ *
+ * Keyed by the file's own name. `runPlan` matches a cell against it by base
+ * name and case-insensitively, so `Photos\\ada.PNG` in a spreadsheet finds
+ * `ada.png` from a folder.
+ */
+async function takeImages(files: FileList | null): Promise<void> {
+  if (!files || files.length === 0) return;
+  const images = new Map<string, Uint8Array>();
+  let refused = 0;
+  for (const file of Array.from(files)) {
+    try {
+      images.set(file.name, new Uint8Array(await file.arrayBuffer()));
+    } catch {
+      // A file the browser will not read — moved, or on a disconnected drive.
+      // Counted rather than thrown: the others are still worth having, and the
+      // tally will name what is still missing anyway.
+      refused++;
+    }
+  }
+  state = {
+    ...state,
+    images,
+    // A different set of pictures is a different merge, so a landed run's
+    // disarmed button goes with it — the rule every other edit here follows.
+    added: undefined,
+    ...(refused > 0
+      ? { notice: `${refused} of the ${files.length} file(s) could not be read and were left out.` }
+      : { notice: undefined }),
+  };
+  draw();
+}
+
+/**
  * One press of an Insert chip, and the two ways it can land.
  *
  * `setSelectedDataAsync` puts the token where the cursor is, which is the
@@ -468,7 +517,8 @@ async function insertField(column: string): Promise<void> {
   // an insert would be reported against a screen that is about to change.
   if (state.running || inserting) return;
   inserting = true;
-  const token = fieldToken(column);
+  // The IMAGE form for an image column, so the chip and the token agree.
+  const token = fieldToken(column, imageColumns(state).includes(column) ? "image" : undefined);
   try {
     const done = await insertTextAtCursor(token);
     if (done.ok) {
@@ -612,6 +662,8 @@ async function merge(): Promise<void> {
       to: block.to,
       records,
       ...(conditions ? { conditions } : {}),
+      // The pictures too, so a preview and a merge produce the same slides.
+      ...(state.images ? { images: state.images } : {}),
     });
     last = outcome;
     if (outcome.added > 0) dropCrumb({ deckAtStart: outcome.deckAtStart, added: outcome.added, runId: outcome.runId });
@@ -709,6 +761,10 @@ async function preview(): Promise<void> {
       to: block.to,
       records: preview,
       ...(state.conditions ? { conditions: state.conditions } : {}),
+      // A preview is the ORDINARY merge over one row, so it gets the pictures
+      // too. Without them the preview shows a placeholder where the real merge
+      // shows a photo, which is a preview of something nobody is going to get.
+      ...(state.images ? { images: state.images } : {}),
     });
     if (!outcome.ok || outcome.added === 0) {
       state = { ...state, notice: outcome.detail };

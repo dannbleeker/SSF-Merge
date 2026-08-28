@@ -7,7 +7,7 @@
  * text, and a number that has been through a float is a number that has lost
  * its thousands separator and sometimes its last digit.
  */
-export type ColumnType = "text" | "number" | "date";
+export type ColumnType = "text" | "number" | "date" | "image";
 
 export interface Column {
   name: string;
@@ -45,12 +45,39 @@ export function looksLikeDate(value: string): boolean {
   return !(a <= 12 && b <= 12 && a !== b);
 }
 
+/**
+ * A cell that names an image FILE.
+ *
+ * Extension only, and only the four the engine can actually embed — a column of
+ * `.svg` or `.heic` names would be offered as images and then fail one row at a
+ * time, which is worse than never offering it. The name may carry a path,
+ * because a spreadsheet built from a folder listing routinely does.
+ *
+ * Deliberately NOT a URL. The bytes come from files the user picks, so a column
+ * of `https://…` is text as far as this is concerned, and the pane does not
+ * offer to fetch anything.
+ */
+const IMAGE_NAME = /\.(png|jpe?g|gif|bmp)$/i;
+
 export function detectType(values: string[]): ColumnType {
   const filled = values.filter((v) => v.trim() !== "");
   if (!filled.length) return "text";
   if (filled.every((v) => NUMBER.test(v.trim()))) return "number";
   if (filled.every((v) => looksLikeDate(v))) return "date";
+  // Last, because it is the narrowest: a column of file names is not a number
+  // and not a date, and asking the other two first costs nothing.
+  if (filled.every((v) => IMAGE_NAME.test(v.trim()))) return "image";
   return "text";
+}
+
+/** The file names an image column refers to, deduplicated, in first-seen order. */
+export function imageNamesIn(rows: Record<string, string>[], column: string): string[] {
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const cell = (row[column] ?? "").trim();
+    if (cell !== "") seen.add(cell);
+  }
+  return [...seen];
 }
 
 /**

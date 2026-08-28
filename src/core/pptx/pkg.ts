@@ -71,6 +71,66 @@ export class Pkg {
   }
 
   /**
+   * Write a BINARY part — media, so far.
+   *
+   * Its own method rather than an overload of `setText`, because the two
+   * differ in the one way that matters: JSZip stores a string as UTF-8 text,
+   * so a PNG handed to `setText` arrives at the other end re-encoded and the
+   * deck opens with a broken picture on every slide. The types are what keeps
+   * them apart.
+   */
+  setBytes(path: string, bytes: Uint8Array): void {
+    this.docs.delete(path);
+    this.zip.file(path, bytes);
+  }
+
+  /** The raw bytes of a part. Never for XML — see `text`, which honours edits. */
+  async bytes(path: string): Promise<Uint8Array> {
+    const file = this.zip.file(path);
+    if (!file) throw new Error(`ssf-merge: the package has no part "${path}"`);
+    return file.async("uint8array");
+  }
+
+  /**
+   * Declare a whole EXTENSION's content type, the way media is normally
+   * declared.
+   *
+   * `[Content_Types].xml` takes two kinds of entry: a `Default` per extension
+   * and an `Override` per part. Media uses defaults — one line for every `.png`
+   * in the package rather than one per picture — and a merge that embeds two
+   * hundred photos would otherwise add two hundred Overrides to a part
+   * PowerPoint parses on open.
+   *
+   * A default that is already there is left alone rather than replaced: a
+   * template may declare `png` for its own images, and a second entry for the
+   * same extension is schema-invalid.
+   */
+  async addContentTypeDefault(extension: string, contentType: string): Promise<void> {
+    const doc = await this.doc(CONTENT_TYPES);
+    const already = elements(doc, CT_NS, "Default").some(
+      (d) => (d.getAttribute("Extension") ?? "").toLowerCase() === extension.toLowerCase(),
+    );
+    if (already) return;
+    const node = doc.createElementNS(CT_NS, "Default");
+    node.setAttribute("Extension", extension);
+    node.setAttribute("ContentType", contentType);
+    // Defaults come before Overrides in every package PowerPoint writes, and
+    // the schema's own sequence is unordered — but a reader that assumes the
+    // conventional order is a reader this has to survive.
+    doc.documentElement.insertBefore(node, doc.documentElement.firstChild);
+  }
+
+  /** The next free `ppt/media/imageN.<ext>`, across every extension. */
+  nextMediaNumber(): number {
+    let max = 0;
+    this.zip.forEach((path) => {
+      const n = Number(/^ppt\/media\/image(\d+)\./.exec(path)?.[1] ?? 0);
+      if (n > max) max = n;
+    });
+    return max + 1;
+  }
+
+  /**
    * A parsed part, cached. Mutating the returned document is how a part is
    * edited; `save` serialises every document handed out this way. Nothing else
    * writes the same part, so the cache cannot go stale behind a caller.

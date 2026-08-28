@@ -22,6 +22,20 @@ function formatKinds(): string[] {
   return [...src.matchAll(/case "([a-z]+)":/g)].map((m) => m[1] ?? "");
 }
 
+/**
+ * Every picture format the engine answers to, taken from its own table.
+ *
+ * A separate reader from `formatKinds` because the image formats are decided in
+ * `merge/images.ts` rather than in the format switch — a manual that documented
+ * only the switch would be complete and still miss half the formats a user can
+ * write.
+ */
+function imageFormats(): string[] {
+  const src = readFileSync("src/core/merge/images.ts", "utf8");
+  const table = src.match(/const MODES[^=]*=\s*\{([^}]+)\}/)?.[1] ?? "";
+  return [...table.matchAll(/"?([a-z-]+)"?\s*:/g)].map((m) => m[1] ?? "");
+}
+
 /** Every tag key the engine writes, taken from its exported constants. */
 function tagKeys(): string[] {
   const src = readFileSync("src/core/pptx/tags.ts", "utf8");
@@ -35,6 +49,15 @@ describe("the manual keeps up with the code", () => {
     // matching, this fails here rather than pretending every format is
     // documented.
     expect(kinds.length).toBeGreaterThan(3);
+    for (const kind of kinds) expect(manual, `format "${kind}" is not in the manual`).toContain(`|${kind}`);
+  });
+
+  it("documents every picture format the engine accepts", () => {
+    const kinds = imageFormats();
+    // Same vacuity guard as the format switch above: a regex that stops
+    // matching would otherwise pass this test forever.
+    expect(kinds).toContain("image");
+    expect(kinds.length).toBeGreaterThan(2);
     for (const kind of kinds) expect(manual, `format "${kind}" is not in the manual`).toContain(`|${kind}`);
   });
 

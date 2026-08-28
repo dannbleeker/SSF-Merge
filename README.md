@@ -32,6 +32,7 @@ one set of slides per row. All five steps of the pane are built.
 | Row filters — a searchable checkbox list picking which rows merge | done |
 | Run record — every host call named and timed, readable in the pane | done |
 | Undo — take back the slides a merge added, clamped so it cannot reach yours | done |
+| Picture fields — a cell names a file, and the shape it sits in is filled with it | done |
 
 ## How it works
 

@@ -1301,3 +1301,98 @@ describe("a run the pane never came back from", () => {
     expect(pane().textContent).toContain("added 6 slide(s)");
   });
 });
+
+describe("the pictures the user picked", () => {
+  const PHOTO_REPORT = { ...REPORT, fields: ["First", "Photo"] };
+
+  /** A picker choice. Shaped as the pane reads it: `length`, iterable, `name`, `arrayBuffer`. */
+  function choose(...files: { name: string; bytes?: Uint8Array; refuse?: boolean }[]): void {
+    const node = field("images") as HTMLInputElement;
+    const list = files.map((f) => ({
+      name: f.name,
+      arrayBuffer: () =>
+        f.refuse
+          ? Promise.reject(new Error("the file has moved"))
+          : Promise.resolve((f.bytes ?? new Uint8Array([1, 2, 3])).buffer),
+    }));
+    Object.defineProperty(node, "files", { configurable: true, value: list });
+    node.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  /** To the data step, with data whose cells name pictures. */
+  async function reachData(): Promise<void> {
+    await openPane();
+    await settle();
+    type("from", "4");
+    type("to", "6");
+    office.inspectBlock.mockResolvedValueOnce(PHOTO_REPORT);
+    primary().click();
+    await settle();
+    type("paste", "First\tPhoto\nAda\tada.png\nGrace\tgrace.png");
+  }
+
+  it("hands them to the merge, keyed by the name the file has on disk", async () => {
+    await reachData();
+    choose({ name: "ada.png", bytes: new Uint8Array([1]) }, { name: "grace.png", bytes: new Uint8Array([2]) });
+    await settle();
+    primary().click(); // data -> fields
+    office.inspectBlock.mockResolvedValueOnce(PHOTO_REPORT);
+    primary().click(); // fields -> preview
+    await settle();
+    (pane().querySelector("[data-forward]") as HTMLElement).click();
+    office.runMerge.mockResolvedValueOnce(OUTCOME);
+    primary().click();
+    await settle();
+
+    const request = office.runMerge.mock.calls[0]?.[0] as { images?: Map<string, Uint8Array> };
+    expect([...(request.images?.keys() ?? [])]).toEqual(["ada.png", "grace.png"]);
+    expect(request.images?.get("ada.png")).toEqual(new Uint8Array([1]));
+  });
+
+  it("counts a file it could not read and keeps the rest", async () => {
+    // A file moved, renamed or on a disconnected drive between the dialog and
+    // the read. Throwing there would lose the pictures that ARE in hand.
+    await reachData();
+    choose({ name: "ada.png" }, { name: "gone.png", refuse: true });
+    await settle();
+
+    expect(said().join(" ")).toContain("1 of the 2 file(s) could not be read");
+    expect(pane().textContent).toContain("1 of 2 matched. Missing: grace.png.");
+  });
+
+  it("takes the choice even while a host call is out", async () => {
+    // Reading files touches no host, so it cannot go stale against an answer in
+    // flight — and refusing it would leave the browser's own dialog having
+    // visibly taken a choice the pane ignored, with nothing said.
+    //
+    // The picker is SYNTHESISED here rather than clicked, because the data step
+    // draws no host call of its own and so never shows this control while one
+    // is out. The subject is the ordering inside the delegated handler, which
+    // is what a later step's control on this screen would depend on.
+    await reachData();
+    primary().click(); // data -> fields, no host call of its own
+    await settle();
+    const held = deferred<unknown>();
+    office.inspectBlock.mockReturnValueOnce(held.promise);
+    primary().click(); // the fields step re-reads the slides: held open
+    await settle();
+    expect(primary().disabled, "the pane is running").toBe(true);
+
+    const node = document.createElement("input");
+    node.type = "file";
+    node.setAttribute("data-field", "images");
+    pane().append(node);
+    Object.defineProperty(node, "files", {
+      configurable: true,
+      value: [{ name: "ada.png", arrayBuffer: () => Promise.resolve(new Uint8Array([1]).buffer) }],
+    });
+    node.dispatchEvent(new Event("input", { bubbles: true }));
+    await settle();
+
+    held.resolve(PHOTO_REPORT);
+    await settle();
+    (pane().querySelector("[data-back]") as HTMLElement).click(); // preview -> fields
+    (pane().querySelector("[data-back]") as HTMLElement).click(); // fields -> data
+    expect(pane().textContent).toContain("1 of 2 matched. Missing: grace.png.");
+  });
+});

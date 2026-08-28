@@ -20,31 +20,6 @@ the work, in priority order.
 
 ## After the first release
 
-### Image fields
-**Priority: high.** Feasibility: medium. **No longer blocked** — probe question 8
-was answered on 2026-08-28.
-
-`{{Photo|image}}` puts a picture where a placeholder is. Two routes, and the
-measurement picks one.
-
-**`ShapeFill.setImage` STRETCHES** (PowerPointApi **1.10**, read off the
-typings — this entry said 1.8 and was wrong). A square card filled into a 2:1
-box comes out a wide ellipse, into a 1:2 box a tall one, with every corner
-surviving: not a crop, not a letterbox. Taking that route means the engine
-letterboxes every image ITSELF — reading each shape's `<a:ext>` and padding the
-image to that aspect ratio so the host's stretch becomes a no-op.
-
-**The package route needs none of that.** A picture cloned in with its media
-part carries its own `<a:blipFill>`, which takes `<a:stretch>` or an
-`<a:srcRect>` crop — the fill mode is ours to write, and the host's behaviour is
-not imposed at all. It is also the route everything else in this add-in already
-takes.
-
-So what is left is the feature, not the question: media parts, content types,
-the `{{Photo|image}}` syntax, and what a missing or unreadable image does.
-`setImage` stays worth knowing about for anything that acts on a LIVE shape
-rather than on the file.
-
 ### Excel via Microsoft Graph
 **Priority: high.** Feasibility: medium.
 A named table on OneDrive or SharePoint, read through `/workbook/tables/{id}/rows`.

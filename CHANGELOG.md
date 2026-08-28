@@ -7,6 +7,41 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added — picture fields
+
+A cell can name a picture file, and the shape the field sits in is filled with
+it. `{{Photo|image}}` in a rectangle on the template puts the row's picture in
+that rectangle, at the template's size and position, on every merged slide.
+
+Three fits, because there is no one right answer: `image` crops to fill (the
+default, and what a page of portraits wants), `image-fit` letterboxes the whole
+picture inside the shape, `image-stretch` squashes it to the shape's exact
+proportions.
+
+The files come off the user's own disk through the browser's file picker, on
+step 2, which grows the picker as soon as a column's cells look like file names.
+Nothing is uploaded and nothing is fetched: a sandboxed cross-origin task pane
+has no other route to a local file, and for a merge whose premise is that the
+data does not leave, no other route is wanted. A cell holding a URL is text.
+
+Matching is by base name, ignoring folders and case, so `Photos\\ada.PNG` in a
+spreadsheet finds `ada.png` from the picker — the same rule in the pane's tally
+and in the engine, computed by one function, because a pane counting matches by
+a different rule than the merge uses would promise pictures that never arrive.
+
+A row whose picture is missing keeps its placeholder, exactly as a text field
+with no column does, and the pane names what it has not got rather than counting
+it. A file whose bytes are not the picture its name claims is left out and
+named, not written into the deck.
+
+Written into the package as an ordinary `<a:blipFill>` on the shape: one
+`ppt/media/imageN.ext` per distinct file however many rows use it, one
+`Default` content type per extension, and a relationship per slide that
+references it. The crop is `<a:srcRect>` and the letterbox is
+`<a:stretch><a:fillRect>` — both insets in thousandths of a percent, both
+derived from the shape's box and the picture's own pixel dimensions, which are
+read from the file's header rather than trusted from its name.
+
 ### Fixed — a comment on the template landed on every merged slide
 
 Found by answering probe question 5 on a deck that finally carried comments.
