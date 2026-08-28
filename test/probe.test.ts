@@ -279,3 +279,36 @@ describe("every arm the probe collects is READ", () => {
     expect(withoutTsComments(reader), `${arm} is collected and never read`).toContain(`sheet.${arm}`);
   });
 });
+
+describe("every probe snippet runs itself", () => {
+  /**
+   * Script Lab's own SAMPLE snippet ends `$("#run").click(...)` — jQuery, and a
+   * button that exists in the sample's HTML tab. Copying that shape into a
+   * BLANK snippet throws `ReferenceError: $ is not defined` before a single
+   * Office call, because a blank snippet has neither.
+   *
+   * `probe-snippet.ts` has always called `main()` at the top level and was
+   * fine. `aspect-probe.ts` shipped with the sample's boilerplate and cost a
+   * round trip to the owner's PowerPoint to find out. Both are checked here so
+   * the next generated snippet cannot repeat it.
+   *
+   * Read off the CODE, not the file: both snippets have header comments that
+   * quote the broken form on purpose, and a naive grep matches those.
+   */
+  const SNIPPETS = ["probe/probe-snippet.ts", "probe/aspect-probe.ts"];
+
+  it("calls its entry point at the top level", () => {
+    for (const path of SNIPPETS) {
+      const code = withoutTsComments(readFileSync(path, "utf8")) as string;
+      expect(code, `${path} never invokes itself`).toMatch(/^\s*(main|run)\(\)/m);
+    }
+  });
+
+  it("never reaches for jQuery or a #run button a blank snippet does not have", () => {
+    for (const path of SNIPPETS) {
+      const code = withoutTsComments(readFileSync(path, "utf8")) as string;
+      expect(code, `${path} uses jQuery`).not.toMatch(/\$\s*\(/);
+      expect(code, `${path} wires a button that is not there`).not.toContain("#run");
+    }
+  });
+});

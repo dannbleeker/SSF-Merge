@@ -79,12 +79,9 @@ async function run() {
   console.log("Round in all three = the host preserves aspect ratio.");
 }
 
-$("#run").click(() => tryCatch(run));
-
-async function tryCatch(callback) {
-  try {
-    await callback();
-  } catch (error) {
-    console.error(error);
-  }
-}
+// Called at the top level, never wired to a button. Script Lab's own SAMPLE
+// snippet ends `$("#run").click(...)`, and copying that into a BLANK one throws
+// `$ is not defined` before a single Office call: a blank snippet has no
+// jQuery and no #run button. probe-snippet.ts has always done it this way;
+// this file did not, and cost a round trip to find out.
+run().catch((e) => console.error("the probe itself failed:", e));

@@ -107,6 +107,28 @@ Recordings, not opinions.
   buffers built from the original joined text and applies every hit against
   those, so the package path is immune by construction. Do not "fix" it to match
   this finding.
+- **`ShapeFill.setImage` STRETCHES. It does not preserve aspect ratio, crop or
+  letterbox.** Measured 2026-08-28 by filling three rectangles from one SQUARE
+  card — 1:1, 2:1 wide, 1:2 tall — and looking at the slide. The circle on the
+  card is round in the square box, a wide ellipse in the wide one and a tall
+  ellipse in the tall one, and all four corner labels survive in every box. An
+  ellipse with its corners intact is a stretch; a crop would have lost corners
+  and a letterbox would have shown bars.
+
+  The only question in this project that no API could answer, and the only one
+  whose evidence is a screenshot rather than a number. `scripts/build-aspect-probe.mjs`
+  rebuilds the instrument if it is ever needed again.
+
+  **What it decides is the ROUTE for image fields, not just a workaround.**
+  Through `setImage` the engine would have to letterbox every image itself —
+  pad it to the target shape's aspect ratio so that the host's stretch becomes
+  a no-op — which means reading each shape's `<a:ext>` and compositing before
+  sending. Through the PACKAGE, which is what this add-in does with everything
+  else, the fill mode is ours to write: `<a:blipFill>` takes `<a:stretch>` or an
+  `<a:srcRect>` crop, so the host's behaviour is not imposed at all. The
+  measurement is therefore an argument FOR the package route rather than a task
+  list for the other one.
+
 - **`exportAsBase64Presentation` DROPS comments and `ppt/authors.xml`.** The
   sixth sheet (2026-08-28) put this on a deck carrying four comments: four
   comment parts and an authors part went in, none came out. So
