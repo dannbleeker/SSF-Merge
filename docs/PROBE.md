@@ -150,7 +150,7 @@ pretending it is clean.
 
 ## What it has answered so far
 
-Four sheets, all PowerPoint for the web, filed under `docs/host-answers/`.
+Five sheets, all PowerPoint for the web, filed under `docs/host-answers/`.
 
 The first answered nothing about the host and three things about the probe: it
 gave a verdict on a question it had not asked, it named none of the four calls
@@ -189,8 +189,31 @@ outcome rather than a wasted round:
 Each of those reports `unknown` with the re-run named. A question the run could
 not put is never recorded as an answer.
 
-So questions 0 to 4 are answered and the package path is measured rather than
-assumed; 5 to 7 are asked and waiting on a deck that can answer them.
+**The fifth sheet (2026-08-28) is that re-run, and it answered two of the
+three.** It was taken on a 26-slide deck with three shapes selected, which is
+what made the difference — the arms were fine, the DECK was too small and too
+idle.
+
+- **the deck read** (question 6) answered all **58 of 58**, in order, nothing
+  short and nothing empty. Fifty-eight is above the ceiling #4272 describes, and
+  `canAnswerFiftyQuestion` says so, so this is an answer rather than a deck that
+  could not reach the question. office-js#6363 does not reproduce here either.
+  `deckSlideIds` keeps paging anyway — see `CLAUDE.md` for why that is a
+  decision and not an omission.
+- **the standing selection** (question 7) ran with **three shapes selected** and
+  both slides landed. A slide insert is not the shape case #2775 and #3698
+  describe, and nothing here needs `setSelectedShapes`.
+- **the export** (question 5) is still unanswered, for the same reason as
+  before: the deck carried no comments and no `ppt/authors.xml`, so there was
+  nothing to drop. It left the same five parts behind — the two web-extension
+  parts and their rels, `changesInfo1.xml`, `revisionInfo.xml` — none of them
+  content, all rebuilt by the host. **Re-run it on a deck carrying comments**,
+  and note that Script Lab itself writes the web-extension parts, so the deck
+  the probe runs in will always show those five.
+
+So questions 0 to 4, 6 and 7 are answered and the package path is measured
+rather than assumed. Question 5 needs a deck with comments on it; question 8 is
+the aspect-ratio one no API reads back, and needs somebody to look at a slide.
 
 ## One answer is not evidence about your host
 

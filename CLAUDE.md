@@ -71,8 +71,8 @@ red, not just that one does.
 
 ## What THIS host answered
 
-Measured on PowerPoint for the web, 2026-08-26, two sheets under
-`docs/host-answers/`. Recordings, not opinions.
+Measured on PowerPoint for the web, five sheets under `docs/host-answers/`.
+Recordings, not opinions.
 
 - **The package path works.** A cloned slide with a fresh creation id inserts.
   So does the presentation's own bytes, so does the same package under
@@ -107,6 +107,27 @@ Measured on PowerPoint for the web, 2026-08-26, two sheets under
   buffers built from the original joined text and applies every hit against
   those, so the package path is immune by construction. Do not "fix" it to match
   this finding.
+- **A collection load of the deck's slides answers IN FULL, past the ceiling.**
+  The fifth sheet (2026-08-28) put this on a 58-slide deck — above the ~50 that
+  [office-js#4272](https://github.com/officedev/office-js/issues/4272) describes,
+  which is what makes the answer worth anything; the sheet before it asked on
+  eight slides and could say nothing. `load("items/id")` answered all 58, in deck
+  order, with nothing short and nothing empty. So
+  [office-js#6363](https://github.com/officedev/office-js/issues/6363) does not
+  reproduce here either.
+
+  **`deckSlideIds` keeps paging anyway, and that is now a decision rather than a
+  habit.** The evidence says one load would do on this host in that minute; the
+  paging costs a few syncs and removes a failure mode nobody would recognise
+  from the symptom. What the answer buys is knowing that a short read is not
+  what to suspect first when something goes wrong here.
+- **A slide insert survives a STANDING SELECTION.** Three shapes selected, both
+  slides landed. office-js#2775 (a text-box add deletes the selected shape) and
+  #3698 (a picture will not insert while one is selected) are about SHAPES, and
+  this add-in inserts SLIDES — that was the reasoning, and it is measured now.
+  **So nothing here needs `setSelectedShapes`**, which is the one call in this
+  family with a history of wedging the host. Do not add a "drop the selection
+  first" step; there is no defect to fix and the fix would be the dangerous part.
 - **A call can raise and still have done the work.** The third sheet's 30-second
   budget expired on an insert whose deck delta was exactly the two slides asked
   for. Read the DELTA, never the presence of an error: reading the error as
