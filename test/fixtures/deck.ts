@@ -40,6 +40,22 @@ export interface SlideSpec {
    * label unfilled.
    */
   smartArt?: string[];
+  /**
+   * Which part owns the `diagramDrawing` relationship.
+   *
+   * `"data"` — the default and the shape every fixture here used to assume:
+   * `ppt/diagrams/_rels/dataN.xml.rels` names the drawing.
+   *
+   * `"slide"` — **what real PowerPoint writes.** The slide's own relationships
+   * name the drawing, `dataN.xml` carries `<dsp:dataModelExt relId="…">`
+   * pointing at that id, and there is no `dataN.xml.rels` at all.
+   *
+   * Both exist because the engine looked only at the data part until
+   * 2026-08-28, so a diagram PowerPoint had authored merged its model and left
+   * every copy sharing one unmerged rendering — and no fixture could show it,
+   * because they were all built the way the reader expected.
+   */
+  smartArtDrawingOn?: "data" | "slide";
   creationId?: number;
   /**
    * The shape's own `<a:xfrm>`, as XML.
@@ -402,7 +418,11 @@ export async function makeDeck(slides: SlideSpec[]): Promise<Uint8Array> {
       ? `<Relationship Id="rId4" Type="${REL_TYPE.diagramData}" Target="../diagrams/data${n}.xml"/>` +
         `<Relationship Id="rId5" Type="${REL_TYPE.diagramLayout}" Target="../diagrams/layout${n}.xml"/>` +
         `<Relationship Id="rId6" Type="${REL_TYPE.diagramQuickStyle}" Target="../diagrams/quickStyle${n}.xml"/>` +
-        `<Relationship Id="rId7" Type="${REL_TYPE.diagramColors}" Target="../diagrams/colors${n}.xml"/>`
+        `<Relationship Id="rId7" Type="${REL_TYPE.diagramColors}" Target="../diagrams/colors${n}.xml"/>` +
+        // The PowerPoint shape: the drawing is the SLIDE's relationship.
+        (spec.smartArtDrawingOn === "slide"
+          ? `<Relationship Id="rId8" Type="${REL_TYPE.diagramDrawing}" Target="../diagrams/drawing${n}.xml"/>`
+          : "")
       : "";
     zip.file(
       `ppt/slides/_rels/slide${n}.xml.rels`,
@@ -439,14 +459,16 @@ export async function makeDeck(slides: SlideSpec[]): Promise<Uint8Array> {
           `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n<dgm:${root} ${DGM_NS} ${A} uniqueId="${file}"/>`,
         );
       }
-      // The drawing hangs off the DATA part, not off the slide. A clone that
-      // copied only what the slide names would share the rendering every viewer
-      // actually sees.
-      zip.file(
-        `ppt/diagrams/_rels/data${n}.xml.rels`,
-        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n<Relationships ${REL}>` +
-          `<Relationship Id="rId1" Type="${REL_TYPE.diagramDrawing}" Target="drawing${n}.xml"/></Relationships>`,
-      );
+      // Where the drawing hangs is the whole point of this option. In the
+      // "slide" shape there is deliberately NO dataN.xml.rels — that absence is
+      // what real PowerPoint writes, and what the engine used to walk into.
+      if (spec.smartArtDrawingOn !== "slide") {
+        zip.file(
+          `ppt/diagrams/_rels/data${n}.xml.rels`,
+          `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n<Relationships ${REL}>` +
+            `<Relationship Id="rId1" Type="${REL_TYPE.diagramDrawing}" Target="drawing${n}.xml"/></Relationships>`,
+        );
+      }
     }
     if (spec.notes) {
       zip.file(
