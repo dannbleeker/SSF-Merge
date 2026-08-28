@@ -13,7 +13,7 @@
  */
 
 import { canBeField } from "../core/merge/text.js";
-import { parseDelimited, toRecordSet } from "../core/data/recordset.js";
+import { imageNamesIn, parseDelimited, toRecordSet } from "../core/data/recordset.js";
 import type { RecordSet } from "../core/data/recordset.js";
 
 /**
@@ -84,6 +84,18 @@ export interface PaneState {
   excluded?: number[];
   /** What is typed in the row search box. */
   rowSearch?: string;
+  /**
+   * The picture files the user picked, by the name they were picked under.
+   *
+   * Bytes, in the pane, never leaving it. The alternative was a URL per row,
+   * which a task pane cannot fetch anyway — it is a sandboxed cross-origin
+   * iframe and most image hosts send no CORS headers — and which would mean the
+   * add-in making a request out of somebody's data for every row of it.
+   *
+   * A Map rather than a record because a file name is not a safe object key,
+   * and because the engine takes one: this is handed to `runPlan` as it stands.
+   */
+  images?: Map<string, Uint8Array>;
   /** Whether the row list is open. Closed by default: 240 rows is not a screen. */
   rowsOpen?: boolean;
   /**
@@ -367,6 +379,58 @@ export function danglingConditions(state: PaneState): string[] {
 }
 
 /**
+ * The columns whose cells name picture files.
+ *
+ * Read off the PARSE, not guessed at by the pane: `detectType` decides, the
+ * same way it decides a column is a number or a date, so the pane and the
+ * engine cannot disagree about which column is an image.
+ */
+export function imageColumns(state: PaneState): string[] {
+  return (state.records?.columns ?? []).filter((c) => c.type === "image").map((c) => c.name);
+}
+
+/** Every picture file name the attached data refers to, across every image column. */
+export function imagesWanted(state: PaneState): string[] {
+  const rows = state.records?.rows ?? [];
+  const seen = new Set<string>();
+  for (const column of imageColumns(state)) for (const name of imageNamesIn(rows, column)) seen.add(name);
+  return [...seen];
+}
+
+/** `Photos\\ada.PNG` and `ada.png` are the same picture. Matched the way the engine matches. */
+function baseName(path: string): string {
+  const cut = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+  return (cut < 0 ? path : path.slice(cut + 1)).toLowerCase();
+}
+
+export interface ImageTally {
+  wanted: number;
+  matched: number;
+  /** Names the data asks for that no picked file answers to. */
+  missing: string[];
+  /** Files the user picked that no row refers to. Not a problem — worth saying once. */
+  spare: string[];
+}
+
+/**
+ * What the picked files cover, against what the data asks for.
+ *
+ * The whole report for the images control, computed in one place so the line
+ * under the picker, the merge summary and the warning cannot drift. Matched by
+ * BASE NAME and case-insensitively, exactly as `runPlan` matches — a pane that
+ * counted matches by a different rule than the merge uses would promise
+ * pictures that never arrive.
+ */
+export function imageTally(state: PaneState): ImageTally {
+  const wanted = imagesWanted(state);
+  const have = new Set([...(state.images?.keys() ?? [])].map(baseName));
+  const missing = wanted.filter((n) => !have.has(baseName(n)));
+  const referenced = new Set(wanted.map(baseName));
+  const spare = [...(state.images?.keys() ?? [])].filter((f) => !referenced.has(baseName(f)));
+  return { wanted: wanted.length, matched: wanted.length - missing.length, missing, spare };
+}
+
+/**
  * The `{{…}}` a column is written as on a slide.
  *
  * One function, because this string is produced in three places — the button
@@ -380,8 +444,11 @@ export function danglingConditions(state: PaneState): string[] {
  * braces exactly, and `unmatchedFields` compares against the column name
  * exactly, so anything done here would have to be done there too.
  */
-export function fieldToken(column: string): string {
-  return `{{${column}}}`;
+export function fieldToken(column: string, kind?: string): string {
+  // An image column's placeholder asks for a PICTURE, and the engine decides
+  // that from the format rather than from the column. Written here so the chip
+  // the user presses and the token the engine reads are one string.
+  return kind === "image" ? `{{${column}|image}}` : `{{${column}}}`;
 }
 
 /**

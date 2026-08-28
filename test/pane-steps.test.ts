@@ -17,12 +17,18 @@ import {
   readBlockDraft,
   readPastedTable,
   rowLabel,
+  fieldToken,
+  imageColumns,
+  imageTally,
+  imagesWanted,
   slidesPerRecord,
   statusOf,
   unmatchedFields,
   visibleRows,
 } from "../src/pane/steps.js";
 import type { PaneState, StepId } from "../src/pane/steps.js";
+import { FIELD } from "../src/core/merge/text.js";
+import { imageMode } from "../src/core/merge/images.js";
 
 const ready: PaneState = {
   block: { from: 4, to: 6 },
@@ -547,5 +553,89 @@ describe("conditional slides", () => {
   it("cannot report anything before data is attached", () => {
     // Every column is unknown with no data, which would flag every condition.
     expect(danglingConditions({ ...base, columns: undefined, conditions: { 4: "Renewal" } })).toEqual([]);
+  });
+});
+
+/**
+ * The pane fields a paste produces, spread the way `main.ts` spreads them.
+ *
+ * Not `...readPastedTable(text)`: that carries a `records: null` and a `why`,
+ * neither of which is a `PaneState` field. A fixture built from the parser
+ * rather than described by hand, so it cannot disagree with what the pane holds.
+ */
+function attached(text: string): Pick<PaneState, "paste" | "records" | "columns" | "rows"> {
+  const read = readPastedTable(text);
+  return { paste: text, records: read.records ?? undefined, columns: read.columns, rows: read.rows };
+}
+
+describe("which columns name pictures", () => {
+  const state = (text: string): PaneState => ({ ...EMPTY, ...attached(text) });
+
+  it("reads the image columns off the parse rather than off the header", () => {
+    expect(imageColumns(state("Name,Photo\nAda,ada.png\nGrace,grace.jpg"))).toEqual(["Photo"]);
+  });
+
+  it("does not call a column of ordinary words an image column", () => {
+    expect(imageColumns(state("Name,City\nAda,London"))).toEqual([]);
+  });
+
+  it("names every picture the data asks for, once each", () => {
+    const s = state("Name,Photo\nAda,ada.png\nGrace,ada.png\nAlan,alan.jpg");
+    expect(imagesWanted(s).sort()).toEqual(["ada.png", "alan.jpg"]);
+  });
+});
+
+describe("what the picked files cover", () => {
+  const data = (): PaneState => ({
+    ...EMPTY,
+    ...attached("Name,Photo\nAda,ada.png\nGrace,grace.JPG\nAlan,alan.png"),
+  });
+
+  const files = (...names: string[]): Map<string, Uint8Array> => new Map(names.map((n) => [n, new Uint8Array([1])]));
+
+  it("counts nothing matched before any file is picked", () => {
+    expect(imageTally(data())).toMatchObject({ wanted: 3, matched: 0, spare: [] });
+  });
+
+  it("matches by base name, so a folder path in the cell is not a miss", () => {
+    const s: PaneState = {
+      ...EMPTY,
+      ...attached("Name,Photo\nAda,Photos\\ada.png"),
+      images: files("ada.png"),
+    };
+    expect(imageTally(s)).toMatchObject({ wanted: 1, matched: 1, missing: [] });
+  });
+
+  it("matches case-insensitively, the way the merge matches", () => {
+    const s = { ...data(), images: files("ADA.PNG", "grace.jpg", "alan.png") };
+    expect(imageTally(s)).toMatchObject({ matched: 3, missing: [] });
+  });
+
+  it("names the pictures it has not got, rather than counting them", () => {
+    const s = { ...data(), images: files("ada.png") };
+    expect(imageTally(s).missing.sort()).toEqual(["alan.png", "grace.JPG"]);
+  });
+
+  it("counts a file no row refers to as spare, not as a problem", () => {
+    const s = { ...data(), images: files("ada.png", "grace.jpg", "alan.png", "logo.png") };
+    expect(imageTally(s)).toMatchObject({ matched: 3, missing: [], spare: ["logo.png"] });
+  });
+});
+
+describe("the token an image column is written as", () => {
+  it("asks for a picture, because the engine decides that from the format", () => {
+    expect(fieldToken("Photo", "image")).toBe("{{Photo|image}}");
+  });
+
+  it("leaves every other column alone", () => {
+    expect(fieldToken("Photo")).toBe("{{Photo}}");
+    expect(fieldToken("City", "text")).toBe("{{City}}");
+  });
+
+  it("is a token the engine's own reader accepts, name and format both", () => {
+    const hits = [...fieldToken("Photo", "image").matchAll(new RegExp(FIELD.source, FIELD.flags))];
+    expect(hits).toHaveLength(1);
+    expect(hits[0]?.[1]).toBe("Photo");
+    expect(imageMode(hits[0]?.[2])).toBe("cover");
   });
 });

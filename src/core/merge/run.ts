@@ -15,11 +15,24 @@ import { writeSlideTags } from "../pptx/tags.js";
 import type { MergePlan } from "./plan.js";
 import { makeResolver, type EmptyPolicy } from "./resolve.js";
 import { mergeDocument } from "./text.js";
+import { MediaCache, placeImages, type ImageOutcome, type ResolveImage } from "./images.js";
 
 export interface RunOptions {
   onEmpty?: EmptyPolicy;
   /** Passed through to the cloner. Injectable so a test can assert on creation ids. */
   clone?: CloneOptions;
+  /**
+   * The bytes behind an image field, by FILE NAME.
+   *
+   * Separate from the records because a record is text and a picture is not.
+   * The pane reads the files the user picked and hands them over as a map; the
+   * cell holds the name, which is the one thing a spreadsheet can carry.
+   *
+   * Absent means no image fields can resolve, which is not an error: a template
+   * with a picture frame and a merge with no files supplied leaves the
+   * placeholder visible and says so.
+   */
+  images?: Map<string, Uint8Array>;
 }
 
 export interface RunResult {
@@ -28,6 +41,8 @@ export interface RunResult {
   slides: string[];
   /** How many paragraphs were rewritten. A zero here on a real template means the fields never matched. */
   paragraphsMerged: number;
+  /** What the picture pass did, pooled over every slide it touched. */
+  images: ImageOutcome;
 }
 
 /**
@@ -45,6 +60,11 @@ export async function runPlan(
 ): Promise<RunResult> {
   const slides: string[] = [];
   let paragraphsMerged = 0;
+  const images: ImageOutcome = { placed: 0, missing: [], unreadable: [], stretched: [] };
+  // One cache for the whole run, which is the point of it: a logo on all 240
+  // rows becomes ONE media part rather than 240 copies of the same bytes in a
+  // package the host has to swallow in a single base64 string.
+  const media = new MediaCache(pkg);
 
   for (const step of plan.steps) {
     const row = records.rows[step.recordIndex];
@@ -55,7 +75,13 @@ export async function runPlan(
     // template destroyed rather than used.
     const target = await cloneSlide(pkg, step.source, opts.clone ?? {});
     const resolve = makeResolver(row, { onEmpty: opts.onEmpty });
-    paragraphsMerged += mergeDocument(await pkg.doc(target), resolve);
+    // Pictures BEFORE text. To `mergeParagraph` an image field is an ordinary
+    // field with a format it does not know, so left to itself it writes the
+    // FILE NAME onto the slide; this pass takes the placeholder away and the
+    // text pass then finds nothing.
+    const slideDoc = await pkg.doc(target);
+    tally(images, await placeImages(pkg, target, slideDoc, resolveImage(row, opts.images), media));
+    paragraphsMerged += mergeDocument(slideDoc, resolve);
     // The notes page too. It is per-copy content — cloneSlide gives each copy
     // its own precisely so they can differ — and a template whose speaker notes
     // read "Call {{Name}} afterwards" otherwise ships that text verbatim on
@@ -84,5 +110,37 @@ export async function runPlan(
     slides.push(target);
   }
 
-  return { runId: plan.runId, slides, paragraphsMerged };
+  return { runId: plan.runId, slides, paragraphsMerged, images };
+}
+
+/**
+ * A row's image field, as bytes.
+ *
+ * The cell holds a FILE NAME and the map is keyed by one. Matched
+ * case-insensitively and by base name, because `Photos\\ada.PNG` in a
+ * spreadsheet and `ada.png` from a file picker are the same picture and a user
+ * should not have to know that.
+ */
+function resolveImage(row: Record<string, string>, images: Map<string, Uint8Array> | undefined): ResolveImage {
+  return (name) => {
+    if (!images || images.size === 0) return undefined;
+    if (!Object.prototype.hasOwnProperty.call(row, name)) return undefined;
+    const cell = (row[name] ?? "").trim();
+    if (cell === "") return undefined;
+    const wanted = baseName(cell);
+    for (const [file, bytes] of images) if (baseName(file) === wanted) return bytes;
+    return undefined;
+  };
+}
+
+function baseName(path: string): string {
+  const cut = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+  return (cut < 0 ? path : path.slice(cut + 1)).toLowerCase();
+}
+
+function tally(into: ImageOutcome, from: ImageOutcome): void {
+  into.placed += from.placed;
+  for (const key of ["missing", "unreadable", "stretched"] as const) {
+    for (const name of from[key]) if (!into[key].includes(name)) into[key].push(name);
+  }
 }

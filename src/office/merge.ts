@@ -36,6 +36,15 @@ export interface MergeRequest {
   conditions?: Record<number, string>;
   onEmpty?: EmptyPolicy;
   runId?: string;
+  /**
+   * The picture files behind any image fields, by file name.
+   *
+   * Read in the pane from the user's own picker and passed straight through.
+   * Absent is not an error: a template with a picture frame and no files
+   * supplied keeps its placeholders, which is the rule an unmatched text field
+   * already follows.
+   */
+  images?: Map<string, Uint8Array>;
 }
 
 export interface MergeOutcome {
@@ -216,7 +225,10 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
     };
   }
 
-  const result = await runPlan(pkg, plan, req.records, { ...(req.onEmpty ? { onEmpty: req.onEmpty } : {}) });
+  const result = await runPlan(pkg, plan, req.records, {
+    ...(req.onEmpty ? { onEmpty: req.onEmpty } : {}),
+    ...(req.images ? { images: req.images } : {}),
+  });
 
   // Everything that is not a merged slide comes out, and the set is computed
   // from the PACKAGE rather than from the block.

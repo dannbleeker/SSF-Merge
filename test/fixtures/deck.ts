@@ -29,6 +29,20 @@ export interface SlideSpec {
    */
   chart?: string;
   creationId?: number;
+  /**
+   * The shape's own `<a:xfrm>`, as XML.
+   *
+   * Omitted by default because the commonest real shape — a text box on a
+   * layout placeholder — states no box and inherits one, and that is the case
+   * the picture pass has to degrade for. Supplied when a test needs a RATIO,
+   * which cover and contain cannot be computed without.
+   */
+  box?: string;
+}
+
+/** An `<a:xfrm>` of the given size, for a spec's `box`. */
+export function xfrm(cx: number, cy: number): string {
+  return `<a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>`;
 }
 
 function escapeText(t: string): string {
@@ -59,7 +73,7 @@ function slideXml(spec: SlideSpec): string {
     `<p:sld ${P} ${A} ${R}><p:cSld><p:spTree>` +
     `<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>` +
     `<p:sp><p:nvSpPr><p:cNvPr id="2" name="Body"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>` +
-    `<p:spPr/><p:txBody><a:bodyPr/><a:lstStyle/>${paras}</p:txBody></p:sp>` +
+    `<p:spPr>${spec.box ?? ""}</p:spPr><p:txBody><a:bodyPr/><a:lstStyle/>${paras}</p:txBody></p:sp>` +
     `</p:spTree>${creation}</p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`
   );
 }

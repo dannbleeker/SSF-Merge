@@ -157,6 +157,9 @@ Add a format after a pipe:
 | `date` | a pattern, default `dd-MM-yyyy` | `yyyy` `yy` `MMMM` `MMM` `MM` `dd` `d`, and nothing else. Any other text in the pattern is printed as written |
 | `upper` | none | Locale-aware, so `måned` becomes `MÅNED` |
 | `lower` | none | Locale-aware |
+| `image` | none | The cell names a picture file, and the shape it sits in is filled with it. Cropped to fill the shape |
+| `image-fit` | none | The whole picture, letterboxed inside the shape. Nothing is cut off |
+| `image-stretch` | none | The picture squashed to the shape's exact proportions. Distorts, and is there for the case where that is what you want |
 
 **A value that does not match its format is printed unchanged.** `{{Note|number}}`
 on the text "n/a" gives you "n/a", not a blank and not an error marker. The cell
@@ -193,6 +196,46 @@ half of it showing the raw cell.
 author's to choose, so write the month yourself if you want it in another
 language — `{{Start|date:d}} maj {{Start|date:yyyy}}` — or use a numeric
 pattern like `dd-MM-yyyy`, which reads the same everywhere.
+
+## Pictures
+
+A cell can name a picture file — `ada.png`, `photos\\ada.PNG` — and the field
+that reads it fills a **shape** rather than writing the file name as text.
+
+Draw a rectangle on the template where the picture belongs, put
+`{{Photo|image}}` in it, and the merge fills that rectangle with the picture the
+row names. Size and position are the template's: the merged deck's pictures all
+sit in the same place, at the same size, on every slide, which is the whole
+reason to do it this way rather than by hand.
+
+**Where the files come from.** Step 2 grows a picker as soon as a column looks
+like it names pictures. Choose them from the folder they are in — several at
+once, or the whole folder. They are read in the pane and go into the merged
+deck; nothing is uploaded, and no picture is fetched from the network. A cell
+holding a URL is not a picture and is merged as text.
+
+**Matching is by file name, ignoring folders and case.** `Photos\\ada.PNG` in
+the sheet finds `ada.png` from the picker. The pane says how many of the
+pictures the data asks for it has in hand, and names the ones it has not — pick
+those too, or leave them: a row whose picture is missing keeps its placeholder,
+exactly as a text field with no column does.
+
+**Three fits, and the default crops.**
+
+| Written | What you get |
+| --- | --- |
+| `{{Photo|image}}` | The shape filled edge to edge. The picture is centred and the overflowing edges are cut off |
+| `{{Photo|image-fit}}` | The whole picture inside the shape, with empty bands on two sides |
+| `{{Photo|image-stretch}}` | The picture squashed to the shape's proportions |
+
+`image` is the one to reach for. A page of portraits at the same size reads as a
+page of portraits; the same pictures letterboxed read as a page of different
+sizes. Use `image-fit` for logos and product shots where cutting an edge off
+loses the subject.
+
+**PNG, JPEG, GIF and BMP.** A file of another type, or one whose bytes are not
+the picture its name claims, is left out and named in the pane rather than
+written into the deck.
 
 ## What repeats
 
