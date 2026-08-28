@@ -117,10 +117,26 @@ project's notes are full of ways the two differ.
 inside that frame. Both work; neither is quick to get right the first time.
 
 **Sideloading is the fiddly part.** The add-in is hosted at
-`powerchart.struktureretsundfornuft.dk`, and getting the manifest into a
+`ssf-merge.struktureretsundfornuft.dk`, and getting the manifest into a
 web session by script is more awkward than adding it once by hand and reusing
 a saved storage state. Let the agent add it manually on the first run and save
 the session.
+
+The route that works on PowerPoint for the web is **Add-ins ▸ My Add-ins ▸
+Upload My Add-in**, pointed at `manifest-prod.xml`. Two things about it are
+worth knowing before going looking, both found on 2026-08-28:
+
+- On a personal Microsoft account the **Store** half of that dialog cannot
+  authenticate. It fails with *"The application is a first party application,
+  the user does not have consent, and users are not permitted to consent to
+  first party applications."* The upload half still works — the consent error
+  is about the store listing, not about sideloading.
+- "Upload My Add-in" does not show up in the dialog's `innerText`, so an agent
+  reading the text will conclude it is absent. It is a link in the DOM. Look
+  for the element, not for the words.
+
+Once it is in, the add-in's button is called **Mail merge** and sits on the
+**Home** tab rather than on a tab of its own.
 
 **The merged file is the evidence.** Screenshots show whether something looks
 right; the package shows whether it IS right, and the two disagree in exactly

@@ -40,7 +40,20 @@ yours — and a diagram PowerPoint wrote is a better test than one I wrote.
    - `{{Region}}`
    - `Renewal {{Renewal|date:d MMM}}`
 4. Delete the grey instruction box.
-5. Save.
+5. **Click somewhere else on the slide before saving**, so the last box you
+   typed into loses focus.
+6. Save.
+
+Step 5 is not fussiness. A SmartArt stores its text twice — the model in
+`dataN.xml` and the laid-out rendering in `drawingN.xml` — and PowerPoint writes
+the rendering when the diagram is done being edited. Save with the caret still
+in a box and that box can reach the file with text in the model and **none in
+the drawing**. It happened on 2026-08-28: the `{{Name}}` box was empty in
+`drawing1.xml`, so every merged copy showed an empty first box, and the merge
+took the blame for something the template did before it ever ran.
+
+Worth checking if anything looks blank later: unzip the template and confirm all
+three strings appear in `ppt/diagrams/drawing1.xml`, not just in `data1.xml`.
 
 ## The run
 
@@ -72,6 +85,12 @@ merged region, not `{{Region}}`. Close it. Then look at the chart again — it
 must not have changed. This is the one an ordinary test cannot reach: PowerPoint
 refreshes the chart from that workbook when Excel closes, so a merge that filled
 only the chart would revert in front of you here.
+
+**This check needs DESKTOP PowerPoint.** There is no Excel round-trip in
+PowerPoint for the web, so a round run in the browser cannot answer it at all —
+and "did not run" is not the same answer as "passed". If the round was driven in
+the web host, say so and leave this one open, or open the merged deck in desktop
+PowerPoint afterwards and do it there.
 
 **4. The SmartArt shows that row's name.** Three merged copies, three different
 names. SmartArt stores its text twice — a model and a rendering — and only the
