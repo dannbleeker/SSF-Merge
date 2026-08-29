@@ -86,9 +86,45 @@ together or the chart disagrees with itself.
 
 **The fallback picture cannot be merged, ever.** It is a PNG of the chart as the
 template drew it, shown by any host that cannot read chartEx. A merged copy
-either ships a picture of somebody else's data or drops the branch and shows
-nothing there. That is a decision to take deliberately, not a detail — and it is
-the one part of this feature that has no good answer.
+cannot regenerate it: this project has no chart renderer and is not going to
+grow one for eight layouts it does not draw.
+
+What the ecosystem does with that branch, looked up rather than reasoned about,
+splits on exactly one thing — whether the tool can render:
+
+| Tool | What it writes in `mc:Fallback` |
+| --- | --- |
+| PowerPoint | `p:pic`, a rendered PNG of the chart. It has a renderer and regenerates on save |
+| LibreOffice, exporting a chartex | a plain rectangle: white fill, thin outline, `noTextEdit`, carrying the standard *"This chart isn't available in your version of…"* sentence. No picture (`writeChartexAlternateContent` in `oox/source/export/chartexport.cxx`) |
+| python-pptx | nothing: `mc:AlternateContent` is invisible to it ([#621](https://github.com/scanny/python-pptx/issues/621)), so whatever was there rides along untouched and stale |
+
+`mc:Fallback` is `minOccurs="0"` in the MCE schema, so a bare `mc:Choice` is
+legal too. That gives three options, and SSF Merge is in LibreOffice's position
+rather than PowerPoint's.
+
+**Recommended: write the explanatory shape, LibreOffice's answer. NOT DECIDED —
+the owner's call.**
+
+Keeping the template's picture is the one to refuse. On a mail merge it does not
+merely show stale data, it shows ANOTHER RECIPIENT'S figures under this
+recipient's name, on any host that reads the fallback — a confidentiality
+problem rather than a cosmetic one, and the merged deck is the artefact that
+gets sent out. It is also the same mistake this engine already refuses
+everywhere else: a placeholder with no column stays visible rather than
+blanking, precisely because something that looks finished and is not is worse
+than something that admits it.
+
+Dropping the branch is honest and silent: an old host shows a hole and no reason
+for it. The explanatory shape costs the same to write, says why, and has the
+merit of being what a major producer already ships — so the shape is known-good
+to PowerPoint. Its wording should name PowerPoint rather than Excel, which is a
+bug in the sentence LibreOffice copied.
+
+Two things that bound the decision. Nothing on a modern host ever sees this
+branch — it takes `mc:Choice` — so the cost of getting it wrong falls only on
+PowerPoint 2013 and earlier and on third-party viewers. And replacing the
+picture lets the merged deck drop N stale PNGs, which is smaller as well as
+honester.
 
 And one piece of good news, worth as much as the traps: **the embedded workbook
 hangs off the chartEx under the ORDINARY
