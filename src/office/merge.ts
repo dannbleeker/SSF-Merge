@@ -21,6 +21,7 @@ import { runPlan } from "../core/merge/run.js";
 import { buildPlan } from "../core/merge/plan.js";
 import { prepareBlock } from "../core/merge/prepare.js";
 import { Pkg } from "../core/pptx/pkg.js";
+import type { ImageOutcome } from "../core/merge/images.js";
 import type { RecordSet } from "../core/data/recordset.js";
 import type { EmptyPolicy } from "../core/merge/resolve.js";
 import { insertDeck, readTemplate, slideCount, undoInsert } from "./powerpoint.js";
@@ -77,6 +78,21 @@ export interface MergeOutcome {
   paragraphsMerged?: number;
   /** Charts whose embedded workbook the merge could not open. See `describeMerge`. */
   workbooksUnreadable?: number;
+  /**
+   * What became of the PICTURES.
+   *
+   * `runPlan` has always returned this, and every field on `ImageOutcome`
+   * carries a comment saying it is named rather than left silent — "a
+   * stretched photo reads as a broken image, not as a fact about the
+   * template", "the second field was dropped in silence". Named to nobody:
+   * this file threw the whole object away, so the only readers were tests.
+   *
+   * Exactly what `paragraphsMerged` was written for, one half of the merge
+   * over. A run that adds 720 slides and places no picture at all arrives
+   * looking like a success — and the pane's own pre-merge tally cannot catch
+   * it, because that matches file NAMES and never reads a byte.
+   */
+  pictures?: ImageOutcome;
   /** Rows skipped by a condition, so "8 rows" and "6 slides" reconcile. */
   skippedRecords?: number;
   /** Individual slides skipped by a condition. */
@@ -355,6 +371,7 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
       unknownConditions: plan.unknownConditions,
       paragraphsMerged: result.paragraphsMerged,
       workbooksUnreadable: result.graphics.unreadable.length,
+      pictures: result.images,
       skippedRecords: plan.skippedRecords.length,
       skippedSlides: plan.skippedSlides.length,
       rowsComplete: rows.complete,
@@ -377,6 +394,10 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
     // number exists to name, and it arrives looking exactly like a success.
     paragraphsMerged: result.paragraphsMerged,
     workbooksUnreadable: result.graphics.unreadable.length,
+    // On the success path too, for the reason `paragraphsMerged` is: a merge
+    // that placed nothing is the failure this reports, and it arrives looking
+    // exactly like a success.
+    pictures: result.images,
     skippedRecords: plan.skippedRecords.length,
     skippedSlides: plan.skippedSlides.length,
     rowsComplete: rows.complete,

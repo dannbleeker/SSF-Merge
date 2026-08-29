@@ -275,7 +275,16 @@ loses the subject.
 
 **PNG, JPEG, GIF and BMP.** A file of another type, or one whose bytes are not
 the picture its name claims, is left out and named in the pane rather than
-written into the deck.
+written into the deck. It is named when the merge FINISHES, in the sentence
+that reports what the run did: nothing before that opens a file, so a `.webp`
+renamed to `.png` passes the pre-merge tally and is only found on the way in.
+
+**The merge says how many pictures it placed**, beside how many placeholders it
+filled, and a zero out loud — a run that adds every slide and places no picture
+otherwise reads as a success. It also names a field whose shape was already
+holding another field's picture (a shape has one fill), and a picture it had to
+squash because its shape takes its size from the layout and states none of its
+own.
 
 ## What repeats
 

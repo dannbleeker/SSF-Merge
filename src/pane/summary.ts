@@ -12,6 +12,7 @@
  * id, which this host refuses for slides a run just added, and never a
  * zero-based index, which is a number the user has no way to see.
  */
+import type { ImageOutcome } from "../core/merge/images.js";
 import { sweepPlan } from "../host/undo.js";
 import type { Block } from "./steps.js";
 import { slidesPerRecord } from "./steps.js";
@@ -119,6 +120,15 @@ export interface MergeReport {
   skippedSlides?: number;
   /** Conditions naming a column the data did not have. */
   unknownConditions?: string[];
+  /**
+   * What became of the pictures, when any were asked for.
+   *
+   * Same argument as `paragraphsMerged`, on the other half of the merge. The
+   * pane's pre-merge tally matches file NAMES and never opens one, so a folder
+   * of renamed `.webp` files passes it and places nothing — and the deck grows
+   * by 720 slides either way.
+   */
+  pictures?: ImageOutcome;
 }
 
 /**
@@ -151,6 +161,39 @@ export function describeMerge(r: MergeReport): string {
       `the data behind ${plural(r.workbooksUnreadable, "chart")} could not be merged — the slides read correctly, ` +
         `but Edit Data still shows your placeholders`,
     );
+  }
+  // The pictures, when the run had any to place. Silent otherwise, so a
+  // text-only merge reads as one short sentence.
+  //
+  // `missing` is deliberately NOT named. It counts a field whose cell was
+  // empty as well as one whose file was never supplied, and an empty cell is
+  // documented behaviour — the slide keeps its placeholder, exactly as a text
+  // field with no column does. Naming it would report every legitimately blank
+  // photo column as a fault. The COUNT carries that case: "2 pictures placed"
+  // against 5 rows says it without accusing anybody.
+  if (r.pictures) {
+    const p = r.pictures;
+    const asked = p.placed + p.missing.length + p.unreadable.length + p.crowded.length + p.stretched.length;
+    if (asked > 0) {
+      // Zero said out loud, for the reason the paragraph count says it: a run
+      // that placed no picture at all is the whole finding, and an omitted
+      // clause is indistinguishable from a merge with no pictures in it.
+      parts.push(p.placed === 0 ? "no pictures were placed" : `${plural(p.placed, "picture")} placed`);
+    }
+    // The bytes were not an image. Nothing before the merge can catch this:
+    // the tally matches names.
+    if (p.unreadable.length > 0) {
+      parts.push(`the file for ${p.unreadable.join(", ")} is not a picture this add-in can read`);
+    }
+    // A shape has one fill, so the second field in it was dropped.
+    if (p.crowded.length > 0) {
+      parts.push(`${p.crowded.join(", ")} had nowhere to go — one shape holds one picture`);
+    }
+    // Squashed, because the shape inherits its size and there was no ratio to
+    // fit to. Reads as a broken image and is not one.
+    if (p.stretched.length > 0) {
+      parts.push(`${p.stretched.join(", ")} was stretched to fit a shape that states no size`);
+    }
   }
   // Skips are why "8 rows" and "6 slides" can both be right, and a user who
   // cannot reconcile those two numbers assumes the merge lost something.
