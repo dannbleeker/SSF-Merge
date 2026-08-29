@@ -17,6 +17,7 @@ import {
 import { inspectBlock, runMerge, undoMerge, type MergeOutcome } from "../office/merge.js";
 import { readable } from "../host/errors.js";
 import { clearCrumb, dropCrumb, readCrumb } from "./crumb.js";
+import { blockMoved, dataChanged } from "./transitions.js";
 import { beginRun, onTrace, trace, traceText } from "../core/trace.js";
 import { render } from "./render.js";
 import { describeMerge, plural } from "./summary.js";
@@ -287,24 +288,7 @@ function onInput(event: Event): void {
     // `chosenBlock` fall back to slides the boxes no longer name. The fields
     // read off it go with it for the same reason, and `added` goes because a
     // changed block is a different merge.
-    state = {
-      ...state,
-      draft,
-      block: undefined,
-      fields: [],
-      notice: undefined,
-      added: undefined,
-      // The note names a token that was put on a slide in the OLD block. Left
-      // standing it reports an insert into slides this state no longer names.
-      fieldNote: undefined,
-      // Keyed by SLIDE NUMBER, so they mean nothing once the block moves:
-      // "slide 5 only when Renewal" is about the fifth slide of the deck, and
-      // a block starting one slide later would silently apply it to a
-      // different slide. Kept across a new PASTE, deliberately — a condition
-      // is about the template, and a column the new data lacks is reported
-      // rather than quietly dropped.
-      conditions: undefined,
-    };
+    state = { ...blockMoved(state), draft, notice: undefined };
     draw();
     return;
   }
@@ -318,18 +302,9 @@ function onInput(event: Event): void {
   if (field === "paste") {
     const read = readPastedTable(target.value);
     state = {
-      ...state,
+      ...dataChanged(state),
       paste: target.value,
       notice: undefined,
-      added: undefined,
-      // A new paste can have different columns, so a note about `{{Region}}`
-      // being placed may now be about a column nothing will fill.
-      fieldNote: undefined,
-      // The filter goes with the data it was about. Row 7 of the old paste is
-      // not row 7 of the new one, and silently carrying an exclusion across
-      // would take out a row the user never looked at.
-      excluded: undefined,
-      rowSearch: undefined,
       ...(read.records
         ? { records: read.records, columns: read.columns, rows: read.rows }
         : { records: undefined, columns: undefined, rows: undefined }),
@@ -353,24 +328,12 @@ async function useSelection(): Promise<void> {
   draw();
   try {
     const picked = await selectedBlock();
+    // `block` cleared so it keeps meaning "a block whose placeholders have been
+    // READ". Nothing observable distinguishes this from committing the
+    // selection — `chosenBlock` prefers the draft either way — so it is stated
+    // rather than guarded by a test that would pass against both.
     state = picked.ok
-      ? {
-          ...state,
-          draft: { from: String(picked.from), to: String(picked.to) },
-          // `block` cleared so it keeps meaning "a block whose placeholders
-          // have been READ". Nothing observable distinguishes this from
-          // committing the selection — `chosenBlock` prefers the draft either
-          // way, and the template step's only way forward is the button that
-          // reads — so it is stated here rather than guarded by a test that
-          // would pass against both. Defensive, and known to be.
-          block: undefined,
-          fields: [],
-          added: undefined,
-          notice: undefined,
-          // Same reason as typing in the boxes: conditions are keyed by slide
-          // number, and this changes which slides the block names.
-          conditions: undefined,
-        }
+      ? { ...blockMoved(state), draft: { from: String(picked.from), to: String(picked.to) }, notice: undefined }
       : { ...state, notice: picked.why };
   } finally {
     state = { ...state, running: undefined };
@@ -420,7 +383,7 @@ async function useBlock(from: StepId): Promise<void> {
           // The list of fields below is the answer now.
           fieldNote: undefined,
         }
-      : { ...state, deckSize, block: undefined, fields: [], notice: report.detail };
+      : { ...blockMoved(state), deckSize, notice: report.detail };
     // From whichever step asked. The template step reads to COMMIT a block;
     // the fields step reads again because the user has just been typing
     // `{{Column}}` into PowerPoint and nothing tells this pane that happened —

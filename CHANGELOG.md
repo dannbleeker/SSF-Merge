@@ -7,6 +7,37 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — four spellings of "the block moved", and no two agreed
+
+A pane update that sets one field is readable where it happens. One that clears
+six is a RULE, and this rule was written out at four call sites:
+
+| Moving the block by | cleared |
+| --- | --- |
+| typing in the slide-number boxes | block, fields, conditions, added, fieldNote |
+| picking a selection | block, fields, conditions, added |
+| a read that refused | block, fields |
+| — any of them | never `imageFields` |
+
+So picking a new selection left a note saying `{{Region}} put on the slide`
+about slides the new block does not name, and a refused read left conditions
+keyed to slide numbers the block no longer covers. `imageFields` was added in
+the picture-picker fix and no path cleared it, so the picker could offer a
+column the new block never mentions.
+
+`blockMoved` and `dataChanged` in `src/pane/transitions.ts` are those two rules,
+pure and stated once. `notice` is deliberately not in either: two callers set
+one of their own, and clearing it inside would make the order of two statements
+decide whether the user sees the sentence.
+
+An architecture guard fails if `main.ts` clears the block or the row filter by
+hand again — a fifth spelling written next to the fourth is how this started.
+
+This is the part of the planned state refactor that is behaviour-changing on
+purpose. The 28 `draw()` calls and the event loop are untouched: collapsing
+those changes render TIMING, which the jsdom tests do not cover exhaustively,
+and it is not worth the risk for a readability gain.
+
 ### Changed — a slide's relationship types are spelled out once
 
 These strings decide which parts a clone copies, which a clone drops, and which
