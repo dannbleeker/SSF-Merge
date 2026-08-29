@@ -121,3 +121,67 @@ describe("isTruthy", () => {
     }
   });
 });
+
+describe("a condition decides before an empty cell does", () => {
+  /**
+   * `onEmpty: "skip"` drops a record whose fields are not all filled. It read
+   * the fields of EVERY slide in the block, including ones the record's own
+   * conditions had already left out — so a customer with no renewal note
+   * vanished from the deck over a blank cell on the renewal slide they were
+   * never going to get.
+   *
+   * Latent rather than shipped: the policy reaches `buildPlan` through the
+   * office request, and the pane does not set it today. It is a trap laid for
+   * whoever wires it up, and the failure is a record silently absent.
+   */
+  const block: Block = {
+    id: "b",
+    slides: [
+      { path: "s1.xml", seq: 1, fields: ["Name"] },
+      { path: "s2.xml", seq: 2, condition: "HasExtra", fields: ["ExtraNote"] },
+    ],
+  };
+  const records = toRecordSet([
+    ["Name", "HasExtra", "ExtraNote"],
+    ["Ada", "no", ""],
+    ["Bo", "yes", "a note"],
+  ]);
+
+  it("keeps a record whose blank field is on a slide it is not getting", () => {
+    const plan = buildPlan(block, records, { runId: "r", onEmpty: "skip" });
+    expect(plan.skippedRecords, "the record was dropped over a slide it never gets").toEqual([]);
+    expect(plan.steps.map((s) => `${s.recordIndex}/${s.seq}`)).toEqual(["0/1", "1/1", "1/2"]);
+  });
+
+  it("still reports that slide as left out by its condition", () => {
+    // The record is present and one of its slides is not, which is two facts
+    // and both have to be said.
+    const plan = buildPlan(block, records, { runId: "r", onEmpty: "skip" });
+    expect(plan.skippedSlides).toEqual([{ recordIndex: 0, seq: 2, condition: "HasExtra" }]);
+  });
+
+  it("still drops a record whose blank field is on a slide it IS getting", () => {
+    // The policy itself is unchanged, which is the other half: narrowing what
+    // it looks at must not stop it looking.
+    const blanks = toRecordSet([
+      ["Name", "HasExtra", "ExtraNote"],
+      ["", "yes", "a note"],
+      ["Bo", "yes", ""],
+    ]);
+    const plan = buildPlan(block, blanks, { runId: "r", onEmpty: "skip" });
+    expect(plan.skippedRecords).toEqual([0, 1]);
+    expect(plan.steps).toEqual([]);
+  });
+
+  it("says nothing about the slides of a record it dropped whole", () => {
+    // A record that contributed nothing reporting two absences as well would
+    // be two answers about one record.
+    const dropped = toRecordSet([
+      ["Name", "HasExtra", "ExtraNote"],
+      ["", "no", ""],
+    ]);
+    const plan = buildPlan(block, dropped, { runId: "r", onEmpty: "skip" });
+    expect(plan.skippedRecords).toEqual([0]);
+    expect(plan.skippedSlides).toEqual([]);
+  });
+});
