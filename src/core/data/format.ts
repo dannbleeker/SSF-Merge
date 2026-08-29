@@ -368,7 +368,14 @@ export function formatNumber(n: number, decimals: number, group: string, point: 
  */
 export function applyFormat(raw: string, spec: string | undefined): string {
   if (!spec) return raw;
-  const [kind = "", arg = ""] = spec.split(":", 2);
+  // The FIRST colon splits, and everything after it is the argument.
+  // `split(":", 2)` truncates rather than keeping the remainder, so
+  // `date:yyyy-MM-dd 00:00` handed `formatDate` the pattern `yyyy-MM-dd 00`
+  // and printed a date with half a time after it. A date pattern is free text
+  // with tokens in it and may hold any punctuation the author wants.
+  const cut = spec.indexOf(":");
+  const kind = cut < 0 ? spec : spec.slice(0, cut);
+  const arg = cut < 0 ? "" : spec.slice(cut + 1);
   switch (kind.trim().toLowerCase()) {
     case "upper":
       return raw.toLocaleUpperCase();
