@@ -303,6 +303,45 @@ describe("the fallback branch a merged copy carries", () => {
     expect(await related(zip, "ppt/slides/slide1.xml", "/image")).toEqual(["ppt/media/chart1.png"]);
   });
 
+  it("keeps the image relationships the slide still names in ways that are not r:embed", async () => {
+    // Dropping the fallback picture's relationship means deciding which image
+    // relationships a merged copy still needs, and the first version of that
+    // decision asked one question: which `<a:blip>` carries which `r:embed`.
+    //
+    // Two ordinary shapes name an image any other way. A modern PowerPoint
+    // ICON is a raster blip carrying the real SVG beside it — `<asvg:svgBlip
+    // r:embed>` inside the blip's own extension list, under a SECOND image
+    // relationship. A LINKED picture names its relationship with `r:link` and
+    // embeds nothing. Both relationships were deleted while the slide still
+    // referenced them: a slide naming a relationship that is not there, which
+    // is what PowerPoint calls a damaged file.
+    const { zip } = await mergeDeck({ paragraphs: [["Cover"]], modernChart: FUNNEL, icons: true });
+    for (const slide of MERGED_SLIDES) {
+      const body = (await zip.file(slide)?.async("string")) ?? "";
+      const named = new Set([...body.matchAll(/r:(?:embed|link)="([^"]+)"/g)].map((m) => m[1] ?? ""));
+      expect(named, `${slide} lost the shapes the fixture put on it`).toContain("rId20");
+      const dir = slide.slice(0, slide.lastIndexOf("/"));
+      const rels = parseXml(
+        (await zip.file(`${dir}/_rels/${slide.slice(slide.lastIndexOf("/") + 1)}.rels`)?.async("string")) ?? "",
+      );
+      // Not "does the id exist" — "does it still lead to a picture". Deleting a
+      // relationship frees its ID, and the tag writer takes the next free one:
+      // in the build without this fix, `rId21` came back pointing at
+      // `ppt/tags/tag1.xml`, so the icon's SVG resolved to a tag part. An id
+      // that exists and means something else is worse than one that is gone,
+      // and a test asking only whether it is gone cannot see it.
+      const images = new Map(
+        elements(rels, PKG_REL_NS, "Relationship")
+          .filter((r) => (r.getAttribute("Type") ?? "").endsWith("/image"))
+          .map((r) => [r.getAttribute("Id") ?? "", r.getAttribute("Target") ?? ""]),
+      );
+      expect(
+        [...named].filter((id) => !images.has(id)),
+        `${slide} names a picture through a relationship that is not an image`,
+      ).toEqual([]);
+    }
+  });
+
   it("leaves a chart with no fallback branch alone", async () => {
     // `mc:Fallback` is optional in the MCE schema and a producer may write
     // none. There is then nothing to replace, and inventing one would put a
