@@ -569,15 +569,51 @@ export function blockedReason(state: PaneState, step: StepId): string | null {
       // Not the same as having no data. A user who unticked every row has
       // done something deliberate and needs telling what, not "attach data".
       if (includedCount(state) === 0) return "Every row is unticked, so there is nothing to merge.";
-      const missing = unmatchedFields(state);
-      if (missing.length > 0) {
-        // Name them. A count alone sends the user back through every slide.
-        return `No column for ${missing.join(", ")}. Rename the column or the placeholder.`;
-      }
+      // A placeholder with no column used to be refused here. It is a CAUTION
+      // now — see `caution` below for why, and for where the sentence went.
       if (state.previewing) return "End the preview before merging.";
       return null;
     }
   }
+}
+
+/**
+ * Something true about this run that is worth saying and not worth refusing.
+ *
+ * Separate from `blockedReason` because the two answer different questions.
+ * That one says why a step cannot run; this one says what will happen when it
+ * does. Merging them is how a warning becomes a wall.
+ *
+ * A placeholder with no column was a wall until 2026-08-29, and three other
+ * parts of this project already disagreed with it:
+ *
+ * - the ENGINE leaves such a placeholder on the slide, deliberately, so a half
+ *   filled deck does not look finished;
+ * - the PREVIEW step ran the ordinary merge with one and produced correct
+ *   slides, having no such check of its own;
+ * - `docs/MANUAL.md` promises it in as many words — "a row whose picture is
+ *   missing keeps its placeholder, exactly as a text field with no column
+ *   does".
+ *
+ * The asymmetry was the tell. A field whose COLUMN is missing was refused; a
+ * field whose column exists but whose PICTURE is missing was allowed and
+ * documented. Both end with a placeholder on the slide.
+ *
+ * What the wall was protecting against is real — a typo merged across 240
+ * slides is expensive — but the user has already been told twice by here: the
+ * fields step outlines the chip and names it in a card, and this sentence sits
+ * directly above the button. Being told is the protection; being stopped was
+ * not.
+ */
+export function caution(state: PaneState, step: StepId): string | null {
+  if (step !== "merge") return null;
+  const missing = unmatchedFields(state);
+  if (missing.length === 0) return null;
+  // NAMED, not counted — a count alone sends the user back through every slide
+  // looking for it. And it says what will HAPPEN rather than what to fix: the
+  // placeholder staying is the documented behaviour, not a mistake to correct
+  // before pressing on.
+  return `No column for ${missing.join(", ")}. ${missing.length === 1 ? "It" : "They"} will stay on the slides as written.`;
 }
 
 export function statusOf(state: PaneState, step: StepId, current: StepId): Status {

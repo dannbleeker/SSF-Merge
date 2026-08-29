@@ -309,13 +309,31 @@ describe("the preview step", () => {
     //
     // Walking onto a blocked step is how the user is TOLD. It names the reason
     // and keeps its own way back, so nothing is lost by letting them arrive.
-    const missing: PaneState = { ...ready, fields: ["First", "Nickname"] };
-    expect(paneFor(missing, "preview").querySelector("[data-forward]")?.getAttribute("data-forward")).toBe("merge");
+    // Held against a state that STILL blocks the merge. `{{Nickname}}` was the
+    // original one and stopped being a blocker on 2026-08-29, when a
+    // placeholder with no column became a caution — so keeping it here would
+    // have left this test passing over a step nothing blocks, which is not the
+    // thing it is for.
+    const blocked: PaneState = { ...ready, fields: [] };
+    expect(paneFor(blocked, "preview").querySelector("[data-forward]")?.getAttribute("data-forward")).toBe("merge");
 
-    const merge = paneFor(missing, "merge");
-    expect(merge.querySelector(".blocked")?.textContent).toContain("No column for Nickname");
+    const merge = paneFor(blocked, "merge");
+    expect(merge.querySelector(".blocked")?.textContent, "a blocked step must say why").toBeTruthy();
     expect(merge.querySelector("[data-back]"), "a blocked step must keep its way back").not.toBeNull();
     expect((merge.querySelector("button.primary") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("warns about a placeholder with no column, and merges anyway", () => {
+    // The gate that used to stop this was the reason step 4 could dead-end, and
+    // it disagreed with the engine, with the preview step and with the manual.
+    // What is left is the sentence, above a button that works.
+    const missing: PaneState = { ...ready, fields: ["First", "Nickname"] };
+    const merge = paneFor(missing, "merge");
+    expect(merge.querySelector(".caution")?.textContent).toContain("No column for Nickname");
+    expect(merge.querySelector(".caution")?.textContent).toContain("stay on the slides as written");
+    expect((merge.querySelector("button.primary") as HTMLButtonElement).disabled, "the warning is a wall again").toBe(
+      false,
+    );
   });
 
   it("names the slides a preview landed on, so a closed pane is recoverable", () => {

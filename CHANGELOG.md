@@ -7,6 +7,34 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed — a placeholder with no column warns instead of refusing
+
+The merge step used to refuse to run at all while any placeholder on the slides
+had no column behind it. It names them and runs now, and the sentence says what
+will happen — `No column for Nickname. It will stay on the slides as written` —
+rather than what to fix.
+
+Three parts of this project already disagreed with the refusal. The **engine**
+leaves such a placeholder on the slide, deliberately, so a half-filled deck does
+not look finished. The **preview step** had no such check and ran the ordinary
+merge with one, correctly. And **docs/MANUAL.md** promised it in as many words:
+"a row whose picture is missing keeps its placeholder, exactly as a text field
+with no column does".
+
+The asymmetry was the tell. A field whose COLUMN was missing was refused; a
+field whose column existed but whose PICTURE was missing was allowed, and
+documented. Both end with a placeholder on the slide.
+
+What the refusal protected against is real — a typo merged across 240 slides is
+expensive — but by that screen the user has been told twice: the fields step
+outlines the chip and names it in a card, and this sentence sits directly above
+the button. Being told is the protection; being stopped was not.
+
+It is also what made `docs/TEST-KIT.md` step 5 possible to follow. The kit's own
+template carries `{{Nickname}}` on purpose, so its documented run could not be
+completed in a real host — the round of 2026-08-28 reached a merge only by adding
+a column the kit deliberately omits.
+
 ### Added — a chart's numbers, per recipient
 
 Type `{{Revenue}}` into a value cell of the chart's own data sheet, through Edit
