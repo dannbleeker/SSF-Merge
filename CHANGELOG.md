@@ -7,6 +7,33 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added — a chart's numbers, per recipient
+
+Type `{{Revenue}}` into a value cell of the chart's own data sheet, through Edit
+Data. Each merged copy then gets that row's figure, so the bars differ per
+recipient.
+
+No syntax of its own, which was the open question. The backlog assumed one would
+be needed — "there is nowhere in the values to put one" — because a
+`<c:numCache>` cell has to parse as a number. There is somewhere: the embedded
+workbook's own cell, where the placeholder is an ordinary shared string and
+`{{Column}}` means what it means everywhere else. `<c:f>` joins the two:
+`Sheet1!$B$2:$B$3` beside a two-point cache says point 0 is B2.
+
+Both copies move together, which is the whole difficulty. The workbook cell goes
+back to being numeric, because a chart plots nothing from text and Excel shows
+whoever presses Edit Data what is really in there; the chart's cache is written
+too, because that is what PowerPoint draws from without opening the workbook.
+Filling one and not the other is the half-merge this project already knows from
+the label side — right until Excel touches it, then reverted in front of the
+user.
+
+Two deliberate refusals. A format is ignored in a value cell:
+`{{Revenue|number:0}}` would hand back `1 250 000`, which is the right string and
+an unplottable cell. And a placeholder that does not resolve to a number is left
+exactly as written rather than becoming a zero, because a zero is a bar the data
+never asked for. The run counts those.
+
 ### Added — a test kit for the real-host round
 
 `test-kit/` holds a template carrying a chart, a picture frame, formatted

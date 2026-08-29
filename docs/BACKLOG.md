@@ -32,19 +32,6 @@ Blocked by WebView2: blob downloads from a task pane do not work
 ([office-js#1511](https://github.com/OfficeDev/office-js/issues/1511)). The
 route is Graph upload plus a link, or `openBrowserWindow` to a download page.
 
-### A chart's numbers, per recipient
-**Priority: medium.** Feasibility: medium.
-Chart and SmartArt TEXT merges (shipped 2026-08-28). The numbers do not: a
-bar's height comes from a `<c:numCache>` cell that has to parse as a number, so
-`{{Revenue}}` cannot be written there — a placeholder in one is deliberately
-left alone rather than replaced with something the chart cannot plot.
-
-Doing it means a syntax that is not a placeholder in the text (there is nowhere
-in the values to put one), writing both the cache and the embedded workbook's
-cells, and deciding what a non-numeric cell does. The workbook writer already
-exists — the text merge opens and rewrites it — so the missing half is the
-syntax and the numeric path, not the plumbing.
-
 ### A filter expression language
 **Priority: low.** Feasibility: medium.
 Row filters shipped as a searchable checkbox list. An expression — `Region =

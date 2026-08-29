@@ -20,9 +20,10 @@
  */
 import JSZip from "jszip";
 import { Pkg } from "../pptx/pkg.js";
-import { chartWorkbooksOf, graphicPartsOf } from "../pptx/graphics.js";
+import { chartWorkbooksOf, graphicPartsOf, workbookOfChart } from "../pptx/graphics.js";
 import { parseXml, serializeXml } from "../pptx/xml.js";
 import { mergeDocument, type Resolve } from "./text.js";
+import { emptyNumberOutcome, mergeChartNumbers, tallyNumbers, type NumberOutcome } from "./numbers.js";
 
 export interface GraphicOutcome {
   /** Text groups filled in chart and SmartArt parts. */
@@ -31,10 +32,12 @@ export interface GraphicOutcome {
   workbooks: number;
   /** Workbooks the merge could not open, by part path. Reported, never thrown on. */
   unreadable: string[];
+  /** Chart VALUES filled from the row, and the ones that refused to be numbers. */
+  numbers: NumberOutcome;
 }
 
 export function emptyGraphicOutcome(): GraphicOutcome {
-  return { merged: 0, workbooks: 0, unreadable: [] };
+  return { merged: 0, workbooks: 0, unreadable: [], numbers: emptyNumberOutcome() };
 }
 
 /**
@@ -70,6 +73,17 @@ export async function mergeGraphics(pkg: Pkg, slidePath: string, resolve: Resolv
   // reintroduced by the order of two loops.
   const parts = await graphicPartsOf(pkg, slidePath);
   const workbooks = await chartWorkbooksOf(pkg, slidePath);
+
+  // BEFORE the workbook's text pass, and that order is load bearing. The
+  // numeric pass recognises a value cell by the placeholder still standing in
+  // it; `mergeWorkbook` rewrites that shared string to the filled text, after
+  // which a cell reading "1250000" is indistinguishable from one somebody typed
+  // as a label. Going first is what keeps "the user meant this one to merge"
+  // knowable at all.
+  for (const part of parts) {
+    if (!part.startsWith("ppt/charts/")) continue;
+    tallyNumbers(out.numbers, await mergeChartNumbers(pkg, part, await workbookOfChart(pkg, part), resolve));
+  }
 
   for (const part of parts) out.merged += mergeDocument(await pkg.doc(part), resolve);
   for (const path of workbooks) {
@@ -140,5 +154,6 @@ async function mergeWorkbook(pkg: Pkg, path: string, resolve: Resolve): Promise<
 export function tallyGraphics(into: GraphicOutcome, from: GraphicOutcome): void {
   into.merged += from.merged;
   into.workbooks += from.workbooks;
+  tallyNumbers(into.numbers, from.numbers);
   for (const path of from.unreadable) if (!into.unreadable.includes(path)) into.unreadable.push(path);
 }

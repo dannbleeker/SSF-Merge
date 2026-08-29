@@ -641,12 +641,25 @@ point, and is why a merged deck with charts is bigger than one without.
 series NAMES, and every SmartArt box. The workbook behind the chart is merged
 too, so the labels are still right if you click Edit Data on a merged slide.
 
-**What is not**: the numbers. A bar's height comes from a cell that has to hold
-a number, and `{{Revenue}}` is not one — so a placeholder written into the
-values is left exactly as you typed it rather than replaced with something the
-chart cannot plot. Every merged copy plots the template's figures. A chart per
-recipient with that recipient's numbers is a different feature and is not built
-yet.
+**The numbers too, from the chart's own data sheet.** Right-click the chart,
+press **Edit Data**, and type `{{Revenue}}` into a value cell the way you would
+type a number. Each merged copy then gets that row's figure, written both into
+the sheet and into the chart itself — so the bars differ per recipient, and Edit
+Data still agrees with what is drawn.
+
+There is no separate syntax for it: a value cell holds the same `{{Column}}` as
+anything else. Two things are worth knowing.
+
+- **A format is ignored in a value cell.** `{{Revenue|number:0}}` in a title
+  reads `1 250 000`; in a value cell that string plots nothing, so the raw
+  number goes in and the chart formats its own axis.
+- **A value that will not be a number is left alone.** `{{Notes}}` in a value
+  cell stays exactly as you typed it rather than becoming a zero, because a zero
+  is a bar the data never asked for.
+
+While you are still editing the template that cell holds text, so its bar shows
+as nothing until you merge. That is the same as a slide reading `{{Name}}` until
+you merge, and it is not a sign anything is wrong.
 
 **Type the placeholder where the text is**, not where it is displayed. In a
 chart, click the title or the category axis and type there — or type it into the
