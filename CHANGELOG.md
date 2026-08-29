@@ -7,6 +7,36 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added — a new source directory cannot go unmeasured in silence
+
+`src/core/trace.ts` names this hazard in its own docstring, and says it chose
+where to live because of it:
+
+> the coverage config's `include` is a fixed list of three globs — a new
+> top-level directory would be measured by nothing, and an uncounted module is
+> how a threshold quietly stops meaning anything.
+
+Nothing enforced it. Four directories exist and all four are accounted for —
+three measured, `src/office` deliberately not — so this costs nothing today. The
+day somebody adds a fifth, the four thresholds go on passing while saying
+nothing whatever about it.
+
+The list lives in `scripts/coverage-scope.mjs`, read by the config and by the
+guard, with the reason for each exclusion beside it — a glob cannot carry one.
+So adding a directory is a decision somebody writes down rather than a line they
+forget.
+
+Importing `vitest.config.ts` into the test was the first attempt and does not
+work: pulling it into a test pulls it into the TypeScript project service, and
+lint refuses a file that is in two projects at once. Sharing the list is the
+better answer anyway — one definition, and the guard still measures it against
+what is actually on disk.
+
+It holds in both directions: a directory measured by nothing fails it, and so
+does an exclusion that has stopped being true — a reason for not measuring a
+directory that no longer exists, or that is measured after all, reads as a
+considered decision and is a leftover.
+
 ### Added — a guard on the guards
 
 `without-prose.mjs` is the shared stripper behind ten architecture guards, and

@@ -1,4 +1,6 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
+// @ts-expect-error — plain .mjs with no types, shared with the scripts.
+import { MEASURED, NOT_MEASURED } from "../scripts/coverage-scope.mjs";
 import { join, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 // @ts-expect-error — plain .mjs with no types, shared with the scripts.
@@ -494,5 +496,48 @@ describe("the pane's multi-field rules", () => {
     const src = readFileSync("src/pane/main.ts", "utf8");
     expect(/block:\s*undefined/.test(src), "main.ts clears the block by hand").toBe(false);
     expect(/excluded:\s*undefined/.test(src), "main.ts drops the row filter by hand").toBe(false);
+  });
+});
+
+describe("what coverage measures", () => {
+  /**
+   * `src/core/trace.ts` names this hazard in its own docstring, and chose where
+   * to live because of it: "the coverage config's `include` is a fixed list of
+   * three globs — a new top-level directory would be measured by nothing, and
+   * an uncounted module is how a threshold quietly stops meaning anything."
+   *
+   * Nothing enforced it. Four directories exist and all four are accounted for,
+   * so this costs nothing today; the day somebody adds a fifth, the thresholds
+   * go on passing while saying nothing about it.
+   *
+   * The exclusions carry their reason here rather than in a comment beside the
+   * glob, so adding a directory is a decision somebody has to write down.
+   */
+  const measured = MEASURED as string[];
+  const excused = NOT_MEASURED as Record<string, string>;
+
+  it("counts every directory under src, or says why not", () => {
+    const dirs = readdirSync("src", { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name);
+    expect(dirs.length, "the sweep stopped finding the source").toBeGreaterThan(2);
+
+    const unaccounted = dirs.filter((d) => !measured.includes(d) && !(d in excused));
+    expect(unaccounted, "measured by nothing, and no reason written down").toEqual([]);
+  });
+
+  it("has no exclusion that has stopped being true", () => {
+    // The other direction. A reason for not measuring a directory that no
+    // longer exists, or that is measured after all, is the same rot from the
+    // other end: it reads as a considered decision and is a leftover.
+    const dirs = new Set(
+      readdirSync("src", { withFileTypes: true })
+        .filter((e) => e.isDirectory())
+        .map((e) => e.name),
+    );
+    for (const name of Object.keys(excused)) {
+      expect(dirs.has(name), `src/${name} is excused from coverage and does not exist`).toBe(true);
+      expect(measured.includes(name), `src/${name} is excused from coverage and measured anyway`).toBe(false);
+    }
   });
 });
