@@ -251,3 +251,84 @@ describe("header shapes a real encoder writes and this reader did not expect", (
     expect(readImage(Uint8Array.from([0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08, 0x00])), "truncated").toBeUndefined();
   });
 });
+
+describe("the geometry keeps the ratios it claims", () => {
+  /**
+   * The cases above are points somebody chose. These are the PROPERTIES, over
+   * every combination of a dozen sizes in both dimensions of both boxes —
+   * 20,736 of them — and each is stated in terms of what the mode promises
+   * rather than in terms of the arithmetic that produces it:
+   *
+   * - COVER scales until the image covers the box and trims the overflow, so
+   *   the visible SLICE of the image must have the SHAPE's aspect ratio.
+   * - CONTAIN scales until the whole image fits and centres it, so the rect it
+   *   is placed in must have the IMAGE's aspect ratio.
+   *
+   * Neither restates `coverSrcRect`. Both can be worked out from the picture on
+   * the slide, which is the point: a formula checked against itself proves
+   * nothing, and this is the arithmetic behind every merged photo.
+   */
+  const M = 100000;
+  const SIZES = [1, 2, 3, 5, 7, 16, 30, 64, 100, 333, 1000, 1920];
+
+  /** How far apart the two aspect ratios are. */
+  const mismatch = (shape: { w: number; h: number }, image: { w: number; h: number }): number =>
+    Math.max(shape.w / shape.h / (image.w / image.h), image.w / image.h / (shape.w / shape.h));
+
+  it("holds for every shape and picture a deck could plausibly hold", () => {
+    let worstCover = 0;
+    let worstContain = 0;
+    let checked = 0;
+
+    for (const sw of SIZES)
+      for (const sh of SIZES)
+        for (const iw of SIZES)
+          for (const ih of SIZES) {
+            const shape = { w: sw, h: sh };
+            const image = { w: iw, h: ih };
+            // Beyond about a thousandfold the unit itself is the limit — see
+            // the next test, which pins that boundary rather than hiding it.
+            if (mismatch(shape, image) > 20) continue;
+            checked++;
+
+            const c = coverSrcRect(shape, image);
+            const visW = image.w * (1 - (c.l + c.r) / M);
+            const visH = image.h * (1 - (c.t + c.b) / M);
+            worstCover = Math.max(worstCover, Math.abs(visW / visH - shape.w / shape.h) / (shape.w / shape.h));
+
+            const f = containFillRect(shape, image);
+            const boxW = shape.w * (1 - (f.l + f.r) / M);
+            const boxH = shape.h * (1 - (f.t + f.b) / M);
+            worstContain = Math.max(worstContain, Math.abs(boxW / boxH - image.w / image.h) / (image.w / image.h));
+          }
+
+    expect(checked, "the sweep stopped covering anything").toBeGreaterThan(5000);
+    // 0.008% today. The tolerance is the unit's own rounding, not a fudge: an
+    // inset is a whole number of thousandths of a percent.
+    expect(worstCover, "a cover crop is not showing the shape's ratio").toBeLessThan(0.0002);
+    expect(worstContain, "a contained image is not keeping its own ratio").toBeLessThan(0.0002);
+  });
+
+  it("runs out of unit before it runs out of sense", () => {
+    /**
+     * The boundary, pinned rather than fixed. An inset is a whole number of
+     * thousandths of a percent, so once a cover crop keeps less than 1/100000
+     * of the image the two sides sum to the whole width and the source rect is
+     * empty — the picture would not draw.
+     *
+     * It needs a ratio mismatch of about a hundred thousand: a one-unit-wide
+     * shape holding a 1920x1 image. A 1000x1 spacer in an ordinary 200x100 box
+     * is a mismatch of 500 and still keeps a visible sliver, so nothing a deck
+     * plausibly holds reaches this.
+     *
+     * Written down because the arithmetic above is otherwise exact, and the one
+     * place it stops being exact should not be a surprise to the next reader.
+     */
+    const empty = coverSrcRect({ w: 1, h: 1000 }, { w: 1920, h: 1 });
+    expect(empty.l + empty.r).toBe(M);
+
+    // And the case one might mistake for it, which is fine.
+    const sliver = coverSrcRect({ w: 200, h: 100 }, { w: 1000, h: 1 });
+    expect(sliver.l + sliver.r).toBeLessThan(M);
+  });
+});

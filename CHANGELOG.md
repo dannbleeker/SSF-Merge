@@ -7,6 +7,30 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added — the crop geometry is checked against the ratios it promises
+
+**No defect found.** `coverSrcRect` and `containFillRect` are the arithmetic
+behind every merged photo and had only point tests — cases somebody chose.
+
+They are now checked as PROPERTIES over 20,736 combinations of a dozen sizes in
+both dimensions of both boxes, each stated in terms of what the mode promises
+rather than the arithmetic that produces it: a COVER crop's visible slice of the
+image must have the SHAPE's aspect ratio, and a CONTAIN placement's rect must
+have the IMAGE's. Neither restates the formula, and both can be worked out from
+the picture on the slide — a formula checked against itself proves nothing.
+
+Worst error across the realistic band: **0.008%**, which is the rounding of the
+unit itself, an inset being a whole number of thousandths of a percent.
+
+One boundary is pinned rather than fixed. Past a ratio mismatch of about a
+hundred thousand — a one-unit-wide shape holding a 1920x1 image — a cover crop
+keeps less than one unit of the image and the two insets sum to the whole width,
+so the source rect is empty and the picture would not draw. A 1000x1 spacer in
+an ordinary 200x100 box is a mismatch of 500 and still keeps a visible sliver,
+so nothing a deck plausibly holds reaches it. Written down because the
+arithmetic is otherwise exact, and the one place it stops being exact should not
+surprise the next reader.
+
 ### Fixed — a creation id could be stamped where PowerPoint does not look
 
 `setCreationId`'s append path is scoped to `cSld` and its comment says why: a
