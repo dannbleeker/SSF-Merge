@@ -7,6 +7,32 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added — a sweep for per-record parts two slides both point at
+
+Every part a merge writes into has to be the merging slide's own. A part type
+with no branch in `cloneSlideGraphics` means every record merges into ONE part
+and the whole deck shows the last row. That has been found three times, in three
+different part types, and each time the fix was a named branch for the type that
+was missed.
+
+The new test asserts the property instead: merge three records from a slide
+carrying a chart, its workbook, SmartArt, speaker notes and tags, walk every
+part reachable from each output slide however many hops out, and require that no
+two of them share anything under `ppt/charts`, `ppt/embeddings`,
+`ppt/notesSlides`, `ppt/tags` or a diagram's `data`/`drawing`. Reachability
+rather than a list of branches, so a part reached by a hop nobody thought about
+is still covered. Both places a diagram's drawing can be hung are swept.
+
+Deliberately not covered: layouts, masters, themes, and a SmartArt's `layout`,
+`colors` and `quickStyle`. Those are static definitions no pass writes into, and
+sharing them is as right as sharing the theme. Media is shared on purpose too —
+one logo across 240 rows is one part.
+
+**No defect found.** The sweep passes as written, and it was measured rather
+than trusted: removing the chart branch, the diagram branch, or the workbook
+clone each makes it fail, the last being the subtle one where the chart is
+copied and the workbook behind it is not.
+
 ### Fixed — a foreign tag's whitespace did not survive a merge
 
 An XML parser NORMALISES an attribute value: a literal newline, carriage return
