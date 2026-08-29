@@ -31,7 +31,10 @@ export {
   parseXml,
   serializeXml,
 } from "./pptx/xml.js";
-export { FIELD, fieldsIn, mergeDocument, mergeParagraph } from "./merge/text.js";
+// `fieldPattern()` rather than the pattern itself: a shared global regex hands
+// every caller the last one's `lastIndex`.
+export { editRuns, fieldPattern, fieldsIn, mergeDocument, mergeParagraph } from "./merge/text.js";
+export type { Edit } from "./merge/text.js";
 export { buildPlan, isTruthy, recordCount, slideCount } from "./merge/plan.js";
 export type { Block, BlockSlide, MergePlan, PlanOptions, PlanStep, SkippedSlide } from "./merge/plan.js";
 export { makeResolver } from "./merge/resolve.js";

@@ -263,3 +263,62 @@ describe("which sheet the formula names", () => {
     expect(one).not.toContain("1250000");
   });
 });
+
+describe("a workbook whose worksheet part is not named sheet1.xml", () => {
+  /**
+   * The worksheet list was collected by matching part names against
+   * `xl/worksheets/sheetN.xml`. Excel writes that name; a workbook built by
+   * anything else need not, and the format does not require it.
+   *
+   * The result was the quietest failure in this engine: not a wrong number, not
+   * a refusal, but NOTHING. `filled: 0`, `refused: 0`, the chart keeping its
+   * cached values, the deck looking finished — and the placeholder still
+   * sitting in the cell for whoever eventually clicks Edit Data.
+   *
+   * The workbook says which parts are its sheets, in `xl/workbook.xml` and its
+   * relationships. That is read now instead of the file names.
+   */
+  const spec: ChartSpec = {
+    categories: ["{{Name}}", "Everyone else"],
+    workbook: ["{{Name}}", "Everyone else"],
+    values: ["{{Revenue}}", "42"],
+  };
+
+  /** Rename the worksheet part, keeping every declaration that names it true. */
+  async function renameWorksheet(pkg: Pkg, to: string): Promise<void> {
+    const from = "xl/worksheets/sheet1.xml";
+    const embedding = pkg.partNames().find((p) => p.endsWith(".xlsx"));
+    const book = await JSZip.loadAsync(await pkg.bytes(embedding as string));
+    book.file(to, await book.file(from)!.async("string"));
+    book.remove(from);
+    const rels = await book.file("xl/_rels/workbook.xml.rels")!.async("string");
+    book.file("xl/_rels/workbook.xml.rels", rels.replace("worksheets/sheet1.xml", to.replace("xl/", "")));
+    const types = await book.file("[Content_Types].xml")!.async("string");
+    book.file("[Content_Types].xml", types.replace(`/${from}`, `/${to}`));
+    pkg.setBytes(embedding as string, await book.generateAsync({ type: "uint8array" }));
+  }
+
+  async function mergeRenamed(to: string) {
+    const pkg = await Pkg.open(await makeDeck([{ paragraphs: [["{{Name}}"]], chart: spec }]));
+    await renameWorksheet(pkg, to);
+    const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "n");
+    if (!prepared.ok) throw new Error(`the fixture was refused: ${prepared.why}`);
+    const records = toRecordSet(ROWS);
+    return runPlan(pkg, buildPlan(prepared.block, records, { runId: "n" }), records);
+  }
+
+  it("fills its numbers all the same", async () => {
+    const out = await mergeRenamed("xl/worksheets/data.xml");
+    expect(out.graphics.numbers, "the sheet was found by its file name, not its declaration").toEqual({
+      filled: 1,
+      refused: 0,
+    });
+  });
+
+  it("fills them when the part is not under xl/worksheets at all", async () => {
+    // The relationship target decides the path. Nothing in the format says a
+    // worksheet lives in that folder either.
+    const out = await mergeRenamed("xl/data.xml");
+    expect(out.graphics.numbers).toEqual({ filled: 1, refused: 0 });
+  });
+});

@@ -7,6 +7,42 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a chart's numbers were found by file name rather than by declaration
+
+The embedded workbook's worksheets were collected by matching part names against
+`xl/worksheets/sheetN.xml`. Excel writes that name. The format does not require
+it, and a workbook built by anything else need not.
+
+The result was the quietest failure in this engine: not a wrong number and not a
+refusal, but **nothing**. `filled: 0`, `refused: 0`, the chart keeping its cached
+values, the deck looking finished — and the placeholder still sitting in the cell
+for whoever eventually clicks Edit Data.
+
+A workbook states which parts are its sheets, in `xl/workbook.xml` and its
+relationships. That is read now. Two things came with it:
+
+- The worksheet list is resolved **once per workbook**. It was resolved once per
+  series, so both of those parts were reparsed for every `<c:numRef>` of every
+  chart of every record.
+- The relationship target goes through the package's own `resolveTarget`
+  instead of having `xl/` glued on by hand — right for the target Excel writes,
+  wrong for the two other shapes a target is allowed to take.
+
+### Changed — `fieldPattern()` replaces the exported `FIELD` regex
+
+`FIELD` is global, so it carries `lastIndex` between calls: `matchAll` copies
+that index onto the matcher it builds, and `test` leaves it wherever the match
+ended. One caller's leftover state decides where the next one starts reading,
+and the second silently misses every field before that offset.
+
+Three call sites had already worked around this by hand with
+`new RegExp(FIELD.source, FIELD.flags)`, a fourth reset `lastIndex` around each
+use, and a test wrote the clone a fifth time. Five spellings of one precaution
+is how the one that forgets gets written.
+
+`FIELD` is no longer exported. `fieldPattern()` hands back a fresh matcher, and
+the compiler now enforces what those five hand-written precautions were for.
+
 ### Fixed — a condition now decides before an empty cell does
 
 `onEmpty: "skip"` drops a record whose fields are not all filled. It looked at

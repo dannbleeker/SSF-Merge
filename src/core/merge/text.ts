@@ -46,13 +46,35 @@ import { A_NS, C_NS, SSML_NS, children, elements } from "../pptx/xml.js";
  * whitespace is eaten by the `\s*` either side, so `{{ Name }}` and `{{Name}}`
  * are the same field and match a header the parse has already trimmed.
  *
+ * NOT exported. Every caller goes through `fieldPattern` below, so nobody can
+ * borrow the shared `lastIndex` — the compiler enforces what four separate
+ * hand-written precautions used to.
+ *
  * Excluding `{`, `}` and `|` is what keeps it from running away: a match cannot
  * cross into the next placeholder, and the format pipe still splits. The one
  * thing it costs is a paragraph writing ABOUT the syntax — "use {{ and }} to
  * mark a field" now reads as a field called "and". That is a template author
  * documenting the tool inside the tool, and it is worth the pivot headers.
  */
-export const FIELD = /\{\{\s*([^{}|\r\n]*?[\p{L}\p{N}][^{}|\r\n]*?)\s*(?:\|\s*([^{}\r\n]+?)\s*)?\}\}/gu;
+const FIELD = /\{\{\s*([^{}|\r\n]*?[\p{L}\p{N}][^{}|\r\n]*?)\s*(?:\|\s*([^{}\r\n]+?)\s*)?\}\}/gu;
+
+/**
+ * A FRESH matcher for the same pattern, every call.
+ *
+ * `FIELD` is global, so it carries `lastIndex` between calls. `matchAll` copies
+ * that index onto the matcher it builds, and `test` leaves it wherever the
+ * match ended — so one caller's leftover state decides where another caller
+ * starts reading, and the second one silently misses every field before that
+ * offset.
+ *
+ * Three call sites had already worked around this by hand with
+ * `new RegExp(FIELD.source, FIELD.flags)`, and a fourth reset `lastIndex`
+ * around each use instead. Four spellings of one precaution is how the one that
+ * forgets gets written. Ask for a matcher; do not borrow the shared one.
+ */
+export function fieldPattern(): RegExp {
+  return new RegExp(FIELD.source, FIELD.flags);
+}
 
 /**
  * Whether a column name can be written as a field at all.
@@ -72,8 +94,7 @@ export const FIELD = /\{\{\s*([^{}|\r\n]*?[\p{L}\p{N}][^{}|\r\n]*?)\s*(?:\|\s*([
  */
 export function canBeField(column: string): boolean {
   const token = `{{${column}}}`;
-  // A fresh regex: `FIELD` is global and carries `lastIndex` between calls.
-  const hits = [...token.matchAll(new RegExp(FIELD.source, FIELD.flags))];
+  const hits = [...token.matchAll(fieldPattern())];
   return hits.length === 1 && hits[0]?.[0] === token && hits[0]?.[1] === column;
 }
 
@@ -135,7 +156,7 @@ export function mergeRuns(nodes: Element[], resolve: Resolve): boolean {
   if (!spans.length) return false;
 
   const edits: Edit[] = [];
-  for (const hit of joined.matchAll(FIELD)) {
+  for (const hit of joined.matchAll(fieldPattern())) {
     const value = resolve(hit[1] ?? "", hit[2]);
     // A field nobody can resolve stays visible. Blanking it hides the author's
     // typo behind 240 slides that look finished and are not.
@@ -252,7 +273,7 @@ export function fieldsIn(doc: Document): string[] {
   const seen = new Set<string>();
   for (const nodes of textGroups(doc)) {
     const { joined } = spansOf(nodes);
-    for (const hit of joined.matchAll(FIELD)) if (hit[1]) seen.add(hit[1]);
+    for (const hit of joined.matchAll(fieldPattern())) if (hit[1]) seen.add(hit[1]);
   }
   return [...seen];
 }
