@@ -229,8 +229,26 @@ export function readBlockDraft(draft: BlockDraft, deckSize?: number): BlockRead 
   const to = draft.to.trim();
   if (from === "" || to === "") return { block: null, why: null };
 
-  const a = Number(from);
-  const b = Number(to);
+  // The TEXT has to look like a decimal number before `Number` is asked what it
+  // is worth. `Number` reads far more than anybody types into a slide box: it
+  // takes `0x10` as sixteen, `0b11` as three, `0o17` as fifteen and `1e2` as a
+  // hundred.
+  //
+  // Both halves of that were wrong here. `0b11` was ACCEPTED, so the pane
+  // quietly merged slides 3 to 9 for somebody who had typed neither number. And
+  // the refusals named a cause they had invented: `0x10` produced "The block
+  // ends before it starts: slide 16 to 9", about a slide 16 that appears
+  // nowhere on the user's screen and in nothing they typed.
+  //
+  // A fractional part of zeros stays admitted, because `4.0` IS a whole number
+  // and refusing it with "4.0 is not one" would be a false sentence.
+  //
+  // Third time `Number()` has been too wide in this codebase — it took `0x10`
+  // out of a data cell as sixteen, and admitted an unreadable grouping — so the
+  // rule is the same one: ask the shape first.
+  const DECIMAL = /^[+-]?\d+(?:\.\d+)?$/;
+  const a = DECIMAL.test(from) ? Number(from) : Number.NaN;
+  const b = DECIMAL.test(to) ? Number(to) : Number.NaN;
   // Every refusal names what the USER typed, not just the rule. "Slides are
   // numbered from 1" is a true sentence that says nothing about the boxes in
   // front of them, and the manual promised numbers for all four cases while

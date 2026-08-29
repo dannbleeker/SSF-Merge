@@ -7,6 +7,29 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — the slide-number boxes read things nobody typed
+
+`Number` reads far more than anybody types into a slide box: `0x10` is sixteen,
+`0b11` is three, `0o17` is fifteen, `1e2` is a hundred.
+
+Both halves of that were wrong. **`0b11` was accepted**, so the pane quietly
+offered to merge slides 3 to 9 for somebody who had typed neither number into
+either box. And the refusals named a cause they had invented: `0x10` produced
+
+> The block ends before it starts: slide 16 to 9.
+
+about a slide 16 that appears nowhere on the user's screen and in nothing they
+typed. The sentence that WOULD have been true — "Slide numbers are whole
+numbers, and `0x10` is not one" — sat two lines above and never fired.
+
+The text has to look like a decimal number before `Number` is asked what it is
+worth. A fractional part of zeros stays admitted, because `4.0` is a whole
+number and refusing it with "4.0 is not one" would be a false sentence.
+
+Third time `Number()` has been wider than what a person typed in this codebase,
+after `0x10` read out of a data cell as sixteen and a grouping the parser could
+not read. The rule is the same each time: ask the shape first.
+
 ### Fixed — the number above the merge button ignored the conditions
 
 It read "9 slides added after slide 10, leaving 19 slides in the deck." The plan
