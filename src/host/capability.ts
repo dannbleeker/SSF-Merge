@@ -232,7 +232,18 @@ export function blockFromSelection(rangeIds: string[], deckIds: string[]): Selec
     // rather than skipped: quietly dropping it would build a block out of the
     // slides that happened to resolve.
     if (deckId === undefined) return { ok: false, why: "PowerPoint would not say which slides those are." };
-    numbers.push(deckIds.indexOf(deckId) + 1);
+    // ONCE each. The contiguity test below compares `to - from + 1` against how
+    // many numbers are in this list, and a count is not an alignment: name one
+    // slide twice and the count covers a gap it should have caught.
+    //
+    // Both directions were wrong, and one of them silently. A selection of
+    // slides 1 and 3 with slide 1 named twice counted three numbers spanning
+    // three slides and came back "slides 1 to 3" — building the template out of
+    // slide 2, which the user never selected, and which is the exact thing the
+    // comment above says must not happen. The other direction merely refused a
+    // selection that was fine.
+    const number = deckIds.indexOf(deckId) + 1;
+    if (!numbers.includes(number)) numbers.push(number);
   }
 
   numbers.sort((a, b) => a - b);
