@@ -16,6 +16,7 @@ import {
   STEP_TITLE,
   blockSlides,
   blockedReason,
+  caution,
   chosenBlock,
   conditionFor,
   danglingConditions,
@@ -122,6 +123,18 @@ export function render(root: HTMLElement, state: PaneState, current: StepId): vo
 
   const why = blockedReason(state, current);
   if (why) main.append(el(doc, "p", { class: "blocked", text: why }));
+
+  // A caution reads in the same place and the same muted grey as a blocked
+  // reason, because it is the same kind of thing to the eye: a sentence about
+  // this run, above the button. Deliberately NOT orange — the budget is one
+  // orange per screen, the tick already holds it here, and a warning that had
+  // to fight the tick for it would have made this a layout change as well as a
+  // behaviour one.
+  //
+  // They cannot both appear: `caution` answers only on the merge step, and a
+  // merge step with a blocked reason has an unpressable button anyway.
+  const headsUp = caution(state, current);
+  if (headsUp) main.append(el(doc, "p", { class: "blocked caution", text: headsUp }));
 
   // What the HOST said, kept separate from what the step needs: "PowerPoint
   // would not name every slide between 4 and 6" is not a thing the user did

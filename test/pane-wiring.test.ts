@@ -979,11 +979,11 @@ describe("the conditional slide control", () => {
      * said — which is exactly what the engine's `unknownConditions` exists to
      * prevent.
      */
-    // A condition on a column the TEMPLATE does not use, so that dropping it
-    // leaves the merge otherwise reachable: with the condition on a column
-    // that is also a field, the re-paste would block the merge on the
-    // unmatched field instead and this test would never reach the screen it
-    // is about.
+    // A condition on a column the TEMPLATE does not use, so this test is about
+    // a dropped CONDITION rather than a dropped field. (It used to matter more:
+    // an unmatched field blocked the merge until 2026-08-29 and this test could
+    // not have reached the screen it is about. It is a caution now, so the
+    // separation is for clarity rather than for reachability.)
     await reachMerge();
     backToData();
     type("paste", "First\tLast\tRegion\nAda\tLovelace\tEMEA\nGrace\tHopper\tAMER");
@@ -1394,5 +1394,48 @@ describe("the pictures the user picked", () => {
     (pane().querySelector("[data-back]") as HTMLElement).click(); // preview -> fields
     (pane().querySelector("[data-back]") as HTMLElement).click(); // fields -> data
     expect(pane().textContent).toContain("1 of 2 matched. Missing: grace.png.");
+  });
+});
+
+describe("a placeholder with no column", () => {
+  it("warns on the merge screen and still merges", async () => {
+    /**
+     * The whole point of turning that gate into a caution, end to end.
+     *
+     * Until 2026-08-29 this state stopped the merge, which is also what made
+     * step 4 a dead end — the only way out of the preview step was drawn on the
+     * merge being reachable. The engine has always left such a placeholder on
+     * the slide, the preview step has always run the ordinary merge with one,
+     * and docs/MANUAL.md promises it.
+     */
+    await openPane();
+    await settle();
+    type("from", "4");
+    type("to", "6");
+    office.inspectBlock.mockResolvedValueOnce({
+      ...REPORT,
+      fields: ["First", "Nickname"],
+      detail: "2 placeholders in slides 4 to 6.",
+    });
+    primary().click(); // template -> data
+    await settle();
+    // No Nickname column, deliberately. This is the test kit's own shape.
+    type("paste", "First\tLast\nAda\tLovelace\nGrace\tHopper");
+    primary().click(); // data -> fields
+    office.inspectBlock.mockResolvedValueOnce({ ...REPORT, fields: ["First", "Nickname"] });
+    primary().click(); // fields -> preview
+    await settle();
+
+    (pane().querySelector("[data-forward]") as HTMLElement).click(); // -> merge
+
+    expect(said().join(" "), "the user is told which one").toContain("No column for Nickname");
+    expect(said().join(" ")).toContain("stay on the slides as written");
+    expect(primary().disabled, "the caution became a wall again").toBe(false);
+
+    office.runMerge.mockResolvedValueOnce(OUTCOME);
+    primary().click();
+    await settle();
+    expect(office.runMerge).toHaveBeenCalledTimes(1);
+    expect(said().join(" ")).toContain("6 slides added");
   });
 });

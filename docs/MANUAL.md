@@ -89,6 +89,13 @@ offers to take them straight back out again.
    will be afterwards. Press it, look at the result, and if you do not like it
    press **Remove these slides**.
 
+   If a placeholder on your slides has no column behind it, this screen names it
+   and says it will stay on the slides as written. That is a **warning, not a
+   refusal** — press on if you meant it, or go back and fix the spelling if you
+   did not. It used to stop the merge, which was wrong in both directions: it
+   refused something the engine does deliberately, and it did not help anyone
+   who genuinely wanted the placeholder left alone.
+
 If any step does anything other than this, the pane's run record is at the
 bottom of the screen once a run finishes — open **What this run did, step by
 step**, select it, and copy it. It carries no cell values, only structure.

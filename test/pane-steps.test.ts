@@ -23,6 +23,7 @@ import {
   imagesWanted,
   slidesPerRecord,
   statusOf,
+  caution,
   unmatchedFields,
   visibleRows,
 } from "../src/pane/steps.js";
@@ -93,10 +94,40 @@ describe("what blocks a step", () => {
   it("NAMES the placeholders that have no column", () => {
     // A count alone sends the user back through every slide looking for it.
     const missing: PaneState = { ...ready, fields: ["First", "Nickname", "Badge"] };
-    const why = blockedReason(missing, "merge") ?? "";
-    expect(why).toContain("Nickname");
-    expect(why).toContain("Badge");
-    expect(why).not.toContain("First");
+    const said = caution(missing, "merge") ?? "";
+    expect(said).toContain("Nickname");
+    expect(said).toContain("Badge");
+    expect(said).not.toContain("First");
+  });
+
+  it("does not REFUSE the merge over them", () => {
+    // It did until 2026-08-29, and three other parts of this project disagreed:
+    // the engine leaves such a placeholder on the slide on purpose, the preview
+    // step ran the ordinary merge with one, and docs/MANUAL.md promises it. The
+    // asymmetry was the tell — a field whose column was missing was refused, a
+    // field whose PICTURE was missing was allowed and documented, and both end
+    // with a placeholder on the slide.
+    const missing: PaneState = { ...ready, fields: ["First", "Nickname"] };
+    expect(blockedReason(missing, "merge")).toBeNull();
+    expect(primary(missing, "merge").enabled).toBe(true);
+  });
+
+  it("says what will happen rather than what to fix", () => {
+    // "Rename the column or the placeholder" reads as a demand to correct a
+    // mistake. Staying on the slide is the documented behaviour, so the
+    // sentence says that instead.
+    const one: PaneState = { ...ready, fields: ["First", "Nickname"] };
+    expect(caution(one, "merge")).toContain("It will stay on the slides as written");
+    const two: PaneState = { ...ready, fields: ["First", "Nickname", "Badge"] };
+    expect(caution(two, "merge")).toContain("They will stay on the slides as written");
+  });
+
+  it("is silent on every other step, and when everything matches", () => {
+    expect(caution(ready, "merge"), "nothing is unmatched").toBeNull();
+    const missing: PaneState = { ...ready, fields: ["First", "Nickname"] };
+    for (const step of ["template", "data", "fields", "preview"] as const) {
+      expect(caution(missing, step), step).toBeNull();
+    }
   });
 
   it("refuses to merge while a preview is still in the deck", () => {
