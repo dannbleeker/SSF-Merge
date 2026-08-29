@@ -340,10 +340,25 @@ export async function replaceModernChartFallbacks(pkg: Pkg, slidePath: string): 
     if (!isChart) continue;
 
     // The graphic frame's own box, so the notice lands where the chart is
-    // rather than at a guessed position. `<p:xfrm>` holds them, and these are
-    // the only `a:off`/`a:ext` a graphic frame has.
-    const off = element(choice, A_NS, "off");
-    const ext = element(choice, A_NS, "ext");
+    // rather than at a guessed position — read out of `<p:xfrm>` and nowhere
+    // else.
+    //
+    // `a:ext` is TWO elements with one name. It is a size, `<a:ext cx cy>`
+    // inside an `xfrm`, and it is an extension-list entry, `<a:ext uri="{GUID}">`
+    // inside an `<a:extLst>`, which is where a producer hangs its own markup.
+    // PowerPoint writes an `<a:extLst>` in the frame's `<p:cNvPr>` carrying a
+    // creation id, so a descendant search for the first `a:ext` in the Choice
+    // branch finds THAT — before the `<p:xfrm>` it was looking for — and the
+    // notice was given an `<a:xfrm>` holding an offset and a creation id in
+    // place of a size. A shape with no `cx`/`cy` is a shape a host cannot draw.
+    //
+    // Every fixture here was written without an `extLst`, so the suite agreed
+    // with the reader; the first chart real PowerPoint wrote had one. Same
+    // overloaded-element trap as `<cx:pt>`, which is a label in a `strDim` and a
+    // value in a `numDim`: scope by the parent, never by the name.
+    const xfrm = element(choice, P_NS, "xfrm");
+    const off = xfrm && child(xfrm, A_NS, "off");
+    const ext = xfrm && child(xfrm, A_NS, "ext");
     while (fallback.firstChild) fallback.removeChild(fallback.firstChild);
     fallback.appendChild(notice(doc, off, ext));
     replaced++;

@@ -409,7 +409,17 @@ function modernChartFrame(spec: ModernChartSpec): string {
   return (
     `<mc:AlternateContent ${MC_NS}>` +
     `<mc:Choice xmlns:cx2="http://schemas.microsoft.com/office/drawing/2015/10/21/chartex" Requires="cx2">` +
-    `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="6" name="Chart 5"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr>` +
+    // The `<a:extLst>` is not decoration. PowerPoint writes one in a chart
+    // frame's `<p:cNvPr>`, and the `<a:ext uri="{GUID}">` inside it shares its
+    // name with the SIZE element in `<p:xfrm>` below while standing earlier in
+    // the document — so a reader that searches for the first `a:ext` by name
+    // finds a creation id and gives the fallback notice no size at all. Every
+    // fixture here was written without one until a deck real PowerPoint had
+    // saved showed up carrying it.
+    `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="6" name="Chart 5">` +
+    `<a:extLst><a:ext uri="{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}">` +
+    `<a16:creationId xmlns:a16="http://schemas.microsoft.com/office/drawing/2014/main" id="{460B2BF8-B46D-8C8B-2E20-223AA4200A65}"/>` +
+    `</a:ext></a:extLst></p:cNvPr><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr>` +
     `<p:xfrm>${box}</p:xfrm>` +
     `<a:graphic><a:graphicData uri="http://schemas.microsoft.com/office/drawing/2014/chartex">` +
     `<cx:chart ${CX_NS} ${R} r:id="rId7"/></a:graphicData></a:graphic></p:graphicFrame>` +
