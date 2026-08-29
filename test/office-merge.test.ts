@@ -182,6 +182,43 @@ describe("the whole-deck route sends only the merged slides", () => {
     const sent = host.insertDeck.mock.calls[0]?.[0] as string;
     expect(await (await Pkg.open(sent)).slidePaths()).toHaveLength(2);
   });
+  describe("when more slides arrive than the package held", () => {
+    /**
+     * `added` is measured from the DECK rather than from the plan, and that is
+     * right: when the host lands fewer slides than it was handed, the deck knows
+     * and the plan does not.
+     *
+     * It is wrong in the other direction, and the wrongness is not cosmetic.
+     * `sweepPlan` refuses to sweep when the deck grew by more than the run added
+     * — the clamp that keeps an undo off a stranger's slides — and an uncapped
+     * `added` absorbs the excess, so `grew` and `added` are equal by construction
+     * and that clamp can never fire. Six slides arriving across an insert of two
+     * would have authorised deleting six.
+     *
+     * Capped, the same case leaves `grew > added` true at undo time and the sweep
+     * refuses, which is the answer the rule was written to give.
+     */
+    it("counts only as many as it sent", async () => {
+      host.readTemplate.mockResolvedValueOnce({ base64: await wholeDeck(), offset: 2 });
+      host.insertDeck.mockResolvedValueOnce({ verdict: "yes", detail: "landed", landed: 6, before: 5, after: 11 });
+
+      const out = await runMerge({ from: 3, to: 3, records: rows });
+      const held = (await (await Pkg.open(host.insertDeck.mock.calls[0]?.[0] as string)).slidePaths()).length;
+
+      expect(held, "the fixture stopped exercising the case").toBe(2);
+      expect(out.added, "the deck's growth was taken as this run's own").toBe(held);
+    });
+
+    it("does not report a negative number of slides", async () => {
+      // A deck that SHRANK across an insert. Nothing this run did, and nothing it
+      // can take back.
+      host.readTemplate.mockResolvedValueOnce({ base64: await wholeDeck(), offset: 2 });
+      host.insertDeck.mockResolvedValueOnce({ verdict: "no", detail: "shrank", landed: -2, before: 5, after: 3 });
+
+      const out = await runMerge({ from: 3, to: 3, records: rows });
+      expect(out.added).toBe(0);
+    });
+  });
 });
 
 describe("a torn insert is reported in rows", () => {

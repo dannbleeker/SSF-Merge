@@ -7,6 +7,42 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a deck that grew by more than the package held authorised deleting all of it
+
+`added` is measured from the DECK rather than from the plan, and that is right:
+when the host lands fewer slides than it was handed, the deck knows and the plan
+does not. It was wrong in the other direction, and not cosmetically.
+
+`sweepPlan` refuses to sweep when the deck grew by more than the run added —
+that clamp is what keeps an undo off a stranger's slides. An uncapped `added`
+absorbs the excess, so `grew` and `added` are equal by construction and the
+clamp can never fire. Six slides arriving across an insert of three would have
+authorised deleting six, three of them somebody else's.
+
+`added` is capped at what the package actually held now, so the same case leaves
+`grew > added` true at undo time and the sweep refuses — which is the answer
+that rule was written to give. A deck that shrank reports zero rather than a
+negative count.
+
+### Fixed — `insertVerdict` called two impossible things a partial insert
+
+The branch for "the delta is neither zero nor what was expected" also caught the
+delta being LARGER, and the delta being negative:
+
+- `5 of 3 slide(s) landed, which is a partial insert rather than a refusal`
+- `-2 of 3 slide(s) landed, which is a partial insert rather than a refusal`
+
+Neither is a partial insert, and the first is a sentence that cannot be true. It
+named a cause for a condition it had not distinguished.
+
+Both are `unknown` now — slides plainly arrived — with a detail that names the
+condition and stops: the deck grew by more than the package held, so this run
+cannot say which of them are its own.
+
+Whether a host can land more than it was given is unproven. A user clicking in
+PowerPoint while the pane works, or another add-in, reaches the same state, and
+the clamp it defeated is the one guarding somebody's slides.
+
 ### Fixed — a removed slide left its tag part behind
 
 `orphanedParts` collects what only the departing slide keeps alive, and it
