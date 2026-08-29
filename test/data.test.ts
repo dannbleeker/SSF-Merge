@@ -542,3 +542,65 @@ describe("the day written as an ordinal", () => {
     expect(detectType(["03/01/2026"])).toBe("text");
   });
 });
+
+describe("the number gate and the number parser cannot disagree", () => {
+  /**
+   * `detectType` asks `looksLikeNumber`; `applyFormat` asks `numericValue`. A
+   * form one accepts and the other cannot read is a column typed as a number
+   * that renders raw — the failure this pair has now produced twice, once
+   * through `Number()` and once through the grouping pattern.
+   *
+   * `1,234,5` is nobody's locale, but the gate admitted it and the parser
+   * returned undefined, so it is the same defect however unlikely the cell.
+   * The pattern now captures the grouping separator, makes the later groups
+   * repeat THAT one, and forbids a decimal part from reusing it.
+   */
+  const CORPUS = (() => {
+    const seps = ["", ",", ".", " "];
+    const groups = ["", "0", "5", "12", "234", "1234"];
+    const out = new Set<string>();
+    for (const a of groups)
+      for (const s1 of seps)
+        for (const b of groups)
+          for (const s2 of seps)
+            for (const c of groups) {
+              const v = a + s1 + b + s2 + c;
+              if (v === "" || !/\d/.test(v)) continue;
+              out.add(v);
+              out.add("-" + v);
+            }
+    return [...out];
+  })();
+
+  it("agrees about every arrangement of digits and separators", () => {
+    // Swept rather than listed, because the shapes that broke it were the ones
+    // nobody thought to write down. Reverting the pattern to its previous form
+    // puts 64 of these back.
+    const violations = CORPUS.filter((v) => looksLikeNumber(v) !== (numericValue(v) !== undefined));
+    expect(violations, "a form one of them accepts and the other cannot read").toEqual([]);
+    expect(CORPUS.length, "the sweep stopped covering anything").toBeGreaterThan(5000);
+  });
+
+  it("refuses a separator used for both grouping and the decimal", () => {
+    for (const v of ["1,234,5", "1.234.5", "1 234 5"]) {
+      expect(looksLikeNumber(v), v).toBe(false);
+      expect(numericValue(v), v).toBeUndefined();
+    }
+  });
+
+  it("reads a lone three-digit group the same way for both separators", () => {
+    /**
+     * The comment beside the dot branch claimed a single `1.234` stayed a
+     * decimal. It never did — `+` is one or more, so one group has always been
+     * read as grouping, which is also what the comma branch does with `1,500`.
+     * Pinned here because the two readings differ by a factor of a thousand and
+     * the only thing worse than picking one is not knowing which was picked.
+     */
+    expect(numericValue("1.234")).toBe(1234);
+    expect(numericValue("1,234")).toBe(1234);
+    expect(numericValue("1 234")).toBe(1234);
+    // Two digits after the separator is not a group, and stays a decimal.
+    expect(numericValue("1.23")).toBe(1.23);
+    expect(numericValue("1,23")).toBe(1.23);
+  });
+});
