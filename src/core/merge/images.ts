@@ -16,10 +16,9 @@ import { readImage } from "../image/read.js";
 import { fillShapeWithImage, shapeOf } from "../image/place.js";
 import type { FillMode } from "../image/fill.js";
 import type { Pkg } from "../pptx/pkg.js";
+import { REL_TYPE } from "../pptx/parts.js";
 import { A_NS, elements } from "../pptx/xml.js";
 import { editRuns, fieldPattern, type Edit } from "./text.js";
-
-const IMAGE_REL_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image";
 
 /**
  * The formats that mean "this is a picture", and which fill they ask for.
@@ -218,7 +217,7 @@ export async function placeImages(
       }
 
       const partPath = await media.part(bytes, info.extension, info.contentType);
-      const rId = await pkg.addRel(path, IMAGE_REL_TYPE, relativeTo(path, partPath));
+      const rId = await pkg.addRel(path, REL_TYPE.image, relativeTo(path, partPath));
       const placed = fillShapeWithImage(doc, target, rId, mode, { w: info.width, h: info.height });
       if (placed.mode === "stretch" && mode !== "stretch") note(out.stretched, name);
       filled.add(target);

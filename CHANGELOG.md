@@ -7,6 +7,30 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed — a slide's relationship types are spelled out once
+
+These strings decide which parts a clone copies, which a clone drops, and which
+a removal deletes. They were written out across six files, three of them twice:
+`NOTES_REL_TYPE` in `pkg.ts` and again in `clone.ts`, `COMMENT_REL_TYPES` in
+both, `TAGS_REL_TYPE` in `clone.ts` and again in `tags.ts`.
+
+The copies agreed and nothing had gone wrong. What made it worth ending is which
+decisions they drive: one copy of the comment list says what a CLONE drops, the
+other says what a REMOVAL deletes. PowerPoint has already added a second
+spelling of comments once — the modern web one, under a Microsoft namespace —
+and adding a third to one copy and not the other leaves a clone carrying a
+comment part the removal will not clean up, or a removal deleting one a
+surviving slide still points at.
+
+`parts.ts` holds the vocabulary, and the two ownership patterns with it: what a
+slide owns, and what a chart or diagram may drag out of the package. Both were
+moved rather than retyped, so the anchoring that keeps a crafted relationship
+from naming `ppt/presentation.xml` is character-for-character what it was.
+
+An architecture guard fails on any relationship type written out anywhere else.
+
+Behaviour-preserving: 859 tests before, 859 after, none edited.
+
 ### Changed — one list of the parts a merge touches
 
 `prepare` reads those parts to say what a block holds; `runPlan` and
