@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 // @ts-expect-error — plain .mjs with no types, shared with the scripts.
 import * as prose from "../scripts/without-prose.mjs";
 
@@ -104,5 +106,78 @@ describe("withoutTsComments", () => {
     expect(out).toContain("sheet.deckRead}`");
     expect(out).not.toContain("explained here");
     expect(out).not.toContain("and here");
+  });
+});
+
+describe("the limit of a stripper that is not a parser", () => {
+  /**
+   * These are deliberately NOT parsers — the module says so, and each is the
+   * smallest thing that makes its own guard honest. That trade has a boundary,
+   * and this is where it is.
+   *
+   * `withoutTsComments` finds block comments with a regex, so a `/*` inside a
+   * STRING opens one and the next `*` followed by a slash closes it. Everything
+   * between them leaves the file the guard is reading. The guard then reports
+   * that the file does not do a thing it plainly does — which is the shape
+   * three separate guards in this repo have already failed in, and the one
+   * failure direction that looks like success.
+   *
+   * Pinned rather than fixed. Fixing it means tokenising, which is the parser
+   * the module refuses to be, and no file in this repo trips it — the sweep
+   * below is what says so, and it is what will fail on the day one does.
+   */
+  const comments = withoutTsComments as (s: string) => string;
+
+  it("loses the code between two strings that open and close a comment", () => {
+    const src = ['const OPEN = "/*";', "const kept = realCall();", 'const CLOSE = "*/";'].join("\n");
+    expect(comments(src), "the limitation moved — check the sweep below still guards it").not.toContain("realCall");
+  });
+
+  it("is untroubled by an opener with no closer", () => {
+    // The reassuring half, and the reason this has never bitten: it takes BOTH.
+    const src = ['const u = "https://example.com/*";', "const kept = realCall();"].join("\n");
+    expect(comments(src)).toContain("realCall");
+  });
+});
+
+describe("no file in this repo trips that limit", () => {
+  /**
+   * The sweep that makes the pin above safe to leave. Every `export` a file
+   * declares has to survive `withoutTsComments`, which keeps literals and
+   * removes only prose.
+   *
+   * An export named inside a COMMENT is expected to disappear with it — this
+   * repo's doc comments quote declarations constantly — so those are allowed by
+   * checking whether the line it was found on is a comment line. Without that
+   * the sweep reports `scripts/sibling-watch.mjs`, whose docstring quotes
+   * `export const NAME`, and a sweep that cries wolf is one somebody widens
+   * until it is quiet.
+   */
+  const comments = withoutTsComments as (s: string) => string;
+  const DECLARATION = /export (?:async )?(?:function|const|class|interface|type) ([A-Za-z0-9_]+)/g;
+
+  function sourceFiles(dir: string): string[] {
+    return readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+      e.isDirectory() ? sourceFiles(join(dir, e.name)) : /\.(ts|mjs)$/.test(e.name) ? [join(dir, e.name)] : [],
+    );
+  }
+
+  it("keeps every declaration a file makes outside a comment", () => {
+    const files = ["src", "scripts", "test"].flatMap(sourceFiles);
+    expect(files.length, "the sweep stopped finding any source").toBeGreaterThan(40);
+
+    const lost: string[] = [];
+    for (const file of files) {
+      const src = readFileSync(file, "utf8");
+      const kept = new Set([...comments(src).matchAll(DECLARATION)].map((m) => m[1] as string));
+      for (const line of src.split("\n")) {
+        // A line of prose that QUOTES a declaration is not a declaration.
+        if (/^\s*(\*|\/\/)/.test(line)) continue;
+        for (const m of line.matchAll(DECLARATION)) {
+          if (!kept.has(m[1] as string)) lost.push(`${file}: ${m[1] as string}`);
+        }
+      }
+    }
+    expect(lost, "the stripper ate a declaration, so a guard is reading a file that is not there").toEqual([]);
   });
 });

@@ -7,6 +7,34 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added — a guard on the guards
+
+`without-prose.mjs` is the shared stripper behind ten architecture guards, and
+the module says plainly that none of its functions is a parser: each is the
+smallest thing that makes its own guard honest. That trade has a boundary, and
+it was not written down.
+
+`withoutTsComments` finds block comments with a regex, so a `/*` inside a STRING
+opens one and the next `*/` closes it. Everything between them leaves the file
+the guard is reading, and the guard then reports that the file does not do a
+thing it plainly does. That is the same failure direction three separate guards
+in this repo have already taken, and the one that looks like success.
+
+**No file in this repo trips it**, and a sweep now says so rather than leaving
+it to be assumed: every declaration a file makes outside a comment has to
+survive the stripper. It fails the day one does, naming the file and what was
+lost.
+
+The boundary itself is pinned by two unit tests — the case that breaks it, and
+the near-miss that does not, since it takes an opener AND a closer, which is why
+this has never bitten.
+
+The sweep allows a declaration QUOTED IN A COMMENT to disappear with the
+comment, because this repo's docstrings quote them constantly. Without that it
+reports `scripts/sibling-watch.mjs`, whose docstring quotes
+`export const NAME` — and a sweep that cries wolf is one somebody widens until
+it is quiet.
+
 ### Added — the release gate refuses a production manifest served over http
 
 Office fetches every address a manifest names and requires HTTPS for all of
