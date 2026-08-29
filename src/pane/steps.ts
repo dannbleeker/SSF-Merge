@@ -179,6 +179,21 @@ export interface PaneState {
    */
   added?: number;
   /**
+   * Whether the state has changed since that merge landed.
+   *
+   * `added` used to carry both halves of "a merge just landed": the button's
+   * disarm and the undo card's numbers. Every edit cleared it, so unticking a
+   * row on the merge screen re-armed the button — which is right — and
+   * withdrew the only offer to take the slides back — which is not. The slides
+   * were still in the deck and `main.ts` still held the numbers to remove
+   * them; nothing on screen said so.
+   *
+   * So the two facts are separate. `added` is what is IN THE DECK, and only an
+   * undo or a later run changes it. This is whether the run the button would
+   * launch is still the run that landed, and any edit ends it.
+   */
+  changedSinceMerge?: boolean;
+  /**
    * How many slides the deck held BEFORE that merge.
    *
    * The undo card is a positional offer, and position means nothing without
@@ -855,7 +870,9 @@ export function primary(state: PaneState, step: StepId): Primary {
     case "merge": {
       // A run that already landed. Re-arming this button beside a notice
       // saying the slides were added is how a deck gets them twice.
-      if (state.added !== undefined) {
+      // An EDIT re-arms it, because an edit is a different merge. The undo
+      // card does not go with it: the slides that landed are still there.
+      if (state.added !== undefined && !state.changedSinceMerge) {
         return { label: `Added ${state.added} slide${state.added === 1 ? "" : "s"}`, enabled: false };
       }
       // The INCLUDED rows, never the pasted ones. A user who has taken three

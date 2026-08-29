@@ -26,6 +26,10 @@ import type { PaneState } from "./steps.js";
  * one slide later would apply it to a different slide — and a finished run's
  * disarmed button is about a merge this state no longer describes.
  *
+ * `added` is deliberately NOT cleared. It is what the last run put IN THE
+ * DECK, and moving the block does not take those slides out — clearing it took
+ * the undo card off the screen while they were still there.
+ *
  * `notice` is deliberately NOT here. Two of the callers set one of their own,
  * and clearing it inside this would make the order of two statements decide
  * whether the user sees the sentence.
@@ -37,7 +41,7 @@ export function blockMoved(state: PaneState): PaneState {
     fields: [],
     imageFields: [],
     conditions: undefined,
-    added: undefined,
+    changedSinceMerge: true,
     // The note names a token that was put on a slide in the OLD block. Left
     // standing it reports an insert into slides this state no longer names.
     fieldNote: undefined,
@@ -51,12 +55,12 @@ export function blockMoved(state: PaneState): PaneState {
  * row 7 of the new one, and carrying an exclusion across would take out a row
  * the user never looked at. Conditions are NOT cleared — a condition is about
  * the template, and a column the new data lacks is reported rather than quietly
- * dropped.
+ * dropped. Neither is `added`, for the reason `blockMoved` gives.
  */
 export function dataChanged(state: PaneState): PaneState {
   return {
     ...state,
-    added: undefined,
+    changedSinceMerge: true,
     // A new paste can have different columns, so a note about `{{Region}}`
     // being placed may now be about a column nothing will fill.
     fieldNote: undefined,

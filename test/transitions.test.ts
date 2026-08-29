@@ -43,9 +43,13 @@ describe("when the block moves", () => {
     expect(after.conditions).toBeUndefined();
   });
 
-  it("disarms a finished run and its note", () => {
-    expect(after.added, "the button stays armed for a merge this state no longer describes").toBeUndefined();
+  it("disarms a finished run and its note, and KEEPS what it added", () => {
+    expect(after.changedSinceMerge, "the button is armed for a merge this state no longer describes").toBe(true);
     expect(after.fieldNote, "reports an insert into slides this state no longer names").toBeUndefined();
+    // Moving the block does not take the last run's slides out of the deck,
+    // and `added` is what the undo card is drawn from. Clearing it withdrew
+    // the only offer to remove them while they were still there.
+    expect(after.added, "still in the deck, so still offered back").toBe(12);
   });
 
   it("leaves alone what the block does not decide", () => {
@@ -76,8 +80,9 @@ describe("when new data arrives", () => {
     expect(after.fields).toEqual(["Name", "Photo"]);
   });
 
-  it("disarms a finished run and its note", () => {
-    expect(after.added).toBeUndefined();
+  it("disarms a finished run and its note, and KEEPS what it added", () => {
+    expect(after.changedSinceMerge).toBe(true);
     expect(after.fieldNote).toBeUndefined();
+    expect(after.added, "a new paste does not remove the slides the last run added").toBe(12);
   });
 });
