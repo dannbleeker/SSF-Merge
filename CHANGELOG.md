@@ -7,6 +7,16 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — the keyboard stays where you left it
+
+The pane rebuilds itself after every press, and only the two slide-number boxes
+and the paste box were put back under the cursor. Every other control lost focus
+to the top of the pane the moment it was used: unticking a row in a 200-row list
+threw you back to the top after each one, and so did pressing a column chip,
+opening the rows or conditions, or choosing a condition.
+
+A control that is still on the screen after the redraw keeps its focus now.
+
 ### Fixed — blue text is legible in PowerPoint's dark theme
 
 Blue does two jobs in the pane: it fills the header and the primary button,

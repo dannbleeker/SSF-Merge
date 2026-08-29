@@ -62,34 +62,48 @@ function root(): HTMLElement {
  * blanked the focus and swallowed the next digit typed, leaving the box holding
  * what looked like a dropped keystroke.
  */
+/**
+ * The attributes that say a control is the SAME control after a redraw.
+ *
+ * Deliberately not `data-back` or `data-forward`: those change the step, so
+ * the element with that attribute on the screen afterwards is a different link
+ * pointing somewhere else, and focusing it would be a guess rather than a
+ * restore.
+ *
+ * `data-action` covers the primary, the two disclosures, the undo button and
+ * the selection shortcut. The primary's value is the STEP, so it restores when
+ * the press did not advance — "Preview the first row" becoming "Remove the
+ * preview" — and matches nothing when it did, which is the honest answer.
+ */
+const FOCUS_KEYS = ["data-field", "data-condition", "data-row", "data-insert", "data-action"] as const;
+
+/** A selector for the element focused now, or null if it has no stable name. */
+function focusedSelector(active: Element | null): string | null {
+  if (!(active instanceof HTMLElement)) return null;
+  for (const key of FOCUS_KEYS) {
+    const value = active.getAttribute(key);
+    if (value !== null) return `[${key}="${selectorSafe(value)}"]`;
+  }
+  return null;
+}
+
 function draw(): void {
   const active = document.activeElement;
-  const field =
-    active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement
-      ? active.getAttribute("data-field")
-      : null;
-  // A condition SELECT keeps its focus too, and by its own attribute: it has no
-  // `data-field` and no caret, so it does not belong in the branch above.
-  // Without this, choosing a column moves focus to the top of the pane and the
-  // next slide's dropdown is a mouse away — on a control whose whole use is
-  // setting several in a row.
-  const condition = active instanceof HTMLSelectElement ? active.getAttribute("data-condition") : null;
+  const selector = focusedSelector(active);
   // Read the selection BEFORE the element is destroyed. A number input answers
-  // null for both, which is exactly why the boxes are `type="text"`.
-  const start = field !== null && active instanceof HTMLElement ? selectionOf(active) : null;
+  // null for both, which is exactly why the boxes are `type="text"`, and a
+  // checkbox raises rather than answering — `selectionOf` catches that.
+  const start =
+    active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement ? selectionOf(active) : null;
 
   render(root(), state, step);
 
-  if (condition !== null) {
-    const back = root().querySelector(`[data-condition="${selectorSafe(condition)}"]`);
-    if (back instanceof HTMLSelectElement) back.focus();
-    return;
-  }
-  if (field === null) return;
-  const node = root().querySelector(`[data-field="${selectorSafe(field)}"]`);
-  if (!(node instanceof HTMLInputElement) && !(node instanceof HTMLTextAreaElement)) return;
+  if (selector === null) return;
+  const node = root().querySelector(selector);
+  if (!(node instanceof HTMLElement)) return;
   node.focus();
   if (start === null) return;
+  if (!(node instanceof HTMLInputElement) && !(node instanceof HTMLTextAreaElement)) return;
   try {
     node.setSelectionRange(start[0], start[1]);
   } catch {
