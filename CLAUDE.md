@@ -79,6 +79,12 @@ findings and exits 1.
   interaction was a keyboard one — without it every button reports no outline
   and the measurement answers "clean" because it never looked.
 
+**A weekly job runs it** (`.github/workflows/pane-audit.yml`), because
+"somebody has to remember" is how the first two findings got in. Not a required
+check and deliberately not part of `test`: it needs a dev server and a browser,
+and a minutes-long job in front of every merge is one that gets switched off
+after the first bad week. It keeps the PNGs as an artifact on failure only.
+
 **Two fixtures exist only to exercise the overflow half** — an unbroken column
 header and a spaceless notice — and they are the difference between a gate and a
 gate's name. Nothing else in the set has a word long enough to need

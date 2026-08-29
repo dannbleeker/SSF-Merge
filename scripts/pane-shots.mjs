@@ -33,7 +33,7 @@
  * which is what WCAG 1.4.3 says and not a convenience: a greyed-out button is
  * meant to read as unavailable.
  */
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { chromium } from "playwright";
 
 const PORT = process.env.PANE_PORT ?? "5199";
@@ -416,8 +416,14 @@ const STATES = [
 ];
 
 // The bundled browser and the installed playwright can disagree on build
-// number in this environment, so the binary is named rather than discovered.
-const EXECUTABLE = process.env.CHROMIUM ?? "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
+// number in THIS environment, so the binary is named rather than discovered.
+//
+// Only when it is actually there. On a CI runner playwright installs its own
+// and knows where it put it, and naming a path that does not exist fails the
+// launch with an error about a missing executable rather than about anything
+// this script is for. `CHROMIUM` overrides both.
+const CONTAINER_CHROMIUM = "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
+const EXECUTABLE = process.env.CHROMIUM || (existsSync(CONTAINER_CHROMIUM) ? CONTAINER_CHROMIUM : undefined);
 
 /**
  * What the page can say about itself that a PNG cannot.
@@ -547,7 +553,7 @@ function audit() {
 }
 
 mkdirSync(OUT, { recursive: true });
-const browser = await chromium.launch({ executablePath: EXECUTABLE });
+const browser = await chromium.launch(EXECUTABLE ? { executablePath: EXECUTABLE } : {});
 let taken = 0;
 // Deduplicated across states: the same chip is on eight screens, and eight
 // copies of one finding is a report nobody reads to the end.

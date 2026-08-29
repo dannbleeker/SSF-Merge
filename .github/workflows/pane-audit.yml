@@ -1,0 +1,74 @@
+name: pane audit
+
+# The pane is the one surface the suite cannot judge. `pane-render.test.ts`
+# pins its behaviour in jsdom, which has no layout and no colour, so three
+# properties of the finished screen are invisible to every required check:
+# whether anything pushes the pane sideways, whether its text clears a contrast
+# floor, and whether a keyboard user can see where they are. All three have
+# produced real defects — a primary button off the side of a 320px frame, a
+# 2.93:1 "Remove these slides" on the dark theme, and a near-black focus ring
+# drawn on a near-black pane.
+#
+# `scripts/pane-shots.mjs` measures them and exits 1. Somebody has to run it,
+# and "somebody has to remember" is how the first two got in.
+#
+# NOT a required check, and deliberately not part of `test`. It needs a dev
+# server and a browser; `test` is the only gate in front of a merge, and a
+# minutes-long job there gets switched off after the first bad week. Weekly is
+# enough for a class of defect that arrives with a stylesheet change.
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      # The browser itself, which `npm ci` does not fetch.
+      - run: npx playwright install --with-deps chromium
+
+      # Server and measurement in ONE step. A `&` in its own step leaves a
+      # process whose lifetime is the job's rather than the step's, and a job
+      # that depends on that is a job that fails for a reason nobody can read.
+      #
+      # The pane is served from source rather than from a build, so a finding
+      # here is a finding in what `npm run dev` shows a developer.
+      - name: Measure the pane
+        run: |
+          npx vite --port 5199 --strictPort > /tmp/vite.log 2>&1 &
+          vite=$!
+          # Polled rather than slept: a fixed wait is either too short on a
+          # slow runner or wasted on a fast one.
+          for _ in $(seq 1 60); do
+            curl --silent --fail --output /dev/null http://localhost:5199/taskpane.html && break
+            sleep 1
+          done
+          curl --silent --fail --output /dev/null http://localhost:5199/taskpane.html || {
+            echo "the dev server never answered"; cat /tmp/vite.log; kill "$vite"; exit 1;
+          }
+          set +e
+          node scripts/pane-shots.mjs
+          code=$?
+          set -e
+          kill "$vite"
+          exit "$code"
+
+      # The PNGs, so a failure can be looked at rather than only read. On
+      # failure alone: 156 images a week that nobody opens is a bill.
+      - name: Keep the shots when something is wrong
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pane-shots
+          path: /tmp/pane-shots
+          retention-days: 7
