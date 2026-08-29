@@ -7,6 +7,36 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — the probe reader gave confident answers to questions nobody asked
+
+An arm the answer sheet does not carry did not RUN. Spread into `insertVerdict`
+it had no `before` and no `after`, so the delta was NaN — neither the expected
+count nor zero nor negative — and it fell out of the last branch as
+
+> no — NaN of 2 slide(s) landed, which is a partial insert rather than a refusal
+
+A definite verdict, in the confident voice, about a measurement nobody took. Two
+other arms in the same file already answered "not asked"; the two central ones
+did not, and neither did the substring arm.
+
+The headline built on them was worse. `creationIdReading` compares two arms, and
+every reading it gives is a COMPARISON, so neither means anything with a side
+missing — but it had no branch for that:
+
+- both arms absent read as "BLOCKING: neither arm landed... read the errors
+  before building on the package path", about errors that do not exist;
+- a landed fresh arm beside an absent collision arm returned **CONFIRMED**,
+  claiming office-js#6105 reproduces on this host on the strength of a
+  measurement nobody took.
+
+Absent arms say "NOT ASKED — evidence about nothing" now, and the headline says
+NOT ANSWERED. Arms that RAN and failed are unchanged: a sheet whose inserts threw
+still reads BLOCKING, which is the true answer to a different question.
+
+This one matters more than its size. The probe exists to answer questions that
+design decisions rest on, and the answers are read once, from a console, by
+somebody deciding what to build.
+
 ### Added — the crop geometry is checked against the ratios it promises
 
 **No defect found.** `coverSrcRect` and `containFillRect` are the arithmetic

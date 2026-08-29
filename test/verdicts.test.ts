@@ -11,6 +11,8 @@ import {
   substringVerdict,
   tagVerdict,
   tornInsert,
+  type InsertVerdict,
+  type Verdict,
 } from "../src/host/verdicts.js";
 import { sweepPlan } from "../src/host/undo.js";
 
@@ -479,5 +481,44 @@ describe("an insert the deck cannot account for", () => {
     const partial = insertVerdict({ before: 10, after: 12, expected: 3 });
     expect(partial.verdict).toBe("no");
     expect(partial.detail).toContain("partial insert");
+  });
+});
+
+describe("an arm that did not run", () => {
+  /**
+   * `creationIdReading` compares two arms, and every reading it can give is a
+   * COMPARISON — so neither means anything with a side missing.
+   *
+   * It had no branch for that. A sheet without one of the arms read as
+   * "BLOCKING: neither arm landed... read the errors before building on the
+   * package path", about errors that do not exist. And in the other direction,
+   * a landed fresh arm beside a missing collision arm returned CONFIRMED —
+   * claiming office-js#6105 reproduces on this host, on the strength of a
+   * measurement nobody took.
+   *
+   * The probe exists to answer questions that design decisions rest on, so a
+   * confident answer from an absent measurement is the worst thing it can
+   * produce.
+   */
+  const arm = (verdict: Verdict): InsertVerdict => ({ verdict, landed: 0, detail: "" });
+
+  it("is not a refusal", () => {
+    expect(creationIdReading(arm("unknown"), arm("unknown"))).toContain("NOT ANSWERED");
+    expect(creationIdReading(arm("unknown"), arm("unknown")), "blamed the insert path").not.toContain("BLOCKING");
+  });
+
+  it("is not a confirmation either, however the other arm went", () => {
+    // The subtler direction, and the one that would have been believed.
+    expect(creationIdReading(arm("yes"), arm("unknown"))).toContain("NOT ANSWERED");
+    expect(creationIdReading(arm("yes"), arm("unknown")), "claimed the issue reproduces").not.toContain("CONFIRMED");
+    expect(creationIdReading(arm("unknown"), arm("yes"))).toContain("NOT ANSWERED");
+  });
+
+  it("still lets two arms that DID run be compared", () => {
+    // The other half: refusing to read a missing arm must not stop it reading
+    // the arms that are there.
+    expect(creationIdReading(arm("yes"), arm("threw"))).toContain("CONFIRMED");
+    expect(creationIdReading(arm("yes"), arm("yes"))).toContain("Both arms landed");
+    expect(creationIdReading(arm("threw"), arm("threw"))).toContain("BLOCKING");
   });
 });
