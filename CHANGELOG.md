@@ -7,6 +7,17 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — the merge says how many chart values it filled, and how many it could not
+
+A `{{Column}}` in a chart's value cell whose row does not hold a number is left
+alone rather than turned into a zero — a zero is a bar the data never asked for.
+That is the right behaviour and it was completely silent: the point keeps the
+template's number under a label that merged correctly, so the chart is wrong and
+looks right, on every slide, with nothing to notice.
+
+The summary now counts the values it filled and names how many did not read as
+numbers.
+
 ### Fixed — the merge says what became of the pictures
 
 The summary after a run counted the placeholders it filled and said nothing at

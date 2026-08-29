@@ -282,4 +282,42 @@ describe("describeMerge says what the merge DID", () => {
       "6 slides added after slide 3 · 12 placeholders filled.",
     );
   });
+
+  /**
+   * The third half-reported outcome, and the one whose failure is invisible.
+   *
+   * `mergeChartNumbers` writes nothing when a value cell's placeholder does
+   * not resolve to a number — deliberately, because guessing zero draws a
+   * chart the data never said. So the point keeps the TEMPLATE's number under
+   * the merged label: a chart that is wrong and looks right. It counted those
+   * refusals for a reader that did not exist.
+   */
+  const values = (filled: number, refused: number) => ({
+    added: 6,
+    deckAtStart: 3,
+    paragraphsMerged: 12,
+    chartValues: { filled, refused },
+  });
+
+  it("counts the chart values it filled", () => {
+    expect(describeMerge(values(9, 0))).toContain("9 chart values filled");
+  });
+
+  it("names the ones that did not read as numbers, and what the chart shows instead", () => {
+    const line = describeMerge(values(6, 2));
+    expect(line).toContain("2 chart values did not read as a number");
+    expect(line).toContain("those points still show the template's");
+  });
+
+  it("puts one refusal in the singular, because the sentence names what it shows", () => {
+    expect(describeMerge(values(0, 1))).toContain("that point still shows the template's");
+  });
+
+  it("says a zero out loud here too", () => {
+    expect(describeMerge(values(0, 3))).toContain("no chart values were filled");
+  });
+
+  it("stays silent on a merge with no chart values in it", () => {
+    expect(describeMerge(values(0, 0))).toBe("6 slides added after slide 3 · 12 placeholders filled.");
+  });
 });

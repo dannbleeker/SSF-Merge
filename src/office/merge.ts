@@ -22,6 +22,7 @@ import { buildPlan } from "../core/merge/plan.js";
 import { prepareBlock } from "../core/merge/prepare.js";
 import { Pkg } from "../core/pptx/pkg.js";
 import type { ImageOutcome } from "../core/merge/images.js";
+import type { NumberOutcome } from "../core/merge/numbers.js";
 import type { RecordSet } from "../core/data/recordset.js";
 import type { EmptyPolicy } from "../core/merge/resolve.js";
 import { insertDeck, readTemplate, slideCount, undoInsert } from "./powerpoint.js";
@@ -93,6 +94,17 @@ export interface MergeOutcome {
    * it, because that matches file NAMES and never reads a byte.
    */
   pictures?: ImageOutcome;
+  /**
+   * What became of the chart VALUES.
+   *
+   * The same shape as `pictures`, and the sharpest of the three, because a
+   * chart that kept the template's numbers under the merged labels is wrong
+   * and looks right. `mergeChartNumbers` writes nothing when a cell's
+   * placeholder does not resolve to a number — deliberately, since guessing
+   * zero would draw a chart the data never said — and counted the refusals for
+   * a reader that did not exist.
+   */
+  chartValues?: NumberOutcome;
   /** Rows skipped by a condition, so "8 rows" and "6 slides" reconcile. */
   skippedRecords?: number;
   /** Individual slides skipped by a condition. */
@@ -372,6 +384,7 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
       paragraphsMerged: result.paragraphsMerged,
       workbooksUnreadable: result.graphics.unreadable.length,
       pictures: result.images,
+      chartValues: result.graphics.numbers,
       skippedRecords: plan.skippedRecords.length,
       skippedSlides: plan.skippedSlides.length,
       rowsComplete: rows.complete,
@@ -398,6 +411,7 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
     // that placed nothing is the failure this reports, and it arrives looking
     // exactly like a success.
     pictures: result.images,
+    chartValues: result.graphics.numbers,
     skippedRecords: plan.skippedRecords.length,
     skippedSlides: plan.skippedSlides.length,
     rowsComplete: rows.complete,

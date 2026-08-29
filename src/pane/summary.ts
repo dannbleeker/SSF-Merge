@@ -13,6 +13,7 @@
  * zero-based index, which is a number the user has no way to see.
  */
 import type { ImageOutcome } from "../core/merge/images.js";
+import type { NumberOutcome } from "../core/merge/numbers.js";
 import { sweepPlan } from "../host/undo.js";
 import type { Block } from "./steps.js";
 import { slidesPerRecord } from "./steps.js";
@@ -129,6 +130,15 @@ export interface MergeReport {
    * by 720 slides either way.
    */
   pictures?: ImageOutcome;
+  /**
+   * What became of the chart values.
+   *
+   * The sharpest of the three, because the failure is invisible: a value cell
+   * whose placeholder did not resolve to a number is left alone, so the chart
+   * draws the TEMPLATE's number under the merged label. Nothing about the
+   * slide looks wrong.
+   */
+  chartValues?: NumberOutcome;
 }
 
 /**
@@ -193,6 +203,23 @@ export function describeMerge(r: MergeReport): string {
     // fit to. Reads as a broken image and is not one.
     if (p.stretched.length > 0) {
       parts.push(`${p.stretched.join(", ")} was stretched to fit a shape that states no size`);
+    }
+  }
+  // The chart values, when the run had any to fill.
+  if (r.chartValues) {
+    const c = r.chartValues;
+    if (c.filled + c.refused > 0) {
+      parts.push(c.filled === 0 ? "no chart values were filled" : `${plural(c.filled, "chart value")} filled`);
+    }
+    // The one a reader cannot see for themselves. Nothing is written when a
+    // cell's placeholder does not resolve to a number, so the point keeps the
+    // template's — a chart that is wrong under a label that is right.
+    if (c.refused > 0) {
+      parts.push(
+        `${plural(c.refused, "chart value")} did not read as a number, so ${
+          c.refused === 1 ? "that point still shows" : "those points still show"
+        } the template's`,
+      );
     }
   }
   // Skips are why "8 rows" and "6 slides" can both be right, and a user who

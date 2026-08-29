@@ -743,7 +743,9 @@ anything else. Two things are worth knowing.
   number goes in and the chart formats its own axis.
 - **A value that will not be a number is left alone.** `{{Notes}}` in a value
   cell stays exactly as you typed it rather than becoming a zero, because a zero
-  is a bar the data never asked for.
+  is a bar the data never asked for. The merge counts those and says so when it
+  finishes — this is the one failure you cannot see on the slide, because the
+  point keeps the template's number under a label that merged correctly.
 
 While you are still editing the template that cell holds text, so its bar shows
 as nothing until you merge. That is the same as a slide reading `{{Name}}` until

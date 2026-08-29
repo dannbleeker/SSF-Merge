@@ -59,6 +59,14 @@ describe("what became of the pictures", () => {
 
     expect(outcome.pictures, "the merge said nothing about the pictures").toBeDefined();
     expect(outcome.pictures).toMatchObject({ placed: 0, unreadable: ["Photo"] });
+    // The chart tally rides out on the same object and had the same problem.
+    // Nothing here has a chart, so the numbers are zero — what matters is that
+    // they ARRIVE, because `undefined` is what `describeMerge` reads as "this
+    // outcome does not know" and says nothing about.
+    expect(outcome.chartValues, "the merge said nothing about the chart values").toEqual({
+      filled: 0,
+      refused: 0,
+    });
   });
 });
 
