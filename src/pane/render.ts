@@ -22,6 +22,7 @@ import {
   danglingConditions,
   fieldToken,
   pictureColumns,
+  clashingPicturesNote,
   imageTally,
   slidesToAdd,
   imagesWanted,
@@ -548,6 +549,13 @@ function imageControl(doc: Document, state: PaneState): HTMLElement {
       text: `${plural(tally.wanted, "picture")} named in ${columns.join(", ")}`,
     }),
   );
+  // BEFORE the picker, and before the "nothing attached yet" branch below,
+  // because this is a fact about the DATA rather than about the files: the two
+  // names clash whether or not anything has been chosen, and the only fix is in
+  // the spreadsheet.
+  const clash = clashingPicturesNote(state);
+  if (clash) wrap.append(el(doc, "p", { class: "blocked", text: clash }));
+
   wrap.append(
     el(doc, "input", {
       attrs: {

@@ -544,6 +544,58 @@ export function imagesWanted(state: PaneState): string[] {
   return [...seen];
 }
 
+/**
+ * Picture names the data tells apart and a file picker cannot.
+ *
+ * A cell may name a file with the folders in front of it — `imageNamesIn`'s own
+ * comment says a spreadsheet built from a folder listing routinely does — and
+ * matching is by BASE NAME on purpose, because a browser's file picker hands
+ * back `File.name` and that has no path in it. So `regions/eu/logo.png` and
+ * `regions/us/logo.png` are two different pictures to the author and one name
+ * to everything downstream.
+ *
+ * Nothing said so. `imageTally` counts both as matched, because both resolve to
+ * a file that was attached — the same one — and the merge fills both. The pane
+ * read "All 2 pictures matched" and one of the two slides carried the wrong
+ * logo, with nothing anywhere having mentioned it.
+ *
+ * Not fixable by attaching both: two files chosen from different folders arrive
+ * with the same `name`, and `state.images` is keyed by it, so the second
+ * replaces the first. The only fix is in the data, which is why this is a
+ * sentence rather than a refusal.
+ *
+ * Groups of the CELL values, so the sentence can name what the author wrote.
+ */
+export function imageNameClashes(state: PaneState): string[][] {
+  const byBase = new Map<string, string[]>();
+  for (const name of imagesWanted(state)) {
+    const group = byBase.get(baseName(name));
+    if (group) group.push(name);
+    else byBase.set(baseName(name), [name]);
+  }
+  return [...byBase.values()].filter((group) => group.length > 1);
+}
+
+/**
+ * That, as the sentence both readers show.
+ *
+ * One string, because it is said in two places — under the picker, where the
+ * files are chosen, and above the merge button, which is the last chance — and
+ * two spellings of one warning is how the one nobody maintains drifts.
+ */
+export function clashingPicturesNote(state: PaneState): string | null {
+  const groups = imageNameClashes(state);
+  const first = groups[0];
+  if (!first) return null;
+  const more = groups.length - 1;
+  return (
+    `${first[0]} and ${first[1]} are the same file name in different folders. ` +
+    `A file picker gives us the name alone, so both get whichever one you attach — ` +
+    `rename them if they are different pictures.` +
+    (more > 0 ? ` ${more === 1 ? "One more name clashes" : `${more} more names clash`} the same way.` : "")
+  );
+}
+
 export interface ImageTally {
   wanted: number;
   matched: number;
@@ -771,13 +823,17 @@ export function caution(state: PaneState, step: StepId): string | null {
   const pictures = picturesGoNowhere(state)
     ? "The pictures you attached will not be placed: no field asks for one. Write a field as {{Column|image}} on the slide where the picture goes."
     : null;
-  if (missing.length === 0) return pictures;
+  // A third, and it stacks with the other two for the same reason they stack
+  // with each other: each is a different thing about to happen.
+  const clash = clashingPicturesNote(state);
+  const tail = [pictures, clash].filter((s) => s !== null).join(" ") || null;
+  if (missing.length === 0) return tail;
   // NAMED, not counted — a count alone sends the user back through every slide
   // looking for it. And it says what will HAPPEN rather than what to fix: the
   // placeholder staying is the documented behaviour, not a mistake to correct
   // before pressing on.
   const unmatched = `No column for ${missing.join(", ")}. ${missing.length === 1 ? "It" : "They"} will stay on the slides as written.`;
-  return pictures ? `${unmatched} ${pictures}` : unmatched;
+  return tail ? `${unmatched} ${tail}` : unmatched;
 }
 
 /**
