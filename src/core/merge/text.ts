@@ -12,7 +12,7 @@
  * spellcheck pass, so a per-node search finds nothing and silently merges
  * nothing. Every match here is computed against the paragraph's joined text.
  */
-import { A_NS, C_NS, SSML_NS, children, elements } from "../pptx/xml.js";
+import { A_NS, C_NS, CX_NS, SSML_NS, children, elements } from "../pptx/xml.js";
 
 /**
  * `{{Field}}` or `{{Field|format}}`.
@@ -265,6 +265,24 @@ function textGroups(doc: Document): Element[][] {
   // A series name written literally rather than referenced: `<c:tx><c:v>`.
   for (const tx of elements(doc, C_NS, "tx")) for (const v of children(tx, C_NS, "v")) out.push([v]);
   for (const si of elements(doc, SSML_NS, "si")) out.push(elements(si, SSML_NS, "t"));
+  // A MODERN chart, which keeps its text in two more places of its own.
+  //
+  // `<cx:pt>` inside a `<cx:strDim>` is a category label. Scoped by the DIM and
+  // never by the element name, because `<cx:numDim>` holds the values the chart
+  // PLOTS in `<cx:pt>` too — filling one of those with "Nordics" produces a
+  // chart PowerPoint reads as corrupt data. Exactly the `<c:v>` distinction two
+  // loops above, one namespace over.
+  for (const dim of elements(doc, CX_NS, "strDim")) {
+    for (const pt of elements(dim, CX_NS, "pt")) out.push([pt]);
+  }
+  // A series name, and sometimes a title: `<cx:tx><cx:txData><cx:v>`. Sometimes
+  // is the operative word — the same title is DrawingML inside `<cx:txPr>` in
+  // some files, a copy of this value in others, and the `<a:p>` loop at the top
+  // covers that half. Both are filled, because which one a given file uses is
+  // not knowable from the schema.
+  for (const data of elements(doc, CX_NS, "txData")) {
+    for (const v of children(data, CX_NS, "v")) out.push([v]);
+  }
   return out;
 }
 

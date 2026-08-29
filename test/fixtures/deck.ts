@@ -32,6 +32,18 @@ export interface SlideSpec {
    */
   chart?: string | ChartSpec;
   /**
+   * A MODERN chart related from this slide — the chartEx family.
+   *
+   * Shaped from a real PowerPoint file (`funnel-pp1.pptx` in LibreOffice's
+   * chart test data), because every part of it would have been guessed wrong:
+   * the slide carries `<mc:AlternateContent>` with the frame in `Choice` and a
+   * PICTURE of the chart in `Fallback`, the labels are `<cx:pt>` inside a
+   * `<cx:strDim>`, the values are `<cx:pt>` inside a `<cx:numDim>` — the same
+   * element — the series name is `<cx:tx><cx:txData><cx:v>`, and the title is
+   * DrawingML with no `<cx:tx>` at all.
+   */
+  modernChart?: ModernChartSpec;
+  /**
    * SmartArt related from this slide, given as its node labels.
    *
    * Produces both halves a real one has: `dataN.xml`, the model, and
@@ -66,6 +78,27 @@ export interface SlideSpec {
    * which cover and contain cannot be computed without.
    */
   box?: string;
+}
+
+export interface ModernChartSpec {
+  /** The title, as DrawingML inside `<cx:txPr>` — which is where a real funnel keeps it. */
+  title?: string;
+  /** Category labels, in `<cx:strDim>`. Text. */
+  categories?: string[];
+  /** The series name, in `<cx:tx><cx:txData><cx:v>`. Text. */
+  series?: string;
+  /**
+   * The plotted values, in `<cx:numDim>`.
+   *
+   * Text so a test can put a PLACEHOLDER among them: `<cx:pt>` is the same
+   * element as a category label's, and the merge must fill one and not the
+   * other. Defaults to ordinary numbers.
+   */
+  values?: string[];
+  /** Give it an embedded workbook, with these as its shared strings. */
+  workbook?: string[];
+  /** Omit the `mc:Fallback` branch, which the MCE schema allows. */
+  noFallback?: boolean;
 }
 
 export interface ChartSpec {
@@ -120,6 +153,7 @@ function slideXml(spec: SlideSpec): string {
     `<p:sp><p:nvSpPr><p:cNvPr id="2" name="Body"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>` +
     `<p:spPr>${spec.box ?? ""}</p:spPr><p:txBody><a:bodyPr/><a:lstStyle/>${paras}</p:txBody></p:sp>` +
     `${spec.smartArt ? smartArtFrame() : ""}` +
+    `${spec.modernChart ? modernChartFrame(spec.modernChart) : ""}` +
     `</p:spTree>${creation}</p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`
   );
 }
@@ -304,10 +338,90 @@ function diagramDrawing(labels: string[]): string {
   );
 }
 
+/** A one-pixel PNG, standing in for the rendering PowerPoint puts in a fallback. */
+const PNG_BYTES = new Uint8Array([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00,
+  0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4, 0x89, 0x00, 0x00, 0x00, 0x0a, 0x49,
+  0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0x00, 0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00, 0x00,
+  0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+]);
+
+const CX_NS = 'xmlns:cx="http://schemas.microsoft.com/office/drawing/2014/chartex"';
+const MC_NS = 'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"';
+
+/**
+ * A modern chart part, shaped from the real one.
+ *
+ * The title is DrawingML inside `<cx:txPr>` and there is no `<cx:tx>` beside
+ * it, which is what `funnel-pp1.pptx` does. The series name IS a
+ * `<cx:tx><cx:txData><cx:v>`. Category labels and plotted values are both
+ * `<cx:pt>`, told apart only by the dim that holds them — the distinction the
+ * merge has to make and the one a reader written from the element name gets
+ * wrong.
+ */
+function modernChartXml(spec: ModernChartSpec): string {
+  const cats = spec.categories ?? [];
+  const values = spec.values ?? cats.map((_, i) => String(i + 1));
+  const external = spec.workbook ? `<cx:externalData r:id="rId1" cx:autoUpdate="0"/>` : "";
+  const strDim = cats.length
+    ? `<cx:strDim type="cat"><cx:f>Sheet1!$A$2:$A$${cats.length + 1}</cx:f>` +
+      `<cx:lvl ptCount="${cats.length}">` +
+      cats.map((c, i) => `<cx:pt idx="${i}">${escapeText(c)}</cx:pt>`).join("") +
+      `</cx:lvl></cx:strDim>`
+    : "";
+  const numDim = values.length
+    ? `<cx:numDim type="val"><cx:f>Sheet1!$B$2:$B$${values.length + 1}</cx:f>` +
+      `<cx:lvl ptCount="${values.length}" formatCode="General">` +
+      values.map((v, i) => `<cx:pt idx="${i}">${escapeText(v)}</cx:pt>`).join("") +
+      `</cx:lvl></cx:numDim>`
+    : "";
+  const series = spec.series
+    ? `<cx:tx><cx:txData><cx:f>Sheet1!$B$1</cx:f><cx:v>${escapeText(spec.series)}</cx:v></cx:txData></cx:tx>`
+    : "";
+  const title = spec.title
+    ? `<cx:title pos="t" align="ctr" overlay="0"><cx:txPr><a:bodyPr/><a:lstStyle/><a:p>${splitRuns(spec.title)}</a:p></cx:txPr></cx:title>`
+    : "";
+  return (
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n` +
+    `<cx:chartSpace ${CX_NS} ${A} ${R}>` +
+    `<cx:chartData>${external}<cx:data id="0">${strDim}${numDim}</cx:data></cx:chartData>` +
+    `<cx:chart>${title}<cx:plotArea><cx:plotAreaRegion>` +
+    `<cx:series layoutId="funnel" uniqueId="{00000000-0000-0000-0000-000000000001}">${series}<cx:dataId val="0"/></cx:series>` +
+    `</cx:plotAreaRegion></cx:plotArea></cx:chart></cx:chartSpace>`
+  );
+}
+
+/**
+ * The slide markup a modern chart sits in.
+ *
+ * `mc:Choice` holds the graphic frame; `mc:Fallback` holds a PICTURE of the
+ * chart, which is the half this engine replaces. Both branches carry the same
+ * shape id, as they do in the real file.
+ */
+function modernChartFrame(spec: ModernChartSpec): string {
+  const box = `<a:off x="1000000" y="500000"/><a:ext cx="6000000" cy="4000000"/>`;
+  const fallback = spec.noFallback
+    ? ""
+    : `<mc:Fallback><p:pic><p:nvPicPr><p:cNvPr id="6" name="Chart 5"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr>` +
+      `<p:blipFill><a:blip r:embed="rId8"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>` +
+      `<p:spPr><a:xfrm>${box}</a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr>` +
+      `</p:pic></mc:Fallback>`;
+  return (
+    `<mc:AlternateContent ${MC_NS}>` +
+    `<mc:Choice xmlns:cx2="http://schemas.microsoft.com/office/drawing/2015/10/21/chartex" Requires="cx2">` +
+    `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="6" name="Chart 5"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr>` +
+    `<p:xfrm>${box}</p:xfrm>` +
+    `<a:graphic><a:graphicData uri="http://schemas.microsoft.com/office/drawing/2014/chartex">` +
+    `<cx:chart ${CX_NS} ${R} r:id="rId7"/></a:graphicData></a:graphic></p:graphicFrame>` +
+    `</mc:Choice>${fallback}</mc:AlternateContent>`
+  );
+}
+
 const TYPE = {
   slide: "application/vnd.openxmlformats-officedocument.presentationml.slide+xml",
   notes: "application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml",
   chart: "application/vnd.openxmlformats-officedocument.drawingml.chart+xml",
+  chartEx: "application/vnd.ms-office.chartex+xml",
   diagramData: "application/vnd.openxmlformats-officedocument.drawingml.diagramData+xml",
   diagramLayout: "application/vnd.openxmlformats-officedocument.drawingml.diagramLayout+xml",
   diagramStyle: "application/vnd.openxmlformats-officedocument.drawingml.diagramStyle+xml",
@@ -323,6 +437,8 @@ const REL_TYPE = {
   theme: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme",
   doc: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument",
   chart: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart",
+  chartEx: "http://schemas.microsoft.com/office/2014/relationships/chartEx",
+  image: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
   package: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/package",
   diagramData: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/diagramData",
   diagramLayout: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/diagramLayout",
@@ -343,6 +459,9 @@ export async function makeDeck(slides: SlideSpec[]): Promise<Uint8Array> {
           ? [`<Override PartName="/ppt/notesSlides/notesSlide${i + 1}.xml" ContentType="${TYPE.notes}"/>`]
           : []),
         ...(s.chart ? [`<Override PartName="/ppt/charts/chart${i + 1}.xml" ContentType="${TYPE.chart}"/>`] : []),
+        ...(s.modernChart
+          ? [`<Override PartName="/ppt/charts/chartEx${i + 1}.xml" ContentType="${TYPE.chartEx}"/>`]
+          : []),
         ...(s.smartArt
           ? [
               `<Override PartName="/ppt/diagrams/data${i + 1}.xml" ContentType="${TYPE.diagramData}"/>`,
@@ -363,6 +482,7 @@ export async function makeDeck(slides: SlideSpec[]): Promise<Uint8Array> {
       `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
       `<Default Extension="xml" ContentType="application/xml"/>` +
       `<Default Extension="xlsx" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"/>` +
+      `<Default Extension="png" ContentType="image/png"/>` +
       `<Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>` +
       `<Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>` +
       `<Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>` +
@@ -435,6 +555,12 @@ export async function makeDeck(slides: SlideSpec[]): Promise<Uint8Array> {
     const chartRel = spec.chart
       ? `<Relationship Id="rId3" Type="${REL_TYPE.chart}" Target="../charts/chart${n}.xml"/>`
       : "";
+    const modernRels = spec.modernChart
+      ? `<Relationship Id="rId7" Type="${REL_TYPE.chartEx}" Target="../charts/chartEx${n}.xml"/>` +
+        (spec.modernChart.noFallback
+          ? ""
+          : `<Relationship Id="rId8" Type="${REL_TYPE.image}" Target="../media/chart${n}.png"/>`)
+      : "";
     const diagramRels = spec.smartArt
       ? `<Relationship Id="rId4" Type="${REL_TYPE.diagramData}" Target="../diagrams/data${n}.xml"/>` +
         `<Relationship Id="rId5" Type="${REL_TYPE.diagramLayout}" Target="../diagrams/layout${n}.xml"/>` +
@@ -449,7 +575,7 @@ export async function makeDeck(slides: SlideSpec[]): Promise<Uint8Array> {
       `ppt/slides/_rels/slide${n}.xml.rels`,
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n<Relationships ${REL}>` +
         `<Relationship Id="rId1" Type="${REL_TYPE.layout}" Target="../slideLayouts/slideLayout1.xml"/>` +
-        `${notesRel}${chartRel}${diagramRels}</Relationships>`,
+        `${notesRel}${chartRel}${diagramRels}${modernRels}</Relationships>`,
     );
     if (spec.chart) {
       const chart: ChartSpec = typeof spec.chart === "string" ? { title: spec.chart } : spec.chart;
@@ -465,6 +591,23 @@ export async function makeDeck(slides: SlideSpec[]): Promise<Uint8Array> {
             `<Relationship Id="rId1" Type="${REL_TYPE.package}" Target="../embeddings/Microsoft_Excel_Worksheet${n}.xlsx"/>` +
             `</Relationships>`,
         );
+      }
+    }
+    if (spec.modernChart) {
+      zip.file(`ppt/charts/chartEx${n}.xml`, modernChartXml(spec.modernChart));
+      if (spec.modernChart.workbook) {
+        zip.file(`ppt/embeddings/Modern_Worksheet${n}.xlsx`, await workbookBytes(spec.modernChart.workbook));
+        zip.file(
+          `ppt/charts/_rels/chartEx${n}.xml.rels`,
+          `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n<Relationships ${REL}>` +
+            `<Relationship Id="rId1" Type="${REL_TYPE.package}" Target="../embeddings/Modern_Worksheet${n}.xlsx"/>` +
+            `</Relationships>`,
+        );
+      }
+      if (!spec.modernChart.noFallback) {
+        // A stand-in for the RENDERED PNG PowerPoint puts in the fallback. Its
+        // bytes do not matter; that a merged copy stops pointing at it does.
+        zip.file(`ppt/media/chart${n}.png`, PNG_BYTES);
       }
     }
     if (spec.smartArt) {

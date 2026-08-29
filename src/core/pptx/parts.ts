@@ -16,6 +16,7 @@
  */
 const REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 const MS_REL = "http://schemas.microsoft.com/office/2007/relationships";
+const MS_REL_2014 = "http://schemas.microsoft.com/office/2014/relationships";
 
 export const REL_TYPE = {
   slide: `${REL}/slide`,
@@ -23,6 +24,17 @@ export const REL_TYPE = {
   tags: `${REL}/tags`,
   image: `${REL}/image`,
   chart: `${REL}/chart`,
+  /**
+   * A MODERN chart — waterfall, funnel, treemap, sunburst, histogram, pareto,
+   * box-and-whisker, region map. PowerPoint stores none of those as a
+   * `<c:chartSpace>`; they are a separate part under a Microsoft namespace.
+   *
+   * The RELATIONSHIP is the stable thing to match on. On the slide these charts
+   * sit inside `<mc:AlternateContent>`, whose `Requires` token is `cx1`, `cx2`
+   * or `cx4` depending on which of three dated namespaces the layout came from
+   * — a reader keying on the token misses the other two.
+   */
+  chartEx: `${MS_REL_2014}/chartEx`,
   diagramData: `${REL}/diagramData`,
   diagramDrawing: `${MS_REL}/diagramDrawing`,
   /** A whole package inside the package: the workbook behind a chart. */
@@ -52,7 +64,7 @@ export const COMMENT_REL_TYPES = [
  *
  * Tags are here because they were not, and every removed slide left one behind.
  */
-export const OWNED_BY_SLIDE = /^ppt\/(charts\/chart|diagrams\/data|tags\/tag)\d+\.xml$/;
+export const OWNED_BY_SLIDE = /^ppt\/(charts\/chart|charts\/chartEx|diagrams\/data|tags\/tag)\d+\.xml$/;
 
 /**
  * What a chart or a SmartArt may drag out of the package with it.

@@ -21,6 +21,20 @@ export const R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relat
 export const PKG_REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships";
 /** DrawingML charts: the plot, and the cached strings behind its labels. */
 export const C_NS = "http://schemas.openxmlformats.org/drawingml/2006/chart";
+/**
+ * Markup Compatibility: `<mc:AlternateContent>` and its `Choice`/`Fallback`
+ * branches, which is how a slide carries a feature older hosts cannot read.
+ */
+export const MC_NS = "http://schemas.openxmlformats.org/markup-compatibility/2006";
+/**
+ * A MODERN chart's own namespace — waterfall, funnel, treemap, sunburst and the
+ * rest, which are not `<c:chartSpace>` at all.
+ *
+ * One namespace for the PART. The compatibility token on the slide that wraps
+ * it is `cx1`, `cx2` or `cx4` against three dated namespaces, and none of those
+ * appear inside the chart itself.
+ */
+export const CX_NS = "http://schemas.microsoft.com/office/drawing/2014/chartex";
 /** SpreadsheetML, for the workbook embedded behind a chart. */
 export const SSML_NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
 /** `[Content_Types].xml`. */

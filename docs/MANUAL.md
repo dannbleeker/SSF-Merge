@@ -670,6 +670,21 @@ box, and each merged slide gets that row's value.
 Every copy gets a chart of its own, so the slides differ — which is the whole
 point, and is why a merged deck with charts is bigger than one without.
 
+**Modern chart types work too** — waterfall, funnel, treemap, sunburst,
+histogram, pareto, box and whisker, region map. PowerPoint stores those as a
+different kind of part from a bar or a line chart, and both kinds are merged the
+same way: put `{{Region}}` in the title, in the category labels or in the series
+name and each copy gets its row's value, in the chart and in the workbook
+behind it.
+
+There is one thing to know about them, and it only affects old versions.
+PowerPoint 2013 and earlier cannot draw a modern chart at all, so the file
+carries a picture of it for them to show instead — and a picture cannot be
+merged. Rather than send every recipient a picture of the TEMPLATE's numbers,
+each merged copy replaces it with a short notice saying the chart needs a newer
+PowerPoint. Anything from 2016 onwards, and the web, draw the real chart and
+never see the notice.
+
 **What is merged**: the chart title, axis titles, data labels, the category and
 series NAMES, and every SmartArt box. The workbook behind the chart is merged
 too, so the labels are still right if you click Edit Data on a merged slide.
@@ -705,12 +720,10 @@ so once. Only the chart's Edit Data will still show your placeholders.
 
 ## Limits
 
-- **Modern chart types are not merged at all** — waterfall, funnel, treemap,
-  sunburst, histogram, box and whisker. PowerPoint stores those as a different
-  kind of part from an ordinary bar or line chart, and this add-in does not read
-  it. Every merged copy points at the **same** chart, still showing your
-  placeholders. A classic chart of the same data merges correctly, and is the
-  way round it today.
+- **On PowerPoint 2013 and earlier, a merged modern chart shows a notice
+  instead.** See "Modern charts" above: those versions cannot draw one at all,
+  and what they fall back to is a picture this add-in cannot redraw for each
+  row. Anything newer shows the chart itself.
 - **Cut and paste on PowerPoint for the web loses shape tags**
   ([office-js#3784](https://github.com/OfficeDev/office-js/issues/3784)). A
   merged slide cut and pasted into another deck loses its run tag, so undo will
