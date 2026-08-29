@@ -447,3 +447,37 @@ describe("whether a slide insert survives a standing selection", () => {
     expect(v.detail).not.toContain("Re-run with a shape clicked");
   });
 });
+
+describe("an insert the deck cannot account for", () => {
+  /**
+   * "5 of 3 slide(s) landed, which is a partial insert" is a sentence that
+   * cannot be true, and "-2 of 3" is worse. Both came out of the branch that
+   * runs when the delta is neither zero nor what was expected — which named a
+   * CAUSE for a condition it had not distinguished.
+   *
+   * `unknown` rather than `no`: slides plainly arrived. What the run cannot do
+   * is say which of them are its own, and saying that is the whole answer.
+   */
+  it("says so when more arrived than the package held", () => {
+    const v = insertVerdict({ before: 10, after: 15, expected: 3 });
+    expect(v.verdict).toBe("unknown");
+    expect(v.detail).toContain("grew by 5 while the package held 3");
+    expect(v.detail, "named a cause it had not established").not.toContain("partial insert");
+  });
+
+  it("says so when the deck shrank across an insert", () => {
+    const v = insertVerdict({ before: 10, after: 8, expected: 3 });
+    expect(v.verdict).toBe("unknown");
+    expect(v.detail).toContain("SHRANK by 2");
+  });
+
+  it("still grades the cases it always could", () => {
+    // The other half: naming two new conditions must not blur the three that
+    // were already right.
+    expect(insertVerdict({ before: 10, after: 13, expected: 3 }).verdict).toBe("yes");
+    expect(insertVerdict({ before: 10, after: 10, expected: 3 }).verdict).toBe("no");
+    const partial = insertVerdict({ before: 10, after: 12, expected: 3 });
+    expect(partial.verdict).toBe("no");
+    expect(partial.detail).toContain("partial insert");
+  });
+});

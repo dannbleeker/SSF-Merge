@@ -66,6 +66,28 @@ export function insertVerdict(o: InsertObservation): InsertVerdict {
   if (landed === o.expected) {
     return { verdict: "yes", landed, detail: `all ${o.expected} slide(s) landed` };
   }
+  // MORE arrived than the package held, or the deck shrank. Neither is a
+  // partial insert, and both fell into the branch below saying so — "5 of 3
+  // slide(s) landed, which is a partial insert" is a sentence that cannot be
+  // true, and "-2 of 3" is worse.
+  //
+  // `unknown` rather than `no`, because slides plainly did arrive. The detail
+  // names the CONDITION and stops: this run cannot say which of them are its
+  // own, and guessing is what the undo's clamps exist to refuse.
+  if (landed > o.expected) {
+    return {
+      verdict: "unknown",
+      landed,
+      detail: `the deck grew by ${landed} while the package held ${o.expected} slide(s), so this run cannot say which of them are its own`,
+    };
+  }
+  if (landed < 0) {
+    return {
+      verdict: "unknown",
+      landed,
+      detail: `the deck SHRANK by ${-landed} slide(s) across an insert of ${o.expected}, so something else changed it`,
+    };
+  }
   if (landed === 0) {
     return {
       verdict: "no",

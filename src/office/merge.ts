@@ -275,7 +275,19 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
   });
 
   const insert = await insertDeck(base64, sending.length);
-  const added = insert.landed;
+  // The delta, but never more than the package HELD.
+  //
+  // Measuring from the deck is right, and deliberately so: when the host lands
+  // fewer slides than it was given, the deck knows and the plan does not. It is
+  // wrong in the other direction. `sweepPlan` refuses to sweep when the deck
+  // grew by more than the run added — that is the clamp keeping an undo off a
+  // stranger's slides — and an uncapped `added` absorbs the excess, so `grew`
+  // and `added` are equal by construction and the clamp can never fire.
+  //
+  // Six slides arriving across an insert of three would have authorised
+  // deleting six. Capped, the same case leaves `grew > added` true at undo time
+  // and the sweep refuses, which is the answer that rule was written to give.
+  const added = Math.max(0, Math.min(insert.landed, sending.length));
 
   // How many slides each ROW produced, in plan order — the unit a torn insert
   // has to be read in. Grouped from the steps rather than assumed uniform: a
