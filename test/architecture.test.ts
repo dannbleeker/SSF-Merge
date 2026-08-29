@@ -477,3 +477,22 @@ describe("what a slide's relationships are called", () => {
     expect(offenders, "writes a relationship type out instead of naming it").toEqual([]);
   });
 });
+
+describe("the pane's multi-field rules", () => {
+  /**
+   * Four places moved the block and no two cleared the same fields: typing in
+   * the slide-number boxes cleared `fieldNote`, picking a selection did not, a
+   * failed read cleared neither `conditions` nor `added`, and none of them
+   * cleared `imageFields`. The pane also once cleared `block` while leaving
+   * `previewing` set, which left step 4 naming the wrong thing to do above a
+   * working button.
+   *
+   * `blockMoved` is that rule. This guard is that a fifth spelling cannot be
+   * written next to the fourth.
+   */
+  it("are stated in transitions.ts, not at each call site", () => {
+    const src = readFileSync("src/pane/main.ts", "utf8");
+    expect(/block:\s*undefined/.test(src), "main.ts clears the block by hand").toBe(false);
+    expect(/excluded:\s*undefined/.test(src), "main.ts drops the row filter by hand").toBe(false);
+  });
+});
