@@ -27,10 +27,10 @@
  * are the same fact written twice.
  */
 import JSZip from "jszip";
-import { Pkg } from "../pptx/pkg.js";
+import { Pkg, resolveTarget } from "../pptx/pkg.js";
 import { C_NS, PKG_REL_NS, R_NS, SSML_NS, elements, parseXml, serializeXml } from "../pptx/xml.js";
 import { numericValue } from "../data/format.js";
-import { FIELD, type Resolve } from "./text.js";
+import { fieldPattern, type Resolve } from "./text.js";
 
 export interface NumberOutcome {
   /** Chart values filled from a row. */
@@ -126,34 +126,59 @@ export function sheetOfFormula(formula: string): string | null {
 }
 
 /**
- * Which worksheet part a sheet TITLE belongs to.
+ * The worksheets a workbook DECLARES, by title and in order.
  *
- * The title is in `xl/workbook.xml`, which names it beside an `r:id`; that id
- * is a relationship of the workbook part pointing at the worksheet. Two hops,
- * and the reason the first version of this file skipped them — but the title is
- * the only thing tying a chart's formula to a cell, so guessing instead is
- * guessing which numbers the chart plots.
+ * `xl/workbook.xml` names each sheet beside an `r:id`, and that id is a
+ * relationship pointing at the part. Two hops, and the title is the only thing
+ * tying a chart's formula to a cell.
+ *
+ * Read from the declaration rather than from the part NAMES, which is what this
+ * did first: it collected `xl/worksheets/sheetN.xml` by pattern. Excel writes
+ * that name and other generators do not, and a workbook whose sheet is called
+ * anything else filled NOTHING — not a refusal, not a count, no mention. The
+ * chart kept its cached numbers, the deck looked finished, and only Edit Data
+ * showed the placeholder still sitting in the cell.
+ *
+ * Resolved once per workbook. It used to be resolved once per series, which
+ * reparsed both of these parts for every `<c:numRef>` of every chart of every
+ * record.
  */
-async function sheetPartFor(book: JSZip, title: string): Promise<string | undefined> {
+async function worksheetsOf(book: JSZip): Promise<{ byTitle: Map<string, string>; paths: string[] }> {
+  const byTitle = new Map<string, string>();
+  const paths: string[] = [];
   const bookFile = book.file("xl/workbook.xml");
   const relsFile = book.file("xl/_rels/workbook.xml.rels");
-  if (!bookFile || !relsFile) return undefined;
+  if (!bookFile || !relsFile) return { byTitle, paths };
+
   let sheets: Element[];
   let rels: Element[];
   try {
     sheets = elements(parseXml(await bookFile.async("string")), SSML_NS, "sheet");
     rels = elements(parseXml(await relsFile.async("string")), PKG_REL_NS, "Relationship");
   } catch {
-    return undefined;
+    return { byTitle, paths };
   }
-  const wanted = sheets.find((s) => s.getAttribute("name") === title);
-  const rId = wanted?.getAttributeNS(R_NS, "id") ?? wanted?.getAttribute("r:id");
-  if (!rId) return undefined;
-  const target = rels.find((r) => r.getAttribute("Id") === rId)?.getAttribute("Target");
-  if (!target) return undefined;
-  // Targets here are relative to `xl/`, and a leading slash means the package
-  // root — the same two shapes a relationship anywhere else can take.
-  return target.startsWith("/") ? target.slice(1) : `xl/${target.replace(/^\.\//, "")}`;
+
+  const targets = new Map<string, string>();
+  for (const rel of rels) {
+    if ((rel.getAttribute("TargetMode") ?? "") === "External") continue;
+    targets.set(rel.getAttribute("Id") ?? "", rel.getAttribute("Target") ?? "");
+  }
+
+  for (const sheet of sheets) {
+    const rId = sheet.getAttributeNS(R_NS, "id") ?? sheet.getAttribute("r:id") ?? "";
+    const target = targets.get(rId);
+    if (!target) continue;
+    // The package's own resolver, rather than a second reading of what a
+    // relationship target means. This had `xl/` glued on by hand, which is
+    // right for the target Excel writes and wrong for the two other shapes one
+    // is allowed to take.
+    const path = resolveTarget("xl/workbook.xml", target);
+    const title = sheet.getAttribute("name");
+    if (title !== null && !byTitle.has(title)) byTitle.set(title, path);
+    paths.push(path);
+  }
+  return { byTitle, paths };
 }
 
 /** The `<c>` element for one address, or undefined. */
@@ -235,16 +260,17 @@ export async function mergeChartNumbers(
     return out;
   }
 
-  const sheetNames = Object.keys(book.files)
-    .filter((n) => /^xl\/worksheets\/sheet\d+\.xml$/.test(n))
-    .sort();
-  if (sheetNames.length === 0) return out;
+  const worksheets = await worksheetsOf(book);
+  if (worksheets.paths.length === 0) return out;
   const sstFile = book.file("xl/sharedStrings.xml");
   let shared: string[];
   const sheets = new Map<string, Document>();
   try {
     shared = sharedStrings(sstFile ? parseXml(await sstFile.async("string")) : undefined);
-    for (const name of sheetNames) sheets.set(name, parseXml(await book.file(name)!.async("string")));
+    for (const name of worksheets.paths) {
+      const file = book.file(name);
+      if (file) sheets.set(name, parseXml(await file.async("string")));
+    }
   } catch {
     return out;
   }
@@ -265,8 +291,8 @@ export async function mergeChartNumbers(
     // `cellsOfFormula` makes for a range it cannot read, and for the same
     // reason: there is no safe guess between two sheets.
     const title = sheetOfFormula(formula);
-    const named = title === null ? undefined : await sheetPartFor(book, title);
-    const sheetPath = named ?? (sheetNames.length === 1 ? sheetNames[0] : undefined);
+    const named = title === null ? undefined : worksheets.byTitle.get(title);
+    const sheetPath = named ?? (worksheets.paths.length === 1 ? worksheets.paths[0] : undefined);
     const cache = elements(ref, C_NS, "numCache")[0];
     if (!cache) continue;
 
@@ -289,14 +315,12 @@ export async function mergeChartNumbers(
 
       const text = stringOfCell(cell, shared);
       if (text === undefined) continue; // already a number: not ours to touch
-      FIELD.lastIndex = 0;
-      if (!FIELD.test(text)) continue; // a label somebody typed, left alone
+      if (!fieldPattern().test(text)) continue; // a label somebody typed, left alone
 
       // Resolved WITHOUT a format on purpose. A number written into a chart is
       // formatted by the chart, and `{{Revenue|number:0}}` would hand back
       // "1 250 000" — which is the right string and an unplottable cell.
-      FIELD.lastIndex = 0;
-      const filled = text.replace(FIELD, (whole, name: string) => resolve(name) ?? whole);
+      const filled = text.replace(fieldPattern(), (whole, name: string) => resolve(name) ?? whole);
       const value = numericValue(filled);
       if (value === undefined) {
         out.refused++;

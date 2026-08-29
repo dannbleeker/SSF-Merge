@@ -17,7 +17,7 @@ import { fillShapeWithImage, shapeOf } from "../image/place.js";
 import type { FillMode } from "../image/fill.js";
 import type { Pkg } from "../pptx/pkg.js";
 import { A_NS, elements } from "../pptx/xml.js";
-import { FIELD, editRuns, type Edit } from "./text.js";
+import { editRuns, fieldPattern, type Edit } from "./text.js";
 
 const IMAGE_REL_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image";
 
@@ -50,7 +50,7 @@ export function imageFieldsIn(doc: Document): string[] {
     const joined = elements(paragraph, A_NS, "t")
       .map((t) => t.textContent ?? "")
       .join("");
-    for (const hit of joined.matchAll(new RegExp(FIELD.source, FIELD.flags))) {
+    for (const hit of joined.matchAll(fieldPattern())) {
       if (hit[1] && imageMode(hit[2])) seen.add(hit[1]);
     }
   }
@@ -187,7 +187,7 @@ export async function placeImages(
     const texts = elements(paragraph, A_NS, "t");
     const joined = texts.map((t) => t.textContent ?? "").join("");
     // Materialised before the first `await`, because the loop edits the document.
-    const hits = [...joined.matchAll(new RegExp(FIELD.source, FIELD.flags))];
+    const hits = [...joined.matchAll(fieldPattern())];
     const edits: Edit[] = [];
 
     for (const hit of hits) {

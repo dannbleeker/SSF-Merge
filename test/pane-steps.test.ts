@@ -28,7 +28,7 @@ import {
   visibleRows,
 } from "../src/pane/steps.js";
 import type { PaneState, StepId } from "../src/pane/steps.js";
-import { FIELD } from "../src/core/merge/text.js";
+import { fieldPattern } from "../src/core/merge/text.js";
 import { imageMode } from "../src/core/merge/images.js";
 
 const ready: PaneState = {
@@ -664,7 +664,7 @@ describe("the token an image column is written as", () => {
   });
 
   it("is a token the engine's own reader accepts, name and format both", () => {
-    const hits = [...fieldToken("Photo", "image").matchAll(new RegExp(FIELD.source, FIELD.flags))];
+    const hits = [...fieldToken("Photo", "image").matchAll(fieldPattern())];
     expect(hits).toHaveLength(1);
     expect(hits[0]?.[1]).toBe("Photo");
     expect(imageMode(hits[0]?.[2])).toBe("cover");
