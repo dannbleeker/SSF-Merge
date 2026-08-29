@@ -13,6 +13,16 @@ import { CT_NS, PKG_REL_NS, P_NS, R_NS, element, elements, parseXml, serializeXm
 
 const CONTENT_TYPES = "[Content_Types].xml";
 const PRESENTATION = "ppt/presentation.xml";
+/**
+ * What a chart or a SmartArt may drag out of the package with it.
+ *
+ * Its own styling and colours, the workbook behind it, its diagram parts, its
+ * pictures, a theme override. That is the whole list, and it is an allowlist
+ * because the alternative — trusting the relationships in the file — let a
+ * crafted deck name `ppt/presentation.xml` as something a chart owned.
+ */
+const OWNABLE_BY_GRAPHIC = /^ppt\/(charts|diagrams|embeddings|media|theme)\//;
+
 const NOTES_REL_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide";
 /**
  * A slide's comments, in both spellings — classic `commentN.xml` and the
@@ -404,6 +414,21 @@ export class Pkg {
       if (!/^ppt\/(charts\/chart|diagrams\/data)\d+\.xml$/.test(part) || !this.has(part)) continue;
       owned.push(part);
       for (const child of await this.relatedParts(part)) {
+        // The child comes from the CHART's own relationships, which come out of
+        // the deck, and a deck can be sent to somebody. Without this allowlist a
+        // crafted chart relationship naming `/ppt/presentation.xml` put that
+        // part into `owned`, nothing else in the package referred to it — the
+        // only referrer is the root `_rels/.rels`, which the referrer scan below
+        // does not read — and the sweep deleted it. The merge then finished
+        // without complaint and produced a file PowerPoint cannot open. Naming
+        // `/[Content_Types].xml` did the same and then threw.
+        //
+        // The parent above is already held to an allowlist. This is the same
+        // discipline one level down: a chart or a diagram owns its styling, its
+        // workbook and its media, and nothing else. Anything outside these is
+        // left alone — and leaving a stranded part behind is a far better
+        // failure than deleting one the presentation needs.
+        if (!OWNABLE_BY_GRAPHIC.test(child)) continue;
         if (this.has(child) && !owned.includes(child)) owned.push(child);
       }
     }

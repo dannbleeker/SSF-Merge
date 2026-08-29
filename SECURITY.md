@@ -57,24 +57,46 @@ What was looked at, and what it said. Filed from
 | Hostile values through a merge | **Sound.** `<b>bold</b>`, `a & b`, `]]>break`, a comment, a processing instruction and an already-escaped entity all round trip exactly once. |
 | Injection into the package | **Sound.** A value closing its own `<a:t>` and opening a new element arrives as text; every part still parses and no injected element appears. |
 | `__proto__` as a column name | **Sound.** Own property on a null-prototype row, merges onto the slide, pollutes nothing. |
-| Relationship targets → part paths | **One finding, fixed below.** |
+| Relationship targets → part paths | **Two findings, both fixed below.** |
 | Traversal out of the package | **Not possible.** `..` past the root is clamped, and the result is always a package-relative name. Nothing here touches a real filesystem. |
 | Pasted text into the pane | **Sound.** `render.ts` writes `textContent` and never `innerHTML`; held by a test in `pane-render.test.ts`. |
 | Dependency surface | **Two runtime dependencies**, `@xmldom/xmldom` and `jszip`. Alerts are triaged and recorded in `docs/DEPENDENCY-ALERTS.md`. |
 
 ### What it found
 
-`resolveTarget` honours a leading `/` and any number of `..`, which is what the
-format requires. Removing a slide fed its answer straight to `removePart` for
-each notes and comment relationship — so a deck whose slide carried a
-`notesSlide` target of `/[Content_Types].xml` would have the merge **delete the
-one part a presentation cannot open without**. The output would not open, and
-the deck only had to be sent to the user.
+Both findings are the same shape: **removing a slide decides what to delete from
+relationships that came out of the deck**, and a deck can be sent to somebody.
 
-Severity is low: it corrupts the user's own output, and there is no execution,
-no persistence and nothing exfiltrated. It is fixed by refusing to remove a part
-that resolves outside `ppt/`, where a notes page and a comment part always live.
-The test for it was checked by removing the guard and watching it go red.
+**One — the slide's own notes and comment relationships.** `resolveTarget`
+honours a leading `/` and any number of `..`, which is what the format requires.
+Removing a slide fed its answer straight to `removePart`, so a slide carrying a
+`notesSlide` target of `/[Content_Types].xml` had the merge delete the one part
+a presentation cannot open without. Fixed by refusing to remove a part
+resolving outside `ppt/`, where a notes page and a comment part always live.
+
+**Two — a chart's or diagram's own relationships.** Found by looking for
+siblings of the first, which is the step that gets skipped. Removing a slide
+also sweeps the parts its charts and diagrams own. The top of that list was held
+to an allowlist; the **children were not**, so a chart whose relationships named
+`/ppt/presentation.xml` had that part counted as something the chart owned.
+Nothing else in the package refers to it — its only referrer is the root
+`_rels/.rels`, which the referrer scan does not read — so it was swept.
+
+This one is worse than the first. `/ppt/presentation.xml` was deleted
+**silently**: the merge finished, reported success, and produced a file that
+cannot open. `/[Content_Types].xml` was deleted and then threw. Fixed by holding
+the children to the same allowlist as the parent — a chart or diagram owns its
+styling, its workbook, its diagram parts and its media, and nothing else.
+
+Severity for both is low: they corrupt the user's own output, with no execution,
+no persistence and nothing exfiltrated. Both tests were checked by removing the
+guard and watching them go red, so they fail for the reason they claim.
+
+**Left standing, and worth knowing:** the referrer scan reads only paths
+containing `/_rels/`, which excludes the root `_rels/.rels`. So a part referenced
+*only* from there still looks unreferenced. The allowlist now keeps such a part
+out of the sweep's reach, so this is latent rather than exploitable — but it is a
+wrong answer waiting for someone to widen the allowlist.
 
 ### What this sweep did not cover
 

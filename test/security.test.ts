@@ -147,3 +147,63 @@ describe("a relationship target comes out of the deck", () => {
     expect(pkg.has("[Content_Types].xml"), "a crafted target deleted it").toBe(true);
   });
 });
+
+describe("a chart's own relationships come out of the deck too", () => {
+  /**
+   * The same class of hole as the one above, one level down — found only by
+   * looking for siblings after fixing the first, which is the step that gets
+   * skipped.
+   *
+   * Removing a slide sweeps the parts its charts and diagrams own. The parent
+   * of that list was held to an allowlist; the CHILD was not. So a chart whose
+   * relationships named `/ppt/presentation.xml` had that part counted as
+   * something the chart owned, nothing else in the package referred to it — its
+   * only referrer is the root `_rels/.rels`, which the referrer scan does not
+   * read — and the sweep took it.
+   *
+   * `/ppt/presentation.xml` was the worse one: deleted SILENTLY, the merge
+   * finished, and the output cannot open. `/[Content_Types].xml` was deleted and
+   * then threw.
+   */
+  async function deckWhoseChartClaims(victim: string) {
+    const pkg = await Pkg.open(
+      await makeDeck([
+        { paragraphs: [["Cover"]], chart: { title: "T", workbook: ["a"] } },
+        { paragraphs: [["Second"]] },
+      ]),
+    );
+    pkg.setText(
+      "ppt/charts/_rels/chart1.xml.rels",
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n` +
+        `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+        `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/package" Target="${victim}"/>` +
+        `</Relationships>`,
+    );
+    return pkg;
+  }
+
+  for (const victim of ["/ppt/presentation.xml", "/[Content_Types].xml", "/ppt/slides/slide2.xml"]) {
+    it(`keeps ${victim} when a chart claims to own it`, async () => {
+      const pkg = await deckWhoseChartClaims(victim);
+      const key = victim.slice(1);
+      expect(pkg.has(key), "the fixture should start with it").toBe(true);
+      await pkg.removeSlide("ppt/slides/slide1.xml");
+      expect(pkg.has(key), `a crafted chart relationship swept ${key}`).toBe(true);
+    });
+  }
+
+  it("still sweeps what the slide's chart really does own", async () => {
+    // The guard must not become "never sweep anything": a template slide going
+    // out on the whole-deck route has to take its chart with it, or the output
+    // ships parts nothing points at.
+    const pkg = await Pkg.open(
+      await makeDeck([
+        { paragraphs: [["Cover"]], chart: { title: "T", workbook: ["a"] } },
+        { paragraphs: [["Second"]] },
+      ]),
+    );
+    expect(pkg.has("ppt/charts/chart1.xml")).toBe(true);
+    await pkg.removeSlide("ppt/slides/slide1.xml");
+    expect(pkg.has("ppt/charts/chart1.xml"), "the chart should have gone with its slide").toBe(false);
+  });
+});
