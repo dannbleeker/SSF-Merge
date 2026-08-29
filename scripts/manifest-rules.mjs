@@ -96,7 +96,27 @@ export function checkManifest(text, name) {
   if (name.endsWith(".json")) jsonRules(text, name, out);
   else xmlRules(text, name, out);
 
-  const local = urlsIn(text).filter((u) => /localhost|127\.0\.0\.1/.test(u));
+  // HTTPS, which Office requires of every address it fetches. A production
+  // manifest on `http://` fails Microsoft's validator, and sideloaded anyway it
+  // fails the way this file's other rules describe: no ribbon entry, no error,
+  // nothing to report.
+  //
+  // The namespace declarations are stripped first and that is the whole
+  // difficulty. `xmlns="http://schemas.microsoft.com/..."` is an IDENTIFIER,
+  // not an address — it is never fetched, it is http by definition, and it may
+  // not be changed. A rule that read them would fire on every manifest ever
+  // written and would have been deleted rather than fixed.
+  //
+  // `PROD_ORIGIN` is one constant in `manifest-source.mjs`, which is this
+  // file's own test for whether a rule is worth having: one edit away.
+  const addresses = urlsIn(text.replace(/xmlns(:[A-Za-z0-9_-]+)?="[^"]*"/g, ""));
+  const isLocal = (u) => u.includes("localhost") || u.includes("127.0.0.1");
+  const insecure = addresses.filter((u) => u.startsWith("http://") && !isLocal(u));
+  if (isProd(name) && insecure.length > 0) {
+    out.push(`${name} is a production manifest and points at an insecure address: ${insecure[0]}`);
+  }
+
+  const local = urlsIn(text).filter(isLocal);
   if (isProd(name) && local.length > 0) {
     out.push(`${name} is a production manifest and points at localhost: ${local[0]}`);
   }

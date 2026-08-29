@@ -131,6 +131,38 @@ describe("the requirement floor is checked at runtime, never declared", () => {
     }
   });
 
+  it("catches a production manifest served over http, in either format", () => {
+    /**
+     * Office fetches every address a manifest names and requires HTTPS for all
+     * of them. A production manifest on `http://` fails Microsoft's validator,
+     * and sideloaded anyway it fails the way the requirement-set rule above
+     * describes: no ribbon entry, no error, nothing to report.
+     *
+     * `PROD_ORIGIN` is one constant, which is this rule set's own test for
+     * whether a rule earns its place: one edit away from being shipped.
+     */
+    const xml = read("manifest-prod.xml").replace(/https:\/\/ssf-merge/g, "http://ssf-merge");
+    expect(checkManifest(xml, "manifest-prod.xml")).toEqual([expect.stringContaining("insecure address")]);
+
+    const json = read("manifest-prod.json").replace(/https:\/\/ssf-merge/g, "http://ssf-merge");
+    expect(checkManifest(json, "manifest-prod.json")).toEqual([expect.stringContaining("insecure address")]);
+  });
+
+  it("does not mistake a namespace for an address", () => {
+    /**
+     * The whole difficulty of the rule above. `xmlns="http://schemas.microsoft
+     * .com/..."` is an IDENTIFIER: never fetched, http by definition, and not
+     * ours to change. A rule that read those would fire on every manifest ever
+     * written and would have been deleted rather than fixed.
+     *
+     * Asserted from the real file, so it holds against whatever namespaces the
+     * generator emits rather than against a fixture written to pass.
+     */
+    const text = read("manifest-prod.xml");
+    expect(text, "the fixture stopped carrying an http namespace").toContain('xmlns="http://');
+    expect(checkManifest(text, "manifest-prod.xml")).toEqual([]);
+  });
+
   it("catches a requirement set being added back, in either format", () => {
     const xml = read("manifest-prod.xml").replace(
       "<Hosts>",
