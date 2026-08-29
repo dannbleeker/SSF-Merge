@@ -7,6 +7,19 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a pasted table with an inch mark in a header is read correctly
+
+`Size 6" pipe` as a column name could make the whole paste read as one column:
+every placeholder unmatched, the merge button down, and nothing on screen saying
+why.
+
+A quote only opens a quoted cell at the START of a cell — an inch mark in the
+middle of one is just a character, which is what RFC 4180 says and what the
+parser already did. The part that works out whether a paste is tab- or
+comma-separated disagreed: it treated any quote as opening one, so it stayed
+"inside a quote" for the rest of the paste, ran past the first row, and could
+find a tab further down in a comma-separated table.
+
 ### Added — a gate that asks whether a package agrees with itself
 
 Two defects fixed in 0.2.2 were the same mistake in the two places that delete a

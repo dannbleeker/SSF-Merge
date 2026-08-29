@@ -108,19 +108,39 @@ export function imageNamesIn(rows: Record<string, string>[], column: string): st
  * screen saying why.
  *
  * Walking with the same quote rule the parser uses is the only sample that
- * cannot disagree with it.
+ * cannot disagree with it — and for a while this did not, which cost the reverse
+ * of the bug above. A quote only OPENS a quoted cell at the START of a cell:
+ * `Size 6" pipe` is a cell containing a quote, not the beginning of a quoted
+ * one, and RFC 4180 and the parser below both read it that way. A bare toggle
+ * does not, so a header holding an inch mark left this scanner "inside a quote"
+ * for the rest of the paste. It then ran past the first row, found a tab
+ * somewhere further down, and read an ordinary comma-separated table as
+ * tab-separated: one column, every placeholder unmatched.
+ *
+ * Which cell boundaries to honour is the one thing the parser knows and this
+ * cannot, because the delimiter is what it is here to work out. So it treats
+ * BOTH candidates as separators. That is a superset of whichever turns out to
+ * be right, and the only case it reads differently from the parser is a quote
+ * opening a cell that follows the delimiter NOT chosen — where the parser sees
+ * a quote in the middle of a cell holding the other character. That is an edge
+ * of an edge, and it is one step further out than the case that shipped.
  */
 function firstRow(src: string): string {
   let quoted = false;
+  let atCellStart = true;
   for (let i = 0; i < src.length; i++) {
     const c = src[i];
-    // A bare toggle is enough, and the escaped-quote case needs no branch of
-    // its own: `""` toggles twice and nets to zero, which is the same state
-    // the parser reaches by skipping both. A branch that cannot change the
-    // answer was written here first and removed when a revert proved it could
-    // not fail.
-    if (c === '"') quoted = !quoted;
-    else if (c === "\n" && !quoted) return src.slice(0, i);
+    if (quoted) {
+      // `""` inside a quoted cell is an escaped quote, and skipping both is what
+      // the parser does. Toggling twice reaches the same state, but only if
+      // nothing between them consults `atCellStart`.
+      if (c === '"' && src[i + 1] === '"') i++;
+      else if (c === '"') quoted = false;
+      continue;
+    }
+    if (c === '"' && atCellStart) quoted = true;
+    else if (c === "\n") return src.slice(0, i);
+    atCellStart = c === "," || c === "\t";
   }
   return src;
 }
