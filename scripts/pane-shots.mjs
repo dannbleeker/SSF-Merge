@@ -12,7 +12,26 @@
  *   node scripts/pane-shots.mjs
  *
  * 320 and 512 are the ends of the range a task pane is dragged between. A pane
- * judged at one width is a layout that breaks at the other.
+ * judged at one width is a layout that breaks at the other. Both THEMES, too:
+ * PowerPoint can be dark while the OS is light, and the dark palette is a
+ * separate set of tokens that nothing else in this repo exercises.
+ *
+ * It also MEASURES, because two of the things a screenshot shows are numbers a
+ * reader cannot take off a PNG, and both have produced real defects:
+ *
+ * - **horizontal overflow.** A single unbroken column header took the pane to
+ *   545px inside a 320px frame, and a spaceless error from PowerPoint to 3751 —
+ *   with the one filled button off the side. Every long string on this screen
+ *   comes from outside it.
+ * - **text contrast.** Blue is a background here (the header, the primary
+ *   button, both carrying white text) and it was also the ink on chips, field
+ *   tags and every secondary button. On the dark palette that ink was 3.0:1,
+ *   and "Remove these slides" — the whole way back from a merge — was 2.93:1.
+ *
+ * Findings are printed and the process exits 1, so this can be read by a person
+ * or wired to something. Disabled controls are exempt from the contrast rule,
+ * which is what WCAG 1.4.3 says and not a convenience: a greyed-out button is
+ * meant to read as unavailable.
  */
 import { mkdirSync } from "node:fs";
 import { chromium } from "playwright";
@@ -51,6 +70,15 @@ const PIVOT = ["Row Labels", "Min. of cost", "Sum of quantity monthly"];
  * follows for its columns and row count.
  */
 const PHOTO_PASTE = "First\tPhoto\nAda\tada.png\nGrace\tgrace.png\nAlan\talan.png";
+
+/**
+ * A header with nothing in it a line can break at.
+ *
+ * `overflow-wrap` is what keeps this inside a 320px frame, and nothing else in
+ * these fixtures has a word long enough to need it — the pivot headers all
+ * carry spaces. A system export writes names like this one.
+ */
+const UNBROKEN_PASTE = "First\tSumOfQuantityMonthlyForTheNorthernRegionIncludingSubsidiaries\nAda\t42";
 
 const STATES = [
   { name: "1-template-empty", step: "template", state: { fields: [], previewing: false } },
@@ -303,39 +331,175 @@ const STATES = [
     step: "template",
     state: { fields: [], previewing: false, draft: { from: "4", to: "99" }, deckSize: 12 },
   },
+  /**
+   * The two shapes the overflow half of the audit exists for.
+   *
+   * Without them that half is a measurement nothing exercises — a gate whose
+   * name is wider than its fixtures — and it would report clean against a
+   * stylesheet that had lost `overflow-wrap`. Both are real: a header with no
+   * spaces in it is what a system export writes, and a host error with no
+   * spaces is what `readable` caps at 400 characters. A cap is not a break.
+   */
+  {
+    name: "2-data-unbroken-header",
+    step: "data",
+    state: { ...full, paste: UNBROKEN_PASTE },
+    paste: UNBROKEN_PASTE,
+  },
+  {
+    name: "5-merge-spaceless-notice",
+    step: "merge",
+    state: {
+      ...full,
+      paste: PASTE,
+      columns: ["First", "Last", "Email"],
+      rows: 2,
+      notice: `PowerPoint refused the insert: ${"GeneralException".repeat(20)}`,
+    },
+  },
 ];
 
 // The bundled browser and the installed playwright can disagree on build
 // number in this environment, so the binary is named rather than discovered.
 const EXECUTABLE = process.env.CHROMIUM ?? "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
 
+/**
+ * What the page can say about itself that a PNG cannot.
+ *
+ * Runs INSIDE the page, so it reads computed styles and real geometry rather
+ * than anything this file believes about the stylesheet.
+ *
+ * Contrast is measured against the nearest ancestor with a non-transparent
+ * background, which is what the eye sees; a colour with no opaque ground
+ * behind it falls back to white rather than being skipped, because skipping is
+ * how a measurement quietly stops measuring.
+ */
+function audit() {
+  const numbers = (/** @type {string} */ s) => (s.match(/[\d.]+/g) ?? []).map(Number);
+  const luminance = (/** @type {number[]} */ [r, g, b]) => {
+    const channel = (v) => {
+      const x = v / 255;
+      return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4;
+    };
+    return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+  };
+  const groundOf = (/** @type {Element} */ el) => {
+    for (let node = el; node; node = node.parentElement) {
+      const colour = numbers(getComputedStyle(node).backgroundColor);
+      if (colour.length >= 3 && (colour[3] === undefined || colour[3] > 0)) return colour;
+    }
+    return [255, 255, 255];
+  };
+
+  const findings = [];
+  const root = document.documentElement;
+  // The DOCUMENT, not the pane: a child can overhang its parent harmlessly,
+  // and what matters is whether the frame has to scroll sideways.
+  if (root.scrollWidth > root.clientWidth) {
+    const past = [];
+    for (const el of document.querySelectorAll("#pane *")) {
+      const box = el.getBoundingClientRect();
+      if (box.right > root.clientWidth + 0.5 || box.left < -0.5) {
+        past.push(`${el.tagName.toLowerCase()}.${el.className || "-"} "${(el.textContent ?? "").trim().slice(0, 40)}"`);
+      }
+    }
+    // A block-level element's BOX is clamped to its container, so the one that
+    // overflows is usually a paragraph whose text is wider than it is. Name
+    // the widest by `scrollWidth` when no box is past the edge, or the finding
+    // says only that something is wrong.
+    if (past.length === 0) {
+      let widest = null;
+      for (const el of document.querySelectorAll("#pane *")) {
+        // An element that scrolls or clips its own content cannot push the
+        // document — a textarea's `scrollWidth` is its text, and naming it
+        // sends the reader at the one box on the screen that is fine.
+        if (getComputedStyle(el).overflowX !== "visible") continue;
+        if (el.scrollWidth > root.clientWidth && (!widest || el.scrollWidth > widest.scrollWidth)) widest = el;
+      }
+      if (widest) {
+        past.push(
+          `${widest.tagName.toLowerCase()}.${widest.className || "-"} is ${widest.scrollWidth}px wide "${(widest.textContent ?? "").trim().slice(0, 40)}"`,
+        );
+      }
+    }
+    findings.push(`overflows sideways: ${root.scrollWidth}px in ${root.clientWidth} — ${past[0] ?? "nothing named"}`);
+  }
+
+  const walk = (el) => {
+    for (const node of el.childNodes) {
+      if (node.nodeType === 3 && (node.textContent ?? "").trim() !== "") {
+        // WCAG 1.4.3 exempts an inactive control: greyed out is meant to read
+        // as unavailable, and holding it to 4.5:1 would remove the signal.
+        if (el.disabled === true || el.closest("[disabled]")) continue;
+        const style = getComputedStyle(el);
+        const ratio =
+          (Math.max(luminance(numbers(style.color)), luminance(groundOf(el))) + 0.05) /
+          (Math.min(luminance(numbers(style.color)), luminance(groundOf(el))) + 0.05);
+        const size = Number.parseFloat(style.fontSize);
+        const large = size >= 24 || (size >= 18.66 && Number.parseInt(style.fontWeight, 10) >= 700);
+        const need = large ? 3 : 4.5;
+        if (ratio < need) {
+          findings.push(
+            `contrast ${ratio.toFixed(2)}:1 (needs ${need}) on ${el.tagName.toLowerCase()}.${el.className || "-"} "${(node.textContent ?? "").trim().slice(0, 40)}"`,
+          );
+        }
+      } else if (node.nodeType === 1) walk(node);
+    }
+  };
+  walk(document.body);
+  return findings;
+}
+
 mkdirSync(OUT, { recursive: true });
 const browser = await chromium.launch({ executablePath: EXECUTABLE });
 let taken = 0;
+// Deduplicated across states: the same chip is on eight screens, and eight
+// copies of one finding is a report nobody reads to the end.
+const found = new Map();
 for (const width of [320, 512]) {
-  for (const { name, step, state, paste, files } of STATES) {
-    const page = await browser.newPage({ viewport: { width, height: 620 } });
-    await page.goto(`http://localhost:${PORT}/taskpane.html`);
-    await page.evaluate(
-      async ({ state, step, paste, files }) => {
-        const { render } = await import("/render.ts");
-        const shown = { ...state };
-        // Built HERE rather than passed in: a parse result and a Map do not
-        // survive the trip into the page, and a fixture that described its own
-        // columns would be a fixture that can disagree with the parser.
-        if (paste) {
-          const { readPastedTable } = await import("/steps.ts");
-          Object.assign(shown, readPastedTable(paste));
-        }
-        if (files) shown.images = new Map(files.map((name) => [name, new Uint8Array([1])]));
-        render(document.getElementById("pane"), shown, step);
-      },
-      { state, step, paste, files },
-    );
-    await page.screenshot({ path: `${OUT}/${width}-${name}.png` });
-    await page.close();
-    taken++;
+  for (const theme of ["light", "dark"]) {
+    for (const { name, step, state, paste, files } of STATES) {
+      const page = await browser.newPage({ viewport: { width, height: 620 } });
+      // Office.js is fetched from Microsoft by `taskpane.html` and is not what
+      // is being measured here — `render` is called directly. Refused rather
+      // than waited on: on a machine that cannot reach it, every one of these
+      // pages otherwise spends its connect timeout before drawing anything.
+      await page.route("https://appsforoffice.microsoft.com/**", (route) => route.abort());
+      await page.goto(`http://localhost:${PORT}/taskpane.html`);
+      await page.evaluate(
+        async ({ state, step, paste, files, theme }) => {
+          // The stamp `main.ts` writes from `Office.context.officeTheme`. Set
+          // before the render so the first paint is the one measured.
+          document.documentElement.setAttribute("data-theme", theme);
+          const { render } = await import("/render.ts");
+          const shown = { ...state };
+          // Built HERE rather than passed in: a parse result and a Map do not
+          // survive the trip into the page, and a fixture that described its own
+          // columns would be a fixture that can disagree with the parser.
+          if (paste) {
+            const { readPastedTable } = await import("/steps.ts");
+            Object.assign(shown, readPastedTable(paste));
+          }
+          if (files) shown.images = new Map(files.map((name) => [name, new Uint8Array([1])]));
+          render(document.getElementById("pane"), shown, step);
+        },
+        { state, step, paste, files, theme },
+      );
+      await page.screenshot({ path: `${OUT}/${width}-${theme}-${name}.png` });
+      for (const finding of await page.evaluate(audit)) {
+        if (!found.has(finding)) found.set(finding, `${width} ${theme} ${name}`);
+      }
+      await page.close();
+      taken++;
+    }
   }
 }
 await browser.close();
 console.log(`${taken} shots in ${OUT}`);
+if (found.size === 0) {
+  console.log("audit: nothing overflows and every live label clears its contrast floor");
+} else {
+  console.log(`audit: ${found.size} finding(s)`);
+  for (const [finding, where] of found) console.log(`  ${where}: ${finding}`);
+  process.exitCode = 1;
+}
