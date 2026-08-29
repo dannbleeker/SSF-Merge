@@ -224,7 +224,15 @@ Anything else written in that shape stays: a caption beside the placeholder,
 or another field, is untouched. Only the placeholder itself is taken away.
 
 **Where the files come from.** Step 2 grows a picker as soon as a column looks
-like it names pictures. Choose them from the folder they are in — several at
+like it names pictures — or as soon as a slide asks for one, which is not the
+same thing. A column counts as pictures only when EVERY filled cell names a
+file, so one cell reading `n/a` or `TBD` makes it an ordinary text column. Write
+`{{Photo|image}}` on the slide anyway and the picker appears for that column
+regardless, because the field is the instruction and the type is only a guess at
+it. The rows whose cell names no file keep their placeholder, as any row with a
+missing picture does.
+
+Choose the files from the folder they are in — several at
 once, or the whole folder. They are read in the pane and go into the merged
 deck; nothing is uploaded, and no picture is fetched from the network. A cell
 holding a URL is matched by the file name at the end of it, so
