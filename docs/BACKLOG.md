@@ -26,12 +26,6 @@ A named table on OneDrive or SharePoint, read through `/workbook/tables/{id}/row
 Refreshable, shareable, and the reason people ask for this. Needs nested app
 authentication, which removes a middle tier rather than adding one.
 
-### One file per recipient
-**Priority: medium.** Feasibility: medium.
-Blocked by WebView2: blob downloads from a task pane do not work
-([office-js#1511](https://github.com/OfficeDev/office-js/issues/1511)). The
-route is Graph upload plus a link, or `openBrowserWindow` to a download page.
-
 ### Modern chart types
 **Priority: medium.** Feasibility: medium.
 A waterfall, funnel, treemap, sunburst, histogram or box-and-whisker chart is
@@ -57,6 +51,42 @@ the fixture and the reader agreed with each other and disagreed with PowerPoint.
 Build the file in PowerPoint first, the way the test kit's SmartArt was.
 
 ## Rejected — do not re-propose
+
+- **Somewhere other than the current deck to put a merge.** Dropped by the owner
+  on 2026-08-29, covering both destinations the manual had listed as designed:
+  **one file per recipient**, and **into a new presentation**.
+
+  Neither is a bad idea and neither is expensive to want. One file per recipient
+  is what you attach to an email, and it is the only version of this that keeps
+  a recipient from scrolling to a competitor's page. A new presentation avoids
+  the deck that is slow to edit. They were weighed together because they are one
+  plumbing problem in two sizes: a destination that is not the presentation the
+  add-in is running in.
+
+  What settled it is that the two halves are not equally cheap, and the cheap
+  half buys the least. The per-recipient half is genuinely BLOCKED — a task pane
+  cannot hand you a file
+  ([office-js#1511](https://github.com/OfficeDev/office-js/issues/1511)), so it
+  needs a Graph upload and a link, which means the nested app authentication
+  Excel-via-Graph needs anyway. The new-presentation half is not blocked at all:
+  `PowerPoint.createPresentation(base64)` is PowerPointApi 1.1, below this
+  add-in's floor, and the pipeline already ends at the exact base64 string it
+  wants — one call swapped, a day's work at most, and the merged deck inherits
+  the master, layouts and theme for free because the package is a clone of the
+  user's own.
+
+  The cost that is easy to miss is verification. The add-in runs in the ORIGINAL
+  presentation and cannot see the new one, so `createPresentation` answers
+  `Promise<void>` and nothing else. Every other path here proves what landed by
+  re-counting the deck, precisely because this host accepts calls it does not
+  perform — and that evidence is simply unavailable through this door. A merge
+  that cannot say whether it worked is a poor trade for a deck that opens in a
+  second window.
+
+  Reviving it means somebody actually sending merged decks out one per
+  recipient, which is the blocked half — so the thing to watch for is that
+  request, not the easy half's availability. If Excel-via-Graph ships, the
+  authentication this needs already exists and the calculation changes.
 
 - **A filter expression language.** Dropped by the owner on 2026-08-29. Row
   filters shipped as a searchable checkbox list and nothing has asked for more.

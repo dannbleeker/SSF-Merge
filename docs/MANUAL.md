@@ -378,14 +378,22 @@ clears the filter, because a row number means nothing against different data.
 setting, and the merge screen says where the slides will land and how large the
 deck will be afterwards before you press anything.
 
-Two more destinations are designed and not built:
+Two more destinations were designed and are **not being built**, decided on
+2026-08-29:
 
-- **Into a new presentation**, which would open beside the current one. Better
-  for large merges, because a very long deck is slow to edit. *Planned.*
-- **One file per row**, saved to OneDrive. *Planned*, and blocked rather than
-  merely unbuilt: a task pane cannot hand you a downloaded file
-  ([office-js#1511](https://github.com/OfficeDev/office-js/issues/1511)), so it
-  needs an upload-and-link route.
+- **Into a new presentation**, which would open beside the current one — better
+  for large merges, because a very long deck is slow to edit.
+- **One file per row**, saved to OneDrive, which is what you would attach to an
+  email.
+
+The second is blocked rather than merely unbuilt: a task pane cannot hand you a
+downloaded file
+([office-js#1511](https://github.com/OfficeDev/office-js/issues/1511)), so it
+needs an upload-and-link route. The first is not blocked, and was declined with
+the second anyway — the add-in runs in the presentation it was opened from and
+cannot see a new one, so a merge sent there could never report what it produced.
+Every other path in SSF Merge proves what landed by counting the deck
+afterwards. `docs/BACKLOG.md` carries the full reasoning.
 
 ## What happens to the template
 
