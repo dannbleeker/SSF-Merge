@@ -28,6 +28,7 @@ import { prepareBlock } from "../src/core/merge/prepare.js";
 import { buildPlan } from "../src/core/merge/plan.js";
 import { runPlan } from "../src/core/merge/run.js";
 import { parseDelimited, toRecordSet } from "../src/core/data/recordset.js";
+import { A_NS, elements } from "../src/core/pptx/xml.js";
 import { makeDeck, type SlideSpec } from "./fixtures/deck.js";
 
 type Parts = Map<string, string | Uint8Array>;
@@ -106,6 +107,53 @@ describe("the packages this engine hands over", () => {
       const bytes = await merged(deck, 1, 1, sweep);
       expect(problems(await partsOf(bytes)), sweep ? "swept" : "template kept").toEqual([]);
     }
+  });
+
+  it("finds nothing wrong with a block whose slides are all different", async () => {
+    // Every other case here is one template slide repeated. A block of three,
+    // each carrying different parts, is what exercises the per-PACKAGE counters
+    // — tag numbers, notes numbering, chart numbering — against each other
+    // across one run, and nothing did.
+    //
+    // Also worth having as an ordering check: the plan is record-major, so the
+    // nine slides read A/B/C for Ada, then A/B/C for Bo. A counter that handed
+    // two copies the same part number would show up here as a slide carrying
+    // somebody else's chart.
+    const deck = await makeDeck([
+      { paragraphs: [["A {{Name}}"]], notes: "notes A {{Name}}", shapeTags: true },
+      {
+        paragraphs: [["B {{Name}}"]],
+        chart: { title: "{{Name}}", categories: ["{{Name}}"], workbook: ["{{Name}}"], values: ["1"] },
+        icons: true,
+      },
+      {
+        paragraphs: [["C {{Name}}"]],
+        modernChart: { title: "{{Name}}", categories: ["{{Name}}"], series: "{{Name}}", workbook: ["{{Name}}"] },
+        smartArt: ["{{Name}}", "b"],
+        smartArtDrawingOn: "slide",
+        notes: "notes C {{Name}}",
+      },
+      { paragraphs: [["after"]] },
+    ]);
+    const pkg = await Pkg.open(deck);
+    const prepared = await prepareBlock(pkg, { from: 1, to: 3, offsetInPackage: 0 }, "multi");
+    if (!prepared.ok) throw new Error(`refused: ${prepared.why}`);
+    const records = toRecordSet([["Name"], ["Ada"], ["Bo"], ["Cy"]]);
+    const result = await runPlan(pkg, buildPlan(prepared.block, records, { runId: "multi" }), records, {});
+    expect(result.slides).toHaveLength(9);
+
+    const keep = new Set(result.slides);
+    for (const path of await pkg.slidePaths()) if (!keep.has(path)) await pkg.removeSlide(path);
+    const bytes = await pkg.toBytes();
+    expect(problems(await partsOf(bytes))).toEqual([]);
+
+    // Record-major, and each copy carrying its own template slide's text.
+    const said: string[] = [];
+    for (const slide of result.slides) {
+      const doc = await pkg.doc(slide);
+      said.push((elements(doc, A_NS, "t")[0]?.textContent ?? "").trim());
+    }
+    expect(said).toEqual(["A Ada", "B Ada", "C Ada", "A Bo", "B Bo", "C Bo", "A Cy", "B Cy", "C Cy"]);
   });
 });
 
