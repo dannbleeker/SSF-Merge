@@ -604,3 +604,35 @@ describe("the number gate and the number parser cannot disagree", () => {
     expect(numericValue("1,23")).toBe(1.23);
   });
 });
+
+describe("a number too large for a double", () => {
+  /**
+   * The one input class where making `looksLikeNumber` ask `numericValue`
+   * CHANGED an answer rather than preserving it.
+   *
+   * The pattern matches any run of digits, and `Number()` gives up above about
+   * 1.8e308. So a 310-digit cell used to be typed `number` by the detector and
+   * refused by the converter — the exact disagreement that change was made to
+   * end, in an input class no test covered. It is typed `text` now, and both
+   * halves say so.
+   *
+   * Text is the honest answer rather than the ideal one. A spreadsheet would
+   * call it a number; this engine cannot hold it as one, and claiming it is a
+   * number and then failing to format it is the worse of the two — the same
+   * reasoning that refuses an ambiguous date rather than guessing it.
+   */
+  const HUGE = "9".repeat(310);
+
+  it("is refused by both halves rather than one", () => {
+    expect(numericValue(HUGE)).toBeUndefined();
+    expect(looksLikeNumber(HUGE)).toBe(false);
+    expect(detectType([HUGE])).toBe("text");
+  });
+
+  it("and the largest one that DOES fit still counts", () => {
+    // The other half: this refuses values, not long strings of digits.
+    expect(looksLikeNumber("1.7976931348623157")).toBe(true);
+    expect(numericValue("9".repeat(15))).toBe(999999999999999);
+    expect(detectType(["9".repeat(15)])).toBe("number");
+  });
+});
