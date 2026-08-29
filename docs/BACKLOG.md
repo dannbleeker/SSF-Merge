@@ -32,6 +32,30 @@ Blocked by WebView2: blob downloads from a task pane do not work
 ([office-js#1511](https://github.com/OfficeDev/office-js/issues/1511)). The
 route is Graph upload plus a link, or `openBrowserWindow` to a download page.
 
+### Modern chart types
+**Priority: medium.** Feasibility: medium.
+A waterfall, funnel, treemap, sunburst, histogram or box-and-whisker chart is
+not a `<c:chartSpace>`. PowerPoint stores it as a separate part reached through
+`…/2014/relationships/chartEx`, and nothing here knows that relationship type.
+
+Measured rather than assumed, and it is worse than "not filled". Merging a deck
+carrying one produces ONE chartEx part shared by the template slide and every
+merged copy, still holding `{{Region}}` and `{{Name}}` — which is exactly the
+failure `docs/TEST-KIT.md` check 2 exists to catch. `test/chart-modern.test.ts`
+pins it, and starts failing the day somebody adds support.
+
+Two halves, and they are not equally safe. **Cloning** is schema-independent —
+copy the part, repoint the relationship, add the content type, the same three
+steps a chart already gets. **Filling** is not: a chartEx keeps its labels in
+`<cx:pt>` elements this reader does not know, and its title in ordinary
+DrawingML that would merge the moment the part were visited. Where the rest of
+its text lives is a fact about a schema nobody here has a real file of.
+
+So the blocker is a real .pptx containing one, not the code. Guessing the schema
+from documentation is precisely what produced the SmartArt drawing bug, where
+the fixture and the reader agreed with each other and disagreed with PowerPoint.
+Build the file in PowerPoint first, the way the test kit's SmartArt was.
+
 ## Rejected — do not re-propose
 
 - **A filter expression language.** Dropped by the owner on 2026-08-29. Row
