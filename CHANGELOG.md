@@ -7,6 +7,17 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a long column header no longer pushes the pane off the side
+
+The pane is a 320-pixel-wide iframe and nothing in it broke a long word. A pivot
+table's default headers are the commonest thing anybody pastes here, and one
+without spaces in it took the pane to 545 pixels wide — the field chip, the
+column list on the data step, and with a spaceless error from PowerPoint the
+whole thing to 3751, with the one button you are meant to press off the side.
+
+Text wraps inside a word now, everywhere except the run log and the row labels,
+which scroll and ellipsise on purpose.
+
 ### Fixed — the way back survives an edit, and a merge that raised
 
 After a merge landed, the card offering **"Remove slides 13 to 732, which this

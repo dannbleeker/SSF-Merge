@@ -93,6 +93,32 @@ body {
   line-height: 1.5;
   /* Tabular figures so a count does not jitter as it changes. */
   font-variant-numeric: tabular-nums;
+  /*
+   * Nothing a user supplies may push this pane sideways.
+   *
+   * Every long string on screen comes from outside: a column header, a row's
+   * first cell, a file name, and — the sharpest one — whatever PowerPoint put
+   * in an error. `readable` caps that at 400 characters and a cap is not a
+   * break: 400 characters with no space in them is one word, and one word
+   * cannot wrap.
+   *
+   * Measured at 320px, which is the narrow end of the width this file's own
+   * comments design for. A single unbroken column header took the document to
+   * 545px, the same header in the data step's column list to 495px, and a
+   * spaceless host error to 3751px — at which point the one filled button, the
+   * step heading and the Back link are all off the side of a pane that has no
+   * horizontal scrollbar worth using.
+   *
+   * `anywhere` rather than `break-word`, because only `anywhere` shrinks a
+   * flex or grid item's min-content width — and the chips, the cards and the
+   * button rows are flex. `break-word` leaves the overflow exactly where it
+   * was in all three cases.
+   *
+   * It reaches only text that WRAPS, so the two places that deliberately do
+   * not are untouched: the run log is `white-space: pre` in its own scroll
+   * box, and a row label is one nowrap line with an ellipsis.
+   */
+  overflow-wrap: anywhere;
 }
 
 header {
