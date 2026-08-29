@@ -1,26 +1,95 @@
 <!doctype html>
 <html lang="en">
 <meta charset="utf-8">
-<title>SSF Merge</title>
+<title>SSF Merge — mail merge for PowerPoint</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Mail merge for PowerPoint. One template block of slides, one set of slides per row of your data, and formatting that survives because nothing re-authors it.">
+<link rel="icon" href="/assets/icon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="/assets/icon-80.png">
+
+<!-- What a link to this page unfurls into, in Teams, Slack and anywhere else
+     somebody shares it. Absolute URLs: a relative one resolves against the
+     sharing service rather than against this origin. -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="SSF Merge — mail merge for PowerPoint">
+<meta property="og:description" content="One template block of slides, one set of slides per row of your data, and formatting that survives because nothing re-authors it.">
+<meta property="og:url" content="https://ssf-merge.struktureretsundfornuft.dk/">
+<meta property="og:image" content="https://ssf-merge.struktureretsundfornuft.dk/assets/icon-80.png">
+<meta name="twitter:card" content="summary">
+
 <style>
-  body{margin:0;padding:12vh 24px;background:#F4F7FA;color:#1A202C;
-       font-family:"Segoe UI",system-ui,-apple-system,Arial,sans-serif;line-height:1.6}
-  main{max-width:34rem;margin:0 auto}
-  .tick{display:block;width:26px;height:3px;background:#ED8936;margin-bottom:14px;border-radius:1px}
-  h1{color:#00254C;font-size:2rem;margin:0 0 12px;letter-spacing:-.02em}
-  p{color:#5B6672;margin:0 0 12px}
-  a{color:#2B6CB0}
+  /* The SSF palette, and only it: navy for headings, blue for chrome and
+     links, one orange accent. The task pane this page is about uses the same
+     three, so the product looks like one thing from the first click. */
+  :root {
+    --navy: #00254c;
+    --blue: #2b6cb0;
+    --orange: #ed8936;
+    --ink: #1a202c;
+    --grey: #6b7280;
+    --calm: #edf2f7;
+    --hair: #cbd5e0;
+  }
+  body {
+    margin: 0;
+    padding: 12vh 24px;
+    background: var(--calm);
+    color: var(--ink);
+    font-family: "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+    line-height: 1.6;
+  }
+  main { max-width: 34rem; margin: 0 auto }
+  /* The tick. It marks the start of something without taking up room, and it
+     is the ONE orange here: an accent used twice is not an accent. */
+  .tick {
+    display: block;
+    width: 26px;
+    height: 3px;
+    background: var(--orange);
+    margin-bottom: 14px;
+    border-radius: 1px;
+  }
+  h1 { color: var(--navy); font-size: 2rem; margin: 0 0 12px; letter-spacing: -.02em }
+  p { color: var(--grey); margin: 0 0 12px }
+  .lede { color: var(--ink) }
+  a { color: var(--blue) }
+  code {
+    font-family: Consolas, "Cascadia Mono", monospace;
+    font-size: .95em;
+    background: #fff;
+    border: 1px solid var(--hair);
+    border-radius: 3px;
+    padding: 1px 5px;
+  }
+  /* Blue, not orange. The one accent is spent on the tick above, and a page
+     with two things shouting has nothing to point at. */
+  .get {
+    display: inline-block;
+    margin: 8px 0 20px;
+    padding: 10px 18px;
+    background: var(--blue);
+    color: #fff;
+    font-weight: 600;
+    text-decoration: none;
+    border-radius: 4px;
+  }
+  .get:hover { background: var(--navy) }
+  /* A keyboard gets the same affordance a mouse does. */
+  .get:focus-visible { outline: 3px solid var(--orange); outline-offset: 2px }
+  .rule { border: 0; border-top: 1px solid var(--hair); margin: 28px 0 16px }
+  .from { font-size: .95rem }
 </style>
+
 <main>
   <span class="tick"></span>
   <h1>SSF Merge</h1>
-  <p>Mail merge for PowerPoint. One template block of slides, one set of slides per row of your data, and formatting that survives because nothing re-authors it.</p>
-  <p>Early, and installable: download <code>manifest-prod.xml</code> from the
-    <a href="https://github.com/dannbleeker/SSF-Merge/releases/latest">latest release</a>
-    and sideload it in PowerPoint.</p>
-  <p>Source and progress:
-    <a href="https://github.com/dannbleeker/SSF-Merge">github.com/dannbleeker/SSF-Merge</a>.</p>
-  <p>From <a href="https://struktureretsundfornuft.dk">StruktureretSundFornuft</a>.</p>
+  <p class="lede">Mail merge for PowerPoint. One template block of slides, one set of slides per row of your data, and formatting that survives because nothing re-authors it.</p>
+
+  <a class="get" href="https://github.com/dannbleeker/SSF-Merge/releases/latest">Get the add-in</a>
+  <p>Download <code>manifest-prod.xml</code> from the latest release and sideload it in PowerPoint. It is early, and it is installable.</p>
+
+  <hr class="rule">
+  <p class="from">Source and progress: <a href="https://github.com/dannbleeker/SSF-Merge">github.com/dannbleeker/SSF-Merge</a>.<br>
+    From <a href="https://struktureretsundfornuft.dk">StruktureretSundFornuft.dk</a>.</p>
 </main>
 </html>

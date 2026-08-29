@@ -7,6 +7,29 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed — the landing page is a landing page
+
+It was a stack of paragraphs with the way in buried mid-sentence. Rendered and
+looked at rather than reasoned about, which is what showed it.
+
+- **A way in you can see.** "Get the add-in" is a button now, and the sideload
+  instruction sits under it instead of wrapped around the only link.
+- **One orange.** The SSF system spends its single accent on the tick above the
+  heading, so the button is blue chrome. An accent used twice is not an accent,
+  and blue is what the task pane uses for the same job.
+- **The palette, and only it.** The page had a background and a grey that were
+  in no palette. Both are system colours now, and the page carries the same
+  navy, blue and orange the task pane does, so the product looks like one thing
+  from the first click.
+- **A name that unfurls.** A description, Open Graph tags and an icon. The
+  URLs in them are absolute, because a relative `og:image` resolves against the
+  sharing service rather than this origin and quietly unfurls to nothing.
+- **`StruktureretSundFornuft.dk`**, which is how the wordmark is written.
+- A visible focus ring on the button, and `code` that is not the browser's
+  unstyled default.
+
+Checked at 1000px and at 380px, with no horizontal scroll at either.
+
 ### Fixed — the landing page said the add-in was unreleased
 
 `public/index.html` is what the custom domain resolves to, so it is the first
