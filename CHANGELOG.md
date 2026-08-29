@@ -7,6 +7,17 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — blue text is legible in PowerPoint's dark theme
+
+Blue does two jobs in the pane: it fills the header and the primary button,
+which carry white text, and it inks the field tags, the Insert chips and every
+secondary button. In dark mode one colour was doing both, so the ink was 3.0:1
+against the surface behind it — including **Remove these slides**, at 2.93:1,
+which is the whole way back from a merge.
+
+Anything blue that is text now reads the lighter blue the dark theme already
+defined for links. Light mode is unchanged to the pixel.
+
 ### Fixed — a long column header no longer pushes the pane off the side
 
 The pane is a 320-pixel-wide iframe and nothing in it broke a long word. A pivot
