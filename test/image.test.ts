@@ -72,6 +72,12 @@ describe("reading an image's own header", () => {
     // and every ratio built from it comes out backwards.
     const bmp = new Uint8Array(30);
     bmp.set([0x42, 0x4d]);
+    // The DIB header states its own length at 14, and this one went in as zero
+    // — not a BMP any encoder writes, and it passed only while the reader
+    // ignored that field. Reading it is what tells a 12-byte OS/2 header from
+    // a 40-byte one, so the fixture has to say which it is. The claim below is
+    // untouched.
+    new DataView(bmp.buffer).setInt32(14, 40, true);
     new DataView(bmp.buffer).setInt32(18, 64, true);
     new DataView(bmp.buffer).setInt32(22, -32, true);
     expect(readImage(bmp)).toMatchObject({ kind: "bmp", width: 64, height: 32 });
@@ -176,5 +182,72 @@ describe("containing an image inside a shape", () => {
       expect(cropped.l + cropped.r > 0, JSON.stringify(image)).toBe(inset.t + inset.b > 0);
       expect(cropped.t + cropped.b > 0, JSON.stringify(image)).toBe(inset.l + inset.r > 0);
     }
+  });
+});
+
+describe("header shapes a real encoder writes and this reader did not expect", () => {
+  /**
+   * Hand-built, against the argument at the top of this file — and framed to
+   * survive it.
+   *
+   * The objection to a hand-built header is that it is written to the same
+   * understanding as the reader, so the two agree by construction. These do not
+   * assert an absolute size read out of bytes I wrote. Each asserts that a
+   * LEGAL VARIATION does not change the answer, against a control in the shape
+   * an ordinary encoder produces — and the walker that reads the control is the
+   * same one the two committed files exercise above. If my understanding of the
+   * variation were wrong, the pair would disagree with each other.
+   */
+  const SOF0 = [0xc0, 0x00, 0x11, 0x08, 0x00, 0x64, 0x00, 0xc8, 0x03, 1, 0x11, 0, 2, 0x11, 0, 3, 0x11, 0];
+  const jpeg = (...lead: number[]) => Uint8Array.from([0xff, 0xd8, ...lead, 0xff, ...SOF0]);
+
+  it("reads a JPEG whose marker is padded with fill bytes", () => {
+    /**
+     * Any number of 0xFF bytes may pad the space before a marker. Read as a
+     * marker itself, `FF FF C0 ...` takes the frame header's own first bytes
+     * as a segment length and skips a nonsense distance — so a good JPEG came
+     * back undefined, which the pane reports as an unreadable file.
+     */
+    const control = readImage(jpeg());
+    expect(control?.width, "the control is not being read").toBe(200);
+    expect(readImage(jpeg(0xff)), "one fill byte lost the frame").toEqual(control);
+    expect(readImage(jpeg(0xff, 0xff, 0xff, 0xff)), "four fill bytes lost the frame").toEqual(control);
+  });
+
+  it("reads the same size from either BMP header", () => {
+    /**
+     * The 12-byte OS/2 header keeps width and height as two 16-bit numbers at
+     * 18 and 20; every later header keeps them as two 32-bit numbers at 18 and
+     * 22. Reading the second shape out of the first does not fail — it returns
+     * `200 | (100 << 16)`, so a 200 x 100 bitmap measured 6553800 x 1572865 and
+     * was cropped to a ratio with nothing to do with it.
+     *
+     * Nothing said the size was invented, which is what makes this worse than
+     * the JPEG above: that one refused a good file, this one accepted a wrong
+     * answer.
+     */
+    const head = [0x42, 0x4d, 0, 0, 0, 0, 0, 0, 0, 0, 26, 0, 0, 0];
+    const os2 = Uint8Array.from([...head, 12, 0, 0, 0, 0xc8, 0x00, 0x64, 0x00, 1, 0, 24, 0]);
+    const info = Uint8Array.from([...head, 40, 0, 0, 0, 0xc8, 0, 0, 0, 0x64, 0, 0, 0, 1, 0, 24, 0]);
+
+    expect(readImage(info)?.width, "the control is not being read").toBe(200);
+    expect(readImage(os2), "the two headers describe the same bitmap").toEqual(readImage(info));
+  });
+
+  it("refuses a BMP header length it does not know rather than guessing", () => {
+    // The whole point of the branch. An unknown header is a size at an unknown
+    // offset, and a wrong size is placed without complaint.
+    const odd = Uint8Array.from([
+      0x42, 0x4d, 0, 0, 0, 0, 0, 0, 0, 0, 26, 0, 0, 0, 14, 0, 0, 0, 0xc8, 0, 0x64, 0, 1, 0, 24, 0,
+    ]);
+    expect(readImage(odd)).toBeUndefined();
+  });
+
+  it("still walks past the segments that are not frame headers", () => {
+    // Unchanged behaviour, asserted because the fill-byte branch sits directly
+    // above these and an early `continue` would swallow them.
+    expect(readImage(jpeg(0xff, 0xe1, 0x00, 0x08, 1, 2, 3, 4, 5, 6))?.width, "APP1/EXIF").toBe(200);
+    expect(readImage(jpeg(0xff, 0xc4, 0x00, 0x04, 1, 2))?.width, "DHT").toBe(200);
+    expect(readImage(Uint8Array.from([0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08, 0x00])), "truncated").toBeUndefined();
   });
 });

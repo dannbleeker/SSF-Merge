@@ -71,6 +71,15 @@ function jpegSize(bytes: Uint8Array): { width: number; height: number } | undefi
       continue;
     }
     const marker = bytes[at + 1] ?? 0;
+    // Any number of 0xFF bytes may pad the space before a marker, and the
+    // standard says so. Taken as a marker itself, `FF FF C0 ...` reads the
+    // FRAME HEADER's own first bytes as a segment length, skips a nonsense
+    // distance, runs off the end and reports a perfectly good JPEG as
+    // unreadable — one placeholder left visible with nothing to say why.
+    if (marker === 0xff) {
+      at++;
+      continue;
+    }
     // Standalone markers: no length follows, so nothing may be skipped by one.
     if (marker === 0xd8 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
       at += 2;
@@ -123,6 +132,21 @@ export function readImage(bytes: Uint8Array): ImageInfo | undefined {
     return of("gif", u16le(bytes, 6), u16le(bytes, 8));
   }
   if (starts(bytes, [0x42, 0x4d])) {
+    if (bytes.length < 22) return undefined;
+    // WHICH header this is decides where the size lives, and the header states
+    // its own length at offset 14. The 12-byte OS/2 header keeps width and
+    // height as two 16-bit numbers at 18 and 20; every later one keeps them as
+    // two 32-bit numbers at 18 and 22.
+    //
+    // Reading the second shape out of the first does not fail, which is what
+    // makes it worth a branch: a 200 x 100 bitmap came back as 6553800 x
+    // 1572865, because `200 | (100 << 16)` is a number. The picture is then
+    // cropped to a ratio that has nothing to do with it, and nothing anywhere
+    // says the size was invented.
+    const header = i32le(bytes, 14);
+    if (header === 12) return of("bmp", u16le(bytes, 18), u16le(bytes, 20));
+    // A header shape this does not know is refused rather than guessed at.
+    if (header < 16) return undefined;
     if (bytes.length < 26) return undefined;
     // BMP stores height NEGATIVE for a top-down bitmap, which is a direction
     // rather than a size. Taken raw it is a negative extent, and every ratio

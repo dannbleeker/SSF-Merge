@@ -7,6 +7,34 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — two header shapes the image reader got wrong
+
+**A JPEG padded with fill bytes was reported unreadable.** Any number of `0xFF`
+bytes may sit between segments, and the standard says so. Read as a marker
+itself, `FF FF C0 …` takes the frame header's own first bytes as a segment
+length, skips a nonsense distance and runs off the end. A perfectly good photo
+came back as nothing, and the pane reports that as an unreadable file — one
+placeholder left visible with nothing to say why.
+
+**A BMP with the 12-byte OS/2 header was measured wrong, and placed anyway.**
+That header keeps width and height as two 16-bit numbers at offsets 18 and 20;
+every later header keeps them as two 32-bit numbers at 18 and 22. Reading the
+second shape out of the first does not fail — `200 | (100 << 16)` is a number,
+so a 200 × 100 bitmap measured 6553800 × 1572865 and was cropped to a ratio with
+nothing to do with it. Nothing anywhere said the size had been invented.
+
+The reader now asks the header how long it is, which is the field at offset 14
+it was skipping. A header length it does not know is refused rather than read at
+the wrong offsets.
+
+The existing top-down-BMP test built its fixture with that field left at zero,
+which is not a BMP any encoder writes; it passed only while the reader ignored
+the field. The fixture states a length now. Its own claim — that a negative
+height is a direction and not a size — is untouched.
+
+EXIF and progressive JPEGs, the `C0`–`CF` markers that are not frame headers,
+and a truncated frame were all checked at the same time and were already right.
+
 ### Fixed — the picture pass took the rest of the paragraph with it
 
 Placing a picture blanked **every text node in the paragraph**, not the
