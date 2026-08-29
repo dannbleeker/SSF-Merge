@@ -23,6 +23,7 @@ import {
   fieldToken,
   pictureColumns,
   imageTally,
+  plannedSlides,
   imagesWanted,
   includedCount,
   insertableColumns,
@@ -270,7 +271,7 @@ function headline(state: PaneState, current: StepId): string {
   switch (current) {
     case "template": {
       const block = chosenBlock(state);
-      return block ? blockSummary(block, state.rows) : "Which slides repeat?";
+      return block ? blockSummary(block, state.records ? includedCount(state) : state.rows) : "Which slides repeat?";
     }
     case "data":
       return state.rows ? plural(state.rows, "row") + " attached" : "Paste the rows to merge";
@@ -288,7 +289,7 @@ function headline(state: PaneState, current: StepId): string {
       return state.previewing ? "The first row is in your deck" : "See one row before you commit";
     case "merge": {
       const block = chosenBlock(state);
-      return block && state.rows ? mergeArithmetic(block, state.rows) : "Nothing to merge yet";
+      return block && state.rows ? mergeArithmetic(block, includedCount(state)) : "Nothing to merge yet";
     }
   }
 }
@@ -412,7 +413,7 @@ function body(doc: Document, state: PaneState, current: StepId, orange: OrangeHo
     // screen say "240 rows x 3 slides" twice, which reads as a rendering bug.
     // The card carries the CONSEQUENCE, which is the other half of the answer.
     const card = el(doc, "div", { class: "card summary" });
-    card.append(el(doc, "p", { class: "facts", text: mergeSummary(block, includedCount(state), state.deckSize ?? 0) }));
+    card.append(el(doc, "p", { class: "facts", text: mergeSummary(plannedSlides(state), state.deckSize ?? 0) }));
     out.push(card);
   }
 

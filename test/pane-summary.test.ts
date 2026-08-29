@@ -6,10 +6,10 @@ import {
   mergeArithmetic,
   mergeSummary,
   plural,
-  slidesAdded,
   undoIsPossible,
   undoSummary,
 } from "../src/pane/summary.js";
+import { slidesPerRecord } from "../src/pane/steps.js";
 
 describe("plurals", () => {
   it("drops the s for exactly one", () => {
@@ -58,7 +58,10 @@ describe("the arithmetic above the merge button", () => {
   });
 
   it("multiplies both ends of the block, not the difference", () => {
-    expect(slidesAdded({ from: 4, to: 6 }, 240)).toBe(720);
+    // `slidesAdded` used to do this multiplication here. It moved to
+    // `plannedSlides`, which counts with the rule `buildPlan` applies, because
+    // the product ignores conditions — see `test/pane-steps.test.ts`.
+    expect(slidesPerRecord({ from: 4, to: 6 })).toBe(3);
   });
 });
 
@@ -66,7 +69,7 @@ describe("what the deck will look like afterwards", () => {
   it("says where the slides land as well as how many", () => {
     // "720 slides added" answers the wrong half of the question somebody
     // hesitating over the button is actually asking.
-    const s = mergeSummary({ from: 4, to: 6 }, 240, 12);
+    const s = mergeSummary(720, 12);
     expect(s).toContain("720 slides added after slide 12");
     expect(s).toContain("732 slides in the deck");
   });

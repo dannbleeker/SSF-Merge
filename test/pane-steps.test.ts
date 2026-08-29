@@ -19,6 +19,7 @@ import {
   rowLabel,
   fieldToken,
   imageColumns,
+  plannedSlides,
   pictureColumns,
   imageTally,
   imagesWanted,
@@ -28,8 +29,9 @@ import {
   unmatchedFields,
   visibleRows,
 } from "../src/pane/steps.js";
-import type { PaneState, StepId } from "../src/pane/steps.js";
-import { toRecordSet } from "../src/core/data/recordset.js";
+import type { Block, PaneState, StepId } from "../src/pane/steps.js";
+import { toRecordSet, type RecordSet } from "../src/core/data/recordset.js";
+import { buildPlan, slideCount } from "../src/core/merge/plan.js";
 import { fieldPattern } from "../src/core/merge/text.js";
 import { imageMode } from "../src/core/merge/images.js";
 
@@ -793,5 +795,71 @@ describe("a picture column one stray cell kept out of the type", () => {
   it("and ignores an image field naming a column the data does not have", () => {
     // That is an unmatched field, which the fields step already reports.
     expect(pictureColumns(withField(["Nickname"]))).toEqual([]);
+  });
+});
+
+describe("the number above the merge button", () => {
+  /**
+   * It said "9 slides added after slide 10, leaving 19 slides in the deck" and
+   * the plan built eight.
+   *
+   * The count was slides-per-record times rows, which knows nothing about
+   * CONDITIONS: a block with one conditional slide produces fewer slides for
+   * every row the condition leaves out. So the sentence a user reads to decide
+   * whether to press was over by one per skipped slide, and the deck size it
+   * predicted was wrong with it.
+   *
+   * `plannedSlides` counts with `slideApplies` — the rule `buildPlan` itself
+   * applies — so the promise and the plan cannot answer differently. This test
+   * asserts that agreement rather than the number, because the number is only
+   * right for as long as the two rules are one.
+   */
+  const records = toRecordSet([
+    ["Name", "Renewal"],
+    ["Ada", "yes"],
+    ["Bo", "no"],
+    ["Cy", "yes"],
+    ["Di", "no"],
+  ]);
+
+  const state: PaneState = {
+    block: { from: 3, to: 5 },
+    fields: ["Name"],
+    previewing: false,
+    records,
+    columns: ["Name", "Renewal"],
+    rows: records.rows.length,
+    deckSize: 10,
+    excluded: [3],
+    conditions: { 4: "Renewal" },
+  };
+
+  /** The same block, as the engine takes it. */
+  const engineBlock = {
+    id: "b",
+    slides: [
+      { path: "s3.xml", seq: 1 },
+      { path: "s4.xml", seq: 2, condition: "Renewal" },
+      { path: "s5.xml", seq: 3 },
+    ],
+  };
+
+  it("is what the plan will actually build", () => {
+    const chosen = includedRecords(state) as RecordSet;
+    const plan = buildPlan(engineBlock, chosen, { runId: "r" });
+    expect(plannedSlides(state)).toBe(slideCount(plan));
+    // And it is not the product that used to be shown, or the test would pass
+    // against the bug.
+    expect(plannedSlides(state)).not.toBe(slidesPerRecord(state.block as Block) * includedCount(state));
+  });
+
+  it("counts every slide when nothing is conditional", () => {
+    // The other half: the fix must not start subtracting slides nobody skipped.
+    const plain = { ...state, conditions: undefined };
+    expect(plannedSlides(plain)).toBe(slidesPerRecord(state.block as Block) * includedCount(plain));
+  });
+
+  it("is zero before a block is chosen", () => {
+    expect(plannedSlides({ fields: [], previewing: false })).toBe(0);
   });
 });

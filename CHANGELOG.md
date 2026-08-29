@@ -7,6 +7,30 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — the number above the merge button ignored the conditions
+
+It read "9 slides added after slide 10, leaving 19 slides in the deck." The plan
+built eight.
+
+The count was slides-per-record times rows, and a conditional slide is not
+produced for every row — so the sentence a user reads to decide whether to press
+was over by one for every slide a condition leaves out, and the deck size it
+predicted was wrong with it. Two more places had the older half of the same
+problem: the block subtitle and the row arithmetic still counted the rows as
+PASTED after the user had unticked some, which the button itself stopped doing
+some time ago.
+
+`plannedSlides` counts with `slideApplies` — the rule `buildPlan` itself applies,
+exported for the purpose — so the promise and the plan cannot answer
+differently. The test asserts that agreement rather than the number, because the
+number is only right for as long as the two rules are one.
+
+`slidesAdded` is gone; it was the multiplication.
+
+A note on the guard. The unit test on `plannedSlides` passed happily while the
+card went on calling the old product — reverting the call site broke nothing
+until a render test asserted the sentence itself. Both are there now.
+
 ### Fixed — a number too large for a double is now text on both sides
 
 A correction to the entry above. Making `looksLikeNumber` ask `numericValue`

@@ -91,6 +91,31 @@ export function isTruthy(value: string | undefined): boolean {
 }
 
 /**
+ * Whether a record gets this slide.
+ *
+ * The rule `buildPlan` applies, exported because the PANE has to answer the
+ * same question before there is a plan. It states the number above the merge
+ * button — "9 slides added after slide 10, leaving 19 in the deck" — and it was
+ * computing it as slides-per-record times rows, which knows nothing about
+ * conditions. With one conditional slide and four rows it promised nine slides
+ * and the plan built eight, so the sentence a user reads to decide whether to
+ * press was over by one, and the deck size it predicted was wrong with it.
+ *
+ * A condition naming a column the data does not have is NOT a refusal: the
+ * slide is emitted and the pane reports the problem, which is why `columns` is
+ * asked rather than assumed.
+ */
+export function slideApplies(
+  slide: Pick<BlockSlide, "condition">,
+  row: Record<string, string>,
+  columns: Set<string>,
+): boolean {
+  if (slide.condition === undefined) return true;
+  if (!columns.has(slide.condition)) return true;
+  return isTruthy(row[slide.condition]);
+}
+
+/**
  * Build the plan.
  *
  * Record-major: every slide of record 1, then every slide of record 2. That is
@@ -132,7 +157,7 @@ export function buildPlan(block: Block, records: RecordSet, opts: PlanOptions = 
     const wanted: BlockSlide[] = [];
     const left: SkippedSlide[] = [];
     for (const slide of order) {
-      if (slide.condition !== undefined && columns.has(slide.condition) && !isTruthy(row[slide.condition])) {
+      if (slide.condition !== undefined && !slideApplies(slide, row, columns)) {
         left.push({ recordIndex, seq: slide.seq, condition: slide.condition });
         continue;
       }
