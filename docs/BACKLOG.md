@@ -42,65 +42,99 @@ Two halves, and they are not equally safe. **Cloning** is schema-independent —
 copy the part, repoint the relationship, add the content type, the same three
 steps a chart already gets. **Filling** is not, and the research below is why.
 
-#### What two real files say
+#### Read out of real files, not reconstructed
 
-Read on 2026-08-29 out of LibreOffice's own chart test data, which is real
-Office output rather than anybody's reconstruction:
-`chart2/qa/extras/data/xlsx/waterfall2.xlsx` and `funnel1.xlsx` in
-[LibreOffice/core](https://github.com/LibreOffice/core). Not committed here —
-they are MPL-2.0 test data and it is the FINDINGS that are worth keeping.
+Three chartEx parts, on 2026-08-29, out of LibreOffice's own chart test data —
+real Office output. Not committed here: MPL-2.0 test data, and it is the
+findings that are worth keeping. Re-fetchable from
+[LibreOffice/core](https://github.com/LibreOffice/core) at
+`chart2/qa/extras/data/xlsx/waterfall2.xlsx`, `.../funnel1.xlsx` and — the one
+that matters, a chart on a SLIDE with its embedded workbook and its fallback
+picture — `chart2/qa/extras/data/pptx/funnel-pp1.pptx`.
 
-Confirmed, and matching what `test/chart-modern.test.ts` already assumes:
+**A modern chart keeps its text in four places, and one picture of it.**
 
-- the part is `application/vnd.ms-office.chartex+xml`, reached by
-  `http://schemas.microsoft.com/office/2014/relationships/chartEx`;
-- its root is `<cx:chartSpace>` in
-  `http://schemas.microsoft.com/office/drawing/2014/chartex`;
-- it owns two styling parts of its own, `chartStyle` and `chartColorStyle`,
-  which are read-only the way a chart's are and should stay SHARED between
-  copies.
+| Where | What | Merged how |
+| --- | --- | --- |
+| `cx:strDim > cx:lvl > cx:pt` | category labels | plain text node |
+| `cx:tx > cx:txData > cx:v` | series names | plain text node |
+| `cx:txPr > a:p > a:r > a:t` | title, axis titles | DrawingML |
+| the embedded workbook's `sharedStrings.xml` | every one of the above, again | as a chart's already is |
+| `mc:Fallback > p:pic` | a rendered PNG of the whole chart | **not at all** |
 
-**And the thing that would have been guessed wrong. A chartEx stores its title
-text in one of two shapes, and the two files use different ones.**
+Four traps, each of which would have been got wrong by writing the reader first.
 
-    waterfall2   <cx:title><cx:tx><cx:txData><cx:v>Waterfall Test</cx:v>…
-                 …and AGAIN in <cx:txPr>…<a:p><a:r><a:t>Waterfall Test</a:t>
-    funnel1      <cx:title><cx:txPr>…<a:p><a:r><a:t>Funnel chart!</a:t>
-                 — no <cx:tx> at all
+**`<cx:pt>` is the same element for text and for numbers.** `cx:strDim` holds
+the labels; `cx:numDim` holds the values a chart plots, in `<cx:pt>` too. Scope
+by the DIM, never by the element name — the identical mistake `<c:v>` in
+`strCache` versus `numCache` already forced on the classic path.
 
-So `<a:t>` is sometimes a cached copy of the real value and sometimes IS the
-value. `mergeDocument` walks every `<a:p>` in a part, so the moment a chartEx is
-visited it fills the DrawingML and nothing else: funnel1 would merge correctly
-by luck, and waterfall2 would keep displaying `{{Region}}` from `<cx:v>` while
-the file carried the merged string in its formatting run. That is the SmartArt
-model-and-drawing defect for the third time — text kept twice, the engine
-filling the half nobody looks at.
-
-Whatever is built here fills BOTH, and a test has to cover both shapes, because
+**`<a:t>` is sometimes a cached copy and sometimes the only copy.** `waterfall2`
+writes its title as `<cx:tx><cx:txData><cx:v>` AND again as DrawingML inside
+`<cx:txPr>`; `funnel1` and `funnel-pp1` have no `<cx:tx>` at all and keep the
+text only in the `txPr` run. `mergeDocument` walks every `<a:p>` in a part, so
+the moment a chartEx is visited it fills the DrawingML and nothing else — one
+shape merges by luck, the other keeps displaying the placeholder from `<cx:v>`
+while the file carries the merged string in its formatting run. Text kept twice
+and the engine filling the half nobody looks at is the SmartArt
+model-and-drawing defect for the third time. Fill both, and test both shapes:
 one file each is not a schema.
 
-#### What is still unknown, and needs a PowerPoint-authored .pptx
+**The category labels are repeated once per series.** `funnel-pp1` carries three
+`<cx:data>` blocks, each with its own copy of `Thing 1…4`. All of them move
+together or the chart disagrees with itself.
 
-Both files above are Excel workbooks, where a chart reads its data by defined
-name (`<cx:f>_xlchart.v1.0</cx:f>`) and caches nothing. A chart on a SLIDE has
-an embedded workbook instead, so it must cache what it draws — and none of this
-is observed yet:
+**The fallback picture cannot be merged, ever.** It is a PNG of the chart as the
+template drew it, shown by any host that cannot read chartEx. A merged copy
+either ships a picture of somebody else's data or drops the branch and shows
+nothing there. That is a decision to take deliberately, not a detail — and it is
+the one part of this feature that has no good answer.
 
-- whether the cached labels land in `<cx:strDim><cx:lvl><cx:pt>` as the entry
-  once assumed. LibreOffice's exporter writes exactly that shape, so it is
-  likely and it is not evidence.
-- whether the chartEx part relates to its own embedded workbook, and under
-  which relationship type. If it does, the workbook needs the same per-copy
-  clone and merge a classic chart's already gets.
-- the slide-side wrapper. A modern chart is reported to sit inside
-  `<mc:AlternateContent>`: `<mc:Choice>` holding the `<p:graphicFrame>`, and
-  `<mc:Fallback>` holding a `<p:pic>` — a RENDERED IMAGE of the chart for hosts
-  that cannot read chartEx. If so, a merged copy needs its fallback picture
-  dealt with too, or an older PowerPoint shows a picture of the template's
-  placeholders.
+And one piece of good news, worth as much as the traps: **the embedded workbook
+hangs off the chartEx under the ORDINARY
+`…/officeDocument/2006/relationships/package` type**, with
+`<cx:externalData r:id="…">` naming it from inside `cx:chartData`. So
+`chartWorkbooksOf` and `cloneChartWorkbook` work on it unchanged; what is
+missing is only that `graphicPartsOf` does not recognise the chartEx
+relationship in the first place. The chart's own `chartStyle` and
+`chartColorStyle` parts are read-only and should stay shared, exactly as a
+classic chart's are.
 
-The blocker is therefore still a real .pptx, and the fastest way to one is the
-way the test kit got its SmartArt: insert a waterfall in PowerPoint, save, send.
+**What the engine does with one today, measured rather than predicted.** A real
+`funnel-pp1.pptx` with `{{Region}}` in a category label, `{{Name}}` in a series
+name and in the title, merged for two rows:
+
+    fields reported        ["Name"]        — only the slide's own text box
+    chartEx parts          1               — shared by the template and both copies
+    embedded workbooks     1               — likewise
+    every placeholder in the chart          survived
+
+So it is worse than "not filled": the pane never SEES those fields. The step
+that lists what is on the slides would not offer a Region column, and a block
+whose only placeholder is in the chart is refused as having none.
+
+#### The slide-side wrapper, confirmed
+
+    <mc:AlternateContent>
+      <mc:Choice Requires="cx2" xmlns:cx2="…/office/drawing/2015/10/21/chartex">
+        <p:graphicFrame>…<a:graphicData uri="…/office/drawing/2014/chartex">
+          <cx:chart r:id="rId2"/>
+      <mc:Fallback>
+        <p:pic>…<a:blip r:embed="rId3"/>   → ppt/media/image1.png
+
+Both branches carry the same shape id and the same `a16:creationId`. The
+`Requires` token is **cx2** here and is a 2015 namespace, so a reader keying on
+`cx1` would miss this file entirely: key on the RELATIONSHIP type, which is
+stable, not on the compatibility token.
+
+#### What is left
+
+Not a blocker any more, an implementation with a decision in it. Recognise the
+chartEx relationship in `graphicPartsOf` and `cloneSlideGraphics`; fill the four
+places above; scope `<cx:pt>` by its dim; decide what a merged copy does about
+the fallback picture. The kit should grow a chartEx slide at the same time, and
+that one still wants a PowerPoint-authored file — the same thirty seconds that
+got it its SmartArt.
 
 ## Rejected — do not re-propose
 
