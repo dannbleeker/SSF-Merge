@@ -361,7 +361,20 @@ export class Pkg {
         const type = rel.getAttribute("Type") ?? "";
         if (type !== NOTES_REL_TYPE && !COMMENT_REL_TYPES.includes(type)) continue;
         const target = rel.getAttribute("Target");
-        if (target) await this.removePart(resolveTarget(slidePath, target));
+        if (!target) continue;
+        const related = resolveTarget(slidePath, target);
+        // The TARGET comes out of the deck, and a deck can come from anywhere.
+        // `resolveTarget` honours a leading `/` and any number of `..`, so a
+        // crafted notes relationship naming `/[Content_Types].xml` — or
+        // reaching it with enough `..` — would have this delete the one part a
+        // presentation cannot open without. The output would be a file that
+        // will not open, from a deck the user only had to be sent.
+        //
+        // A notes page and a comment part live under `ppt/`, always. Anything
+        // resolving outside it is not what this loop collects, so it is left
+        // alone rather than removed.
+        if (!related.startsWith("ppt/")) continue;
+        await this.removePart(related);
       }
       // Read BEFORE the slide's own relationships go, because that is what
       // makes them orphans: while this part exists it is one of the referrers.
