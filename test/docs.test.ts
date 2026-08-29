@@ -247,6 +247,21 @@ describe("the page a visitor actually lands on", () => {
     expect(page.toLowerCase()).not.toContain("in development");
   });
 
+  it("gives a link somewhere to unfurl into, with absolute URLs", () => {
+    // A relative og:image resolves against the SHARING service, not against
+    // this origin, so it silently unfurls to nothing.
+    for (const tag of ["og:title", "og:description", "og:url", "og:image"]) {
+      expect(page, `no ${tag}`).toContain(tag);
+    }
+    for (const m of page.matchAll(/property="og:(?:url|image)" content="([^"]*)"/g)) {
+      expect(m[1], "an og URL that is not absolute").toMatch(/^https:\/\//);
+    }
+  });
+
+  it("has an icon, so the tab is not blank", () => {
+    expect(page).toMatch(/rel="icon"/);
+  });
+
   it("declares its language, like the task pane does", () => {
     // WCAG 3.1.1. The task pane sets it and this page did not, which is the
     // same asymmetry as a control that was added later than the pattern.
