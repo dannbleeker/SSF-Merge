@@ -282,3 +282,24 @@ export async function chartWorkbooksOf(pkg: Pkg, slidePath: string): Promise<str
   }
   return out;
 }
+
+/**
+ * The workbook behind ONE chart, or undefined.
+ *
+ * `chartWorkbooksOf` answers a slide's whole set, which is what the text pass
+ * wants. The numeric pass needs the pairing instead: a value lives in one
+ * chart's cache and in one workbook's cell, and filling them from different
+ * charts is exactly the mix-up a count would not catch.
+ */
+export async function workbookOfChart(pkg: Pkg, chartPath: string): Promise<string | undefined> {
+  if (!chartPath.startsWith("ppt/charts/")) return undefined;
+  for (const rel of await relsOf(pkg, chartPath)) {
+    if (rel.getAttribute("Type") !== PACKAGE_REL_TYPE) continue;
+    if ((rel.getAttribute("TargetMode") ?? "") === "External") continue;
+    const target = rel.getAttribute("Target");
+    if (!target) continue;
+    const path = resolve(chartPath, target);
+    if (pkg.has(path)) return path;
+  }
+  return undefined;
+}

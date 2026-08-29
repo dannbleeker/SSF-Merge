@@ -181,7 +181,12 @@ function chartXml(spec: ChartSpec): string {
  * the text into the sheet instead would pass a merge that never touches shared
  * strings at all.
  */
-async function workbookBytes(strings: string[]): Promise<Uint8Array> {
+async function workbookBytes(strings: string[], values: string[] = []): Promise<Uint8Array> {
+  // A non-numeric value cell is a shared string too, so it needs an entry in
+  // the table and an index the sheet can point at. Appended after the
+  // categories, and deduplicated, exactly as Excel would.
+  const valueStrings = [...new Set(values.filter((v) => !Number.isFinite(Number(v))))];
+  const table = [...strings, ...valueStrings];
   const book = new JSZip();
   book.file(
     "[Content_Types].xml",
@@ -216,10 +221,10 @@ async function workbookBytes(strings: string[]): Promise<Uint8Array> {
   book.file(
     "xl/sharedStrings.xml",
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n` +
-      `<sst ${S} count="${strings.length}" uniqueCount="${strings.length}">` +
+      `<sst ${S} count="${table.length}" uniqueCount="${table.length}">` +
       // The first string is split into two runs, which is what a shared string
       // edited in Excel looks like and what a per-node search would miss.
-      strings
+      table
         .map((t, i) =>
           i === 0
             ? `<si><r><t>${escapeText(t.slice(0, Math.ceil(t.length / 2)))}</t></r>` +
@@ -229,10 +234,26 @@ async function workbookBytes(strings: string[]): Promise<Uint8Array> {
         .join("") +
       `</sst>`,
   );
+  // Column A is the categories, as shared strings. Column B is the VALUES, and
+  // it is built the way Excel builds it: a number is a numeric cell with no `t`
+  // at all, and anything else — a placeholder somebody typed into Edit Data —
+  // is an ordinary shared string like any other text in the sheet. That
+  // difference is the whole subject of the numeric merge, so a fixture that
+  // wrote every cell the same way could not show it.
+  const rows = Math.max(strings.length, values.length);
   book.file(
     "xl/worksheets/sheet1.xml",
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n<worksheet ${S}><sheetData>` +
-      strings.map((_, i) => `<row r="${i + 2}"><c r="A${i + 2}" t="s"><v>${i}</v></c></row>`).join("") +
+      Array.from({ length: rows }, (_, i) => {
+        const r = i + 2;
+        const a = i < strings.length ? `<c r="A${r}" t="s"><v>${i}</v></c>` : "";
+        const raw = values[i];
+        if (raw === undefined) return `<row r="${r}">${a}</row>`;
+        const b = Number.isFinite(Number(raw))
+          ? `<c r="B${r}"><v>${escapeText(raw)}</v></c>`
+          : `<c r="B${r}" t="s"><v>${strings.length + valueStrings.indexOf(raw)}</v></c>`;
+        return `<row r="${r}">${a}${b}</row>`;
+      }).join("") +
       `</sheetData></worksheet>`,
   );
   return book.generateAsync({ type: "uint8array" });
@@ -434,7 +455,10 @@ export async function makeDeck(slides: SlideSpec[]): Promise<Uint8Array> {
       const chart: ChartSpec = typeof spec.chart === "string" ? { title: spec.chart } : spec.chart;
       zip.file(`ppt/charts/chart${n}.xml`, chartXml(chart));
       if (chart.workbook) {
-        zip.file(`ppt/embeddings/Microsoft_Excel_Worksheet${n}.xlsx`, await workbookBytes(chart.workbook));
+        zip.file(
+          `ppt/embeddings/Microsoft_Excel_Worksheet${n}.xlsx`,
+          await workbookBytes(chart.workbook, chart.values ?? []),
+        );
         zip.file(
           `ppt/charts/_rels/chart${n}.xml.rels`,
           `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n<Relationships ${REL}>` +
