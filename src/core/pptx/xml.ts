@@ -82,3 +82,59 @@ export function children(parent: Element, ns: string, local: string): Element[] 
 export function child(parent: Element, ns: string, local: string): Element | undefined {
   return children(parent, ns, local)[0];
 }
+
+/**
+ * Every relationship id this part's markup names, whatever names it.
+ *
+ * The question is "may this relationship go", and the only safe way to ask it
+ * is of the WHOLE document: any attribute in the relationship namespace is a
+ * reference, and a reference means the relationship has to stay.
+ *
+ * Two callers ask it, and they ask the same question: `dropUnusedImageRels`,
+ * deciding which image relationships a merged copy still needs, and
+ * `dropInheritedTags`, deciding which of the template's tag and comment
+ * relationships may go with the reference it just removed. Both got it wrong in
+ * the same way before this existed, and a second reader would be free to get it
+ * wrong again — the answer belongs in one place.
+ *
+ * This began as `a:blip/@r:embed`, which is where a picture's image sits and is
+ * not the only place an image id appears. Two of them are ordinary:
+ *
+ * - `<asvg:svgBlip r:embed="…">`, inside the blip's own extension list. That is
+ *   how PowerPoint stores an ICON — a raster fallback in the blip and the real
+ *   SVG beside it, under a SECOND image relationship. Icons are everywhere in a
+ *   modern deck.
+ * - `<a:blip r:link="…">`, a picture LINKED rather than embedded.
+ *
+ * Neither is an `r:embed` on an `a:blip`, so both relationships were dropped
+ * from a merged copy whose slide still referenced them — a slide naming a
+ * relationship that is not there, which is precisely what PowerPoint calls a
+ * damaged file. It needed a modern chart on the slide to fire, because that is
+ * what runs this pass at all, but nothing about the shape is exotic.
+ *
+ * Reading every `r:`-namespaced attribute rather than a list of the ones known
+ * today is the conservative direction: an unknown reference keeps a
+ * relationship that could have gone, where a missed one breaks the file. The
+ * fallback picture is still dropped, because the replacement takes its `<p:pic>`
+ * out of the document first and its id is then named by nothing.
+ *
+ * Matched by namespace OR by prefix. `getAttributeNS` was already paired with a
+ * `getAttribute("r:embed")` fallback here for the same reason: a document that
+ * came out of a host may not carry the namespace where a reader expects it.
+ */
+export function relationshipIdsIn(doc: Document): Set<string> {
+  const used = new Set<string>();
+  const walk = (node: Element): void => {
+    const attrs = node.attributes;
+    for (let i = 0; i < (attrs?.length ?? 0); i++) {
+      const attr = attrs?.item(i);
+      if (!attr) continue;
+      if (attr.namespaceURI === R_NS || attr.name.startsWith("r:")) used.add(attr.value);
+    }
+    for (let child = node.firstChild; child; child = child.nextSibling) {
+      if (child.nodeType === 1) walk(child as Element);
+    }
+  };
+  if (doc.documentElement) walk(doc.documentElement);
+  return used;
+}

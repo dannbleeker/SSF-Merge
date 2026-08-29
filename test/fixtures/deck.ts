@@ -55,6 +55,16 @@ export interface SlideSpec {
    */
   icons?: boolean;
   /**
+   * A tag part named from a SHAPE rather than from the slide.
+   *
+   * `<p:nvPr><p:custDataLst><p:tags r:id="…"/>` is where an add-in keeps its
+   * own bookkeeping — a deck touched by think-cell carries exactly this on a
+   * hidden shape in every slide it has seen. It is NOT the slide's own tag
+   * reference, which lives in `<p:cSld>`, and the difference decides whether a
+   * merged copy keeps pointing at the vendor's data or at ours.
+   */
+  shapeTags?: boolean;
+  /**
    * SmartArt related from this slide, given as its node labels.
    *
    * Produces both halves a real one has: `dataN.xml`, the model, and
@@ -161,7 +171,8 @@ function slideXml(spec: SlideSpec): string {
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n` +
     `<p:sld ${P} ${A} ${R}><p:cSld><p:spTree>` +
     `<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>` +
-    `<p:sp><p:nvSpPr><p:cNvPr id="2" name="Body"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>` +
+    `<p:sp><p:nvSpPr><p:cNvPr id="2" name="Body"/><p:cNvSpPr txBox="1"/>` +
+    `<p:nvPr>${spec.shapeTags ? `<p:custDataLst><p:tags r:id="rId30"/></p:custDataLst>` : ""}</p:nvPr></p:nvSpPr>` +
     `<p:spPr>${spec.box ?? ""}</p:spPr><p:txBody><a:bodyPr/><a:lstStyle/>${paras}</p:txBody></p:sp>` +
     `${spec.smartArt ? smartArtFrame() : ""}` +
     `${spec.modernChart ? modernChartFrame(spec.modernChart) : ""}` +
@@ -469,6 +480,7 @@ const TYPE = {
   notes: "application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml",
   chart: "application/vnd.openxmlformats-officedocument.drawingml.chart+xml",
   chartEx: "application/vnd.ms-office.chartex+xml",
+  tags: "application/vnd.openxmlformats-officedocument.presentationml.tags+xml",
   diagramData: "application/vnd.openxmlformats-officedocument.drawingml.diagramData+xml",
   diagramLayout: "application/vnd.openxmlformats-officedocument.drawingml.diagramLayout+xml",
   diagramStyle: "application/vnd.openxmlformats-officedocument.drawingml.diagramStyle+xml",
@@ -484,6 +496,7 @@ const REL_TYPE = {
   theme: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme",
   doc: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument",
   chart: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart",
+  tags: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/tags",
   chartEx: "http://schemas.microsoft.com/office/2014/relationships/chartEx",
   image: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
   package: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/package",
@@ -506,6 +519,11 @@ export async function makeDeck(slides: SlideSpec[]): Promise<Uint8Array> {
           ? [`<Override PartName="/ppt/notesSlides/notesSlide${i + 1}.xml" ContentType="${TYPE.notes}"/>`]
           : []),
         ...(s.chart ? [`<Override PartName="/ppt/charts/chart${i + 1}.xml" ContentType="${TYPE.chart}"/>`] : []),
+        // One part, whichever slide asked for it, so two slides carrying shape
+        // tags do not declare it twice.
+        ...(s.shapeTags && slides.findIndex((o) => o.shapeTags) === i
+          ? [`<Override PartName="/ppt/tags/tag9.xml" ContentType="${TYPE.tags}"/>`]
+          : []),
         ...(s.modernChart
           ? [`<Override PartName="/ppt/charts/chartEx${i + 1}.xml" ContentType="${TYPE.chartEx}"/>`]
           : []),
@@ -609,6 +627,9 @@ export async function makeDeck(slides: SlideSpec[]): Promise<Uint8Array> {
           ? ""
           : `<Relationship Id="rId8" Type="${REL_TYPE.image}" Target="../media/chart${n}.png"/>`)
       : "";
+    const shapeTagRels = spec.shapeTags
+      ? `<Relationship Id="rId30" Type="${REL_TYPE.tags}" Target="../tags/tag9.xml"/>`
+      : "";
     const iconRels = spec.icons
       ? `<Relationship Id="rId20" Type="${REL_TYPE.image}" Target="../media/icon${n}.png"/>` +
         `<Relationship Id="rId21" Type="${REL_TYPE.image}" Target="../media/icon${n}.svg"/>` +
@@ -628,7 +649,7 @@ export async function makeDeck(slides: SlideSpec[]): Promise<Uint8Array> {
       `ppt/slides/_rels/slide${n}.xml.rels`,
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n<Relationships ${REL}>` +
         `<Relationship Id="rId1" Type="${REL_TYPE.layout}" Target="../slideLayouts/slideLayout1.xml"/>` +
-        `${notesRel}${chartRel}${diagramRels}${modernRels}${iconRels}</Relationships>`,
+        `${notesRel}${chartRel}${diagramRels}${modernRels}${iconRels}${shapeTagRels}</Relationships>`,
     );
     if (spec.chart) {
       const chart: ChartSpec = typeof spec.chart === "string" ? { title: spec.chart } : spec.chart;
@@ -645,6 +666,13 @@ export async function makeDeck(slides: SlideSpec[]): Promise<Uint8Array> {
             `</Relationships>`,
         );
       }
+    }
+    if (spec.shapeTags) {
+      zip.file(
+        "ppt/tags/tag9.xml",
+        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n` +
+          `<p:tagLst ${P}><p:tag name="VENDOR" val="do not delete"/></p:tagLst>`,
+      );
     }
     if (spec.icons) {
       // Bytes enough to be a part; nothing reads them, the relationships are

@@ -14,7 +14,7 @@
  * `InvalidArgument` on Windows desktop. Every copy gets a fresh one.
  */
 import { Pkg, resolveTarget as resolve } from "./pkg.js";
-import { P_NS, child, element, elements } from "./xml.js";
+import { P_NS, child, element, elements, relationshipIdsIn } from "./xml.js";
 import { COMMENT_REL_TYPES, REL_TYPE } from "./parts.js";
 
 const SLIDE_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.presentationml.slide+xml";
@@ -219,9 +219,28 @@ async function dropInheritedTags(pkg: Pkg, slidePath: string): Promise<void> {
   const relsPath = Pkg.relsPathFor(slidePath);
   if (!pkg.has(relsPath)) return;
   const rels = await pkg.doc(relsPath);
+  // Read AFTER the slide's own reference has gone, so its id is named by
+  // nothing and its relationship goes with it — which is the whole point of
+  // this function.
+  //
+  // What the id list protects is a reference somewhere ELSE. A tag part can be
+  // named by a SHAPE, from `<p:nvPr><p:custDataLst><p:tags r:id="…"/>`, and
+  // that is where an add-in puts its own bookkeeping: a deck touched by
+  // think-cell has exactly this on the shape it hides in every slide. Removing
+  // every tag relationship left that shape naming one that was gone.
+  //
+  // Which was not even the visible half. Deleting a relationship FREES ITS ID,
+  // and `writeSlideTags` takes the next free one for this run's own BLOCK and
+  // SEQ tags — so the vendor's shape came out of the merge pointing at SSF
+  // Merge's merge metadata. A reference that still resolves, to somebody else's
+  // data.
+  const named = relationshipIdsIn(doc);
   for (const rel of elements(rels, PKG_REL_NS, "Relationship")) {
     const type = rel.getAttribute("Type") ?? "";
-    if (type === REL_TYPE.tags || COMMENT_REL_TYPES.includes(type)) rel.parentNode?.removeChild(rel);
+    if (type !== REL_TYPE.tags && !COMMENT_REL_TYPES.includes(type)) continue;
+    const id = rel.getAttribute("Id") ?? "";
+    if (named.has(id)) continue;
+    rel.parentNode?.removeChild(rel);
   }
 }
 

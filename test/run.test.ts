@@ -88,6 +88,41 @@ describe("runPlan", () => {
     expect(tags.get(TAG_RECORD)).toBe("1");
   });
 
+  it("leaves a SHAPE's own tag reference pointing where it pointed", async () => {
+    // A copy must not inherit the template's BLOCK and SEQ tags — that is what
+    // `dropInheritedTags` is for, and those live in the slide's own `<p:cSld>`.
+    // An add-in's tags do not: they hang off a SHAPE, in
+    // `<p:nvPr><p:custDataLst><p:tags r:id="…"/>`, and a deck touched by
+    // think-cell carries exactly that on a hidden shape in every slide.
+    //
+    // Dropping every tag relationship took that one too, and the shape then
+    // named a relationship that was gone. Which was the mild half: deleting a
+    // relationship frees its ID, `writeSlideTags` takes the next free one for
+    // this run's own tags, and the vendor's shape came out of the merge
+    // pointing at SSF Merge's merge metadata. A reference that still resolves,
+    // to somebody else's data — which is why this asserts the TARGET rather
+    // than that the id is still there.
+    // On BOTH template slides, so every copy is expected to carry it and the
+    // assertion needs no per-slide bookkeeping to stay honest.
+    const pkg = await Pkg.open(
+      await makeDeck([
+        { paragraphs: [["{{Name}}"]], shapeTags: true },
+        { paragraphs: [["Second"]], shapeTags: true },
+        { paragraphs: [["after"]] },
+      ]),
+    );
+    const plan = buildPlan(block, records, { runId: "run-1" });
+    const result = await runPlan(pkg, plan, records);
+
+    for (const slide of result.slides) {
+      const doc = await pkg.doc(slide);
+      const refs = elements(doc, P_NS, "tags").map((t) => t.getAttributeNS(R_NS, "id") ?? t.getAttribute("r:id") ?? "");
+      const targets = await Promise.all(refs.map((id) => pkg.relTarget(slide, id)));
+      expect(targets, `${slide} names a tag relationship that is not there`).not.toContain(undefined);
+      expect(targets, `${slide} lost the vendor's tag part`).toContain("ppt/tags/tag9.xml");
+    }
+  });
+
   it("gives every produced slide its own creation id", async () => {
     let n = 0;
     const pkg = await template();
