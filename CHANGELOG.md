@@ -7,6 +7,14 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.2.1] — 2026-08-29
+
+A correction to 0.2.0, cut the same day it was found. The defect below shipped
+in 0.2.0 and could produce a deck PowerPoint reports as damaged, which is not
+a thing to leave in a release while waiting for the next feature.
+
 ### Fixed — a deck with icons and a modern chart no longer merges into a damaged file
 
 A merged copy of a slide holding a modern chart could lose the relationships to
