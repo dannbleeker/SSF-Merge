@@ -20,6 +20,20 @@ the work, in priority order.
 
 ## After the first release
 
+### A control for what an empty cell does
+**Priority: low.** Feasibility: high.
+`EmptyPolicy` is plumbed from `makeResolver` through `buildPlan` and
+`runMerge` — `"blank"` writes nothing, `"keep"` leaves the placeholder
+visible, `"skip"` drops the record entirely — and the pane sets none of it, so
+two of the three are unreachable. `skippedRecords` and its clause in
+`describeMerge` exist for a path nothing can take.
+
+Either give it a control on the data step or take the plumbing out. It is
+listed rather than decided because "keep" is a real preference — a half-filled
+slide that shows `{{Notes}}` is honest about a gap, and a blank one is not —
+and dropping a record for one empty cell is a strong default nobody has asked
+for. Not a defect: nothing promises it, in the manual or anywhere else.
+
 ### Excel via Microsoft Graph
 **Priority: high.** Feasibility: medium.
 A named table on OneDrive or SharePoint, read through `/workbook/tables/{id}/rows`.

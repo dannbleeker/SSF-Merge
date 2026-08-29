@@ -105,7 +105,13 @@ export interface MergeOutcome {
    * a reader that did not exist.
    */
   chartValues?: NumberOutcome;
-  /** Rows skipped by a condition, so "8 rows" and "6 slides" reconcile. */
+  /**
+   * Rows dropped whole, so "8 rows" and "6 slides" reconcile.
+   *
+   * By `onEmpty: "skip"` and nothing else — `buildPlan` fills this only there,
+   * when a field on one of the record's slides has no value. A CONDITION
+   * leaves out a slide, and that is `skippedSlides` below.
+   */
   skippedRecords?: number;
   /** Individual slides skipped by a condition. */
   skippedSlides?: number;
