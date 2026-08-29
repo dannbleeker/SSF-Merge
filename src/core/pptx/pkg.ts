@@ -23,6 +23,9 @@ const PRESENTATION = "ppt/presentation.xml";
  */
 const OWNABLE_BY_GRAPHIC = /^ppt\/(charts|diagrams|embeddings|media|theme)\//;
 
+/** The package's own relationships: `ppt/presentation.xml`, and docProps. */
+const ROOT_RELS = "_rels/.rels";
+
 const NOTES_REL_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide";
 /**
  * A slide's comments, in both spellings — classic `commentN.xml` and the
@@ -438,10 +441,21 @@ export class Pkg {
     const referenced = new Set<string>();
     const relsPaths: string[] = [];
     this.zip.forEach((path) => {
-      if (path.includes("/_rels/") && path.endsWith(".rels")) relsPaths.push(path);
+      // `_rels/.rels` — the package's OWN relationships — has no directory in
+      // front of it, so a test for "/_rels/" misses it. It was missed, and it
+      // is the only referrer of `ppt/presentation.xml` and of docProps: a part
+      // named just from there was invisible to this scan and looked orphaned.
+      if (!path.endsWith(".rels")) return;
+      if (path.includes("/_rels/") || path === ROOT_RELS) relsPaths.push(path);
     });
-    const ownerOf = (rels: string): string =>
-      `${rels.slice(0, rels.indexOf("/_rels/"))}/${rels.slice(rels.indexOf("/_rels/") + 7, -".rels".length)}`;
+    const ownerOf = (rels: string): string => {
+      const i = rels.indexOf("/_rels/");
+      // The root's owner is the package itself, which is not a part. The empty
+      // string is what `relsPathFor` and `resolveTarget` both read as "at the
+      // root", so it needs no special case beyond this one.
+      if (i < 0) return "";
+      return `${rels.slice(0, i)}/${rels.slice(i + 7, -".rels".length)}`;
+    };
     for (const rels of relsPaths) {
       const owner = ownerOf(rels);
       if (owner === slidePath || owned.includes(owner)) continue;
@@ -596,8 +610,16 @@ export class Pkg {
 /** Resolve a relationship target, which may be relative, against the part that holds it. */
 export function resolveTarget(ownerPart: string, target: string): string {
   if (target.startsWith("/")) return target.slice(1);
-  const base = ownerPart.slice(0, ownerPart.lastIndexOf("/"));
-  const parts = base.split("/");
+  const slash = ownerPart.lastIndexOf("/");
+  // The same root-part trap `relsPathFor` documents, and here it had a
+  // consequence. `lastIndexOf` answers -1 for a part at the package root, and
+  // `slice(0, -1)` then drops its last character; an empty base also splits to
+  // `[""]`, which prefixes every answer with a slash. So the package's own
+  // `_rels/.rels` could not be resolved at all — which is why the referrer scan
+  // in `orphanedParts` skipped it, and why a part named only from there looked
+  // unreferenced. `""` is the root, and it now means that.
+  const base = slash < 0 ? "" : ownerPart.slice(0, slash);
+  const parts = base === "" ? [] : base.split("/");
   for (const seg of target.split("/")) {
     if (seg === "..") parts.pop();
     else if (seg !== ".") parts.push(seg);

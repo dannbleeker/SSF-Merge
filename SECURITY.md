@@ -57,15 +57,16 @@ What was looked at, and what it said. Filed from
 | Hostile values through a merge | **Sound.** `<b>bold</b>`, `a & b`, `]]>break`, a comment, a processing instruction and an already-escaped entity all round trip exactly once. |
 | Injection into the package | **Sound.** A value closing its own `<a:t>` and opening a new element arrives as text; every part still parses and no injected element appears. |
 | `__proto__` as a column name | **Sound.** Own property on a null-prototype row, merges onto the slide, pollutes nothing. |
-| Relationship targets → part paths | **Two findings, both fixed below.** |
+| Relationship targets → part paths | **Three findings, all fixed below.** |
 | Traversal out of the package | **Not possible.** `..` past the root is clamped, and the result is always a package-relative name. Nothing here touches a real filesystem. |
 | Pasted text into the pane | **Sound.** `render.ts` writes `textContent` and never `innerHTML`; held by a test in `pane-render.test.ts`. |
 | Dependency surface | **Two runtime dependencies**, `@xmldom/xmldom` and `jszip`. Alerts are triaged and recorded in `docs/DEPENDENCY-ALERTS.md`. |
 
 ### What it found
 
-Both findings are the same shape: **removing a slide decides what to delete from
+The first two are the same shape: **removing a slide decides what to delete from
 relationships that came out of the deck**, and a deck can be sent to somebody.
+The third is why the second worked.
 
 **One — the slide's own notes and comment relationships.** `resolveTarget`
 honours a leading `/` and any number of `..`, which is what the format requires.
@@ -80,7 +81,8 @@ also sweeps the parts its charts and diagrams own. The top of that list was held
 to an allowlist; the **children were not**, so a chart whose relationships named
 `/ppt/presentation.xml` had that part counted as something the chart owned.
 Nothing else in the package refers to it — its only referrer is the root
-`_rels/.rels`, which the referrer scan does not read — so it was swept.
+`_rels/.rels`, which the referrer scan did not read at the time — so it was
+swept.
 
 This one is worse than the first. `/ppt/presentation.xml` was deleted
 **silently**: the merge finished, reported success, and produced a file that
@@ -92,11 +94,20 @@ Severity for both is low: they corrupt the user's own output, with no execution,
 no persistence and nothing exfiltrated. Both tests were checked by removing the
 guard and watching them go red, so they fail for the reason they claim.
 
-**Left standing, and worth knowing:** the referrer scan reads only paths
-containing `/_rels/`, which excludes the root `_rels/.rels`. So a part referenced
-*only* from there still looks unreferenced. The allowlist now keeps such a part
-out of the sweep's reach, so this is latent rather than exploitable — but it is a
-wrong answer waiting for someone to widen the allowlist.
+**Three — the referrer scan could not see the package's own relationships.** The
+reason the second finding worked. That scan tested every `.rels` whose path
+contained `/_rels/`, which is all of them **except** `_rels/.rels` — the root has
+no directory in front of it. So the only referrer of `ppt/presentation.xml` and
+of docProps was invisible, and a part named just from there looked unreferenced.
+
+Underneath it sat a second cause: `resolveTarget` mishandled a part at the
+package root, the same `lastIndexOf` trap `relsPathFor` already documented. An
+empty base dropped a character and prefixed every answer with a slash, so the
+root's relationships could not have been read even if the scan had looked.
+
+Both fixed, and the scan now reads the root. Not a vulnerability once the
+allowlist is in place — it is a wrong answer that the allowlist was hiding, and
+the kind that comes back the day somebody widens one.
 
 ### What this sweep did not cover
 
