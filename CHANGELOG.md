@@ -7,6 +7,22 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a number too large for a double is now text on both sides
+
+A correction to the entry above. Making `looksLikeNumber` ask `numericValue`
+was described as behaviour-preserving, and that was true of the test suite and
+not of one input class the suite does not cover.
+
+The pattern matches any run of digits; `Number()` gives up above about 1.8e308.
+So a 310-digit cell was typed `number` by the detector and refused by the
+converter — the exact disagreement that change was made to end, sitting in a
+shape nobody had written a case for. It is typed `text` now, and both halves say
+so.
+
+Text is the honest answer rather than the ideal one. A spreadsheet would call it
+a number; this engine cannot hold it as one, and claiming it is a number and
+then failing to format it is the worse of the two.
+
 ### Fixed — four spellings of "the block moved", and no two agreed
 
 A pane update that sets one field is readable where it happens. One that clears
