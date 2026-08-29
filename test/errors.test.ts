@@ -23,7 +23,31 @@ describe("error text that reaches a user is bounded", () => {
 
   it("handles a throw that is not an Error", () => {
     expect(readable("just a string")).toBe("just a string");
-    expect(readable(undefined)).toBe("undefined");
+  });
+
+  it("keeps the message out of an object that is not an Error", () => {
+    /**
+     * `String(e)` reaches Object's default stringification, so a thrown
+     * `{ message: "InvalidArgument", code: 5 }` arrived as "[object Object]" —
+     * discarding the message inside it, in the sentence the user is given to
+     * explain a failed merge. An Office.js async failure is routinely a plain
+     * object carrying exactly those fields.
+     *
+     * `formatValue` in `trace.ts` already refuses to print "[object Object]",
+     * with the reasoning beside it: "a line that occupies space and answers
+     * nothing". This is the same rule on the path that reaches a person.
+     */
+    expect(readable({ message: "InvalidArgument", code: 5 })).toBe("InvalidArgument");
+    // No message: the SHAPE, which a reader can at least repeat to somebody.
+    expect(readable({ code: 5 })).toBe('{"code":5}');
+  });
+
+  it("says a raise had nothing in it, rather than the word undefined", () => {
+    // This replaces an assertion that pinned `readable(undefined)` to the
+    // string "undefined". That is a JavaScript value name reaching a user as
+    // the whole explanation of why their merge failed.
+    expect(readable(undefined)).toBe("the host raised nothing this pane can describe.");
+    expect(readable(null)).toBe("the host raised nothing this pane can describe.");
   });
 
   it("does not cut a message that is exactly at the limit", () => {

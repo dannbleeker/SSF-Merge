@@ -7,6 +7,31 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a failed merge could explain itself as "[object Object]"
+
+`readable` turns whatever was thrown into the sentence the user is given. Its
+fallback was `String(e)`, which for an object reaches Object's default
+stringification.
+
+So a thrown `{ message: "InvalidArgument", code: 5 }` arrived as
+**"[object Object]"** — discarding the message sitting inside it — and a raise
+of `undefined` arrived as the word **"undefined"**, a JavaScript value name
+offered as the whole explanation of why somebody's merge failed. An Office.js
+async failure is routinely a plain object carrying exactly `name`, `message` and
+`code` rather than an `Error`.
+
+`formatValue` in `trace.ts` already refuses to print "[object Object]", with the
+reasoning written beside it — "a line that occupies space and answers nothing".
+This is the same rule on the path that reaches a PERSON rather than a log.
+
+Every branch now answers something a reader can act on or repeat to somebody who
+can: the message if there is one, the shape if there is not, and a sentence
+saying the raise was empty if it was.
+
+A test pinned `readable(undefined)` to the string "undefined", so this is a
+deliberate change to an asserted expectation rather than an unnoticed gap. The
+assertion is replaced and says why.
+
 ### Fixed — the slide-number boxes read things nobody typed
 
 `Number` reads far more than anybody types into a slide box: `0x10` is sixteen,
