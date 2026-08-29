@@ -7,7 +7,30 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
-Nothing yet.
+### Added — a gate that asks whether a package agrees with itself
+
+Two defects fixed in 0.2.2 were the same mistake in the two places that delete a
+relationship, and nothing here could see either. Every other test asks whether a
+merged deck SAYS the right things; a deck can say all of it correctly and still
+name a relationship that is not there, which PowerPoint calls damage and repairs
+by dropping whatever it chooses.
+
+`scripts/package-integrity.mjs` asks the structural question instead — do the
+parts, the relationships and the markup agree — and knows nothing about what a
+deck is for. Three checks, the third of which is the one that matters most:
+
+- a relationship whose target is not in the package;
+- markup naming a relationship the part does not have;
+- a reference that resolves to the wrong KIND of part. That is what an id
+  reused after a delete looks like, and the first two checks both pass on it.
+
+It runs over the committed decks, over the kit and the modern chart merged, and
+over a slide carrying every feature at once — a combination no test had put
+together, which is how the fixture had been describing a slide whose diagram
+colours and modern chart shared a relationship id.
+
+The human round's verifier reads the same rules rather than its own copy of one
+of them, so the deck a real PowerPoint produces is checked the same way.
 
 ## [0.2.2] — 2026-08-29
 

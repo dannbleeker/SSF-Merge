@@ -74,7 +74,10 @@ working around it.
    trust its verdict — it breaks a reference deck six ways and checks each is
    caught, and it has found three bugs in the verifier itself. Extend it rather
    than starting over. What it asserts:
-   - every relationship target resolves to a part that exists
+   - the package agrees with itself: every relationship target resolves, no
+     markup names a relationship the part does not have, and no reference
+     leads to the wrong KIND of part (the last one catches an id freed by a
+     delete and taken by something else, which the first two both pass)
    - three chart parts, three embedded workbooks, three media parts
    - each chart's title and `<c:strCache>` hold a different region, none holds
      `{{Region}}`

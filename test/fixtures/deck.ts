@@ -451,7 +451,7 @@ function modernChartFrame(spec: ModernChartSpec): string {
   const fallback = spec.noFallback
     ? ""
     : `<mc:Fallback><p:pic><p:nvPicPr><p:cNvPr id="6" name="Chart 5"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr>` +
-      `<p:blipFill><a:blip r:embed="rId8"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>` +
+      `<p:blipFill><a:blip r:embed="rId11"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>` +
       `<p:spPr><a:xfrm>${box}</a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr>` +
       `</p:pic></mc:Fallback>`;
   return (
@@ -470,7 +470,7 @@ function modernChartFrame(spec: ModernChartSpec): string {
     `</a:ext></a:extLst></p:cNvPr><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr>` +
     `<p:xfrm>${box}</p:xfrm>` +
     `<a:graphic><a:graphicData uri="http://schemas.microsoft.com/office/drawing/2014/chartex">` +
-    `<cx:chart ${CX_NS} ${R} r:id="rId7"/></a:graphicData></a:graphic></p:graphicFrame>` +
+    `<cx:chart ${CX_NS} ${R} r:id="rId10"/></a:graphicData></a:graphic></p:graphicFrame>` +
     `</mc:Choice>${fallback}</mc:AlternateContent>`
   );
 }
@@ -622,10 +622,14 @@ export async function makeDeck(slides: SlideSpec[]): Promise<Uint8Array> {
       ? `<Relationship Id="rId3" Type="${REL_TYPE.chart}" Target="../charts/chart${n}.xml"/>`
       : "";
     const modernRels = spec.modernChart
-      ? `<Relationship Id="rId7" Type="${REL_TYPE.chartEx}" Target="../charts/chartEx${n}.xml"/>` +
+      ? // Not rId7 and rId8: SmartArt owns those, and a slide carrying both had
+        // the diagram's colours resolving to the modern chart. Nothing was
+        // wrong with the engine — the fixture simply described a slide no
+        // producer would write, and no test had put the two together to notice.
+        `<Relationship Id="rId10" Type="${REL_TYPE.chartEx}" Target="../charts/chartEx${n}.xml"/>` +
         (spec.modernChart.noFallback
           ? ""
-          : `<Relationship Id="rId8" Type="${REL_TYPE.image}" Target="../media/chart${n}.png"/>`)
+          : `<Relationship Id="rId11" Type="${REL_TYPE.image}" Target="../media/chart${n}.png"/>`)
       : "";
     const shapeTagRels = spec.shapeTags
       ? `<Relationship Id="rId30" Type="${REL_TYPE.tags}" Target="../tags/tag9.xml"/>`

@@ -16,6 +16,7 @@
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import JSZip from "jszip";
+import { packageProblems } from "../../scripts/package-integrity.mjs";
 
 const deckPath = process.argv[2];
 if (!deckPath) {
@@ -58,12 +59,6 @@ function resolveFromDir(dir, target) {
 function resolveTarget(ownerPart, target) {
   const i = ownerPart.lastIndexOf("/");
   return resolveFromDir(i === -1 ? "" : ownerPart.slice(0, i), target);
-}
-
-/** The directory a .rels file's targets are relative to. "_rels/.rels" -> "". */
-function ownerDirOfRels(relsPath) {
-  const i = relsPath.lastIndexOf("_rels/");
-  return relsPath.slice(0, i).replace(/\/$/, "");
 }
 
 function relsPathFor(part) {
@@ -112,29 +107,28 @@ console.log(
   `slides      : ${slidePaths.length}  (${slidePaths.map((p) => p.replace("ppt/slides/", "")).join(", ")})\n`,
 );
 
-// ------------------------------------------- 1. every relationship resolves
+// ------------------------------------------- 1. the package agrees with itself
 
 {
-  const relFiles = names.filter((n) => n.endsWith(".rels"));
-  const broken = [];
-  let checked = 0;
-  for (const rf of relFiles) {
-    const ownerDir = ownerDirOfRels(rf);
-    const xml = await zip.file(rf).async("string");
-    for (const tag of xml.match(REL_RE) ?? []) {
-      if ((attr(tag, "TargetMode") ?? "") === "External") continue;
-      const target = attr(tag, "Target") ?? "";
-      const resolved = resolveFromDir(ownerDir, target);
-      checked++;
-      if (!zip.file(resolved)) broken.push(`${rf} -> ${target} (${resolved})`);
-    }
+  // One implementation, shared with `test/integrity.test.ts`. This block used
+  // to walk the rels itself and check only that every Target resolved — which
+  // is one of the three ways a package can contradict itself, and not the one
+  // that shipped twice. Markup naming a relationship the part no longer has,
+  // and a reference that resolves to the WRONG KIND of part, are the other two.
+  const parts = new Map();
+  for (const name of names) {
+    const file = zip.file(name);
+    if (!file) continue;
+    const xml = name.endsWith(".xml") || name.endsWith(".rels");
+    parts.set(name, xml ? await file.async("string") : await file.async("uint8array"));
   }
+  const found = packageProblems(parts);
   record(
-    "every relationship target resolves to a part that exists",
-    broken.length === 0,
-    broken.length === 0
-      ? `${checked} internal targets across ${relFiles.length} rels parts all resolve`
-      : `${broken.length} dangling: ${broken.slice(0, 5).join("; ")}`,
+    "the package agrees with itself: relationships, references and content types",
+    found.length === 0,
+    found.length === 0
+      ? `${parts.size} parts, no dangling target, no unresolvable reference, no reference to the wrong kind of part`
+      : `${found.length} problem(s): ${found.slice(0, 5).join("; ")}`,
   );
 }
 
