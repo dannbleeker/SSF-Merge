@@ -63,8 +63,36 @@ export const COMMENT_REL_TYPES = [
  * PowerPoint cannot open, from a merge that reported success.
  *
  * Tags are here because they were not, and every removed slide left one behind.
+ *
+ * Media is here for the same reason, and it arrived with modern charts. A
+ * modern chart carries a rendered PICTURE for hosts too old to draw it, each
+ * merged copy replaces that picture with a notice and stops relating to it, and
+ * the template's own copy then goes out with the template slide — leaving the
+ * bytes in the package with nothing pointing at them. A rendering of the
+ * TEMPLATE's data, shipped in the file that gets sent out.
+ *
+ * A picture is far likelier than a chart to be SHARED — a logo on the master, a
+ * photo used twice — and the referrer scan is what makes that safe: a part any
+ * other part still names is left exactly where it is. The scan is why this can
+ * be a rule about media in general rather than a special case for a fallback
+ * picture, which would need the replacement to remember what it dropped and
+ * would miss every other picture a removed slide was the last owner of.
+ *
+ * One limit, and it is the conservative direction. The referrer scan runs per
+ * removal and counts every part that still exists, so a picture two TEMPLATE
+ * slides share survives both of them: each removal sees the other slide still
+ * pointing at it. That leaves bytes behind rather than taking a part something
+ * might still need, and a modern chart's fallback picture is its own — one per
+ * chart, per slide — so the case this arrived for is covered.
+ *
+ * Not anchored to a NUMBER, because media names are not numbered by anything:
+ * PowerPoint writes `image7.emf`, Excel writes `Microsoft_Excel_Worksheet.xlsx`,
+ * and another tool writes whatever it likes. `[^/]+` keeps it to one segment
+ * directly under `ppt/media/`, so a target reaching upwards resolves outside the
+ * pattern and is not a candidate.
  */
-export const OWNED_BY_SLIDE = /^ppt\/(charts\/chart|charts\/chartEx|diagrams\/data|tags\/tag)\d+\.xml$/;
+export const OWNED_BY_SLIDE =
+  /^ppt\/(?:(?:charts\/chart|charts\/chartEx|diagrams\/data|tags\/tag)\d+\.xml|media\/[^/]+)$/;
 
 /**
  * What a chart or a SmartArt may drag out of the package with it.

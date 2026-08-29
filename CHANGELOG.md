@@ -80,6 +80,23 @@ plot from `size` where a waterfall plots from `val`, so a reader that looked for
 `val` would have filled some modern charts and skipped others without saying
 which.
 
+### Fixed — a merged deck stops carrying pictures nothing points at
+
+A modern chart keeps a rendered picture for hosts too old to draw it. Each
+merged copy replaces that picture with a notice and stops relating to it, and
+the template's own copy goes out with the template slide — but the bytes stayed
+in the package, reachable by nothing and swept by nothing. A rendering of the
+TEMPLATE's figures, in the file that gets sent out.
+
+Pictures are now swept with the slide that was the last part pointing at them,
+which the sweep already did for charts, workbooks, diagrams and tags. Anything
+another part still names is left where it is — a logo on the master, a photo
+used twice — so the rule can be about media in general rather than a special
+case for one kind of picture.
+
+Merging the sunburst deck in `test-kit/` three ways now produces a 57 KB file
+where it produced 71 KB, and 33 KB of that difference was one unreachable PNG.
+
 ### Changed — the landing page is a landing page
 
 It was a stack of paragraphs with the way in buried mid-sentence. Rendered and

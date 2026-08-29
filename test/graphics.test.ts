@@ -18,6 +18,7 @@ import { buildPlan } from "../src/core/merge/plan.js";
 import { runPlan } from "../src/core/merge/run.js";
 import { toRecordSet } from "../src/core/data/recordset.js";
 import { Pkg } from "../src/core/pptx/pkg.js";
+import { REL_TYPE } from "../src/core/pptx/parts.js";
 import { A_NS, C_NS, PKG_REL_NS, SSML_NS, elements, parseXml } from "../src/core/pptx/xml.js";
 import { makeDeck, type SlideSpec } from "./fixtures/deck.js";
 
@@ -351,6 +352,59 @@ describe("what the run leaves behind", () => {
     expect(
       (await related(zip, chart, "/package"))[0] && zip.file((await related(zip, chart, "/package"))[0] ?? ""),
     ).not.toBeNull();
+  });
+
+  it("takes a modern chart's fallback picture out with the template slide", async () => {
+    // The picture a modern chart carries for hosts too old to draw it. Every
+    // merged copy replaces it with a notice and stops relating to it, so once
+    // the template slide goes nothing points at the bytes — a rendering of the
+    // TEMPLATE's figures, riding along in the file that gets sent out.
+    //
+    // Media used not to be a candidate for the sweep at all, so this survived
+    // every merge. A picture is likelier than a chart to be shared, and the
+    // referrer scan rather than the candidate list is what makes that safe —
+    // which the next test is about.
+    const pkg = await Pkg.open(
+      await makeDeck([
+        { paragraphs: [["Cover"]], modernChart: { title: "{{Region}}", categories: ["{{Region}}"] } },
+        { paragraphs: [["after"]] },
+      ]),
+    );
+    const records = toRecordSet(ROWS.split("\n").map((l) => l.split("\t")));
+    const plan = buildPlan({ id: "r1", slides: [{ path: "ppt/slides/slide1.xml", seq: 1, fields: [] }] }, records, {
+      runId: "r1",
+    });
+    await runPlan(pkg, plan, records);
+    expect(pkg.partNames(), "the fixture drew no fallback picture, so this proves nothing").toContain(
+      "ppt/media/chart1.png",
+    );
+
+    await pkg.removeSlide("ppt/slides/slide1.xml");
+    expect(pkg.partNames()).not.toContain("ppt/media/chart1.png");
+  });
+
+  it("keeps a picture another part still points at", async () => {
+    // The half that must NOT be swept, and the reason media can be a rule about
+    // media in general. A logo on two slides, a photo used twice: a part any
+    // other part still names is left exactly where it is, and a sweep that took
+    // it would leave a surviving slide showing a missing picture.
+    const pkg = await Pkg.open(
+      await makeDeck([
+        { paragraphs: [["Cover"]], modernChart: { title: "{{Region}}", categories: ["{{Region}}"] } },
+        { paragraphs: [["after"]] },
+      ]),
+    );
+    // A second referrer, exactly as a deck that used one image twice would have.
+    await pkg.addRel("ppt/slides/slide2.xml", REL_TYPE.image, "../media/chart1.png");
+
+    const records = toRecordSet(ROWS.split("\n").map((l) => l.split("\t")));
+    const plan = buildPlan({ id: "r1", slides: [{ path: "ppt/slides/slide1.xml", seq: 1, fields: [] }] }, records, {
+      runId: "r1",
+    });
+    await runPlan(pkg, plan, records);
+    await pkg.removeSlide("ppt/slides/slide1.xml");
+
+    expect(pkg.partNames(), "swept a picture a surviving slide still shows").toContain("ppt/media/chart1.png");
   });
 
   it("keeps a diagram's shared styling, which the copies still point at", async () => {
