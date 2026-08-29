@@ -414,7 +414,24 @@ export class Pkg {
   private async orphanedParts(slidePath: string): Promise<string[]> {
     const owned: string[] = [];
     for (const part of await this.relatedParts(slidePath)) {
-      if (!/^ppt\/(charts\/chart|diagrams\/data)\d+\.xml$/.test(part) || !this.has(part)) continue;
+      // Tags belong here with the charts and the diagrams: `ppt/tags/tagN.xml`
+      // is written per slide by `writeSlideTags`, one slide points at it, and
+      // it is unreachable the moment that slide goes. It was not collected, so
+      // every removed slide left its tag part behind — with a content-type
+      // override and nothing referring to it, which is the exact shape the
+      // comment payoff above calls out for comments.
+      //
+      // It reaches further than a swept preview. On the `file` route the
+      // package is the user's WHOLE presentation and every slide that is not a
+      // clone is removed from it, so a deck whose slides carry tags — this
+      // add-in's own from a previous merge, or another add-in's — shipped one
+      // orphan per slide back into their deck.
+      //
+      // Same discipline as the others: an anchored name, so a crafted
+      // relationship cannot point this at a part the presentation needs. A tag
+      // part another tool named something else is left alone, which is the safe
+      // direction.
+      if (!/^ppt\/(charts\/chart|diagrams\/data|tags\/tag)\d+\.xml$/.test(part) || !this.has(part)) continue;
       owned.push(part);
       for (const child of await this.relatedParts(part)) {
         // The child comes from the CHART's own relationships, which come out of

@@ -7,6 +7,32 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a removed slide left its tag part behind
+
+`orphanedParts` collects what only the departing slide keeps alive, and it
+collected charts and diagrams. Tag parts were not on the list: `writeSlideTags`
+writes `ppt/tags/tagN.xml` per slide, exactly one slide points at it, and it is
+unreachable the moment that slide goes. Every removed slide left one behind —
+with a content-type override and nothing referring to it, which is the shape
+this file already chases for notes pages and for comments.
+
+It reaches further than a swept preview. On the `file` route — every host below
+PowerPointApi 1.10 — the package IS the user's whole presentation, and every
+slide that is not a clone is removed from it before the insert. A deck whose
+slides carry tags, this add-in's own from an earlier merge or another add-in's,
+shipped one orphan per slide back into their deck.
+
+Found by sweeping rather than reading: merge three records from a slide carrying
+a chart, a workbook, SmartArt, notes and tags, remove every merged slide, and
+require that nothing under `ppt/charts`, `ppt/diagrams`, `ppt/embeddings`,
+`ppt/notesSlides` or `ppt/tags` is left unreachable. 57 parts went to 27 with
+three tag parts standing; they go to 24 now. The sweep is a test, and the part
+type that was missed is by definition the one nobody writes an assertion for.
+
+The name is anchored like the others, so a crafted relationship cannot point the
+sweep at a part the presentation needs, and a tag part another tool named
+something else is left alone.
+
 ### Fixed — a selection naming one slide twice could merge a slide nobody picked
 
 `blockFromSelection` decided contiguity by comparing `to - from + 1` against HOW
