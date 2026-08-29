@@ -115,6 +115,17 @@ describe("applyFormat", () => {
     expect(applyFormat("2026-03-01", "date:dd MMM yyyy")).toBe("01 Mar 2026");
   });
 
+  it("keeps a date pattern that has a colon in it", () => {
+    // `split(":", 2)` TRUNCATES rather than putting the remainder in the last
+    // element, so everything after the second colon was dropped: a template
+    // asking for `date:yyyy-MM-dd 00:00` — a date with a fixed time after it,
+    // which is an ordinary thing to write on a slide — printed
+    // "2026-03-01 00" and stopped. A date pattern is free text with tokens in
+    // it and may hold any punctuation its author wants.
+    expect(applyFormat("2026-03-01", "date:yyyy-MM-dd 00:00")).toBe("2026-03-01 00:00");
+    expect(applyFormat("2026-03-01", "date:dd/MM/yyyy 12:30:00")).toBe("01/03/2026 12:30:00");
+  });
+
   it("returns the cell unchanged when it does not match its format", () => {
     // The cell is what the user typed. Showing it beats showing nothing.
     expect(applyFormat("not a number", "number:2")).toBe("not a number");

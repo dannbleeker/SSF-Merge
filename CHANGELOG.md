@@ -7,6 +7,13 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a date pattern may hold a colon
+
+`{{Start|date:yyyy-MM-dd 00:00}}` printed `2026-03-01 00` and stopped. The
+format spec was split on every colon and only the first two pieces kept, so a
+pattern with punctuation of its own lost everything after its second colon. A
+date pattern is free text with tokens in it.
+
 ## [0.2.3] — 2026-08-29
 
 Thirteen changes to what the pane says and how it behaves, and none to the
