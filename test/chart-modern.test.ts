@@ -165,7 +165,13 @@ describe("a modern chart is merged", () => {
     // scanner with its own opinion of which cells hold a placeholder is free to
     // disagree with the merge, and the pane would then offer a column that
     // fills nothing, or none for a cell that does.
-    const spec = { ...FUNNEL, title: undefined, categories: ["one", "two"], series: undefined, values: ["{{Revenue}}", "42"] };
+    const spec = {
+      ...FUNNEL,
+      title: undefined,
+      categories: ["one", "two"],
+      series: undefined,
+      values: ["{{Revenue}}", "42"],
+    };
     const { prepared } = await mergeDeck({ paragraphs: [["Cover"]], modernChart: spec });
     expect(prepared.ok && [...prepared.fields].sort()).toEqual(["Revenue"]);
   });
