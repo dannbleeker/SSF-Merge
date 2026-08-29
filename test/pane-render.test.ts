@@ -961,6 +961,24 @@ describe("nothing a user supplies may push the pane sideways", () => {
     expect(asText.map((m) => m[0])).toEqual([]);
   });
 
+  it("shows where the keyboard is, on a button as well as in a box", () => {
+    // The focus rule named `input`, `textarea` and `select` and stopped, so
+    // every BUTTON — the chips, both disclosures, the back links, the undo
+    // button, the primary — fell back to Chrome's own ring. That ring is
+    // `rgb(16, 16, 16)`, and on the dark theme's near-black pane it measured
+    // 1.03:1: no visible focus anywhere in that theme except inside a text
+    // box. Measured with `scripts/pane-shots.mjs`, which sweeps it now.
+    expect(css).toMatch(/button:focus-visible\s*\{[^}]*outline:/);
+
+    // And a focus indicator may not be painted with the background blue,
+    // for the same reason the ink may not be: `--blue` stays dark in both
+    // themes, and 3.42:1 against the dark theme's field is over WCAG 1.4.11's
+    // floor by a hair, on the one signal a keyboard user has.
+    const focusRules = [...css.matchAll(/[^}]*:focus[^{]*\{([^}]*)\}/g)].map((m) => m[1] ?? "");
+    expect(focusRules.length, "found the focus rules at all").toBeGreaterThan(0);
+    expect(focusRules.filter((body) => body.includes("var(--blue)"))).toEqual([]);
+  });
+
   it("leaves the two places that deliberately do not wrap", () => {
     // The rule reaches text that wraps, so its stated scope is only true while
     // these two keep saying so. The run log is a scroll box a user copies out

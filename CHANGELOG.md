@@ -7,6 +7,17 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — you can see where the keyboard is, in both themes
+
+The pane's focus outline was written for the text boxes and the dropdowns and
+stopped there, so every button fell back to the browser's own ring. That ring is
+near-black, and PowerPoint's dark theme paints the pane near-black: measured at
+1.03:1, which is no visible focus at all on the chips, the two disclosures, the
+back links, the undo button or the merge button.
+
+Buttons get the pane's own outline now, in the lighter blue the dark theme
+already uses for links, and the boxes and dropdowns move to it as well.
+
 ### Fixed — a date pattern may hold a colon
 
 `{{Start|date:yyyy-MM-dd 00:00}}` printed `2026-03-01 00` and stopped. The

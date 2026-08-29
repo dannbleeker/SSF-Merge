@@ -387,12 +387,41 @@ textarea {
   font-size: 12px;
   line-height: 1.45;
 }
+/*
+ * Where the keyboard is.
+ *
+ * `--link`, not `--blue`, for the reason the ink uses it: `--blue` is a
+ * background in this palette and stays dark, and a dark outline on the dark
+ * theme's dark field measured 3.42:1 — over WCAG 1.4.11's floor for a focus
+ * indicator and only just, on the one signal a keyboard user has.
+ *
+ * BUTTONS were not in this rule at all, and they are the controls a keyboard
+ * user presses: the chips, the two disclosures, the back links, the undo
+ * button. They fell back to Chrome's own ring, which is `rgb(16, 16, 16)` —
+ * near-black, drawn on a near-black pane, measured at 1.03:1. There was no
+ * visible focus anywhere in the dark theme except in a text box.
+ *
+ * `:focus-visible` for them and plain `:focus` for the text controls, which is
+ * what each already did: a click into a box shows the outline, a click on a
+ * button does not, and the keyboard shows both.
+ *
+ * The alternative was `color-scheme: dark`, which would make Chrome's own ring
+ * adapt. It also restyles every native control in the pane — the checkboxes,
+ * the select, the file picker — which is a change to how the pane looks rather
+ * than a fix for what it fails to show.
+ */
 input:focus,
 textarea:focus,
 select:focus {
-  outline: 2px solid var(--blue);
+  outline: 2px solid var(--link);
   outline-offset: -1px;
-  border-color: var(--blue);
+  border-color: var(--link);
+}
+button:focus-visible {
+  outline: 2px solid var(--link);
+  /* Outside the border, because a chip is a pill with a border of its own and
+     an inset ring on one reads as a second border rather than as focus. */
+  outline-offset: 2px;
 }
 
 /* A link, not a second button: one thing to press per screen stays the rule. */
