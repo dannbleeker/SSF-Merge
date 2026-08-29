@@ -918,6 +918,20 @@ describe("nothing a user supplies may push the pane sideways", () => {
     expect(body).toContain("overflow-wrap: anywhere");
   });
 
+  it("never paints TEXT with the blue that is a background colour", () => {
+    // Measured with the pane's own renderer in a browser, in both themes:
+    // `--blue` stays dark because it is a FILL — the header and the primary
+    // button, both carrying white text — and read as text on the dark
+    // surface it is 3.0:1. Three declarations did that, and one of them was
+    // every secondary button, "Remove these slides" among them, at 2.93:1.
+    //
+    // `--link` is the same colour in light and a lighter one in dark, which
+    // is why the dark blocks define it at all. Anything blue that is text
+    // reads it.
+    const asText = [...css.matchAll(/(^|[^-])color: var\(--blue\)/g)];
+    expect(asText.map((m) => m[0])).toEqual([]);
+  });
+
   it("leaves the two places that deliberately do not wrap", () => {
     // The rule reaches text that wraps, so its stated scope is only true while
     // these two keep saying so. The run log is a scroll box a user copies out

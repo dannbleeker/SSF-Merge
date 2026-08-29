@@ -27,6 +27,19 @@
   --muted: #5b6672;
   --hair: #cbd5e0;
   --head: var(--navy);
+  /*
+   * Blue as INK, which in dark is not the same colour as blue as a FILL.
+   *
+   * `--blue` stays dark in both themes because it is a background there — the
+   * header and the primary button, both carrying white text. Read as text on
+   * a dark surface it is 3.0:1, and three places did exactly that: the field
+   * tags, the Insert chips and every secondary button, "Remove these slides"
+   * among them, which is the whole way back from a merge.
+   *
+   * The dark blocks already redefined this token for links and nothing else
+   * asked for it. Anything blue that is TEXT reads it now; in light it is
+   * `--blue`, so nothing there moves by a pixel.
+   */
   --link: var(--blue);
   --disabled: #a0aec0;
 }
@@ -41,9 +54,6 @@
  * kept as the fallback for the case Office never answers — a pane opened in a
  * browser, which is exactly how it is inspected during development.
  */
-:root[data-theme="dark"],
-:root:not([data-theme="light"]) {
-}
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #0a1420;
@@ -247,7 +257,7 @@ p.muted {
   border-radius: 999px;
   padding: 1px 8px;
   font-size: 12.5px;
-  color: var(--blue);
+  color: var(--link);
 }
 .fields li[data-matched="no"] {
   border-color: var(--orange);
@@ -275,9 +285,9 @@ p.muted {
   border-radius: 999px;
   padding: 3px 10px;
   font-size: 12.5px;
-  border: 1px solid var(--blue);
+  border: 1px solid var(--link);
   background: var(--surface);
-  color: var(--blue);
+  color: var(--link);
 }
 /*
  * Already on the slides. MUTED rather than hidden: a template can legitimately
@@ -304,9 +314,9 @@ button {
   border-radius: 4px;
   padding: 7px 12px;
   cursor: pointer;
-  border: 1px solid var(--blue);
+  border: 1px solid var(--link);
   background: transparent;
-  color: var(--blue);
+  color: var(--link);
 }
 button.primary {
   background: var(--blue);
