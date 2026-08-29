@@ -734,12 +734,45 @@ export function blockedReason(state: PaneState, step: StepId): string | null {
 export function caution(state: PaneState, step: StepId): string | null {
   if (step !== "merge") return null;
   const missing = unmatchedFields(state);
-  if (missing.length === 0) return null;
+  // Both can be true at once, and each is a different thing about to happen, so
+  // neither may swallow the other.
+  const pictures = picturesGoNowhere(state)
+    ? "The pictures you attached will not be placed: no field asks for one. Write a field as {{Column|image}} on the slide where the picture goes."
+    : null;
+  if (missing.length === 0) return pictures;
   // NAMED, not counted — a count alone sends the user back through every slide
   // looking for it. And it says what will HAPPEN rather than what to fix: the
   // placeholder staying is the documented behaviour, not a mistake to correct
   // before pressing on.
-  return `No column for ${missing.join(", ")}. ${missing.length === 1 ? "It" : "They"} will stay on the slides as written.`;
+  const unmatched = `No column for ${missing.join(", ")}. ${missing.length === 1 ? "It" : "They"} will stay on the slides as written.`;
+  return pictures ? `${unmatched} ${pictures}` : unmatched;
+}
+
+/**
+ * Pictures attached, and nothing on the slides asking for one.
+ *
+ * The picker is offered from the DATA — a column of file names — and it has to
+ * be, because the pane's order is choose slides, paste data, then put the
+ * fields on. At paste time the placeholder may not exist yet.
+ *
+ * The ENGINE decides differently, and correctly: a picture is placed where a
+ * field ASKS for one, `{{Photo|image}}`, which is what `docs/MANUAL.md`
+ * documents. A plain `{{Photo}}` is a text field whose cell happens to hold a
+ * file name, and it merges to `ada.png` on the slide.
+ *
+ * So a user could attach three files to a picker that said "3 pictures named in
+ * Photo", press merge, and get 240 slides reading `ada.png` — with nothing
+ * anywhere having mentioned it. The picker is right, the engine is right, and
+ * the screen never put the two together.
+ *
+ * Said only once the slides have been read, because `imageFields` is empty
+ * before that and an empty list then means "not looked yet" rather than "not
+ * there".
+ */
+export function picturesGoNowhere(state: PaneState): boolean {
+  const attached = (state.images?.size ?? 0) > 0;
+  const asked = (state.imageFields ?? []).length > 0;
+  return attached && !asked && state.fields.length > 0;
 }
 
 export function statusOf(state: PaneState, step: StepId, current: StepId): Status {

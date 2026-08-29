@@ -854,6 +854,37 @@ describe("the number above the merge button", () => {
     expect(plannedSlides(state)).not.toBe(slidesPerRecord(state.block as Block) * includedCount(state));
   });
 
+  it("warns when the attached pictures have nowhere to go", () => {
+    /**
+     * The picker is offered from the DATA — a column of file names — because
+     * the pane's order is choose slides, paste data, then put the fields on,
+     * and at paste time the placeholder may not exist yet. The ENGINE places a
+     * picture where a field ASKS for one, `{{Photo|image}}`.
+     *
+     * Both are right. Nothing put them together: a user could attach three
+     * files under "3 pictures named in Photo", press merge, and get slides
+     * reading `ada.png` as text, with nothing anywhere having said so.
+     */
+    const withPhotos = {
+      ...state,
+      fields: ["Name"],
+      images: new Map([["ada.png", new Uint8Array([1])]]),
+      imageFields: [],
+    };
+    // `?? ""` so a caution that goes missing fails as "expected '' to contain
+    // …" rather than as an argument-type complaint about null, which says
+    // nothing about what broke.
+    expect(caution(withPhotos, "merge") ?? "").toContain("will not be placed");
+    expect(caution(withPhotos, "merge") ?? "").toContain("{{Column|image}}");
+
+    // A field that asks for a picture: no warning.
+    expect(caution({ ...withPhotos, imageFields: ["Photo"] }, "merge") ?? "").not.toContain("will not be placed");
+    // Before the slides have been read, an empty list means "not looked yet".
+    expect(caution({ ...withPhotos, fields: [] }, "merge") ?? "").not.toContain("will not be placed");
+    // And no pictures attached is not a warning about pictures.
+    expect(caution({ ...withPhotos, images: undefined }, "merge") ?? "").not.toContain("will not be placed");
+  });
+
   it("is the number on the BUTTON as well as in the sentence", () => {
     /**
      * The half nobody checked. `plannedSlides` was written, covered, and asked
