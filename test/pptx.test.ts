@@ -15,7 +15,7 @@ import {
   readSlideTags,
   writeSlideTags,
 } from "../src/core/pptx/tags.js";
-import { P_NS, R_NS, children, element, elements, parseXml } from "../src/core/pptx/xml.js";
+import { P_NS, R_NS, child, children, element, elements, parseXml } from "../src/core/pptx/xml.js";
 
 const P14 = "http://schemas.microsoft.com/office/powerpoint/2010/main";
 import { makeDeck } from "./fixtures/deck.js";
@@ -654,5 +654,80 @@ describe("removing a slide leaves nothing of it behind", () => {
     expect(before - pkg.partNames().length, "the removal freed nothing, so the sweep proves nothing").toBeGreaterThan(
       20,
     );
+  });
+});
+
+describe("a creation id the template carries in the wrong place", () => {
+  /**
+   * `setCreationId`'s append path is scoped to `cSld` and says why: a slide
+   * whose shape tree ends in its own `<p:extLst>` had the id appended THERE,
+   * where PowerPoint does not look for a slide's id, so it invented one on open
+   * and two copies were indistinguishable — the collision that file exists to
+   * avoid.
+   *
+   * The UPDATE path was not scoped. It took the first `p14:creationId`
+   * anywhere in the part, so a stray one inside the shape tree was updated
+   * instead, the function returned, and the slide was left with no id of its
+   * own — the same failure reached from the other side, with `creationIdOf`
+   * reporting that the stamp had worked.
+   *
+   * Not hypothetical. The comment in that file records that an older version of
+   * it put ids exactly there, so a deck merged by that version carries one, and
+   * using a merged deck as a template is an ordinary thing to do.
+   */
+  const CREATION_ID_URI = "{BB962C8B-B14F-4D97-AF65-F5344CB8AC3E}";
+
+  /** A slide carrying a creation id inside its shape tree, and none of its own. */
+  async function deckWithStrayId(value: string): Promise<Pkg> {
+    const pkg = await Pkg.open(await makeDeck([{ paragraphs: [["a"]] }, { paragraphs: [["b"]] }]));
+    const doc = await pkg.doc("ppt/slides/slide1.xml");
+    const cSld = element(doc, P_NS, "cSld") as Element;
+    const spTree = child(cSld, P_NS, "spTree") as Element;
+    const extLst = doc.createElementNS(P_NS, "p:extLst");
+    const ext = doc.createElementNS(P_NS, "p:ext");
+    ext.setAttribute("uri", CREATION_ID_URI);
+    const stray = doc.createElementNS(P14, "p14:creationId");
+    stray.setAttribute("val", value);
+    ext.appendChild(stray);
+    extLst.appendChild(ext);
+    spTree.appendChild(extLst);
+    return pkg;
+  }
+
+  const idsIn = (doc: Document): { val: string | null; under: string }[] =>
+    Array.from(doc.getElementsByTagNameNS(P14, "creationId")).map((n) => ({
+      val: n.getAttribute("val"),
+      under: (n.parentNode?.parentNode?.parentNode as Element | null)?.localName ?? "?",
+    }));
+
+  it("stamps the SLIDE, not the stray one", async () => {
+    const pkg = await deckWithStrayId("111111");
+    await setCreationId(pkg, "ppt/slides/slide1.xml", 999999);
+
+    const ids = idsIn(await pkg.doc("ppt/slides/slide1.xml"));
+    expect(ids, "the stamp landed where PowerPoint does not look").toContainEqual({ val: "999999", under: "cSld" });
+    // The stray is left where it is: deleting content out of somebody's deck to
+    // tidy up is a bigger decision than this function is making, and an ignored
+    // extension in a shape tree costs nothing.
+    expect(ids).toContainEqual({ val: "111111", under: "spTree" });
+  });
+
+  it("and reads back the slide's own", async () => {
+    // The diagnostic agreed with the broken stamp before, which is what made it
+    // silent: `creationIdOf` returned the value it had just written into the
+    // wrong element.
+    const pkg = await deckWithStrayId("111111");
+    await setCreationId(pkg, "ppt/slides/slide1.xml", 999999);
+    expect(await creationIdOf(pkg, "ppt/slides/slide1.xml")).toBe(999999);
+  });
+
+  it("still updates in place when the id IS the slide's own", async () => {
+    // The other half: scoping the search must not turn every stamp into an
+    // append, or a slide accumulates ids and the first one wins.
+    const pkg = await Pkg.open(await makeDeck([{ paragraphs: [["a"]] }, { paragraphs: [["b"]] }]));
+    await setCreationId(pkg, "ppt/slides/slide1.xml", 111);
+    await setCreationId(pkg, "ppt/slides/slide1.xml", 222);
+    const ids = idsIn(await pkg.doc("ppt/slides/slide1.xml"));
+    expect(ids).toEqual([{ val: "222", under: "cSld" }]);
   });
 });
