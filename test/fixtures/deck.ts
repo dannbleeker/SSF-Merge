@@ -44,6 +44,17 @@ export interface SlideSpec {
    */
   modernChart?: ModernChartSpec;
   /**
+   * A modern PowerPoint ICON and a LINKED picture, side by side.
+   *
+   * The two ways an image relationship is named that are NOT
+   * `<a:blip r:embed>`. An icon is a raster blip carrying the real SVG beside
+   * it in its own extension list, under a second image relationship; a linked
+   * picture names its relationship with `r:link` and embeds nothing. Both are
+   * ordinary in a deck somebody made this decade, and both were invisible to
+   * the pass that decides which image relationships a merged copy still needs.
+   */
+  icons?: boolean;
+  /**
    * SmartArt related from this slide, given as its node labels.
    *
    * Produces both halves a real one has: `dataN.xml`, the model, and
@@ -154,6 +165,7 @@ function slideXml(spec: SlideSpec): string {
     `<p:spPr>${spec.box ?? ""}</p:spPr><p:txBody><a:bodyPr/><a:lstStyle/>${paras}</p:txBody></p:sp>` +
     `${spec.smartArt ? smartArtFrame() : ""}` +
     `${spec.modernChart ? modernChartFrame(spec.modernChart) : ""}` +
+    `${spec.icons ? iconShapes() : ""}` +
     `</p:spTree>${creation}</p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`
   );
 }
@@ -398,6 +410,31 @@ function modernChartXml(spec: ModernChartSpec): string {
  * chart, which is the half this engine replaces. Both branches carry the same
  * shape id, as they do in the real file.
  */
+/**
+ * An icon and a linked picture, as PowerPoint writes them.
+ *
+ * The `<a:extLst>` uri is the one Office stamps on an SVG companion, and the
+ * shape was copied from a real deck rather than invented: a template this
+ * project was handed in August 2026 carries `asvg:svgBlip` on dozens of its
+ * layouts.
+ */
+function iconShapes(): string {
+  const pic = (id: number, name: string, fill: string): string =>
+    `<p:pic><p:nvPicPr><p:cNvPr id="${id}" name="${name}"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr>` +
+    `<p:blipFill>${fill}<a:stretch><a:fillRect/></a:stretch></p:blipFill>` +
+    `<p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="100" cy="100"/></a:xfrm>` +
+    `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>`;
+  return (
+    pic(
+      90,
+      "Icon",
+      `<a:blip r:embed="rId20"><a:extLst><a:ext uri="{96DAC541-7B7A-43D3-8B79-37D633B846F1}">` +
+        `<asvg:svgBlip xmlns:asvg="http://schemas.microsoft.com/office/drawing/2016/SVG/main" r:embed="rId21"/>` +
+        `</a:ext></a:extLst></a:blip>`,
+    ) + pic(91, "Linked", `<a:blip r:link="rId22"/>`)
+  );
+}
+
 function modernChartFrame(spec: ModernChartSpec): string {
   const box = `<a:off x="1000000" y="500000"/><a:ext cx="6000000" cy="4000000"/>`;
   const fallback = spec.noFallback
@@ -493,6 +530,7 @@ export async function makeDeck(slides: SlideSpec[]): Promise<Uint8Array> {
       `<Default Extension="xml" ContentType="application/xml"/>` +
       `<Default Extension="xlsx" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"/>` +
       `<Default Extension="png" ContentType="image/png"/>` +
+      `<Default Extension="svg" ContentType="image/svg+xml"/>` +
       `<Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>` +
       `<Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>` +
       `<Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>` +
@@ -571,6 +609,11 @@ export async function makeDeck(slides: SlideSpec[]): Promise<Uint8Array> {
           ? ""
           : `<Relationship Id="rId8" Type="${REL_TYPE.image}" Target="../media/chart${n}.png"/>`)
       : "";
+    const iconRels = spec.icons
+      ? `<Relationship Id="rId20" Type="${REL_TYPE.image}" Target="../media/icon${n}.png"/>` +
+        `<Relationship Id="rId21" Type="${REL_TYPE.image}" Target="../media/icon${n}.svg"/>` +
+        `<Relationship Id="rId22" Type="${REL_TYPE.image}" Target="../media/linked${n}.png"/>`
+      : "";
     const diagramRels = spec.smartArt
       ? `<Relationship Id="rId4" Type="${REL_TYPE.diagramData}" Target="../diagrams/data${n}.xml"/>` +
         `<Relationship Id="rId5" Type="${REL_TYPE.diagramLayout}" Target="../diagrams/layout${n}.xml"/>` +
@@ -585,7 +628,7 @@ export async function makeDeck(slides: SlideSpec[]): Promise<Uint8Array> {
       `ppt/slides/_rels/slide${n}.xml.rels`,
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n<Relationships ${REL}>` +
         `<Relationship Id="rId1" Type="${REL_TYPE.layout}" Target="../slideLayouts/slideLayout1.xml"/>` +
-        `${notesRel}${chartRel}${diagramRels}${modernRels}</Relationships>`,
+        `${notesRel}${chartRel}${diagramRels}${modernRels}${iconRels}</Relationships>`,
     );
     if (spec.chart) {
       const chart: ChartSpec = typeof spec.chart === "string" ? { title: spec.chart } : spec.chart;
@@ -602,6 +645,13 @@ export async function makeDeck(slides: SlideSpec[]): Promise<Uint8Array> {
             `</Relationships>`,
         );
       }
+    }
+    if (spec.icons) {
+      // Bytes enough to be a part; nothing reads them, the relationships are
+      // the whole subject.
+      zip.file(`ppt/media/icon${n}.png`, PNG_BYTES);
+      zip.file(`ppt/media/icon${n}.svg`, new TextEncoder().encode(`<svg xmlns="http://www.w3.org/2000/svg"/>`));
+      zip.file(`ppt/media/linked${n}.png`, PNG_BYTES);
     }
     if (spec.modernChart) {
       zip.file(`ppt/charts/chartEx${n}.xml`, modernChartXml(spec.modernChart));

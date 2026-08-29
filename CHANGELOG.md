@@ -7,7 +7,30 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed — a deck with icons and a modern chart no longer merges into a damaged file
+
+A merged copy of a slide holding a modern chart could lose the relationships to
+pictures it still showed. Two shapes were affected, both ordinary in a deck made
+this decade:
+
+- a PowerPoint **icon**, which is a raster picture carrying the real SVG beside
+  it under a second image relationship;
+- a picture **linked** rather than embedded.
+
+Replacing the chart's fallback picture means deciding which image relationships
+the copy still needs, and that decision looked at one place only — the `r:embed`
+on a picture's blip. Neither an icon's SVG nor a linked picture is named there,
+so both relationships were deleted while the slide still pointed at them.
+
+The reader now takes every relationship id the slide's markup names, wherever it
+names it. Unknown references keep a relationship that could have gone, which is
+the safe direction: a relationship left behind costs bytes, and a missing one
+costs the file.
+
+Worth knowing what the failure looked like, because it is not only "a broken
+link". Deleting a relationship frees its ID, and the next thing needing one
+takes it — so an icon's SVG came back pointing at the merged slide's TAG part.
+An id that still resolves, to something else entirely.
 
 ## [0.2.0] — 2026-08-29
 
