@@ -40,15 +40,67 @@ pins it, and starts failing the day somebody adds support.
 
 Two halves, and they are not equally safe. **Cloning** is schema-independent —
 copy the part, repoint the relationship, add the content type, the same three
-steps a chart already gets. **Filling** is not: a chartEx keeps its labels in
-`<cx:pt>` elements this reader does not know, and its title in ordinary
-DrawingML that would merge the moment the part were visited. Where the rest of
-its text lives is a fact about a schema nobody here has a real file of.
+steps a chart already gets. **Filling** is not, and the research below is why.
 
-So the blocker is a real .pptx containing one, not the code. Guessing the schema
-from documentation is precisely what produced the SmartArt drawing bug, where
-the fixture and the reader agreed with each other and disagreed with PowerPoint.
-Build the file in PowerPoint first, the way the test kit's SmartArt was.
+#### What two real files say
+
+Read on 2026-08-29 out of LibreOffice's own chart test data, which is real
+Office output rather than anybody's reconstruction:
+`chart2/qa/extras/data/xlsx/waterfall2.xlsx` and `funnel1.xlsx` in
+[LibreOffice/core](https://github.com/LibreOffice/core). Not committed here —
+they are MPL-2.0 test data and it is the FINDINGS that are worth keeping.
+
+Confirmed, and matching what `test/chart-modern.test.ts` already assumes:
+
+- the part is `application/vnd.ms-office.chartex+xml`, reached by
+  `http://schemas.microsoft.com/office/2014/relationships/chartEx`;
+- its root is `<cx:chartSpace>` in
+  `http://schemas.microsoft.com/office/drawing/2014/chartex`;
+- it owns two styling parts of its own, `chartStyle` and `chartColorStyle`,
+  which are read-only the way a chart's are and should stay SHARED between
+  copies.
+
+**And the thing that would have been guessed wrong. A chartEx stores its title
+text in one of two shapes, and the two files use different ones.**
+
+    waterfall2   <cx:title><cx:tx><cx:txData><cx:v>Waterfall Test</cx:v>…
+                 …and AGAIN in <cx:txPr>…<a:p><a:r><a:t>Waterfall Test</a:t>
+    funnel1      <cx:title><cx:txPr>…<a:p><a:r><a:t>Funnel chart!</a:t>
+                 — no <cx:tx> at all
+
+So `<a:t>` is sometimes a cached copy of the real value and sometimes IS the
+value. `mergeDocument` walks every `<a:p>` in a part, so the moment a chartEx is
+visited it fills the DrawingML and nothing else: funnel1 would merge correctly
+by luck, and waterfall2 would keep displaying `{{Region}}` from `<cx:v>` while
+the file carried the merged string in its formatting run. That is the SmartArt
+model-and-drawing defect for the third time — text kept twice, the engine
+filling the half nobody looks at.
+
+Whatever is built here fills BOTH, and a test has to cover both shapes, because
+one file each is not a schema.
+
+#### What is still unknown, and needs a PowerPoint-authored .pptx
+
+Both files above are Excel workbooks, where a chart reads its data by defined
+name (`<cx:f>_xlchart.v1.0</cx:f>`) and caches nothing. A chart on a SLIDE has
+an embedded workbook instead, so it must cache what it draws — and none of this
+is observed yet:
+
+- whether the cached labels land in `<cx:strDim><cx:lvl><cx:pt>` as the entry
+  once assumed. LibreOffice's exporter writes exactly that shape, so it is
+  likely and it is not evidence.
+- whether the chartEx part relates to its own embedded workbook, and under
+  which relationship type. If it does, the workbook needs the same per-copy
+  clone and merge a classic chart's already gets.
+- the slide-side wrapper. A modern chart is reported to sit inside
+  `<mc:AlternateContent>`: `<mc:Choice>` holding the `<p:graphicFrame>`, and
+  `<mc:Fallback>` holding a `<p:pic>` — a RENDERED IMAGE of the chart for hosts
+  that cannot read chartEx. If so, a merged copy needs its fallback picture
+  dealt with too, or an older PowerPoint shows a picture of the template's
+  placeholders.
+
+The blocker is therefore still a real .pptx, and the fastest way to one is the
+way the test kit got its SmartArt: insert a waterfall in PowerPoint, save, send.
 
 ## Rejected — do not re-propose
 
