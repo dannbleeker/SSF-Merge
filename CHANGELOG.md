@@ -7,6 +7,27 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — the number gate admitted a form the number parser cannot read
+
+`detectType` asks `looksLikeNumber`; `applyFormat` asks `numericValue`. The
+grouping pattern behind the first accepted `1,234,5` — a separator used for
+grouping AND for the decimal — and the second returned nothing for it. A column
+holding one typed as a number and rendered raw, which is the disagreement this
+pair of functions exists to prevent and the second time it has happened.
+
+The pattern captures the grouping separator now, makes the later groups repeat
+THAT one, and forbids a decimal part from reusing it. A sweep over 6190
+arrangements of digits and separators asserts the two agree about every one;
+under the previous pattern 64 of them disagree.
+
+**`1.234` reads as 1234, and the comment beside it said otherwise.** It claimed
+"a single `1.234` stays a decimal". It never did — the quantifier is one or
+more, so a lone three-digit group has always been read as grouping, which is
+what the comma branch does with `1,500` too. The reading is right and the
+symmetry is right; the comment was a leftover from an earlier intent, and the
+two readings differ by a factor of a thousand. It is written down and pinned by
+a test now.
+
 ### Fixed — two header shapes the image reader got wrong
 
 **A JPEG padded with fill bytes was reported unreadable.** Any number of `0xFF`

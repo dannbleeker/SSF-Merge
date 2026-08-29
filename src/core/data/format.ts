@@ -59,9 +59,16 @@ export function numericValue(raw: string): number | undefined {
       ? normalised.replace(/,/g, "")
       : normalised.replace(",", ".");
   } else if (hasDot && /^-?\d{1,3}(?:\.\d{3})+$/.test(normalised)) {
-    // The European grouping spelling, "1.234.567". A single "1.234" stays a
-    // decimal: it is genuinely ambiguous and the decimal reading is the one
-    // that loses least when wrong.
+    // The European grouping spelling, "1.234.567" — and "1.234" with it, which
+    // this comment used to claim stayed a decimal. It never did: `+` is one or
+    // more, so a single group has always been read as grouping.
+    //
+    // Which is the right answer, and the one the comma branch above gives for
+    // "1,500". A lone three-digit group after a separator is what a spreadsheet
+    // exporting a whole number produces, and reading the two separators by
+    // opposite rules would be the surprise. It is genuinely ambiguous either
+    // way; what matters is that both are read the same and that the answer is
+    // written down.
     normalised = normalised.replace(/\./g, "");
   }
   const n = Number(normalised);

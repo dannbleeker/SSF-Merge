@@ -20,8 +20,16 @@ export interface RecordSet {
   rows: Record<string, string>[];
 }
 
-/** A European "1.234,5" and an American "1,234.5" both mean the same thing, and only one of them parses. */
-const NUMBER = /^-?\d{1,3}(?:[ .,]\d{3})*(?:[.,]\d+)?$|^-?\d+(?:[.,]\d+)?$/;
+/**
+ * A European "1.234,5" and an American "1,234.5" both mean the same thing, and only one of them parses.
+ *
+ * The grouping separator is captured and the rest of the groups must repeat
+ * THAT one, and a decimal part may not reuse it. Without those two conditions
+ * the pattern admitted `1,234,5`, which no locale writes and `numericValue`
+ * cannot read: the column typed as a number and then rendered raw, which is the
+ * disagreement this whole pair of functions exists to prevent.
+ */
+const NUMBER = /^-?\d{1,3}([ .,])\d{3}(?:\1\d{3})*(?:(?!\1)[.,]\d+)?$|^-?\d+(?:[.,]\d+)?$/;
 
 /**
  * Whether a cell is a number we are willing to claim — the ONE answer.
