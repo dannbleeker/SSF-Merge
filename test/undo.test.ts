@@ -68,3 +68,63 @@ describe("sweepPlan", () => {
     }
   });
 });
+
+describe("what sweepPlan may never produce", () => {
+  /**
+   * This function authorises deleting slides from somebody's presentation, so
+   * the properties are asserted over the whole space rather than at the points
+   * a reader thought of.
+   *
+   * Four rules, and each is the reason a specific clamp is in there:
+   * a plan may not reach a slide the user owned before the run, may not reach
+   * past the end of the deck, may not remove more than the run added, and may
+   * not be empty or fractional. `getItemAt` takes an index; a fractional one is
+   * not a slide.
+   */
+  it("holds over every combination of the three counts", () => {
+    const violations: string[] = [];
+    for (let deckAtStart = 0; deckAtStart <= 12; deckAtStart++) {
+      for (let deckNow = 0; deckNow <= 20; deckNow++) {
+        for (let added = 0; added <= 12; added++) {
+          const plan = sweepPlan({ deckAtStart, deckNow, added });
+          // The rule that makes the last `count` slides provably this run's
+          // own. Stated as a property because the four below cannot see it: a
+          // plan built after a stranger appended still starts past
+          // `deckAtStart` and still ends at the deck's end, and is still
+          // somebody else's slides.
+          if (deckNow - deckAtStart > added && plan) {
+            violations.push(`${deckAtStart}/${deckNow}/${added}: swept a deck that grew by more than the run added`);
+            continue;
+          }
+          if (!plan) continue;
+          const bad: string[] = [];
+          if (plan.from < deckAtStart) bad.push("reaches a slide the user owned");
+          if (plan.from + plan.count > deckNow) bad.push("reaches past the end of the deck");
+          if (plan.count > added) bad.push("removes more than the run added");
+          if (plan.count <= 0) bad.push("an empty plan returned as a plan");
+          if (!Number.isInteger(plan.from) || !Number.isInteger(plan.count)) bad.push("a fractional index");
+          if (bad.length) violations.push(`${deckAtStart}/${deckNow}/${added}: ${bad.join(", ")}`);
+        }
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  it("refuses a count that is not a whole number of slides", () => {
+    /**
+     * The two deck counts were checked and `added` was trusted, and `added` is
+     * the one that decides how many slides come out. `NaN` walked every clamp
+     * untouched — `grew > NaN` is false, `Math.min(NaN, grew)` is NaN,
+     * `NaN <= 0` is false, `NaN < deckAtStart` is false — and a plan of
+     * `{ from: NaN, count: NaN }` came back out of the function whose whole job
+     * is refusing to produce one.
+     *
+     * Unreachable through the types today. Checked because the other two are.
+     */
+    for (const added of [Number.NaN, 2.5, Number.POSITIVE_INFINITY, -1]) {
+      expect(sweepPlan({ deckAtStart: 5, deckNow: 8, added }), String(added)).toBeNull();
+    }
+    // And the whole-number case still works, so this refuses shapes not counts.
+    expect(sweepPlan({ deckAtStart: 5, deckNow: 8, added: 3 })).toEqual({ from: 5, count: 3 });
+  });
+});

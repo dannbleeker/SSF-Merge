@@ -32,7 +32,17 @@ export interface SweepPlan {
  * provably the run's own.
  */
 export function sweepPlan(o: { deckAtStart: number; deckNow: number; added: number }): SweepPlan | null {
-  if (!Number.isInteger(o.deckAtStart) || !Number.isInteger(o.deckNow)) return null;
+  // `added` with the other two, which it was not. The two counts were checked
+  // and the third was trusted, and it is the one that decides HOW MANY slides
+  // come out: `added: NaN` walked every clamp below untouched — `grew > NaN` is
+  // false, `Math.min(NaN, grew)` is NaN, `NaN <= 0` is false, `NaN < deckAtStart`
+  // is false — and this returned `{ from: NaN, count: NaN }`. A plan, from the
+  // function whose whole job is refusing to produce one.
+  //
+  // Nothing can reach it today: `added` is a step count and the types carry it.
+  // It is checked because the other two are, and because a reader comparing the
+  // three has to be able to see one rule rather than guess which is trusted.
+  if (!Number.isInteger(o.deckAtStart) || !Number.isInteger(o.deckNow) || !Number.isInteger(o.added)) return null;
   if (o.deckAtStart < 0 || o.deckNow < o.deckAtStart) return null;
   const grew = o.deckNow - o.deckAtStart;
   // MORE arrived than this run added, so positional identity is gone.
