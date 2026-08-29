@@ -20,7 +20,12 @@ const SRC = process.argv[2] ?? "test-kit/out/headless-reference.pptx";
 const MUTANTS = [
   {
     name: "dangle-a-relationship",
-    expect: "every relationship target resolves",
+    // The name of the check that owns this, and it is a check in
+    // `scripts/package-integrity.mjs` now rather than a walk this verifier did
+    // itself. Renaming it there without renaming it here would leave this
+    // mutant reporting "not caught" on a defect that IS caught — a mutation
+    // harness lying in the safe-looking direction.
+    expect: "the package agrees with itself",
     async apply(zip) {
       const p = "ppt/slides/_rels/slide4.xml.rels";
       const xml = await zip.file(p).async("string");
