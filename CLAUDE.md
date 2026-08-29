@@ -47,13 +47,36 @@ both.
 pins its behaviour in jsdom, which has no layout and no colour, so a rule about
 how it LOOKS is invisible there unless somebody turns it into something
 countable. `scripts/pane-shots.mjs` renders every state at 320 and 512 — the ends
-of the width a task pane is dragged between — and looking at the output is part
-of done:
+of the width a task pane is dragged between — in BOTH themes, and looking at the
+output is part of done:
 
 ```bash
 npx vite --port 5199 --strictPort &
-node scripts/pane-shots.mjs          # PNGs in /tmp/pane-shots
+node scripts/pane-shots.mjs          # PNGs in /tmp/pane-shots, plus an audit
 ```
+
+**It measures two things as well as shooting them**, because both are numbers a
+reader cannot take off a PNG and both have produced real defects. It prints its
+findings and exits 1.
+
+- **Horizontal overflow.** Every long string on that screen comes from outside
+  it — a column header, a row's first cell, a file name, an error PowerPoint
+  wrote. An unbroken header took the pane to 545px inside a 320px frame and a
+  spaceless host error to 3751, with the one filled button off the side.
+  `readable` caps an error at 400 characters and a cap is not a break: 400
+  characters with no space in them is one word.
+- **Text contrast, in both themes.** Blue is a BACKGROUND here — the header and
+  the primary button, both carrying white text — and it was also the ink on
+  chips, field tags and every secondary button. On the dark palette that ink is
+  3.0:1, and "Remove these slides", the whole way back from a merge, was 2.93:1.
+  Disabled controls are exempt, which is WCAG 1.4.3 and not a convenience.
+
+**Two fixtures exist only to exercise the overflow half** — an unbroken column
+header and a spaceless notice — and they are the difference between a gate and a
+gate's name. Nothing else in the set has a word long enough to need
+`overflow-wrap`: the pivot headers all carry spaces, so without them that half
+reports clean against a stylesheet that has lost the rule. Check what a new
+measurement MATCHES before trusting that it passes.
 
 Its first run found a real defect no test had: the fields step drew the orange
 tick AND an orange-bordered chip, breaking the **orange budget** the layout was
