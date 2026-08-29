@@ -7,6 +7,28 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a selection naming one slide twice could merge a slide nobody picked
+
+`blockFromSelection` decided contiguity by comparing `to - from + 1` against HOW
+MANY numbers the selection produced. A count is not an alignment: name one slide
+twice and the count covers a gap it was there to catch.
+
+Select slides 1 and 3, with slide 1 named twice: three numbers spanning three
+slides, so it came back **"slides 1 to 3"** and put slide 2 into the template
+block. That function's own comment says a gap is refused "because closing it up
+would silently add slides the user did not pick" — and this closed one up.
+
+The other direction was merely annoying: slides 1 and 2 with one named twice
+was refused as not contiguous, and so was a single slide named twice.
+
+Slide numbers are collected once each now, and the count means what the check
+reads it as.
+
+Whether a host ever names a slide twice is unknown — `getSelectedSlides` is not
+documented to. It is the same API whose ids are not roundtrippable
+(office-js#2474, repaired a few lines above), which is reason enough not to
+leave a count standing in for the check.
+
 ### Fixed — a slide whose only field was its chart's number was refused as empty
 
 `prepare.ts` states the rule: "this list and `runPlan`'s are the same list." A

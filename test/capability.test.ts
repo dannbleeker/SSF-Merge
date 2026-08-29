@@ -269,3 +269,45 @@ describe("the environment line", () => {
     expect(environmentLine({ supports: upTo("1.1") }).clearsFloor).toBe(false);
   });
 });
+
+describe("a selection that names the same slide twice", () => {
+  /**
+   * Contiguity was decided by comparing `to - from + 1` against HOW MANY
+   * numbers the selection produced. A count is not an alignment: name one slide
+   * twice and the count covers a gap it was supposed to catch.
+   *
+   * The silent direction is the one that matters. Slides 1 and 3 selected, with
+   * slide 1 named twice, counted three numbers spanning three slides and came
+   * back "slides 1 to 3" — putting slide 2 into the template block, which the
+   * user never selected. `blockFromSelection`'s own comment says a gap is
+   * refused "because closing it up would silently add slides the user did not
+   * pick", and this closed one up.
+   *
+   * Whether a host ever names a slide twice, I do not know — `getSelectedSlides`
+   * is not documented to. It is the same API whose ids are not roundtrippable
+   * (office-js#2474, handled a few lines above), so it is not an API to leave a
+   * count standing in for a check on.
+   */
+  const deck = ["256#a", "257#b", "258#c", "259#d"];
+
+  it("still reads as the block the user actually selected", () => {
+    expect(blockFromSelection(["256#a", "256#a", "257#b"], deck)).toEqual({ ok: true, from: 1, to: 2 });
+    expect(blockFromSelection(["257#b", "257#b"], deck)).toEqual({ ok: true, from: 2, to: 2 });
+  });
+
+  it("does not let a repeat close a gap", () => {
+    // The one that would have merged a slide nobody picked.
+    for (const ids of [
+      ["256#a", "258#c", "256#a"],
+      ["256#a", "259#d", "256#a", "256#a"],
+    ]) {
+      const got = blockFromSelection(ids, deck);
+      expect(got.ok, ids.join(",")).toBe(false);
+      expect(got.ok || got.why).toContain("not all selected");
+    }
+  });
+
+  it("and a genuine gap is still refused, repeat or no repeat", () => {
+    expect(blockFromSelection(["256#a", "258#c"], deck).ok).toBe(false);
+  });
+});
