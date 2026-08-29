@@ -220,3 +220,36 @@ describe("the round's browser driver", () => {
     expect(gone, `README names scripts that are gone: ${gone.join(", ")}`).toEqual([]);
   });
 });
+
+describe("the page a visitor actually lands on", () => {
+  /**
+   * `public/index.html` is served from the production origin — it is what the
+   * custom domain resolves to, and the first thing anybody sees.
+   *
+   * It said "The add-in is in development" and offered no way to get it, three
+   * days after v0.1.0 shipped and while `README.md` said "Early, and
+   * installable: sideload manifest-prod.xml". Two pages about the same product
+   * disagreeing about whether it exists, with the wrong one facing outward.
+   *
+   * Staleness itself cannot be caught by a test — nothing here knows what has
+   * been released. What CAN be held is that the page offers a way in at all,
+   * which is the thing its absence cost.
+   */
+  const page = readFileSync("public/index.html", "utf8");
+
+  it("says where to get the add-in", () => {
+    expect(page, "the landing page names no way to install it").toContain("releases/latest");
+    expect(page).toContain("manifest-prod.xml");
+  });
+
+  it("does not still call it unreleased", () => {
+    // The specific sentence that was wrong, so re-adding it is deliberate.
+    expect(page.toLowerCase()).not.toContain("in development");
+  });
+
+  it("declares its language, like the task pane does", () => {
+    // WCAG 3.1.1. The task pane sets it and this page did not, which is the
+    // same asymmetry as a control that was added later than the pattern.
+    expect(page).toMatch(/<html lang="[a-z]{2}"/);
+  });
+});

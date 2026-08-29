@@ -7,6 +7,30 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — the landing page said the add-in was unreleased
+
+`public/index.html` is what the custom domain resolves to, so it is the first
+thing anybody sees. It said
+
+> The add-in is in development.
+
+and offered no way to get it — three days after v0.1.0 shipped, and while
+`README.md` said "Early, and installable: sideload `manifest-prod.xml`". Two
+pages about the same product disagreeing about whether it exists, with the wrong
+one facing outward.
+
+It now says the same thing the README does and links the latest release.
+
+It also had no `<html lang>`, which the task pane has carried since it was
+written. That is WCAG 3.1.1 and the same asymmetry as a control added later than
+the pattern: without it a screen reader announces the page in whatever voice it
+defaults to.
+
+Staleness itself cannot be caught by a test — nothing in the suite knows what
+has been released. What is held instead is that the page offers a way in at all,
+which is the thing its absence cost, and that the wrong sentence cannot come
+back unnoticed.
+
 ### Fixed — the probe reader gave confident answers to questions nobody asked
 
 An arm the answer sheet does not carry did not RUN. Spread into `insertVerdict`
