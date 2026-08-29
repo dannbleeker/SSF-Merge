@@ -413,3 +413,41 @@ describe("a value gate and the parser behind it", () => {
     expect(patterns.filter((n) => n !== "IMAGE_NAME")).toEqual([]);
   });
 });
+
+describe("the parts a merge touches", () => {
+  /**
+   * `prepare` reads them to say what a block holds; `runPlan` and
+   * `mergeGraphics` write into them. Each side used to assemble its own list,
+   * and `prepare.ts` carried the rule they were meant to obey as a comment:
+   * "this list and `runPlan`'s are the same list".
+   *
+   * They disagreed three times. Speaker notes were merged and not scanned, so a
+   * block whose placeholders lived there was refused as empty; then chart
+   * labels the same way; then a chart's value cells, in a workbook the scan
+   * never opened. Each was fixed by adding the missing part to one of the two
+   * lists, which fixes the instance and leaves the class.
+   *
+   * `sites.ts` is the list. This guard is that there is only one of it.
+   */
+  const SIDES = ["src/core/merge/prepare.ts", "src/core/merge/run.ts", "src/core/merge/graphics.ts"];
+
+  it("are enumerated in one place, not assembled on both sides", () => {
+    // RAW source: `codeOf` masks string literals, so an import path becomes
+    // `from ""` and a check for one passes against the thing it forbids.
+    const offenders = SIDES.filter((f) => {
+      const src = readFileSync(f, "utf8");
+      return /import[^;]*\b(graphicPartsOf|notesPathFor)\b/.test(src);
+    });
+    expect(offenders, "walks for its own list instead of asking sites.ts").toEqual([]);
+  });
+
+  it("and sites.ts is the only file that walks for them", () => {
+    // The other half. Without it the rule above is satisfied by moving the walk
+    // into a fourth file and importing that.
+    const walkers = filesUnder("src/core")
+      .concat(filesUnder("src/office"))
+      .filter((f) => !f.endsWith("sites.ts") && !f.endsWith("graphics.ts") && !f.endsWith("clone.ts"))
+      .filter((f) => /\b(graphicPartsOf|notesPathFor)\s*\(/.test(readFileSync(f, "utf8")));
+    expect(walkers).toEqual([]);
+  });
+});

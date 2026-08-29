@@ -9,13 +9,14 @@
  * at all.
  */
 import type { RecordSet } from "../data/recordset.js";
-import { cloneSlide, notesPathFor, type CloneOptions } from "../pptx/clone.js";
+import { cloneSlide, type CloneOptions } from "../pptx/clone.js";
 import { cloneSlideGraphics } from "../pptx/graphics.js";
 import { Pkg } from "../pptx/pkg.js";
 import { writeSlideTags } from "../pptx/tags.js";
 import type { MergePlan } from "./plan.js";
 import { makeResolver, type EmptyPolicy } from "./resolve.js";
 import { mergeDocument } from "./text.js";
+import { fieldSites } from "./sites.js";
 import { MediaCache, baseName, placeImages, type ImageOutcome, type ResolveImage } from "./images.js";
 import { emptyGraphicOutcome, mergeGraphics, tallyGraphics, type GraphicOutcome } from "./graphics.js";
 
@@ -89,6 +90,9 @@ export async function runPlan(
     // field with a format it does not know, so left to itself it writes the
     // FILE NAME onto the slide; this pass takes the placeholder away and the
     // text pass then finds nothing.
+    // One walk of the copy's relationships, shared with the graphics pass and
+    // with `prepare`'s scan. The list of parts a merge touches is one list.
+    const sites = await fieldSites(pkg, target);
     const slideDoc = await pkg.doc(target);
     tally(images, await placeImages(pkg, target, slideDoc, resolveImage(row, opts.images), media));
     paragraphsMerged += mergeDocument(slideDoc, resolve);
@@ -96,12 +100,12 @@ export async function runPlan(
     // its own precisely so they can differ — and a template whose speaker notes
     // read "Call {{Name}} afterwards" otherwise ships that text verbatim on
     // every merged slide, in the presenter view and on every printed handout.
-    const notes = await notesPathFor(pkg, target);
+    const notes = sites.find((site) => site.kind === "notes")?.part;
     if (notes) paragraphsMerged += mergeDocument(await pkg.doc(notes), resolve);
     // Charts and SmartArt. Their text is not on the slide — it is in parts the
     // slide relates to, and in the workbook behind a chart — so `mergeDocument`
     // above never reaches it and this pass is the whole of the feature.
-    const drawn = await mergeGraphics(pkg, target, resolve);
+    const drawn = await mergeGraphics(pkg, sites, resolve);
     tallyGraphics(graphics, drawn);
     // Counted into the SAME total the pane reports. `paragraphsMerged` is what
     // becomes "12 placeholders filled", and its zero is the alarm that says a

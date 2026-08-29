@@ -9,12 +9,10 @@
  */
 import type { Pkg } from "../pptx/pkg.js";
 import type { Block, BlockSlide } from "./plan.js";
-import { notesPathFor } from "../pptx/clone.js";
-import { graphicPartsOf } from "../pptx/graphics.js";
 import { fieldsIn } from "./text.js";
 import { chartValueFields } from "./numbers.js";
 import { imageFieldsIn } from "./images.js";
-import { workbookOfChart } from "../pptx/graphics.js";
+import { fieldSites } from "./sites.js";
 
 export interface BlockRequest {
   /** First slide of the template, 1-based, as the thumbnail rail shows it. */
@@ -111,40 +109,23 @@ export async function prepareBlock(pkg: Pkg, req: BlockRequest, runId: string): 
     // The mirror of the chart case below, and the worse direction: there the
     // pane reported fields it cannot merge, here it hid fields it can and
     // blocked the merge on the strength of it.
-    const notes = await notesPathFor(pkg, path);
-    // The slide, its speaker notes, and the charts and SmartArt it shows.
-    //
-    // All three are places `runPlan` fills, so all three belong in the same
-    // list: a scan that reads fewer parts than the merge writes REFUSES a block
-    // it would have merged, with "no placeholders" about a slide the author is
-    // looking at a placeholder on. That happened twice — first for notes, then
-    // for charts, which were reported as unfillable right up until they became
-    // fillable. The one rule that keeps it from happening a third time is that
-    // this list and `runPlan`'s are the same list.
-    //
-    // A chart's WORKBOOK is read for one thing only: the VALUE cells.
-    //
-    // It used to be skipped entirely, on the reasoning that its strings are the
-    // chart's own cache strings and would name nothing new. That was true until
-    // chart numbers became a feature. A value cell holds its placeholder in the
-    // WORKBOOK — `fieldsIn` cannot see it, because `<c:numCache>` is excluded
-    // from the text pass on purpose, a formatted number being unplottable.
-    //
-    // So a slide whose only field was the number its chart plots was refused
-    // with "has no {{fields}}, so every copy would be identical", about a merge
-    // that filled it. The third time this scan has read fewer parts than the
-    // merge writes, after notes and after chart labels, and the first two are
-    // described a few lines above.
-    //
-    // The labels still come from the cache, not the workbook: those two hold
-    // the same strings and reading both would name nothing twice.
-    const slideDoc = await pkg.doc(path);
-    for (const name of imageFieldsIn(slideDoc)) if (!imageFields.includes(name)) imageFields.push(name);
-    const own = [...fieldsIn(slideDoc), ...(notes ? fieldsIn(await pkg.doc(notes)) : [])];
-    for (const part of await graphicPartsOf(pkg, path)) {
-      own.push(...fieldsIn(await pkg.doc(part)));
-      if (!part.startsWith("ppt/charts/")) continue;
-      own.push(...(await chartValueFields(pkg, part, await workbookOfChart(pkg, part))));
+    // ONE list, the same one `runPlan` merges into. Each of the three times
+    // this scan and that merge disagreed, the fix was to add a part to one of
+    // two hand-assembled lists; `fieldSites` is the fix for the class, and a
+    // part type missing from it is invisible to both sides rather than to one.
+    const own: string[] = [];
+    for (const site of await fieldSites(pkg, path)) {
+      const doc = await pkg.doc(site.part);
+      own.push(...fieldsIn(doc));
+      // Only a slide can hold a picture — `placeImages` fills a SHAPE, and a
+      // chart part has none.
+      if (site.kind === "slide") {
+        for (const name of imageFieldsIn(doc)) if (!imageFields.includes(name)) imageFields.push(name);
+      }
+      // A chart's VALUE cells live in the workbook it relates to, and the
+      // reader is a dry run of the merge's own walk, so the two cannot hold
+      // different opinions about which cells carry a placeholder.
+      if (site.workbooks.length > 0) own.push(...(await chartValueFields(pkg, site.part, site.workbooks[0])));
     }
     for (const f of own) if (!fields.includes(f)) fields.push(f);
     const condition = req.conditions?.[req.from + i];
