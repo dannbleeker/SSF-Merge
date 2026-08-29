@@ -863,3 +863,42 @@ describe("the number above the merge button", () => {
     expect(plannedSlides({ fields: [], previewing: false })).toBe(0);
   });
 });
+
+describe("what the slide-number boxes accept", () => {
+  /**
+   * `Number` reads far more than anybody types into a slide box: `0x10` is
+   * sixteen, `0b11` is three, `0o17` is fifteen, `1e2` is a hundred.
+   *
+   * Both halves of that were wrong. `0b11` was ACCEPTED, so the pane quietly
+   * offered to merge slides 3 to 9 for somebody who had typed neither number
+   * into either box. And the refusals named a cause they had invented — `0x10`
+   * produced "The block ends before it starts: slide 16 to 9", about a slide 16
+   * that appears nowhere on the user's screen.
+   *
+   * Third time `Number()` has been wider than what a person typed in this
+   * codebase, after `0x10` in a data cell and an unreadable grouping.
+   */
+  it.each([["0x10"], ["0b11"], ["0o17"], ["1e2"], ["1_0"], ["Infinity"], ["abc"]])(
+    "refuses %s, and says so about what was typed",
+    (typed) => {
+      const read = readBlockDraft({ from: typed, to: "9" });
+      expect(read.block, "read as a slide number nobody typed").toBeNull();
+      expect(read.why).toBe(`Slide numbers are whole numbers, and "${typed}" is not one.`);
+    },
+  );
+
+  it("still takes the ordinary spellings of a whole number", () => {
+    // The other half. `4.0` IS a whole number, and refusing it with "4.0 is not
+    // one" would be a false sentence, so it stays admitted.
+    for (const typed of ["4", "4.0", "+4", " 4 "]) {
+      expect(readBlockDraft({ from: typed, to: "9" }).block, typed).toEqual({ from: 4, to: 9 });
+    }
+  });
+
+  it("keeps the refusals that were already specific", () => {
+    expect(readBlockDraft({ from: "4.5", to: "9" }).why).toContain('"4.5" is not one');
+    expect(readBlockDraft({ from: "-1", to: "9" }).why).toContain("numbered from 1");
+    expect(readBlockDraft({ from: "9", to: "4" }).why).toContain("ends before it starts");
+    expect(readBlockDraft({ from: "", to: "9" }).why, "red on the first keystroke").toBeNull();
+  });
+});
