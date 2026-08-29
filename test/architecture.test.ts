@@ -451,3 +451,29 @@ describe("the parts a merge touches", () => {
     expect(walkers).toEqual([]);
   });
 });
+
+describe("what a slide's relationships are called", () => {
+  /**
+   * These strings decide which parts a clone copies, which a clone drops, and
+   * which a removal deletes. They were written out in six files, three of them
+   * twice: `NOTES_REL_TYPE` in `pkg.ts` and again in `clone.ts`,
+   * `COMMENT_REL_TYPES` in both, `TAGS_REL_TYPE` in `clone.ts` and again in
+   * `tags.ts`.
+   *
+   * The copies agreed and nothing had gone wrong. What made it worth ending is
+   * WHICH decisions they drive: one copy of the comment list says what a clone
+   * drops, the other says what a removal deletes. PowerPoint has already added
+   * a second spelling of comments once — the modern web one — and adding a
+   * third to one copy and not the other leaves a clone carrying a comment part
+   * the removal will not clean up.
+   */
+  it("is spelled out in one file", () => {
+    // RAW source, because `codeOf` masks string literals and these ARE string
+    // literals — the check would pass by finding nothing.
+    const offenders = filesUnder("src/core")
+      .concat(filesUnder("src/office"), filesUnder("src/host"), filesUnder("src/pane"))
+      .filter((f) => !f.endsWith("parts.ts"))
+      .filter((f) => /["'`][^"'`]*\/relationships\/[a-zA-Z]/.test(readFileSync(f, "utf8")));
+    expect(offenders, "writes a relationship type out instead of naming it").toEqual([]);
+  });
+});

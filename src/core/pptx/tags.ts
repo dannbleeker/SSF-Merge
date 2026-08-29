@@ -13,9 +13,9 @@
  * part, and referenced from the owner's `<p:custDataLst><p:tags r:id="…"/>`.
  */
 import { Pkg } from "./pkg.js";
+import { REL_TYPE } from "./parts.js";
 import { P_NS, R_NS, child, element, elements, parseXml } from "./xml.js";
 
-const TAGS_REL_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/tags";
 const TAGS_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.presentationml.tags+xml";
 const TAG_LST_NS = `xmlns:p="${P_NS}"`;
 
@@ -108,7 +108,7 @@ export async function writeSlideTags(pkg: Pkg, slidePath: string, entries: [stri
   const part = `ppt/tags/tag${n}.xml`;
   pkg.setText(part, tagPartXml(entries));
   await pkg.addContentTypeOverride(`/${part}`, TAGS_CONTENT_TYPE);
-  const rId = await pkg.addRel(slidePath, TAGS_REL_TYPE, `../tags/tag${n}.xml`);
+  const rId = await pkg.addRel(slidePath, REL_TYPE.tags, `../tags/tag${n}.xml`);
 
   // `CT_CommonSlideData` orders its children `bg?, spTree, custDataLst?,
   // controls?, extLst?`, so the list goes immediately after the shape tree.

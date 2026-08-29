@@ -27,16 +27,10 @@
  * the merged labels revert to `{{Region}}` in front of them.
  */
 import { Pkg, resolveTarget as resolve } from "./pkg.js";
+import { REL_TYPE } from "./parts.js";
 import { PKG_REL_NS, elements } from "./xml.js";
 
-const REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
-const MS_REL = "http://schemas.microsoft.com/office/2007/relationships";
-
-export const CHART_REL_TYPE = `${REL}/chart`;
-export const DIAGRAM_DATA_REL_TYPE = `${REL}/diagramData`;
-export const DIAGRAM_DRAWING_REL_TYPE = `${MS_REL}/diagramDrawing`;
 /** The embedded workbook behind a chart. Declared as a package, not as a part. */
-export const PACKAGE_REL_TYPE = `${REL}/package`;
 
 const CHART_TYPE = "application/vnd.openxmlformats-officedocument.drawingml.chart+xml";
 const DIAGRAM_DATA_TYPE = "application/vnd.openxmlformats-officedocument.drawingml.diagramData+xml";
@@ -96,19 +90,19 @@ export async function cloneSlideGraphics(pkg: Pkg, slidePath: string): Promise<v
     const source = resolve(slidePath, target);
     if (!pkg.has(source)) continue;
 
-    if (type === CHART_REL_TYPE) {
+    if (type === REL_TYPE.chart) {
       const n = pkg.nextNumber("ppt/charts/chart");
       const path = `ppt/charts/chart${n}.xml`;
       await copyWithRels(pkg, source, path, CHART_TYPE);
       await cloneChartWorkbook(pkg, path);
       await repoint(pkg, slidePath, rId, `../charts/chart${n}.xml`);
-    } else if (type === DIAGRAM_DATA_REL_TYPE) {
+    } else if (type === REL_TYPE.diagramData) {
       const n = pkg.nextNumber("ppt/diagrams/data");
       const path = `ppt/diagrams/data${n}.xml`;
       await copyWithRels(pkg, source, path, DIAGRAM_DATA_TYPE);
       await cloneDiagramDrawing(pkg, path);
       await repoint(pkg, slidePath, rId, `../diagrams/data${n}.xml`);
-    } else if (type === DIAGRAM_DRAWING_REL_TYPE) {
+    } else if (type === REL_TYPE.diagramDrawing) {
       // The shape real PowerPoint writes: the drawing hangs off the SLIDE, and
       // the data part has no relationships of its own. Handled here rather than
       // inside `cloneDiagramDrawing` because there is nothing to reach it from —
@@ -136,7 +130,7 @@ export async function cloneSlideGraphics(pkg: Pkg, slidePath: string): Promise<v
  */
 async function cloneChartWorkbook(pkg: Pkg, chartPath: string): Promise<void> {
   for (const rel of await relsOf(pkg, chartPath)) {
-    if (rel.getAttribute("Type") !== PACKAGE_REL_TYPE) continue;
+    if (rel.getAttribute("Type") !== REL_TYPE.package) continue;
     const target = rel.getAttribute("Target");
     if (!target || (rel.getAttribute("TargetMode") ?? "") === "External") continue;
     const source = resolve(chartPath, target);
@@ -188,7 +182,7 @@ async function cloneChartWorkbook(pkg: Pkg, chartPath: string): Promise<void> {
  */
 async function cloneDiagramDrawing(pkg: Pkg, dataPath: string): Promise<void> {
   for (const rel of await relsOf(pkg, dataPath)) {
-    if (rel.getAttribute("Type") !== DIAGRAM_DRAWING_REL_TYPE) continue;
+    if (rel.getAttribute("Type") !== REL_TYPE.diagramDrawing) continue;
     const target = rel.getAttribute("Target");
     if (!target) continue;
     const source = resolve(dataPath, target);
@@ -228,18 +222,18 @@ export async function graphicPartsOf(pkg: Pkg, slidePath: string): Promise<strin
     const type = rel.getAttribute("Type") ?? "";
     const target = rel.getAttribute("Target");
     if (!target || (rel.getAttribute("TargetMode") ?? "") === "External") continue;
-    // DIAGRAM_DRAWING_REL_TYPE is here because PowerPoint hangs the drawing off
+    // REL_TYPE.diagramDrawing is here because PowerPoint hangs the drawing off
     // the SLIDE. Without it the drawing was cloned per copy but never FILLED,
     // so each merged slide got its own rendering still reading `{{Region}}`.
-    if (type !== CHART_REL_TYPE && type !== DIAGRAM_DATA_REL_TYPE && type !== DIAGRAM_DRAWING_REL_TYPE) continue;
+    if (type !== REL_TYPE.chart && type !== REL_TYPE.diagramData && type !== REL_TYPE.diagramDrawing) continue;
     const path = resolve(slidePath, target);
     if (!pkg.has(path) || out.includes(path)) continue;
     out.push(path);
     // Only a data part has a drawing hanging off it to chase. A drawing found
     // on the slide is already in `out`, and a chart has no such relationship.
-    if (type !== DIAGRAM_DATA_REL_TYPE) continue;
+    if (type !== REL_TYPE.diagramData) continue;
     for (const drawing of await relsOf(pkg, path)) {
-      if (drawing.getAttribute("Type") !== DIAGRAM_DRAWING_REL_TYPE) continue;
+      if (drawing.getAttribute("Type") !== REL_TYPE.diagramDrawing) continue;
       const drawingTarget = drawing.getAttribute("Target");
       if (!drawingTarget) continue;
       const drawingPath = resolve(path, drawingTarget);
@@ -261,7 +255,7 @@ export async function packagesOfChart(pkg: Pkg, chartPath: string): Promise<stri
   if (!chartPath.startsWith("ppt/charts/")) return [];
   const out: string[] = [];
   for (const rel of await relsOf(pkg, chartPath)) {
-    if (rel.getAttribute("Type") !== PACKAGE_REL_TYPE) continue;
+    if (rel.getAttribute("Type") !== REL_TYPE.package) continue;
     if ((rel.getAttribute("TargetMode") ?? "") === "External") continue;
     const target = rel.getAttribute("Target");
     if (!target) continue;

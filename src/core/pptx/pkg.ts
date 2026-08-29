@@ -10,31 +10,13 @@
  */
 import JSZip from "jszip";
 import { CT_NS, PKG_REL_NS, P_NS, R_NS, element, elements, parseXml, serializeXml } from "./xml.js";
+import { COMMENT_REL_TYPES, OWNABLE_BY_GRAPHIC, OWNED_BY_SLIDE, REL_TYPE } from "./parts.js";
 
 const CONTENT_TYPES = "[Content_Types].xml";
 const PRESENTATION = "ppt/presentation.xml";
-/**
- * What a chart or a SmartArt may drag out of the package with it.
- *
- * Its own styling and colours, the workbook behind it, its diagram parts, its
- * pictures, a theme override. That is the whole list, and it is an allowlist
- * because the alternative — trusting the relationships in the file — let a
- * crafted deck name `ppt/presentation.xml` as something a chart owned.
- */
-const OWNABLE_BY_GRAPHIC = /^ppt\/(charts|diagrams|embeddings|media|theme)\//;
 
 /** The package's own relationships: `ppt/presentation.xml`, and docProps. */
 const ROOT_RELS = "_rels/.rels";
-
-const NOTES_REL_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide";
-/**
- * A slide's comments, in both spellings — classic `commentN.xml` and the
- * MODERN ones PowerPoint on the web writes under a Microsoft namespace.
- */
-const COMMENT_REL_TYPES = [
-  "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments",
-  "http://schemas.microsoft.com/office/2018/10/relationships/comments",
-];
 
 /** The highest value PowerPoint accepts in `<p:sldId id="…">`; the format caps ids below 2^31. */
 const MAX_SLIDE_ID = 2_147_483_647;
@@ -372,7 +354,7 @@ export class Pkg {
       const rels = await this.doc(relsPath);
       for (const rel of elements(rels, PKG_REL_NS, "Relationship")) {
         const type = rel.getAttribute("Type") ?? "";
-        if (type !== NOTES_REL_TYPE && !COMMENT_REL_TYPES.includes(type)) continue;
+        if (type !== REL_TYPE.notesSlide && !COMMENT_REL_TYPES.includes(type)) continue;
         const target = rel.getAttribute("Target");
         if (!target) continue;
         const related = resolveTarget(slidePath, target);
@@ -431,7 +413,7 @@ export class Pkg {
       // relationship cannot point this at a part the presentation needs. A tag
       // part another tool named something else is left alone, which is the safe
       // direction.
-      if (!/^ppt\/(charts\/chart|diagrams\/data|tags\/tag)\d+\.xml$/.test(part) || !this.has(part)) continue;
+      if (!OWNED_BY_SLIDE.test(part) || !this.has(part)) continue;
       owned.push(part);
       for (const child of await this.relatedParts(part)) {
         // The child comes from the CHART's own relationships, which come out of
