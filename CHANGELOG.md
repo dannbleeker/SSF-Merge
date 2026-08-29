@@ -7,7 +7,25 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed — a merged copy keeps another add-in's tags pointing at its own data
+
+A template slide's own tags do not belong on a copy: BLOCK and SEQ describe the
+template, and a copy inheriting them confuses the next run's undo. So they are
+dropped, and every tag relationship went with them.
+
+An add-in's tags are not the slide's. They hang off a SHAPE, and a deck touched
+by think-cell carries exactly that on a hidden shape in every slide it has seen.
+Those relationships were dropped too, while the shape still named them.
+
+The visible half was a copy naming a relationship that was gone, which
+PowerPoint reports as a damaged file. The quiet half was worse: deleting a
+relationship frees its ID, the merge takes the next free one for its own tags,
+and the vendor's shape came out pointing at SSF Merge's merge metadata — a
+reference that still resolves, to somebody else's data.
+
+Only the relationships the copy no longer names are dropped now. The template's
+own reference is removed first, so its relationship still goes; anything else
+still pointing at a tag part keeps it.
 
 ## [0.2.1] — 2026-08-29
 
