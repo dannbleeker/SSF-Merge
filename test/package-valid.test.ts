@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import JSZip from "jszip";
+import { readFileSync } from "node:fs";
 import { DOMParser } from "@xmldom/xmldom";
 import { Pkg, resolveTarget } from "../src/core/pptx/pkg.js";
 import { prepareBlock } from "../src/core/merge/prepare.js";
 import { buildPlan } from "../src/core/merge/plan.js";
 import { runPlan } from "../src/core/merge/run.js";
 import { parseDelimited, toRecordSet } from "../src/core/data/recordset.js";
-import { makeDeck, type SlideSpec } from "./fixtures/deck.js";
+import { makeDeck, xfrm, type SlideSpec } from "./fixtures/deck.js";
 
 /**
  * What the engine HANDS OVER, checked as a package rather than as slides.
@@ -228,5 +229,69 @@ describe("the package the engine hands over", () => {
     untyped.file("[Content_Types].xml", types.replace(/<Override PartName="\/ppt\/slides\/slide1\.xml"[^>]*\/>/, ""));
     const second = await problemsIn(await untyped.generateAsync({ type: "uint8array" }));
     expect(second).toContain("ppt/slides/slide1.xml has no content-type override of its own");
+  });
+});
+
+describe("a package carrying every feature at once", () => {
+  /**
+   * The cases above take one feature at a time, which is right for saying WHICH
+   * one broke. It leaves the combination untested, and the combination is where
+   * part numbering, relationship ids and content types can collide with each
+   * other rather than with themselves.
+   *
+   * Pictures are the piece none of those cases has at all. A media part is
+   * declared by EXTENSION — `addContentTypeDefault` — rather than by name, so
+   * it is the one part type that can conflict with a declaration the deck
+   * already carries, and the deduplication means the number of media parts is
+   * not the number of rows.
+   *
+   * No defect found here. It is a combination guard, and it is cheap.
+   */
+  it("is legal, merged and then swept", async () => {
+    const wide = new Uint8Array(readFileSync("test/fixtures/wide.png"));
+    const tall = new Uint8Array(readFileSync("test/fixtures/tall.jpg"));
+
+    const pkg = await Pkg.open(
+      await makeDeck([
+        {
+          paragraphs: [["{{First}} {{Last}}"], ["{{Photo|image}}"]],
+          box: xfrm(200, 100),
+          notes: "note for {{Last}}",
+          chart: {
+            title: "Sales for {{Last}}",
+            categories: ["{{First}}"],
+            workbook: ["{{First}}"],
+            values: ["{{Count}}", "9"],
+          },
+          smartArt: ["{{First}} and {{Last}}"],
+        },
+        { paragraphs: [["after the block"]] },
+      ]),
+    );
+    const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "run1");
+    expect(prepared.ok, prepared.ok ? "" : prepared.why).toBe(true);
+    if (!prepared.ok) return;
+
+    const records = toRecordSet([
+      ["First", "Last", "Count", "Photo"],
+      ["Ada", "L", "12", "ada.png"],
+      ["Bo", "M", "7", "bo.jpg"],
+      // A row whose picture nobody supplied, which must not damage the package.
+      ["Cy", "N", "3", "missing.png"],
+    ]);
+    const result = await runPlan(pkg, buildPlan(prepared.block, records, { runId: "run1" }), records, {
+      images: new Map([
+        ["ada.png", wide],
+        ["bo.jpg", tall],
+      ]),
+    });
+
+    expect(result.images.placed, "the fixture stopped placing pictures").toBe(2);
+    expect(result.images.missing).toEqual(["Photo"]);
+    expect(await problemsIn(await pkg.toBytes())).toEqual([]);
+
+    const keep = new Set(result.slides);
+    for (const path of await pkg.slidePaths()) if (!keep.has(path)) await pkg.removeSlide(path);
+    expect(await problemsIn(await pkg.toBytes())).toEqual([]);
   });
 });

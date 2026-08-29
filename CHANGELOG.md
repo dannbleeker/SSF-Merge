@@ -7,6 +7,21 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added — a package-validity case carrying every feature at once
+
+The cases there take one feature at a time, which is right for saying WHICH one
+broke. It left the combination untested, and the combination is where part
+numbering, relationship ids and content types can collide with each other rather
+than with themselves.
+
+Pictures were the piece none of them had. A media part is declared by EXTENSION
+rather than by name, so it is the one part type that can conflict with a
+declaration the deck already carries, and deduplication means the number of
+media parts is not the number of rows. The case also carries a row whose picture
+nobody supplied.
+
+**No defect found.** The package is legal after the merge and after the sweep.
+
 ### Fixed — an author who wrote `{{Photo|image}}` got a pane with nowhere to attach the files
 
 The pane decided what a picture was from the DATA's detected types. The engine
