@@ -315,8 +315,19 @@ describe("every pane state field can actually be set", () => {
       // whole alphabet here. (This carried a `\A` from the scratch version that
       // found the bug — a Python anchor, which in JavaScript matches a literal
       // "A". Harmless in this input and wrong; lint caught it.)
-      for (const m of block.matchAll(/[{,]\s*(?:\.\.\.)?\s*(\w+)\s*:/g)) out.add(m[1] ?? "");
-      for (const m of block.matchAll(/[{,]\s*(\w+)\s*(?=[,}])/g)) out.add(m[1] ?? "");
+      //
+      // A COMMENT may sit between the two, and most keys in that file have
+      // one — this is a file where the reason lives above the line. Matching
+      // only whitespace made a field with a comment over it read as set by
+      // nothing, which is a FALSE POSITIVE on a guard whose remedy is to
+      // delete the field or to write it into the exception list above. Skipped
+      // rather than stripped: stripping `//` out of a source file also eats
+      // the `//` in a URL inside a string.
+      const GAP = String.raw`(?:\s|\/\/[^\n]*|\/\*[\s\S]*?\*\/)*`;
+      for (const m of block.matchAll(new RegExp(`[{,]${GAP}(?:\\.\\.\\.)?\\s*(\\w+)\\s*:`, "g"))) {
+        out.add(m[1] ?? "");
+      }
+      for (const m of block.matchAll(new RegExp(`[{,]${GAP}(\\w+)\\s*(?=[,}])`, "g"))) out.add(m[1] ?? "");
     }
     return out;
   }

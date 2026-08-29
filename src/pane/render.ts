@@ -159,7 +159,10 @@ export function render(root: HTMLElement, state: PaneState, current: StepId): vo
     state.deckSize !== undefined &&
     state.deckAtStart !== undefined &&
     undoIsPossible(state.added, state.deckSize, state.deckAtStart) &&
-    current === "merge"
+    // Where a merge is pressed from — or wherever the user is, when the run
+    // that landed lost its pane and this is all that is left of it. See
+    // `recovered` in `steps.ts`.
+    (current === "merge" || state.recovered === true)
   ) {
     const card = el(doc, "div", { class: "card undo" });
     card.append(el(doc, "p", { text: undoSummary(state.added, state.deckSize, state.deckAtStart) }));

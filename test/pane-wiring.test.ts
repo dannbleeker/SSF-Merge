@@ -154,6 +154,12 @@ async function reachMerge(): Promise<void> {
 }
 
 beforeEach(() => {
+  // The crash crumb lives in `localStorage`, which `vi.resetModules` does not
+  // touch — so a merge in one test was read back as a recovered run by the
+  // next, which now draws its offer on whatever step the pane is on. Cleared
+  // here rather than in the one describe that knew about it: every test in
+  // this file opens a pane, and a pane reads the crumb.
+  localStorage.clear();
   office.slideCount.mockReset().mockResolvedValue(12);
   office.inspectBlock.mockReset();
   office.runMerge.mockReset();
@@ -1390,7 +1396,14 @@ describe("a run the pane never came back from", () => {
   });
 
   it("still OFFERS the way back when the run got as far as counting", async () => {
-    // The other branch, unchanged: a crumb carrying a real count can be swept.
+    // The other branch: a crumb carrying a real count can be swept.
+    //
+    // "Offers" was a claim about a sentence until this test pressed the
+    // button. The branch set `added`, `deckAtStart` and `last`, so everything
+    // an undo needs was in hand — and the card is drawn on the MERGE step,
+    // which a pane that has just opened cannot reach: it takes a template
+    // read, a paste and a field check to get there, none of which has anything
+    // to do with taking last night's slides back out.
     localStorage.setItem(
       KEY,
       JSON.stringify({ kind: "ssf-merge-run", deckAtStart: 12, added: 6, runId: "r1", startedAt: "2026-08-27" }),
@@ -1399,6 +1412,36 @@ describe("a run the pane never came back from", () => {
     await openPane();
     await settle();
     expect(pane().textContent).toContain("added 6 slide(s)");
+
+    const undo = document.querySelector<HTMLButtonElement>('.card.undo button[data-action="undo"]');
+    expect(undo, "a way back, not only a sentence about one").not.toBeNull();
+    expect(pane().textContent).toContain("Remove slides 13 to 18");
+
+    office.undoMerge.mockResolvedValueOnce({ removed: 6, detail: "removed 6 slide(s) from index 12" });
+    undo?.click();
+    await settle();
+    expect(office.undoMerge.mock.calls[0]?.[0]).toMatchObject({ deckAtStart: 12, added: 6 });
+    expect(pane().textContent).toContain("back to 12");
+  });
+
+  it("does not move the user who has already started typing", async () => {
+    // The deck count resolves a second or two after the pane opens, and the
+    // crumb is read when it does. Jumping to the last step then would take
+    // somebody mid-keystroke off the box they are in — the same hazard the
+    // caret restore exists for, one level up.
+    localStorage.setItem(
+      KEY,
+      JSON.stringify({ kind: "ssf-merge-run", deckAtStart: 12, added: 6, runId: "r1", startedAt: "2026-08-27" }),
+    );
+    const count = deferred<number>();
+    office.slideCount.mockReset().mockReturnValue(count.promise);
+    await openPane();
+    type("from", "4");
+    count.resolve(18);
+    await settle();
+
+    expect(pane().textContent, "still on the step the user was typing in").toContain("Which slides repeat?");
+    expect(pane().textContent, "and still told about the run").toContain("added 6 slide(s)");
   });
 });
 

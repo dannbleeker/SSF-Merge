@@ -7,6 +7,19 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a merge that lost its pane can actually be taken back
+
+Reopen the add-in after a run whose pane closed and it tells you how many slides
+landed and that you never got to remove them. The button that removes them is on
+step 5, which a pane that has just opened cannot reach: getting there costs a
+template read, a paste and a field check, none of which has anything to do with
+last night's slides. So the offer was a sentence about a button nobody could
+press.
+
+It is now drawn wherever you are, for a recovered run. If the deck has grown
+since, it is not shown at all — the same rule as before, because the last slides
+in the deck are then somebody else's.
+
 ### Fixed — the keyboard stays where you left it
 
 The pane rebuilds itself after every press, and only the two slide-number boxes

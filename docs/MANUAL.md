@@ -554,6 +554,12 @@ then offers the ones that are left, not the number the merge originally added.
 A sweep that removed only some of them keeps the offer up, because the rest are
 still there and only you can finish.
 
+**If the pane closes before you take them back, the offer comes with you.**
+Reopen the add-in and it says which merge left slides in your deck and offers to
+remove them, on whatever screen you land on — you do not have to walk back
+through the five steps to reach the button. If the deck has grown since, the
+offer is not shown, for the reason above.
+
 **Editing after a merge does not withdraw the offer.** Untick a row, change a
 condition, attach a different picture or move the template block, and the merge
 button arms again — it is a different merge now. The card stays, because the
