@@ -503,6 +503,46 @@ function audit() {
     }
   };
   walk(document.body);
+
+  // WHERE THE KEYBOARD IS, which is the third thing a PNG cannot show and the
+  // one a screenshot cannot show at all: a focus ring is only on screen while
+  // something is focused.
+  //
+  // It found the sharpest of the three. Buttons were not in the stylesheet's
+  // focus rule, so they fell back to Chrome's own ring — `rgb(16, 16, 16)`,
+  // near-black, drawn on the dark theme's near-black pane at 1.03:1. Every
+  // chip, both disclosures, the back links and the undo button, with no
+  // visible focus anywhere in that theme except inside a text box.
+  //
+  // The caller presses Tab once before this runs. Chrome matches
+  // `:focus-visible` on a programmatic `focus()` only once the last
+  // interaction was a keyboard one, so without that every button here reports
+  // no outline at all — a measurement that answers "clean" because it never
+  // looked.
+  const focusable = document.querySelectorAll(
+    "#pane button:not([disabled]), #pane input:not([disabled]), #pane select:not([disabled]), #pane textarea:not([disabled])",
+  );
+  const already = new Set();
+  for (const el of focusable) {
+    el.focus();
+    if (document.activeElement !== el) continue; // not actually focusable
+    const style = getComputedStyle(el);
+    const key = `${el.tagName}.${el.className}`;
+    if (already.has(key)) continue;
+    already.add(key);
+    const width = Number.parseFloat(style.outlineWidth);
+    if (!(width > 0) || style.outlineStyle === "none") {
+      findings.push(`no focus ring on ${el.tagName.toLowerCase()}.${el.className || "-"}`);
+      continue;
+    }
+    const ratio =
+      (Math.max(luminance(numbers(style.outlineColor)), luminance(groundOf(el.parentElement ?? el))) + 0.05) /
+      (Math.min(luminance(numbers(style.outlineColor)), luminance(groundOf(el.parentElement ?? el))) + 0.05);
+    // 3:1, which is what WCAG 1.4.11 asks of a non-text indicator.
+    if (ratio < 3) {
+      findings.push(`focus ring ${ratio.toFixed(2)}:1 (needs 3) on ${el.tagName.toLowerCase()}.${el.className || "-"}`);
+    }
+  }
   return findings;
 }
 
@@ -542,6 +582,11 @@ for (const width of [320, 512]) {
         { state, step, paste, files, theme },
       );
       await page.screenshot({ path: `${OUT}/${width}-${theme}-${name}.png` });
+      // AFTER the shot, and before the audit. It tells Chrome the last
+      // interaction was a keyboard one, which is what makes `:focus-visible`
+      // match the programmatic `focus()` the focus sweep uses — and it would
+      // put a ring in the picture if it ran first.
+      await page.keyboard.press("Tab");
       for (const finding of await page.evaluate(audit)) {
         if (!found.has(finding)) found.set(finding, `${width} ${theme} ${name}`);
       }
@@ -553,7 +598,9 @@ for (const width of [320, 512]) {
 await browser.close();
 console.log(`${taken} shots in ${OUT}`);
 if (found.size === 0) {
-  console.log("audit: nothing overflows and every live label clears its contrast floor");
+  console.log(
+    "audit: nothing overflows, every live label clears its contrast floor, and every control shows where the keyboard is",
+  );
 } else {
   console.log(`audit: ${found.size} finding(s)`);
   for (const [finding, where] of found) console.log(`  ${where}: ${finding}`);

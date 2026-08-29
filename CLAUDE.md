@@ -55,8 +55,8 @@ npx vite --port 5199 --strictPort &
 node scripts/pane-shots.mjs          # PNGs in /tmp/pane-shots, plus an audit
 ```
 
-**It measures two things as well as shooting them**, because both are numbers a
-reader cannot take off a PNG and both have produced real defects. It prints its
+**It measures three things as well as shooting them**, because each is a number a
+reader cannot take off a PNG and each has produced a real defect. It prints its
 findings and exits 1.
 
 - **Horizontal overflow.** Every long string on that screen comes from outside
@@ -70,6 +70,14 @@ findings and exits 1.
   chips, field tags and every secondary button. On the dark palette that ink is
   3.0:1, and "Remove these slides", the whole way back from a merge, was 2.93:1.
   Disabled controls are exempt, which is WCAG 1.4.3 and not a convenience.
+- **Where the keyboard is**, which a screenshot cannot show at all — a focus
+  ring is only on screen while something is focused. The stylesheet's focus rule
+  named `input`, `textarea` and `select` and stopped, so every BUTTON fell back
+  to Chrome's own ring: `rgb(16, 16, 16)`, near-black, on the dark theme's
+  near-black pane, at 1.03:1. The sweep presses Tab once first, because Chrome
+  matches `:focus-visible` on a programmatic `focus()` only when the last
+  interaction was a keyboard one — without it every button reports no outline
+  and the measurement answers "clean" because it never looked.
 
 **Two fixtures exist only to exercise the overflow half** — an unbroken column
 header and a spaceless notice — and they are the difference between a gate and a
