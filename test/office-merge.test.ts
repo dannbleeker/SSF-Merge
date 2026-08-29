@@ -35,6 +35,33 @@ beforeEach(() => {
   host.insertDeck.mockReset();
 });
 
+describe("what became of the pictures", () => {
+  /**
+   * `runPlan` has always answered this and this seam threw it away, so every
+   * field on `ImageOutcome` carried a comment about being named rather than
+   * left silent and the only readers were tests. The pane's pre-merge tally
+   * cannot stand in for it: that matches file NAMES and never opens one, so a
+   * folder of renamed files passes it and places nothing.
+   */
+  it("carries it out of the merge, so something can say so", async () => {
+    const bytes = await makeDeck([{ paragraphs: [["{{Photo|image}}"]] }]);
+    host.readTemplate.mockResolvedValueOnce({ base64: Buffer.from(bytes).toString("base64"), offset: 0 });
+    host.insertDeck.mockResolvedValueOnce({ verdict: "yes", detail: "landed", landed: 1, before: 3, after: 4 });
+
+    const outcome = await runMerge({
+      from: 1,
+      to: 1,
+      records: { columns: [{ name: "Photo", type: "image" as const }], rows: [{ Photo: "ada.png" }] },
+      // Named like a picture and not one. Nothing before the merge reads a
+      // byte, so this is the case only the outcome can report.
+      images: new Map([["ada.png", new Uint8Array([1, 2, 3, 4])]]),
+    });
+
+    expect(outcome.pictures, "the merge said nothing about the pictures").toBeDefined();
+    expect(outcome.pictures).toMatchObject({ placed: 0, unreadable: ["Photo"] });
+  });
+});
+
 describe("inspectBlock answers rather than raising", () => {
   it("turns readTemplate's refusal into an outcome", () => {
     // `readTemplate` throws by design: `blockIds` produced a sentence and a

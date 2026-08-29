@@ -8,6 +8,7 @@ import {
   plural,
   undoIsPossible,
   undoSummary,
+  type MergeReport,
 } from "../src/pane/summary.js";
 import { slidesPerRecord } from "../src/pane/steps.js";
 
@@ -218,5 +219,67 @@ describe("describeMerge says what the merge DID", () => {
   it("says nothing about workbooks when every one of them merged", () => {
     const line = describeMerge({ added: 6, deckAtStart: 3, paragraphsMerged: 12, workbooksUnreadable: 0 });
     expect(line).toBe("6 slides added after slide 3 · 12 placeholders filled.");
+  });
+
+  /**
+   * The other half of the merge, which said nothing at all.
+   *
+   * `paragraphsMerged` exists because a run that adds every slide and fills no
+   * placeholder arrives looking like a success. The pictures have exactly that
+   * shape and no number: the pane's pre-merge tally matches file NAMES and
+   * never opens one, so a folder of renamed files passes it, places nothing,
+   * and the deck grows by 720 slides either way.
+   */
+  const pictures = (over: Partial<NonNullable<MergeReport["pictures"]>>) => ({
+    added: 6,
+    deckAtStart: 3,
+    paragraphsMerged: 12,
+    pictures: { placed: 0, missing: [], unreadable: [], stretched: [], crowded: [], ...over },
+  });
+
+  it("counts the pictures it placed", () => {
+    expect(describeMerge(pictures({ placed: 4 }))).toContain("4 pictures placed");
+  });
+
+  it("says a zero out loud, the way the placeholder count does", () => {
+    const line = describeMerge(pictures({ missing: ["Photo"] }));
+    expect(line).toContain("no pictures were placed");
+  });
+
+  it("names a file that is not a picture, which nothing before the merge can catch", () => {
+    const line = describeMerge(pictures({ unreadable: ["Photo"] }));
+    expect(line).toContain("the file for Photo is not a picture this add-in can read");
+  });
+
+  it("names a field whose shape was already taken", () => {
+    // A shape has one fill. The second field in it was dropped in silence.
+    expect(describeMerge(pictures({ placed: 1, crowded: ["Logo"] }))).toContain("Logo had nowhere to go");
+  });
+
+  it("names a picture it had to squash", () => {
+    // The shape inherits its size from a layout placeholder, so there was no
+    // ratio to fit to. It reads as a broken image and is not one.
+    expect(describeMerge(pictures({ placed: 1, stretched: ["Photo"] }))).toContain("Photo was stretched");
+  });
+
+  it("does not name a missing picture, which is documented behaviour", () => {
+    // `missing` counts an EMPTY cell as well as a file nobody supplied, and an
+    // empty cell keeps its placeholder by design — exactly as a text field
+    // with no column does. The count carries that case without accusing
+    // anybody.
+    const line = describeMerge(pictures({ placed: 2, missing: ["Photo"] }));
+    expect(line).toContain("2 pictures placed");
+    expect(line).not.toContain("missing");
+  });
+
+  it("stays silent on a merge that had no pictures in it", () => {
+    const line = describeMerge(pictures({}));
+    expect(line).toBe("6 slides added after slide 3 · 12 placeholders filled.");
+  });
+
+  it("says nothing about pictures for an outcome that carries none", () => {
+    expect(describeMerge({ added: 6, deckAtStart: 3, paragraphsMerged: 12 })).toBe(
+      "6 slides added after slide 3 · 12 placeholders filled.",
+    );
   });
 });

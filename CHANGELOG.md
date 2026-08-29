@@ -7,6 +7,20 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — the merge says what became of the pictures
+
+The summary after a run counted the placeholders it filled and said nothing at
+all about the pictures, though the engine had always worked it out. So a merge
+that added 720 slides and placed no picture — a folder of files renamed to
+`.png`, say — read as an unqualified success. Nothing before the merge could
+catch that either: the pre-merge tally matches file names and never opens one.
+
+The sentence now carries how many pictures were placed, a zero said out loud,
+and names the three cases you can act on: a file that is not a picture, a field
+whose shape was already holding another one, and a picture squashed because its
+shape states no size. A missing one is still not named — an empty cell keeps its
+placeholder by design, exactly as a text field with no column does.
+
 ### Added — the pane says when two picture names differ only by their folder
 
 Picture cells may carry folders, and matching ignores them — it has to, because
