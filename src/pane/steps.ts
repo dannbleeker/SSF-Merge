@@ -55,6 +55,15 @@ export interface PaneState {
   block?: Block;
   /** Placeholders found in the block, in the order they appear. */
   fields: string[];
+  /**
+   * Of those, the ones written as a PICTURE — `{{Photo|image}}` and its two
+   * siblings — read off the slides by the engine.
+   *
+   * The pane used to decide what a picture was from the DATA's detected types
+   * alone, and the engine decides from the FIELD's format. See
+   * `pictureColumns`.
+   */
+  imageFields?: string[];
   /** Column names in the data the user attached, if any. */
   columns?: string[];
   /** Rows in that data. */
@@ -381,11 +390,39 @@ export function imageColumns(state: PaneState): string[] {
   return (state.records?.columns ?? []).filter((c) => c.type === "image").map((c) => c.name);
 }
 
-/** Every picture file name the attached data refers to, across every image column. */
+/**
+ * The columns this merge will take PICTURES from.
+ *
+ * Two sources, and the pane only had one. `imageColumns` is what the detector
+ * decided, and it is all-or-nothing on purpose: one cell reading `n/a` in a
+ * column of file names makes the whole column text, so that a column of `.svg`
+ * names is not offered as pictures and then failed one row at a time.
+ *
+ * The other source is the AUTHOR. `{{Photo|image}}` is documented in
+ * `docs/MANUAL.md` as the way to ask for a picture, and the ENGINE obeys it
+ * whatever the column's type — it resolves the cell and fills the shape. The
+ * pane did not: the picker is shown only when this list is non-empty, so a
+ * column one stray cell had kept out of the type gave an author who wrote the
+ * format by hand a pane with nowhere to attach their files and a merge that
+ * left every picture placeholder standing.
+ *
+ * `imageFieldsIn` has answered "which fields ask for a picture" since it was
+ * written, and until now nothing in the product called it.
+ */
+export function pictureColumns(state: PaneState): string[] {
+  const known = new Set((state.records?.columns ?? []).map((c) => c.name));
+  const out = new Set(imageColumns(state));
+  // Only a field that names a column the data actually has. One that does not
+  // is an unmatched field, which the fields step already reports as such.
+  for (const name of state.imageFields ?? []) if (known.has(name)) out.add(name);
+  return [...out];
+}
+
+/** Every picture file name the attached data refers to, across every picture column. */
 export function imagesWanted(state: PaneState): string[] {
   const rows = state.records?.rows ?? [];
   const seen = new Set<string>();
-  for (const column of imageColumns(state)) for (const name of imageNamesIn(rows, column)) seen.add(name);
+  for (const column of pictureColumns(state)) for (const name of imageNamesIn(rows, column)) seen.add(name);
   return [...seen];
 }
 

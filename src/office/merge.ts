@@ -58,6 +58,8 @@ export interface MergeOutcome {
   runId: string;
   /** Placeholders found in the block, for the pane to report on. */
   fields: string[];
+  /** Of those, the ones written as a picture. */
+  imageFields: string[];
   /** Conditions naming a column the data does not have. */
   unknownConditions: string[];
   /**
@@ -109,6 +111,8 @@ export interface BlockReport {
   detail: string;
   /** Placeholders found in the block, in the order they appear. */
   fields: string[];
+  /** Of those, the ones written as a picture. The pane's picker needs these. */
+  imageFields: string[];
 }
 
 /**
@@ -150,18 +154,19 @@ export async function inspectBlock(req: { from: number; to: number }): Promise<B
       },
       "inspect",
     );
-    if (!prepared.ok) return { ok: false, detail: prepared.why, fields: [] };
+    if (!prepared.ok) return { ok: false, detail: prepared.why, fields: [], imageFields: [] };
     return {
       ok: true,
       detail: `${prepared.fields.length} placeholder${prepared.fields.length === 1 ? "" : "s"} in slides ${req.from} to ${req.to}.`,
       fields: prepared.fields,
+      imageFields: prepared.imageFields,
     };
   } catch (e) {
     // `readTemplate` throws its refusals — `blockIds` produced the sentence and
     // it is already the one to show. A raise here is the host declining to
     // name or export the slides, or a package that came back unreadable, and
     // both are things the user can act on.
-    return { ok: false, detail: readable(e), fields: [] };
+    return { ok: false, detail: readable(e), fields: [], imageFields: [] };
   }
 }
 
@@ -172,7 +177,7 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
   // anything back.
   const deckAtStart = await slideCount();
   const runId = req.runId ?? newRunId(deckAtStart, req.records.rows.length);
-  const nothing = { added: 0, deckAtStart, runId, fields: [], unknownConditions: [] };
+  const nothing = { added: 0, deckAtStart, runId, fields: [], imageFields: [], unknownConditions: [] };
 
   if (req.records.rows.length === 0) {
     return { ok: false, detail: "There are no rows to merge.", ...nothing };
@@ -211,6 +216,7 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
       detail: "Every row was skipped, so there is nothing to add.",
       ...nothing,
       fields: prepared.fields,
+      imageFields: prepared.imageFields,
       unknownConditions: plan.unknownConditions,
       skippedRecords: plan.skippedRecords.length,
       skippedSlides: plan.skippedSlides.length,
@@ -345,6 +351,7 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
       deckAtStart,
       runId,
       fields: prepared.fields,
+      imageFields: prepared.imageFields,
       unknownConditions: plan.unknownConditions,
       paragraphsMerged: result.paragraphsMerged,
       workbooksUnreadable: result.graphics.unreadable.length,
@@ -363,6 +370,7 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
     deckAtStart,
     runId,
     fields: prepared.fields,
+    imageFields: prepared.imageFields,
     unknownConditions: plan.unknownConditions,
     // Carried on the SUCCESS path too, not only when something went wrong. A
     // merge that adds every slide and fills no placeholder is the failure this
