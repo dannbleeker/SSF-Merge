@@ -124,16 +124,32 @@ export function buildPlan(block: Block, records: RecordSet, opts: PlanOptions = 
     const row = records.rows[recordIndex];
     if (!row) continue;
 
-    if (onEmpty === "skip" && hasEmptyField(order, row)) {
+    // Conditions decide FIRST, because a field on a slide this record is not
+    // getting cannot be a reason to drop the record. It was: `onEmpty: "skip"`
+    // read the fields of every slide in the block, so a customer with no
+    // renewal note vanished from the deck entirely over a blank cell on the
+    // renewal slide their own condition had already left out.
+    const wanted: BlockSlide[] = [];
+    const left: SkippedSlide[] = [];
+    for (const slide of order) {
+      if (slide.condition !== undefined && columns.has(slide.condition) && !isTruthy(row[slide.condition])) {
+        left.push({ recordIndex, seq: slide.seq, condition: slide.condition });
+        continue;
+      }
+      wanted.push(slide);
+    }
+
+    if (onEmpty === "skip" && hasEmptyField(wanted, row)) {
       skippedRecords.push(recordIndex);
       continue;
     }
 
-    for (const slide of order) {
-      if (slide.condition !== undefined && columns.has(slide.condition) && !isTruthy(row[slide.condition])) {
-        skippedSlides.push({ recordIndex, seq: slide.seq, condition: slide.condition });
-        continue;
-      }
+    // Only now, so a record dropped whole does not also report the slides its
+    // conditions left out. It contributed nothing; saying it contributed two
+    // absences would be two answers about one record.
+    skippedSlides.push(...left);
+
+    for (const slide of wanted) {
       steps.push({
         source: slide.path,
         blockId: block.id,

@@ -7,6 +7,27 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a condition now decides before an empty cell does
+
+`onEmpty: "skip"` drops a record whose fields are not all filled. It looked at
+the fields of **every slide in the block**, including the ones that record's own
+conditions had already left out — so a customer with no renewal note vanished
+from the deck entirely, over a blank cell on a renewal slide they were never
+going to get.
+
+Conditions are evaluated first now, and the empty-field check sees only the
+slides the record will actually receive. The policy itself is unchanged: a blank
+cell on a slide the record IS getting still drops it.
+
+A record dropped whole no longer also reports the slides its conditions left
+out. It contributed nothing; saying it contributed two absences as well would be
+two answers about one record.
+
+Latent rather than shipped. The policy reaches `buildPlan` through the office
+merge request and the pane does not set it, so nobody can have hit this — it was
+a trap laid for whoever wires it up, and the failure it produces is a record
+silently absent from the deck.
+
 ### Fixed — the number gate admitted a form the number parser cannot read
 
 `detectType` asks `looksLikeNumber`; `applyFormat` asks `numericValue`. The
