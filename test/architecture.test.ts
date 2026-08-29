@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 // @ts-expect-error — plain .mjs with no types, shared with the scripts.
 import { withoutTsProse } from "../scripts/without-prose.mjs";
@@ -344,5 +344,32 @@ describe("every pane state field can actually be set", () => {
       expect(fields, `${f} is not a PaneState field`).toContain(f);
       expect(assigned.has(f), `${f} is set now — delete it from the list`).toBe(false);
     }
+  });
+});
+
+describe("one resolver for relationship targets", () => {
+  /**
+   * A relationship target is resolved against the part that owns it, honouring
+   * a leading `/` and any number of `..`. That is fiddly enough to get subtly
+   * wrong, and it WAS: three files carried their own copy of it, and when the
+   * root-part case was fixed on 2026-08-29 only one of the three got the fix.
+   *
+   * The other two were latent rather than broken — nothing resolves a target
+   * from a part at the package root today — which is exactly how a copy
+   * survives: it costs nothing until it does.
+   *
+   * Anchored on the one line no other function here has, and deliberately on a
+   * fragment carrying NO string literal: `codeOf` replaces every literal with
+   * `""` so a guard cannot match prose, which quietly destroyed the first
+   * version of this anchor and left it matching nothing at all. A guard that
+   * finds zero offenders looks exactly like a guard that is satisfied.
+   */
+  const SIGNATURE = "return target.slice(1);";
+
+  it("lives in exactly one file", () => {
+    const carriers = filesUnder("src")
+      .filter((f) => codeOf(f).includes(SIGNATURE))
+      .map((f) => f.split(sep).join("/"));
+    expect(carriers, "a second copy of resolveTarget has appeared").toEqual(["src/core/pptx/pkg.ts"]);
   });
 });

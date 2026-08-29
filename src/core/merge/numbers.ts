@@ -28,7 +28,7 @@
  */
 import JSZip from "jszip";
 import { Pkg } from "../pptx/pkg.js";
-import { C_NS, SSML_NS, elements, parseXml, serializeXml } from "../pptx/xml.js";
+import { C_NS, PKG_REL_NS, R_NS, SSML_NS, elements, parseXml, serializeXml } from "../pptx/xml.js";
 import { numericValue } from "../data/format.js";
 import { FIELD, type Resolve } from "./text.js";
 
@@ -108,6 +108,52 @@ export function cellsOfFormula(formula: string): string[] | null {
   // A rectangle. A series does not read one, and walking it in the wrong order
   // would pair a value with the wrong point.
   return null;
+}
+
+/**
+ * The sheet a chart's `<c:f>` names, unquoted, or null.
+ *
+ * `Sheet1!$B$2:$B$3` and `'My Sheet'!$B$2` both answer their sheet. The last
+ * `!` is the separator, because a quoted name may contain one.
+ */
+export function sheetOfFormula(formula: string): string | null {
+  const bang = formula.lastIndexOf("!");
+  if (bang < 0) return null;
+  const name = formula.slice(0, bang).trim();
+  if (name === "") return null;
+  // Excel doubles an apostrophe inside a quoted name.
+  return name.startsWith("'") && name.endsWith("'") ? name.slice(1, -1).replace(/''/g, "'") : name;
+}
+
+/**
+ * Which worksheet part a sheet TITLE belongs to.
+ *
+ * The title is in `xl/workbook.xml`, which names it beside an `r:id`; that id
+ * is a relationship of the workbook part pointing at the worksheet. Two hops,
+ * and the reason the first version of this file skipped them — but the title is
+ * the only thing tying a chart's formula to a cell, so guessing instead is
+ * guessing which numbers the chart plots.
+ */
+async function sheetPartFor(book: JSZip, title: string): Promise<string | undefined> {
+  const bookFile = book.file("xl/workbook.xml");
+  const relsFile = book.file("xl/_rels/workbook.xml.rels");
+  if (!bookFile || !relsFile) return undefined;
+  let sheets: Element[];
+  let rels: Element[];
+  try {
+    sheets = elements(parseXml(await bookFile.async("string")), SSML_NS, "sheet");
+    rels = elements(parseXml(await relsFile.async("string")), PKG_REL_NS, "Relationship");
+  } catch {
+    return undefined;
+  }
+  const wanted = sheets.find((s) => s.getAttribute("name") === title);
+  const rId = wanted?.getAttributeNS(R_NS, "id") ?? wanted?.getAttribute("r:id");
+  if (!rId) return undefined;
+  const target = rels.find((r) => r.getAttribute("Id") === rId)?.getAttribute("Target");
+  if (!target) return undefined;
+  // Targets here are relative to `xl/`, and a leading slash means the package
+  // root — the same two shapes a relationship anywhere else can take.
+  return target.startsWith("/") ? target.slice(1) : `xl/${target.replace(/^\.\//, "")}`;
 }
 
 /** The `<c>` element for one address, or undefined. */
@@ -210,6 +256,17 @@ export async function mergeChartNumbers(
     const formula = elements(ref, C_NS, "f")[0]?.textContent ?? "";
     const cells = cellsOfFormula(formula);
     if (!cells) continue;
+    // Resolved once per series rather than per point.
+    //
+    // A workbook with exactly one sheet falls back to it, because a formula
+    // whose title does not resolve is far likelier to be a generator writing an
+    // odd name than a real second sheet. With more than one and no match, this
+    // gives up and the series keeps its cached numbers — the same refusal
+    // `cellsOfFormula` makes for a range it cannot read, and for the same
+    // reason: there is no safe guess between two sheets.
+    const title = sheetOfFormula(formula);
+    const named = title === null ? undefined : await sheetPartFor(book, title);
+    const sheetPath = named ?? (sheetNames.length === 1 ? sheetNames[0] : undefined);
     const cache = elements(ref, C_NS, "numCache")[0];
     if (!cache) continue;
 
@@ -218,21 +275,17 @@ export async function mergeChartNumbers(
       const address = cells[idx];
       if (address === undefined) continue;
 
-      // Whichever sheet holds it. A chart's `<c:f>` names one by title and the
-      // title lives in `xl/workbook.xml` behind a relationship, so the address
-      // is looked for instead — an embedded chart workbook has one sheet in
-      // every case this has met, and looking is cheaper than resolving.
-      let sheetName: string | undefined;
-      let cell: Element | undefined;
-      for (const [name, doc] of sheets) {
-        const found = cellAt(doc, address);
-        if (found) {
-          sheetName = name;
-          cell = found;
-          break;
-        }
-      }
-      if (!cell || !sheetName) continue;
+      // The sheet `<c:f>` NAMES, never whichever one happens to hold the
+      // address. The first version searched every sheet and took the first hit,
+      // on the reasoning that an embedded chart workbook has one sheet — true
+      // of every one this had met, and not a fact about the format. Add a sheet
+      // in Edit Data and `B2` exists twice; the merge would then write a number
+      // into whichever came first and the chart would plot the other. Silently,
+      // and no count would catch it: the right NUMBER of cells is written.
+      if (!sheetPath) continue;
+      const doc = sheets.get(sheetPath);
+      const cell = doc ? cellAt(doc, address) : undefined;
+      if (!cell) continue;
 
       const text = stringOfCell(cell, shared);
       if (text === undefined) continue; // already a number: not ours to touch
@@ -250,7 +303,7 @@ export async function mergeChartNumbers(
         continue;
       }
 
-      writeNumber(sheets.get(sheetName)!, cell, value);
+      writeNumber(doc!, cell, value);
       const v = elements(pt, C_NS, "v")[0];
       if (v) v.textContent = String(value);
       out.filled++;
