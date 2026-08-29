@@ -7,6 +7,10 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.2.0] — 2026-08-29
+
 ### Added — modern charts are merged
 
 A waterfall, funnel, treemap, sunburst, histogram, pareto, box-and-whisker or
