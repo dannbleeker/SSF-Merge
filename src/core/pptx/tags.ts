@@ -33,13 +33,30 @@ export const TAG_RECORD = "SSF_MERGE_RECORD";
 // on the master copy every merged slide is cloned from. A preview is an
 // ordinary one-row merge now, inserted and then swept, so nothing is stored.
 
+/**
+ * Escape a value for an XML attribute — including the whitespace.
+ *
+ * The five markup characters are the obvious half. The other half is that an
+ * XML parser NORMALISES an attribute value: a literal newline, carriage return
+ * or tab inside one is read back as a SPACE. Writing them literally therefore
+ * loses them, and the loss happens on the first merge and looks stable
+ * afterwards, which is the shape that never gets reported.
+ *
+ * It cannot touch our own tags — a run id and a record number have no
+ * whitespace in them. It reaches a FOREIGN tag, which `mergeTagPart` carries
+ * through untouched and `docs/MANUAL.md` promises survives a merge. An add-in
+ * keeping anything formatted in a tag got it back on one line.
+ */
 function xmlAttr(s: string): string {
   return s
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
+    .replace(/'/g, "&apos;")
+    .replace(/\n/g, "&#10;")
+    .replace(/\r/g, "&#13;")
+    .replace(/\t/g, "&#9;");
 }
 
 export function tagPartXml(entries: [string, string][]): string {

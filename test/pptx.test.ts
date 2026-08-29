@@ -548,3 +548,37 @@ describe("a template slide someone has commented on", () => {
     expect(pkg.has(part), "the comment part outlived its slide").toBe(false);
   });
 });
+
+describe("a tag value's whitespace survives a merge", () => {
+  /**
+   * An XML parser NORMALISES an attribute value: a literal newline, carriage
+   * return or tab inside one is read back as a SPACE. `xmlAttr` escaped the
+   * five markup characters and wrote those three literally, so they were gone
+   * after one merge — and stable at the wrong value afterwards, which is the
+   * shape nobody reports.
+   *
+   * It cannot reach our own tags; a run id and a record number have no
+   * whitespace. It reaches a FOREIGN tag, which `docs/MANUAL.md` promises
+   * survives, and which is the whole reason `mergeTagPart` keeps what it does
+   * not own.
+   */
+  const read = (xml: string, name: string): string | undefined =>
+    elements(parseXml(xml), P_NS, "tag")
+      .find((t) => t.getAttribute("name") === name)
+      ?.getAttribute("val") ?? undefined;
+
+  it.each([
+    ["a newline", "line1\nline2"],
+    ["a carriage return", "a\rb"],
+    ["a tab", "a\tb"],
+    ["markup, still", 'Ben & Jerry <"x">'],
+  ])("keeps %s through two merges", (_label, value) => {
+    // Two, because the first write is what loses it and the second is what
+    // would have made a re-escaping bug visible instead.
+    let xml = tagPartXml([["OTHER", value]]);
+    xml = mergeTagPart(xml, [[TAG_RUN, "run-1"]]);
+    xml = mergeTagPart(xml, [[TAG_RUN, "run-2"]]);
+    expect(read(xml, "OTHER")).toBe(value);
+    expect(read(xml, TAG_RUN), "our own tag stopped round-tripping").toBe("run-2");
+  });
+});

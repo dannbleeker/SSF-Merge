@@ -7,6 +7,23 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a foreign tag's whitespace did not survive a merge
+
+An XML parser NORMALISES an attribute value: a literal newline, carriage return
+or tab inside one is read back as a **space**. `xmlAttr` escaped the five markup
+characters and wrote those three literally, so a tag value carrying any of them
+came back on one line after a single merge — and stayed at that wrong value
+afterwards, which is the shape nobody reports.
+
+It cannot reach our own tags; a run id and a record number have no whitespace in
+them. It reaches a FOREIGN tag, which `mergeTagPart` carries through untouched
+and `docs/MANUAL.md` promises survives a merge. Another add-in keeping anything
+formatted in a tag got it back flattened.
+
+This is the second half of a defect already fixed once from the entity side: the
+values were being escaped exactly once, and three of the characters that need
+escaping were not on the list.
+
 ### Fixed — a chart's numbers were found by file name rather than by declaration
 
 The embedded workbook's worksheets were collected by matching part names against
