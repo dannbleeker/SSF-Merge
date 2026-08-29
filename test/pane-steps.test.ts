@@ -19,6 +19,7 @@ import {
   rowLabel,
   fieldToken,
   imageColumns,
+  pictureColumns,
   imageTally,
   imagesWanted,
   slidesPerRecord,
@@ -28,6 +29,7 @@ import {
   visibleRows,
 } from "../src/pane/steps.js";
 import type { PaneState, StepId } from "../src/pane/steps.js";
+import { toRecordSet } from "../src/core/data/recordset.js";
 import { fieldPattern } from "../src/core/merge/text.js";
 import { imageMode } from "../src/core/merge/images.js";
 
@@ -733,5 +735,63 @@ describe("a blocked step never offers a pressable button", () => {
     const bare: PaneState = { fields: [], previewing: false };
     expect(blockedReason(bare, "preview")).toBe("Choose the slides that repeat first.");
     expect(primary(bare, "preview").enabled).toBe(false);
+  });
+});
+
+describe("a picture column one stray cell kept out of the type", () => {
+  /**
+   * `detectType` is all-or-nothing on purpose: one cell reading `n/a` in a
+   * column of file names makes the whole column text, so a column of `.svg`
+   * names is not offered as pictures and then failed one row at a time.
+   *
+   * The pane decided what a picture was from that alone. The ENGINE decides
+   * from the FIELD's format — `{{Photo|image}}` is documented in
+   * `docs/MANUAL.md` as the way to ask for one, and `placeImages` obeys it
+   * whatever the column's type.
+   *
+   * So an author who wrote the format by hand on such a column got a pane with
+   * NO picker — it is shown only when `imagesWanted` is non-empty — and
+   * therefore no way to attach the files, and a merge that left every picture
+   * placeholder standing. The insert button made it worse by writing
+   * `{{Photo}}`, which merges the file name as text.
+   *
+   * `imageFieldsIn` has answered "which fields ask for a picture" since it was
+   * written, and nothing in the product called it.
+   */
+  const stray = toRecordSet([["Photo"], ["ada.png"], ["n/a"]]);
+
+  const withField = (imageFields: string[]): PaneState => ({
+    fields: ["Photo"],
+    imageFields,
+    previewing: false,
+    records: stray,
+    columns: ["Photo"],
+    rows: stray.rows.length,
+  });
+
+  it("is not an image column, and that part is deliberate", () => {
+    expect(stray.columns[0]?.type).toBe("text");
+    expect(imageColumns(withField(["Photo"]))).toEqual([]);
+  });
+
+  it("is still a picture column when the author asked for one", () => {
+    expect(pictureColumns(withField(["Photo"]))).toEqual(["Photo"]);
+    expect(imagesWanted(withField(["Photo"])).length, "the picker never appears").toBeGreaterThan(0);
+  });
+
+  it("and the insert button writes the format the engine acts on", () => {
+    const state = withField(["Photo"]);
+    expect(fieldToken("Photo", pictureColumns(state).includes("Photo") ? "image" : undefined)).toBe("{{Photo|image}}");
+  });
+
+  it("without inventing one the author did not ask for", () => {
+    // The other half: no image field, no picker. A text column stays text.
+    expect(pictureColumns(withField([]))).toEqual([]);
+    expect(imagesWanted(withField([]))).toEqual([]);
+  });
+
+  it("and ignores an image field naming a column the data does not have", () => {
+    // That is an unmatched field, which the fields step already reports.
+    expect(pictureColumns(withField(["Nickname"]))).toEqual([]);
   });
 });

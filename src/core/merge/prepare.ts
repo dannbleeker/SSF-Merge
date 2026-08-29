@@ -13,6 +13,7 @@ import { notesPathFor } from "../pptx/clone.js";
 import { graphicPartsOf } from "../pptx/graphics.js";
 import { fieldsIn } from "./text.js";
 import { chartValueFields } from "./numbers.js";
+import { imageFieldsIn } from "./images.js";
 import { workbookOfChart } from "../pptx/graphics.js";
 
 export interface BlockRequest {
@@ -44,7 +45,24 @@ export interface BlockRequest {
   allowEmpty?: boolean;
 }
 
-export type Prepared = { ok: true; block: Block; fields: string[] } | { ok: false; why: string };
+export type Prepared =
+  | {
+      ok: true;
+      block: Block;
+      fields: string[];
+      /**
+       * The fields written as a PICTURE — `{{Photo|image}}` and its two
+       * siblings — by name.
+       *
+       * Separate from `fields` because the pane needs a different answer from
+       * it. `imageFieldsIn` has answered this question since it was written and
+       * nothing called it, so the pane decided which columns were pictures from
+       * the DATA's detected types alone, while the engine decides from the
+       * FIELD's format. See `imagesWanted`.
+       */
+      imageFields: string[];
+    }
+  | { ok: false; why: string };
 
 /**
  * Build the block, or refuse with a sentence the pane can show as it stands.
@@ -78,6 +96,7 @@ export async function prepareBlock(pkg: Pkg, req: BlockRequest, runId: string): 
 
   const slides: BlockSlide[] = [];
   const fields: string[] = [];
+  const imageFields: string[] = [];
   for (let i = 0; i < count; i++) {
     const path = paths[start + i];
     if (!path) return { ok: false, why: `Slide ${req.from + i} is not in the deck that came back.` };
@@ -119,7 +138,9 @@ export async function prepareBlock(pkg: Pkg, req: BlockRequest, runId: string): 
     //
     // The labels still come from the cache, not the workbook: those two hold
     // the same strings and reading both would name nothing twice.
-    const own = [...fieldsIn(await pkg.doc(path)), ...(notes ? fieldsIn(await pkg.doc(notes)) : [])];
+    const slideDoc = await pkg.doc(path);
+    for (const name of imageFieldsIn(slideDoc)) if (!imageFields.includes(name)) imageFields.push(name);
+    const own = [...fieldsIn(slideDoc), ...(notes ? fieldsIn(await pkg.doc(notes)) : [])];
     for (const part of await graphicPartsOf(pkg, path)) {
       own.push(...fieldsIn(await pkg.doc(part)));
       if (!part.startsWith("ppt/charts/")) continue;
@@ -150,5 +171,5 @@ export async function prepareBlock(pkg: Pkg, req: BlockRequest, runId: string): 
     };
   }
 
-  return { ok: true, block: { id: runId, slides }, fields };
+  return { ok: true, block: { id: runId, slides }, fields, imageFields };
 }

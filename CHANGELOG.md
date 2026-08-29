@@ -7,6 +7,44 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — an author who wrote `{{Photo|image}}` got a pane with nowhere to attach the files
+
+The pane decided what a picture was from the DATA's detected types. The engine
+decides from the FIELD's format. They disagreed about every column the type
+detector had turned down.
+
+`detectType` is all-or-nothing on purpose — one cell reading `n/a` in a column of
+file names makes the whole column text, so a column of `.svg` names is not
+offered as pictures and then failed one row at a time. That part is right and is
+unchanged.
+
+What was wrong is what followed. The picker appears only when the data refers to
+pictures, and that list came from the detected types alone, so a column one
+stray cell had kept out of the type meant:
+
+- no picker, and therefore no way to attach the files at all;
+- an insert button writing `{{Photo}}` rather than `{{Photo|image}}`, which
+  merges the file name onto the slide as text;
+- a merge that left every picture placeholder standing, silently.
+
+The engine placed the picture perfectly well in that state — `placed: 1` — when
+files were supplied. Nothing in the pane could supply them.
+
+`docs/MANUAL.md` documents `{{Photo|image}}` as the way to ask for a picture, so
+an author writing it by hand is the documented path, not a workaround.
+
+`prepare` names the picture fields now — it reads the slides already — and they
+travel to the pane beside the ordinary ones. A column is a picture column when
+the detector says so OR when a field on the slides asks for one.
+
+`imageFieldsIn` has answered "which fields ask for a picture" since it was
+written. Until now nothing in the product called it.
+
+A consequence worth stating: in an author-declared picture column, a cell that
+is not a file name — the `n/a` that caused all this — is now listed among the
+pictures the data asks for and reported as missing. That is what the ENGINE does
+with it too, and the two agreeing is the property that matters.
+
 ### Fixed — a deck that grew by more than the package held authorised deleting all of it
 
 `added` is measured from the DECK rather than from the plan, and that is right:

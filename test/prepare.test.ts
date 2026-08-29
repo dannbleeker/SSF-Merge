@@ -314,3 +314,34 @@ describe("a block whose only field is the number its chart plots", () => {
     expect(cacheBefore, "the fixture stopped carrying a placeholder").toContain("{{Revenue}}");
   });
 });
+
+describe("which fields ask for a picture", () => {
+  /**
+   * The pane's picker is shown when the data refers to pictures, and it decided
+   * that from the DATA's detected types alone. The engine decides from the
+   * FIELD's format, so the two disagreed about any column the type detector had
+   * turned down — see `pictureColumns` in the pane.
+   *
+   * `prepare` reads the slides already; naming the picture fields costs nothing
+   * and is the only place that can answer it.
+   */
+  it("names them, apart from the ordinary fields", async () => {
+    const pkg = await Pkg.open(
+      await makeDeck([
+        { paragraphs: [["{{Name}}"], ["{{Photo|image}}"], ["{{Logo|image-fit}}"]] },
+        { paragraphs: [["after"]] },
+      ]),
+    );
+    const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "n");
+    expect(prepared.ok).toBe(true);
+    if (!prepared.ok) return;
+    expect(prepared.fields).toEqual(["Name", "Photo", "Logo"]);
+    expect(prepared.imageFields).toEqual(["Photo", "Logo"]);
+  });
+
+  it("and answers an empty list when nothing asks for one", async () => {
+    const pkg = await Pkg.open(await makeDeck([{ paragraphs: [["{{Name}}"]] }, { paragraphs: [["after"]] }]));
+    const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "n");
+    expect(prepared.ok && prepared.imageFields).toEqual([]);
+  });
+});

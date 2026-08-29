@@ -21,7 +21,7 @@ import {
   conditionFor,
   danglingConditions,
   fieldToken,
-  imageColumns,
+  pictureColumns,
   imageTally,
   imagesWanted,
   includedCount,
@@ -530,7 +530,7 @@ function dataControl(doc: Document, state: PaneState): HTMLElement {
 function imageControl(doc: Document, state: PaneState): HTMLElement {
   const wrap = el(doc, "div", { class: "field images" });
   const tally = imageTally(state);
-  const columns = imageColumns(state);
+  const columns = pictureColumns(state);
 
   wrap.append(
     el(doc, "span", {
@@ -626,7 +626,7 @@ function insertControl(doc: Document, state: PaneState): HTMLElement {
   );
   const list = el(doc, "ul", { class: "chips" });
   const placed = new Set(state.fields);
-  const images = new Set(imageColumns(state));
+  const images = new Set(pictureColumns(state));
   for (const column of columns) {
     const kind = images.has(column) ? "image" : undefined;
     const token = fieldToken(column, kind);

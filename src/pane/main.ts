@@ -26,7 +26,7 @@ import {
   blockedReason,
   chosenBlock,
   fieldToken,
-  imageColumns,
+  pictureColumns,
   firstIncludedRow,
   includedRecords,
   nextStep,
@@ -414,6 +414,7 @@ async function useBlock(from: StepId): Promise<void> {
           deckSize,
           block,
           fields: report.fields,
+          imageFields: report.imageFields,
           notice: undefined,
           // The note said "press Check the slides", and this is that press.
           // The list of fields below is the answer now.
@@ -519,7 +520,7 @@ async function insertField(column: string): Promise<void> {
   if (state.running || inserting) return;
   inserting = true;
   // The IMAGE form for an image column, so the chip and the token agree.
-  const token = fieldToken(column, imageColumns(state).includes(column) ? "image" : undefined);
+  const token = fieldToken(column, pictureColumns(state).includes(column) ? "image" : undefined);
   try {
     const done = await insertTextAtCursor(token);
     if (done.ok) {
@@ -674,7 +675,7 @@ async function merge(): Promise<void> {
       deckSize: outcome.deckAtStart + outcome.added,
       // The fields the RUN found, which is the authority: `inspectBlock` read
       // them before the merge and this is the same read after it.
-      ...(outcome.fields.length > 0 ? { fields: outcome.fields } : {}),
+      ...(outcome.fields.length > 0 ? { fields: outcome.fields, imageFields: outcome.imageFields } : {}),
       // Only a run that ADDED something disarms the button. A refusal that
       // added nothing should leave the user able to press again.
       ...(outcome.added > 0 ? { added: outcome.added } : {}),
@@ -703,6 +704,7 @@ async function merge(): Promise<void> {
         deckAtStart: before,
         runId: "recovered",
         fields: [],
+        imageFields: [],
         unknownConditions: [],
       };
     }
@@ -780,7 +782,7 @@ async function preview(): Promise<void> {
       previewing: true,
       previewSlides: { from, to: outcome.deckAtStart + outcome.added },
       deckSize: outcome.deckAtStart + outcome.added,
-      ...(outcome.fields.length > 0 ? { fields: outcome.fields } : {}),
+      ...(outcome.fields.length > 0 ? { fields: outcome.fields, imageFields: outcome.imageFields } : {}),
       notice: undefined,
     };
   } catch (e) {
@@ -974,6 +976,7 @@ void Office.onReady(() => {
           deckAtStart: crumb.deckAtStart,
           runId: crumb.runId,
           fields: [],
+          imageFields: [],
           unknownConditions: [],
         };
         state = {
