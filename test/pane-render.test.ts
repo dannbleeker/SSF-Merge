@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { render } from "../src/pane/render.js";
 import type { PaneState } from "../src/pane/steps.js";
-import { readPastedTable } from "../src/pane/steps.js";
+import { readPastedTable, STEPS } from "../src/pane/steps.js";
 import { toRecordSet } from "../src/core/data/recordset.js";
 
 const ready: PaneState = {
@@ -800,5 +800,80 @@ describe("the sentence above the merge button", () => {
     const plain = { ...withCondition, conditions: undefined };
     const text = paneFor(plain, "merge").querySelector(".facts")?.textContent ?? "";
     expect(text).toContain("9 slides added after slide 10");
+  });
+});
+
+describe("every control the pane draws can be named", () => {
+  /**
+   * A control with no accessible name is announced as its type and nothing
+   * else — "button", "edit" — so a screen-reader user is told there is
+   * something here and not what it does.
+   *
+   * Swept across every step rather than asserted control by control, because
+   * the one that was missing had been added later than the pattern: every other
+   * control on this pane sits inside a `<label>` carrying its caption, and the
+   * picture picker is a `<div>` — it holds a tally and a missing-file list as
+   * well — so its caption sat beside the input and was attached to nothing.
+   * It is the only control on the pane that attaches the pictures.
+   *
+   * Three rules, all of them things a browser or a reader will act on: a name
+   * for every control, no duplicated id, and no button that says nothing.
+   */
+  const records = toRecordSet([
+    ["Name", "Photo", "Renewal"],
+    ["Ada", "ada.png", "yes"],
+    ["Bo", "bo.png", "no"],
+  ]);
+
+  /** Everything open at once, so every branch of the pane is drawn. */
+  const rich: PaneState = {
+    block: { from: 3, to: 5 },
+    fields: ["Name", "Photo", "Nickname"],
+    imageFields: ["Photo"],
+    columns: ["Name", "Photo", "Renewal"],
+    records,
+    rows: 2,
+    previewing: false,
+    deckSize: 10,
+    draft: { from: "3", to: "5" },
+    paste: "Name\tPhoto\nAda\tada.png",
+    conditions: { 4: "Renewal" },
+    rowsOpen: true,
+    conditionsOpen: true,
+    notice: "something the host said",
+    fieldNote: "{{Name}} put on the slide.",
+  };
+
+  it.each(STEPS.map((s) => [s]))("on step %s", (step) => {
+    const root = paneFor(rich, step);
+    const faults: string[] = [];
+
+    const seen = new Map<string, number>();
+    for (const node of Array.from(root.querySelectorAll("[id]"))) {
+      const id = node.getAttribute("id") as string;
+      seen.set(id, (seen.get(id) ?? 0) + 1);
+    }
+    for (const [id, n] of seen) if (n > 1) faults.push(`id "${id}" appears ${n} times`);
+
+    for (const control of Array.from(root.querySelectorAll("input, select, textarea"))) {
+      const named =
+        control.closest("label") !== null ||
+        control.hasAttribute("aria-label") ||
+        control.hasAttribute("aria-labelledby") ||
+        (control.id !== "" && root.querySelector(`label[for="${control.id}"]`) !== null);
+      if (!named)
+        faults.push(`<${control.tagName.toLowerCase()} ${control.getAttribute("data-field") ?? ""}> has no name`);
+    }
+
+    for (const button of Array.from(root.querySelectorAll("button"))) {
+      if ((button.textContent ?? "").trim() === "" && !button.hasAttribute("aria-label")) {
+        faults.push("a button says nothing");
+      }
+    }
+
+    expect(faults).toEqual([]);
+    // A step that drew no controls at all would pass the three rules above
+    // while proving nothing, so say that it drew something.
+    expect(root.querySelectorAll("button, input, select, textarea").length).toBeGreaterThan(0);
   });
 });

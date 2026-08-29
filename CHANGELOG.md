@@ -7,6 +7,27 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — the picture picker had no name
+
+Every control on this pane sits inside a `<label>` carrying its caption. The
+picture picker does not: its block is a `<div>`, because it holds a tally and a
+missing-file list as well, so the caption sat beside the input and was attached
+to nothing underneath it.
+
+A file input with no accessible name is announced as an unlabelled button — the
+user is told there is something there and not what it does — and it is the only
+control on the pane that attaches the pictures.
+
+Named with an attribute rather than by moving the caption into a `<label>`,
+because the caption is one of several children and re-nesting it is a layout
+change a test cannot verify.
+
+Found by sweeping every step for three things a browser or a screen reader will
+act on: a name for every control, no duplicated id, and no button that says
+nothing. One fault across all five steps, and the sweep is now a test — the
+control that was missing had been added later than the pattern, which is the
+kind nobody writes a case for.
+
 ### Fixed — a failed merge could explain itself as "[object Object]"
 
 `readable` turns whatever was thrown into the sentence the user is given. Its
