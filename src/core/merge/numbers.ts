@@ -28,7 +28,7 @@
  */
 import JSZip from "jszip";
 import { Pkg, resolveTarget } from "../pptx/pkg.js";
-import { C_NS, PKG_REL_NS, R_NS, SSML_NS, elements, parseXml, serializeXml } from "../pptx/xml.js";
+import { C_NS, CX_NS, PKG_REL_NS, R_NS, SSML_NS, children, elements, parseXml, serializeXml } from "../pptx/xml.js";
 import { numericValue } from "../data/format.js";
 import { fieldPattern, type Resolve } from "./text.js";
 
@@ -235,6 +235,91 @@ function writeNumber(sheet: Document, cell: Element, value: number): void {
 }
 
 /**
+ * One series' cached numbers: the range they came from, and how to rewrite each.
+ *
+ * A classic chart and a modern one keep the same fact in different markup, and
+ * everything between the two — reading the range, finding the cell, resolving
+ * the placeholder, refusing what will not parse — is identical. So the shapes
+ * are collected into this and the pass below is written once. A second copy of
+ * that logic is how the two would come to disagree about which cells hold a
+ * placeholder, and `chartValueFields` reports to the pane from the same walk.
+ */
+export interface CachedSeries {
+  /** The `<c:f>` or `<cx:f>` range. Empty when the chart carries literal data
+   * and names no cells, which `cellsOfFormula` refuses like any other range it
+   * cannot read. */
+  formula: string;
+  points: { idx: number; write: (value: number) => void }[];
+}
+
+/** A classic chart: `<c:numRef>` holding `<c:f>` and a `<c:numCache>` of `<c:pt><c:v>`. */
+function classicSeries(chart: Document): CachedSeries[] {
+  const out: CachedSeries[] = [];
+  for (const ref of elements(chart, C_NS, "numRef")) {
+    const cache = elements(ref, C_NS, "numCache")[0];
+    if (!cache) continue;
+    out.push({
+      formula: elements(ref, C_NS, "f")[0]?.textContent ?? "",
+      points: elements(cache, C_NS, "pt").map((pt) => ({
+        idx: Number(pt.getAttribute("idx") ?? "-1"),
+        write: (value) => {
+          const v = elements(pt, C_NS, "v")[0];
+          if (v) v.textContent = String(value);
+        },
+      })),
+    });
+  }
+  return out;
+}
+
+/**
+ * A modern chart: `<cx:numDim>` holding `<cx:f>` and a `<cx:lvl>` of `<cx:pt>`.
+ *
+ * Three differences from the classic shape, and each one is a way to get this
+ * wrong:
+ *
+ * - a `<cx:pt>` carries its number as TEXT, with no `<c:v>` inside it;
+ * - the cache is a `<cx:lvl>`, and a dimension may hold SEVERAL. A multi-level
+ *   numeric dimension's range is a rectangle, which `cellsOfFormula` refuses
+ *   anyway — but it is refused here too and by name, because "the other refusal
+ *   happens to cover it" is the kind of reasoning that stops being true;
+ * - the `<cx:f>` is OPTIONAL. A dimension may carry literal data with no
+ *   workbook behind it at all, and then there is no cell to fill.
+ *
+ * Every numeric dimension is taken whatever its `type` — `val`, `size`, `x`,
+ * `y` or `colorVal`. A sunburst and a treemap plot from `size` where a waterfall
+ * plots from `val`, so a reader that keyed on `val` would fill some modern
+ * charts and silently skip others.
+ *
+ * `children` rather than a descendant search, so each read is tied to the
+ * element that owns it: the points of ONE level, the formula of THIS dimension.
+ * It is not what keeps a category label safe — a `<cx:strDim>` is not inside a
+ * `<cx:numDim>`, so nothing here could reach one either way. What keeps the two
+ * apart is starting from `numDim` at all.
+ *
+ * Exported for the tests that cannot be reached through a deck: nothing this
+ * project can author writes a multi-level numeric dimension or a dimension with
+ * no formula, and a refusal no test can drive is a refusal nobody can check.
+ */
+export function modernSeries(chart: Document): CachedSeries[] {
+  const out: CachedSeries[] = [];
+  for (const dim of elements(chart, CX_NS, "numDim")) {
+    const levels = children(dim, CX_NS, "lvl").filter((lvl) => children(lvl, CX_NS, "pt").length > 0);
+    if (levels.length !== 1) continue;
+    out.push({
+      formula: children(dim, CX_NS, "f")[0]?.textContent ?? "",
+      points: children(levels[0]!, CX_NS, "pt").map((pt) => ({
+        idx: Number(pt.getAttribute("idx") ?? "-1"),
+        write: (value) => {
+          pt.textContent = String(value);
+        },
+      })),
+    });
+  }
+  return out;
+}
+
+/**
  * Fill one chart's values from the row, in both places that hold them.
  *
  * The chart document is mutated in place, the way every other merge pass here
@@ -278,8 +363,8 @@ export async function mergeChartNumbers(
   const chart = await pkg.doc(chartPath);
   let touched = false;
 
-  for (const ref of elements(chart, C_NS, "numRef")) {
-    const formula = elements(ref, C_NS, "f")[0]?.textContent ?? "";
+  for (const series of [...classicSeries(chart), ...modernSeries(chart)]) {
+    const { formula } = series;
     const cells = cellsOfFormula(formula);
     if (!cells) continue;
     // Resolved once per series rather than per point.
@@ -293,12 +378,9 @@ export async function mergeChartNumbers(
     const title = sheetOfFormula(formula);
     const named = title === null ? undefined : worksheets.byTitle.get(title);
     const sheetPath = named ?? (worksheets.paths.length === 1 ? worksheets.paths[0] : undefined);
-    const cache = elements(ref, C_NS, "numCache")[0];
-    if (!cache) continue;
 
-    for (const pt of elements(cache, C_NS, "pt")) {
-      const idx = Number(pt.getAttribute("idx") ?? "-1");
-      const address = cells[idx];
+    for (const point of series.points) {
+      const address = cells[point.idx];
       if (address === undefined) continue;
 
       // The sheet `<c:f>` NAMES, never whichever one happens to hold the
@@ -328,8 +410,7 @@ export async function mergeChartNumbers(
       }
 
       writeNumber(doc!, cell, value);
-      const v = elements(pt, C_NS, "v")[0];
-      if (v) v.textContent = String(value);
+      point.write(value);
       out.filled++;
       touched = true;
     }

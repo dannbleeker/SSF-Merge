@@ -689,9 +689,9 @@ never see the notice.
 series NAMES, and every SmartArt box. The workbook behind the chart is merged
 too, so the labels are still right if you click Edit Data on a merged slide.
 
-**The numbers too, from the chart's own data sheet.** Right-click the chart,
-press **Edit Data**, and type `{{Revenue}}` into a value cell the way you would
-type a number. Each merged copy then gets that row's figure, written both into
+**The numbers too, from the chart's own data sheet — in a modern chart as well
+as an ordinary one.** Right-click the chart, press **Edit Data**, and type
+`{{Revenue}}` into a value cell the way you would type a number. Each merged copy then gets that row's figure, written both into
 the sheet and into the chart itself — so the bars differ per recipient, and Edit
 Data still agrees with what is drawn.
 

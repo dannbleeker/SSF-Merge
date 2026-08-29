@@ -20,7 +20,8 @@ import { prepareBlock } from "../src/core/merge/prepare.js";
 import { buildPlan } from "../src/core/merge/plan.js";
 import { runPlan } from "../src/core/merge/run.js";
 import { toRecordSet } from "../src/core/data/recordset.js";
-import { cellsOfFormula, sheetOfFormula } from "../src/core/merge/numbers.js";
+import { cellsOfFormula, modernSeries, sheetOfFormula } from "../src/core/merge/numbers.js";
+import { parseXml } from "../src/core/pptx/xml.js";
 import { makeDeck, type ChartSpec } from "./fixtures/deck.js";
 
 const ROWS = [
@@ -320,5 +321,60 @@ describe("a workbook whose worksheet part is not named sheet1.xml", () => {
     // worksheet lives in that folder either.
     const out = await mergeRenamed("xl/data.xml");
     expect(out.graphics.numbers).toEqual({ filled: 1, refused: 0 });
+  });
+});
+
+describe("which cached numbers a MODERN chart offers", () => {
+  // Two shapes the format allows and nothing here can author, so they are
+  // driven directly rather than through a deck. Both are refusals, and a
+  // refusal no test can reach is one nobody can check.
+  const dim = (inner: string) =>
+    parseXml(
+      `<cx:chartSpace xmlns:cx="http://schemas.microsoft.com/office/drawing/2014/chartex">` +
+        `<cx:numDim type="val">${inner}</cx:numDim></cx:chartSpace>`,
+    );
+
+  it("reads the one level a dimension normally has", () => {
+    const series = modernSeries(
+      dim(`<cx:f>Sheet1!$B$2:$B$3</cx:f><cx:lvl ptCount="2"><cx:pt idx="0">1</cx:pt><cx:pt idx="1">2</cx:pt></cx:lvl>`),
+    );
+    expect(series).toHaveLength(1);
+    expect(series[0]?.formula).toBe("Sheet1!$B$2:$B$3");
+    expect(series[0]?.points.map((p) => p.idx)).toEqual([0, 1]);
+  });
+
+  it("ignores an empty level beside a full one", () => {
+    // A sunburst's category dimension carries a trailing `<cx:lvl ptCount="0"/>`,
+    // and a numeric one may too. Counting it would make the dimension look
+    // multi-level and refuse a perfectly ordinary series.
+    const series = modernSeries(
+      dim(`<cx:f>Sheet1!$B$2</cx:f><cx:lvl ptCount="1"><cx:pt idx="0">1</cx:pt></cx:lvl><cx:lvl ptCount="0"/>`),
+    );
+    expect(series).toHaveLength(1);
+  });
+
+  it("refuses a dimension with more than one populated level", () => {
+    // Its range is a rectangle, and which level is which column is a guess.
+    // `cellsOfFormula` would refuse the rectangle anyway; this does not rely on
+    // that, because "the other refusal happens to cover it" stops being true
+    // the moment somebody writes a multi-level dimension over a single column.
+    const series = modernSeries(
+      dim(
+        `<cx:f>Sheet1!$A$2:$B$3</cx:f>` +
+          `<cx:lvl ptCount="2"><cx:pt idx="0">1</cx:pt><cx:pt idx="1">2</cx:pt></cx:lvl>` +
+          `<cx:lvl ptCount="2"><cx:pt idx="0">3</cx:pt><cx:pt idx="1">4</cx:pt></cx:lvl>`,
+      ),
+    );
+    expect(series).toEqual([]);
+  });
+
+  it("offers a dimension with no formula, and the empty range refuses it", () => {
+    // `<cx:f>` is optional: a dimension may carry literal data with no workbook
+    // behind it. There is then no cell to fill, and the empty formula is
+    // refused by the same reader that refuses a range it cannot parse.
+    const series = modernSeries(dim(`<cx:lvl ptCount="1"><cx:pt idx="0">1</cx:pt></cx:lvl>`));
+    expect(series).toHaveLength(1);
+    expect(series[0]?.formula).toBe("");
+    expect(cellsOfFormula(series[0]?.formula ?? "")).toBeNull();
   });
 });

@@ -606,7 +606,15 @@ export async function makeDeck(slides: SlideSpec[]): Promise<Uint8Array> {
     if (spec.modernChart) {
       zip.file(`ppt/charts/chartEx${n}.xml`, modernChartXml(spec.modernChart));
       if (spec.modernChart.workbook) {
-        zip.file(`ppt/embeddings/Modern_Worksheet${n}.xlsx`, await workbookBytes(spec.modernChart.workbook));
+        // The VALUES go in as well, exactly as the classic branch above does
+        // it. Without them the sheet had a category column and no value column
+        // at all, so a placeholder in `<cx:numDim>` named a cell that did not
+        // exist and the numeric merge could not be reached — the fixture, not
+        // the engine, was what made a modern chart's values unmergeable.
+        zip.file(
+          `ppt/embeddings/Modern_Worksheet${n}.xlsx`,
+          await workbookBytes(spec.modernChart.workbook, spec.modernChart.values ?? []),
+        );
         zip.file(
           `ppt/charts/_rels/chartEx${n}.xml.rels`,
           `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n<Relationships ${REL}>` +

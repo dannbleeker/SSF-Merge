@@ -28,9 +28,9 @@ import { A_NS, CX_NS, MC_NS, PKG_REL_NS, SSML_NS, child, children, elements, par
 import { makeDeck, type ModernChartSpec, type SlideSpec } from "./fixtures/deck.js";
 
 const ROWS = [
-  ["Name", "Region"],
-  ["Ada", "Nordics"],
-  ["Grace", "Benelux"],
+  ["Name", "Region", "Revenue"],
+  ["Ada", "Nordics", "1250000"],
+  ["Grace", "Benelux", "880000"],
 ];
 
 const FUNNEL: ModernChartSpec = {
@@ -125,6 +125,59 @@ describe("a modern chart is merged", () => {
     // And the same field one element over IS filled, so this is scoping rather
     // than the merge having missed the part altogether.
     expect(pointsIn(doc, "strDim")).toEqual(["Nordics"]);
+  });
+
+  it("fills a plotted VALUE from the workbook cell it was typed into", async () => {
+    // The placeholder cannot go in `<cx:pt>` — that has to parse as a number,
+    // and a chart carrying `{{Revenue}}` there is one PowerPoint reads as
+    // corrupt. It goes where the value actually lives: the cell somebody typed
+    // it into through Edit Data. Then BOTH copies of the number have to move —
+    // the cell, which Excel shows, and the `<cx:lvl>` cache, which PowerPoint
+    // draws from without opening the workbook at all.
+    //
+    // `<cx:f>` is what joins them, exactly as `<c:f>` does for a classic chart.
+    const spec = { ...FUNNEL, values: ["{{Revenue}}", "42"] };
+    const { result, zip } = await mergeDeck({ paragraphs: [["Cover"]], modernChart: spec });
+    expect(result.graphics.numbers).toEqual({ filled: 2, refused: 0 });
+    expect(pointsIn(await chartOf(zip, MERGED_SLIDES[0] ?? ""), "numDim")).toEqual(["1250000", "42"]);
+    expect(pointsIn(await chartOf(zip, MERGED_SLIDES[1] ?? ""), "numDim")).toEqual(["880000", "42"]);
+  });
+
+  it("turns that workbook cell back into a number, so Edit Data does not undo it", async () => {
+    // A cell holding text plots nothing. Closing Excel refreshes the chart from
+    // the workbook, so a merge that filled only the cache reverts the moment
+    // the user clicks Edit Data and closes it again — the half-merge this
+    // engine already knows about from the text side.
+    const spec = { ...FUNNEL, values: ["{{Revenue}}", "42"] };
+    const { zip } = await mergeDeck({ paragraphs: [["Cover"]], modernChart: spec });
+    const chart = (await related(zip, MERGED_SLIDES[0] ?? "", "/chartEx"))[0] ?? "";
+    const book = (await related(zip, chart, "/package"))[0] ?? "";
+    const inner = await JSZip.loadAsync((await zip.file(book)?.async("uint8array")) ?? new Uint8Array());
+    const sheet = parseXml((await inner.file("xl/worksheets/sheet1.xml")?.async("string")) ?? "");
+    const cell = elements(sheet, SSML_NS, "c").find((c) => c.getAttribute("r") === "B2");
+    // No `t` at all is what makes a cell numeric, and the `<v>` is the number.
+    expect(cell?.getAttribute("t")).toBeNull();
+    expect(child(cell as Element, SSML_NS, "v")?.textContent).toBe("1250000");
+  });
+
+  it("reports a field that is only in a value cell, so the pane offers a column", async () => {
+    // Reported from the same walk that fills them, not a second reader: a
+    // scanner with its own opinion of which cells hold a placeholder is free to
+    // disagree with the merge, and the pane would then offer a column that
+    // fills nothing, or none for a cell that does.
+    const spec = { ...FUNNEL, title: undefined, categories: ["one", "two"], series: undefined, values: ["{{Revenue}}", "42"] };
+    const { prepared } = await mergeDeck({ paragraphs: [["Cover"]], modernChart: spec });
+    expect(prepared.ok && [...prepared.fields].sort()).toEqual(["Revenue"]);
+  });
+
+  it("refuses a value that will not be a number, and says so rather than guessing", async () => {
+    // `{{Region}}` resolves to "Nordics", which is not a bar height. Guessing
+    // zero would draw a chart the data never said, so the cache keeps what it
+    // had and the run reports the refusal.
+    const spec = { ...FUNNEL, values: ["{{Region}}", "42"] };
+    const { result, zip } = await mergeDeck({ paragraphs: [["Cover"]], modernChart: spec });
+    expect(result.graphics.numbers).toEqual({ filled: 0, refused: 2 });
+    expect(pointsIn(await chartOf(zip, MERGED_SLIDES[0] ?? ""), "numDim")).toEqual(["{{Region}}", "42"]);
   });
 
   it("fills the series name, which is cx:tx/cx:txData/cx:v", async () => {
