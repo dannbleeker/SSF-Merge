@@ -7,6 +7,34 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed — `sweepPlan` checks the count it deletes by, and states its rules as properties
+
+`sweepPlan` decides which slides an undo removes from somebody's presentation.
+It integer-checked the two deck counts and trusted the third — `added`, the one
+that decides how many slides come out.
+
+`added: NaN` walked every clamp untouched. `grew > NaN` is false,
+`Math.min(NaN, grew)` is NaN, `NaN <= 0` is false, `NaN < deckAtStart` is false,
+and `{ from: NaN, count: NaN }` came back out of the function whose whole job is
+refusing to produce a plan it cannot justify.
+
+Nothing can reach it today: `added` is a step count and the types carry it. It
+is checked because the other two are, and because a reader comparing the three
+has to see one rule rather than work out which one is trusted.
+
+The rules are now also asserted over the whole space — every combination of the
+three counts up to 12, 20 and 12 — rather than at the points somebody thought
+of: a plan may not reach a slide the user owned, may not reach past the end of
+the deck, may not remove more than the run added, may not be empty or
+fractional, and may not exist at all when the deck grew by more than the run
+added. **No violation was found.**
+
+That last property is there because the first four cannot see it. A plan built
+after a stranger appended slides still starts past `deckAtStart` and still ends
+at the deck's end — it satisfies every structural rule and is still somebody
+else's slides. Removing the guard for it left the four happy; only the stated
+property and an existing point test noticed.
+
 ### Fixed — step 4 named the wrong thing to do while a preview was on the slides
 
 `blockedReason` promises that every sentence it returns "names the thing the
