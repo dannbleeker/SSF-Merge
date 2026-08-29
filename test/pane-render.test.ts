@@ -533,7 +533,11 @@ describe("the run record is reachable", () => {
 });
 
 describe("a finished merge offers the slides back", () => {
-  const landed = { ...ready, added: 720, deckSize: 732 };
+  // `deckAtStart` belongs with `added`: the card's range comes from `sweepPlan`
+  // now, and a positional offer needs both — how many slides, and from where.
+  // Without it there is no offer at all, which is the right answer rather than
+  // a guessed range.
+  const landed = { ...ready, added: 720, deckSize: 732, deckAtStart: 12 };
 
   it("names the slides it would remove, not just 'undo'", () => {
     // This deletes part of somebody's presentation. The sentence says which
@@ -552,7 +556,15 @@ describe("a finished merge offers the slides back", () => {
 
   it("is not offered when nothing was added", () => {
     expect(paneFor({ ...ready }, "merge").querySelector(".card.undo")).toBeNull();
-    expect(paneFor({ ...ready, added: 0 }, "merge").querySelector(".card.undo")).toBeNull();
+    expect(paneFor({ ...ready, added: 0, deckAtStart: 12 }, "merge").querySelector(".card.undo")).toBeNull();
+  });
+
+  it("is not offered when the deck has moved on since the merge", () => {
+    // Somebody appended five slides after the run. The last 720 are no longer
+    // the run's own, `sweepPlan` refuses, and the card has to refuse with it —
+    // it used to name a range counted back from the end of the deck, which in
+    // this case is 725 of somebody else's slides.
+    expect(paneFor({ ...landed, deckSize: 737 }, "merge").querySelector(".card.undo")).toBeNull();
   });
 
   it("disables the button while a call is out", () => {

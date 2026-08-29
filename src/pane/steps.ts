@@ -178,6 +178,18 @@ export interface PaneState {
    * which is the only way back to an armed button.
    */
   added?: number;
+  /**
+   * How many slides the deck held BEFORE that merge.
+   *
+   * The undo card is a positional offer, and position means nothing without
+   * this: `added` alone says how many slides to take, not which. With the
+   * deck's size now it says both, and it says them through `sweepPlan`, so the
+   * sentence on the card is the range the button removes.
+   *
+   * Set wherever `added` is — after a run, and from the crash crumb, which has
+   * carried it since it was written.
+   */
+  deckAtStart?: number;
 }
 
 /**

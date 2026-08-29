@@ -7,6 +7,25 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — the undo card names the slides that will actually go
+
+After a merge the pane offers "Remove slides 13 to 732, which this merge added".
+It worked out that range by counting backwards from the end of the deck, and the
+button works it out from where the run started — so the moment the deck moved
+between the merge and the press, the two disagreed:
+
+- a co-author appends five slides, and the card offered to remove THEIR five by
+  number;
+- you take three of the merged slides out by hand, and the card offered a range
+  starting three slides before the merge did;
+- you take them all out, and the card offered five slides that pre-date the
+  merge entirely.
+
+Pressing was safe throughout — the sweep refuses anything it cannot prove the
+run added — so this was a sentence naming your own slides, and a button that
+then did nothing. The card asks the sweep now, so it names the range that will
+go, or says there is nothing to take back.
+
 ### Fixed — a pasted table with an inch mark in a header is read correctly
 
 `Size 6" pipe` as a column name could make the whole paste read as one column:

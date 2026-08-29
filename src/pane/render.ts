@@ -157,11 +157,12 @@ export function render(root: HTMLElement, state: PaneState, current: StepId): vo
   if (
     state.added &&
     state.deckSize !== undefined &&
-    undoIsPossible(state.added, state.deckSize) &&
+    state.deckAtStart !== undefined &&
+    undoIsPossible(state.added, state.deckSize, state.deckAtStart) &&
     current === "merge"
   ) {
     const card = el(doc, "div", { class: "card undo" });
-    card.append(el(doc, "p", { text: undoSummary(state.added, state.deckSize) }));
+    card.append(el(doc, "p", { text: undoSummary(state.added, state.deckSize, state.deckAtStart) }));
     card.append(
       el(doc, "button", {
         class: "secondary",

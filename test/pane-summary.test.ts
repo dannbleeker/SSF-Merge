@@ -79,17 +79,17 @@ describe("what an undo takes back", () => {
   it("names the slides rather than saying 'undo'", () => {
     // The pane is offering to delete part of somebody's presentation, and the
     // sentence should say so.
-    expect(undoSummary(720, 732)).toBe("Remove slides 13 to 732, which this merge added.");
+    expect(undoSummary(720, 732, 12)).toBe("Remove slides 13 to 732, which this merge added.");
   });
 
   it("does not say 'slides 732 to 732' for a single slide", () => {
-    expect(undoSummary(1, 732)).toBe("Remove slide 732, which this merge added.");
+    expect(undoSummary(1, 732, 731)).toBe("Remove slide 732, which this merge added.");
   });
 
   it("says there is nothing to take back rather than naming a range that is not there", () => {
     // A merge that added nothing must not offer to delete slide 13 to 12.
-    expect(undoSummary(0, 12)).toBe("Nothing to take back.");
-    expect(undoSummary(-3, 12)).toBe("Nothing to take back.");
+    expect(undoSummary(0, 12, 12)).toBe("Nothing to take back.");
+    expect(undoSummary(-3, 12, 12)).toBe("Nothing to take back.");
   });
 
   it("says when a condition did nothing", () => {
@@ -122,12 +122,54 @@ describe("what an undo takes back", () => {
      * the SENTENCE was the defect, because it said the slides were there and
      * named them.
      */
-    expect(undoSummary(720, 12)).toBe("Nothing to take back.");
-    expect(undoIsPossible(720, 12)).toBe(false);
+    // A deck of 12, a run that claims 720, and 12 slides there now: the run's
+    // output is gone and what remains is what was there before it.
+    //
+    // The numbers say this differently from how they used to. "Too small to
+    // hold the run's output" was measured from ZERO, because that was all the
+    // card knew; it is measured from where the run started now, which is the
+    // question that was always meant. A deck that began EMPTY and holds 12 of a
+    // claimed 720 is a different case and gets a different answer below —
+    // rightly, because nothing else has ever been in it.
+    expect(undoSummary(720, 12, 12)).toBe("Nothing to take back.");
+    expect(undoIsPossible(720, 12, 12)).toBe(false);
+    expect(undoIsPossible(13, 12, 12)).toBe(false);
     // The boundary: a deck holding exactly the run's output and nothing else.
-    expect(undoIsPossible(12, 12)).toBe(true);
-    expect(undoSummary(12, 12)).toBe("Remove slides 1 to 12, which this merge added.");
-    expect(undoIsPossible(13, 12)).toBe(false);
+    expect(undoIsPossible(12, 12, 0)).toBe(true);
+    expect(undoSummary(12, 12, 0)).toBe("Remove slides 1 to 12, which this merge added.");
+    // And the same deck, where the run claims one more slide than ever
+    // arrived. The twelve that are there can only be the run's, so they are
+    // offered — `undoInsert` counts the deck again afterwards and reports what
+    // actually went.
+    expect(undoSummary(13, 12, 0)).toBe("Remove slides 1 to 12, which this merge added.");
+  });
+
+  it("names the range the button will actually remove, not one counted from the end", () => {
+    /**
+     * Three ways the deck can move between the merge and the press, and the
+     * card was wrong in all three. It computed its range backwards from the END
+     * of the deck; `sweepPlan` computes it from where the run started, and
+     * `sweepPlan` is what the button calls.
+     *
+     * The button was safe throughout — it refuses what it cannot prove is the
+     * run's own. What the user READ was the defect, and on a card whose whole
+     * design principle is that it is offering to delete part of somebody's
+     * presentation and the sentence should say which part.
+     */
+    // A colleague appended five slides after the merge. Slides 16 to 20 are
+    // THEIRS; the merge's own are 11 to 15 and no longer identifiable by
+    // position, which is why the sweep refuses.
+    expect(undoSummary(5, 20, 10)).toBe("Nothing to take back.");
+    expect(undoIsPossible(5, 20, 10)).toBe(false);
+
+    // The user took three of the merged slides out by hand. Two are left, and
+    // they are the last two — not a five-slide range starting three slides
+    // before the merge did.
+    expect(undoSummary(5, 12, 10)).toBe("Remove slides 11 to 12, which this merge added.");
+
+    // The user took them all out. Nothing of the merge is left, and the five
+    // slides at the end of the deck are the user's own.
+    expect(undoSummary(5, 10, 10)).toBe("Nothing to take back.");
   });
 });
 
