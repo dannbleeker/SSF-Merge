@@ -24,7 +24,7 @@ import { prepareBlock } from "../src/core/merge/prepare.js";
 import { buildPlan } from "../src/core/merge/plan.js";
 import { runPlan } from "../src/core/merge/run.js";
 import { toRecordSet } from "../src/core/data/recordset.js";
-import { A_NS, CX_NS, MC_NS, PKG_REL_NS, SSML_NS, child, elements, parseXml } from "../src/core/pptx/xml.js";
+import { A_NS, CX_NS, MC_NS, PKG_REL_NS, SSML_NS, child, children, elements, parseXml } from "../src/core/pptx/xml.js";
 import { makeDeck, type ModernChartSpec, type SlideSpec } from "./fixtures/deck.js";
 
 const ROWS = [
@@ -209,13 +209,30 @@ describe("the fallback branch a merged copy carries", () => {
     expect(locks[0]?.getAttribute("noTextEdit")).toBe("1");
   });
 
-  it("puts the notice where the chart is", async () => {
+  it("puts the notice where the chart is, at the size the chart is", async () => {
     // Taken from the Choice branch's own frame rather than guessed at, so it
     // does not land somewhere else on the slide.
+    //
+    // The size is checked from INSIDE the notice's `<a:xfrm>`, and the offset
+    // with it, because the frame the box is read from holds a second element
+    // also called `a:ext` — the extension-list entry in `<p:cNvPr>` carrying a
+    // creation id — and it stands earlier in the document. A reader that takes
+    // the first `a:ext` by name takes that one, and the notice then has an
+    // offset and no size at all: a shape a host cannot draw. The fixture's
+    // frame carries the `<a:extLst>` PowerPoint writes precisely so this can
+    // go red.
     const { zip } = await mergeDeck({ paragraphs: [["Cover"]], modernChart: FUNNEL });
-    const ext = elements((await fallbackOf(zip, MERGED_SLIDES[0] ?? "")) as Element, A_NS, "ext")[0];
+    const fallback = (await fallbackOf(zip, MERGED_SLIDES[0] ?? "")) as Element;
+    const xfrm = elements(fallback, A_NS, "xfrm")[0];
+    expect(xfrm, "the notice has no transform at all").toBeDefined();
+    const off = children(xfrm as Element, A_NS, "off")[0];
+    const ext = children(xfrm as Element, A_NS, "ext")[0];
+    expect(off?.getAttribute("x")).toBe("1000000");
+    expect(off?.getAttribute("y")).toBe("500000");
     expect(ext?.getAttribute("cx")).toBe("6000000");
     expect(ext?.getAttribute("cy")).toBe("4000000");
+    // And nothing else rode along inside it.
+    expect(elements(fallback, A_NS, "ext")).toHaveLength(1);
   });
 
   it("stops relating to the picture, so nothing keeps the old rendering alive", async () => {

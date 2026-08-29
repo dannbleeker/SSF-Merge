@@ -50,6 +50,17 @@ when nothing else on the slide still uses it.
 Nothing from PowerPoint 2016 onwards ever sees this: `mc:Choice` wins wherever
 the format is understood.
 
+"Exactly where the chart is" took a correction before it shipped, from the first
+chartEx deck real PowerPoint had saved rather than a test file. `a:ext` is two
+elements with one name — the SIZE inside a transform, and an extension-list
+entry `<a:ext uri="{GUID}">` where a producer hangs its own markup — and
+PowerPoint writes an extension list in the frame's `<p:cNvPr>`, ahead of the
+transform. So the notice was built from an offset and a creation id, with no
+size at all: a shape a host cannot draw. It is read out of `<p:xfrm>` and
+nowhere else now. The same overloaded-name trap as `<cx:pt>` above, and the
+fixtures had been written without an extension list, so the suite agreed with
+the reader.
+
 ### Changed — the landing page is a landing page
 
 It was a stack of paragraphs with the way in buried mid-sentence. Rendered and
