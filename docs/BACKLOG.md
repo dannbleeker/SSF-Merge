@@ -32,14 +32,19 @@ Blocked by WebView2: blob downloads from a task pane do not work
 ([office-js#1511](https://github.com/OfficeDev/office-js/issues/1511)). The
 route is Graph upload plus a link, or `openBrowserWindow` to a download page.
 
-### A filter expression language
-**Priority: low.** Feasibility: medium.
-Row filters shipped as a searchable checkbox list. An expression — `Region =
-"North" and Revenue > 1000` — is the thing a checkbox list cannot do on 400 rows,
-and it is a parser, an evaluator and an error surface on a 340 px pane. Usage
-will say whether it is worth answering; nothing has asked for it yet.
-
 ## Rejected — do not re-propose
+
+- **A filter expression language.** Dropped by the owner on 2026-08-29. Row
+  filters shipped as a searchable checkbox list and nothing has asked for more.
+  The entry stood on a guess about what users would eventually want, which is
+  the weakest reason to carry work: an expression like `Region = "North" and
+  Revenue > 1000` is a parser, an evaluator and an error surface, on a 340 px
+  pane, for a problem no one has reported having.
+
+  Reviving it means somebody hitting the wall the checkbox list actually has —
+  a filter too long to tick on a few hundred rows — and saying so. That is a
+  fact about usage rather than a prediction, and it is what this entry was
+  waiting for and never got.
 
 - **A Danish locale.** Dropped by the owner on 2026-08-27. The entry that
   carried it was wrong about the cost in the direction that matters: it claimed
