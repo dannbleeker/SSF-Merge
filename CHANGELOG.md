@@ -7,6 +7,38 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — one definition of a number, and one of a written date
+
+Two pairs of functions each answered the same question two ways, and in both
+cases the disagreement reached a slide.
+
+**A number.** `detectType` asked a regex; `numericValue` finished with a bare
+`Number()`, which is a far wider gate. `Number()` reads `0x10` as sixteen,
+`0b11` as three, `0o17` as fifteen and `1e3` as a thousand. A column of product
+codes was therefore typed as text — so the pane never offered it as a number —
+and then converted anyway wherever a format spec reached it. A code that turns
+into `16` across a merged deck reads as deliberate, which is what makes it worse
+than a cell left alone. `numericValue` now asks the same exported gate
+`detectType` does, and refuses what a spreadsheet would refuse.
+
+The comment inside `numericValue` had already recorded this shape once, in a
+merge where "half of it rendered formatted and half rendered raw". It was the
+same bug, still open, in the function that described it.
+
+**A written date.** `NAMED_DATE` allowed exactly one separator character between
+the day and the month name. Danish writes the day as an ordinal, so
+`1. marts 2026` — the ordinary long form — is a period AND a space, and was
+refused, while `1 marts 2026` and `1.marts 2026` were admitted. The month-name
+table added for Danish dates was reachable mainly by spellings nobody types.
+
+Widening that gate alone made it briefly worse: `parseDate` carried a private
+copy of the same pattern, so the value typed as `date` and then rendered raw —
+the two-renderings failure again, entered from the other side. Both now match
+with one exported regex, and a test asserts the pair agrees for every value that
+is both well formed and real. Nothing was loosened about ambiguity: `03/01/2026`
+is still refused, because a month spelled out is unambiguous however it is
+punctuated and a slash date is not.
+
 ### Changed — a placeholder with no column warns instead of refusing
 
 The merge step used to refuse to run at all while any placeholder on the slides
