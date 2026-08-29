@@ -373,3 +373,43 @@ describe("one resolver for relationship targets", () => {
     expect(carriers, "a second copy of resolveTarget has appeared").toEqual(["src/core/pptx/pkg.ts"]);
   });
 });
+
+describe("a value gate and the parser behind it", () => {
+  /**
+   * `detectType` asks whether a cell is a number or a date; `applyFormat` asks
+   * for its value. When those two answers come from different patterns they
+   * drift, and the symptom is always the same: a column typed one way,
+   * converted another, rendering half formatted and half raw with nothing on
+   * screen saying why.
+   *
+   * It happened three times in one day — `Number()` accepting `0x10` that the
+   * pattern refused, a widened date gate against a private copy of the pattern
+   * inside `parseDate`, and a grouping pattern admitting `1,234,5` that
+   * `numericValue` could not read.
+   *
+   * So the shapes live with the parsers, and `recordset.ts` asks them. This
+   * guard is the direction of that dependency: one import the other way and the
+   * two files can each hold a pattern again.
+   */
+  it("keeps the shapes in the file that parses them", () => {
+    // RAW, not `codeOf`. That masks string literals, so an import path becomes
+    // `from ""` and a check for one matches nothing and passes — which is what
+    // this guard did on its first outing, against a mutation that reintroduced
+    // exactly the import it was written to forbid.
+    const format = readFileSync("src/core/data/format.ts", "utf8");
+    expect(/from "\.\/recordset\.js"/.test(format), "format.ts reaches back for a gate").toBe(false);
+  });
+
+  it("leaves recordset.ts with no value pattern of its own", () => {
+    /**
+     * Deliberately narrow: `IMAGE_NAME` is a FILE NAME test with no parser
+     * behind it — nothing turns a picture name into a value — so it stays, and
+     * the delimiters `parseDelimited` uses are structure rather than values.
+     * What must not come back is a second opinion about what a number or a date
+     * looks like.
+     */
+    const code = codeOf("src/core/data/recordset.ts");
+    const patterns = [...code.matchAll(/const\s+([A-Z_]+)\s*=\s*\//g)].map((m) => m[1] as string);
+    expect(patterns.filter((n) => n !== "IMAGE_NAME")).toEqual([]);
+  });
+});

@@ -6,7 +6,6 @@
  * rather than in a settings screen means the person who can see the slide is
  * the person who decides how it reads.
  */
-import { NAMED_DATE, looksLikeDate, looksLikeNumber } from "./recordset.js";
 
 const MONTHS_EN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 /**
@@ -29,13 +28,94 @@ const MONTHS_FULL_EN = [
   "December",
 ];
 
+/**
+ * A European "1.234,5" and an American "1,234.5" both mean the same thing, and only one of them parses.
+ *
+ * The grouping separator is captured and the rest of the groups must repeat
+ * THAT one, and a decimal part may not reuse it. Without those two conditions
+ * the pattern admitted `1,234,5`, which no locale writes and `numericValue`
+ * cannot read: the column typed as a number and then rendered raw, which is the
+ * disagreement this whole pair of functions exists to prevent.
+ */
+const NUMBER = /^-?\d{1,3}([ .,])\d{3}(?:\1\d{3})*(?:(?!\1)[.,]\d+)?$|^-?\d+(?:[.,]\d+)?$/;
+
+/**
+ * Whether a cell is a number we are willing to claim — the ONE answer.
+ *
+ * `looksLikeDate` has been the single definition of a date since `format.ts`
+ * started importing it. A number had two: this pattern, which `detectType`
+ * asks, and `Number()` at the end of `numericValue`, which is far broader. They
+ * disagree, and the disagreement is not theoretical — the comment inside
+ * `numericValue` records a merge where "half of it rendered formatted and half
+ * rendered raw" because a column was typed here and converted there.
+ *
+ * What `Number()` admits and a spreadsheet does not: `0x10` is sixteen, `0b11`
+ * is three, `0o17` is fifteen, `1e3` is a thousand, `+7` and `.5` parse. A cell
+ * reading `0x10` is a product code, and turning it into 16 in somebody's deck
+ * is the kind of wrong that looks deliberate.
+ *
+ * Scientific notation is refused with them, which is the one form worth
+ * noticing: it means `1.23E+15` stays text. That is not a change — `detectType`
+ * has always called such a column text, so the pane has never offered it as a
+ * number. This only stops the formatter and the chart writer from disagreeing
+ * with that.
+ */
+function isNumberShape(value: string): boolean {
+  return NUMBER.test(value.trim());
+}
+/** Deliberately narrow. See `looksLikeDate`. */
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}(?:[T ].*)?$/;
+/**
+ * `1 March 2026`, and `1. marts 2026`.
+ *
+ * The separator may be followed by SPACE, which is not a detail: Danish writes
+ * the day as an ordinal, so `1. marts 2026` — the ordinary long form, and the
+ * one this project's own owner writes — is a period AND a space. Requiring
+ * exactly one separator character admitted `1 marts 2026` and `1.marts 2026`
+ * and refused the form anybody actually types.
+ *
+ * The month-name table was added so Danish dates would be read. This is the
+ * shape most of them arrive in, so until now that table was reachable mainly by
+ * spellings nobody uses.
+ *
+ * Nothing is loosened about AMBIGUITY, which is what the refusals below are
+ * for. A month spelled out is unambiguous however it is punctuated; `03/01/2026`
+ * is not, and is still refused.
+ *
+ * Private, and in the same file as the only two things that read it —
+ * `dateShape` and `parseDate`. It was exported to `format.ts` because the two
+ * lived apart, which is how a column got typed `date` by one and refused by the
+ * other; now the shape and the parse are one module and there is nothing to
+ * export.
+ */
+const NAMED_DATE = /^(\d{1,2})[ .\-/]\s*([A-Za-zÆØÅæøå]{3,})[ .\-/]\s*(\d{2,4})$/;
+
+/**
+ * Whether a cell is a date we are willing to claim.
+ *
+ * `03/01/2026` is 3 January in Copenhagen and 1 March in Chicago, and nothing
+ * in the cell says which. A slash date whose first two numbers could both be a
+ * month is refused rather than guessed: a merged deck that draws perfectly and
+ * is two months wrong is worse than one that shows the cell untouched. An
+ * unambiguous slash date still parses.
+ */
+export function dateShape(value: string): boolean {
+  const v = value.trim();
+  if (ISO_DATE.test(v) || NAMED_DATE.test(v)) return true;
+  const slash = /^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/.exec(v);
+  if (!slash) return false;
+  const a = Number(slash[1]);
+  const b = Number(slash[2]);
+  return !(a <= 12 && b <= 12 && a !== b);
+}
+
 /** Parse the number forms a spreadsheet actually produces, including the European one. */
 export function numericValue(raw: string): number | undefined {
   const v = raw.trim();
   if (v === "") return undefined;
   // The same question `detectType` asks, asked once. Without this the two
   // disagreed: a column of `0x10` was typed text and formatted 16.
-  if (!looksLikeNumber(v)) return undefined;
+  if (!isNumberShape(v)) return undefined;
   const hasComma = v.includes(",");
   const hasDot = v.includes(".");
   let normalised = v.replace(/\s/g, "");
@@ -76,7 +156,7 @@ export function numericValue(raw: string): number | undefined {
 }
 
 export function parseDate(raw: string): Date | undefined {
-  if (!looksLikeDate(raw)) return undefined;
+  if (!dateShape(raw)) return undefined;
   const v = raw.trim();
   const slash = /^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/.exec(v);
   if (slash) {

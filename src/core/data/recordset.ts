@@ -7,6 +7,8 @@
  * text, and a number that has been through a float is a number that has lost
  * its thousands separator and sometimes its last digit.
  */
+import { dateShape, numericValue } from "./format.js";
+
 export type ColumnType = "text" | "number" | "date" | "image";
 
 export interface Column {
@@ -21,82 +23,35 @@ export interface RecordSet {
 }
 
 /**
- * A European "1.234,5" and an American "1,234.5" both mean the same thing, and only one of them parses.
+ * Whether a cell is a number we are willing to claim.
  *
- * The grouping separator is captured and the rest of the groups must repeat
- * THAT one, and a decimal part may not reuse it. Without those two conditions
- * the pattern admitted `1,234,5`, which no locale writes and `numericValue`
- * cannot read: the column typed as a number and then rendered raw, which is the
- * disagreement this whole pair of functions exists to prevent.
- */
-const NUMBER = /^-?\d{1,3}([ .,])\d{3}(?:\1\d{3})*(?:(?!\1)[.,]\d+)?$|^-?\d+(?:[.,]\d+)?$/;
-
-/**
- * Whether a cell is a number we are willing to claim — the ONE answer.
+ * Defined AS the parser, not beside it. This pair has disagreed three times —
+ * `Number()` accepting `0x10` where the pattern refused it, and a grouping
+ * pattern admitting `1,234,5` that `numericValue` could not read — and each
+ * time the symptom was a column typed here, converted there, and rendered half
+ * formatted and half raw with nothing saying why.
  *
- * `looksLikeDate` has been the single definition of a date since `format.ts`
- * started importing it. A number had two: this pattern, which `detectType`
- * asks, and `Number()` at the end of `numericValue`, which is far broader. They
- * disagree, and the disagreement is not theoretical — the comment inside
- * `numericValue` records a merge where "half of it rendered formatted and half
- * rendered raw" because a column was typed here and converted there.
- *
- * What `Number()` admits and a spreadsheet does not: `0x10` is sixteen, `0b11`
- * is three, `0o17` is fifteen, `1e3` is a thousand, `+7` and `.5` parse. A cell
- * reading `0x10` is a product code, and turning it into 16 in somebody's deck
- * is the kind of wrong that looks deliberate.
- *
- * Scientific notation is refused with them, which is the one form worth
- * noticing: it means `1.23E+15` stays text. That is not a change — `detectType`
- * has always called such a column text, so the pane has never offered it as a
- * number. This only stops the formatter and the chart writer from disagreeing
- * with that.
+ * A sweep over 6190 arrangements of digits and separators used to assert they
+ * agreed. It still runs, and it is now a tautology, which is the right end
+ * state for a property that should be structural.
  */
 export function looksLikeNumber(value: string): boolean {
-  return NUMBER.test(value.trim());
+  return numericValue(value) !== undefined;
 }
-/** Deliberately narrow. See `looksLikeDate`. */
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}(?:[T ].*)?$/;
-/**
- * `1 March 2026`, and `1. marts 2026`.
- *
- * The separator may be followed by SPACE, which is not a detail: Danish writes
- * the day as an ordinal, so `1. marts 2026` — the ordinary long form, and the
- * one this project's own owner writes — is a period AND a space. Requiring
- * exactly one separator character admitted `1 marts 2026` and `1.marts 2026`
- * and refused the form anybody actually types.
- *
- * The month-name table was added so Danish dates would be read. This is the
- * shape most of them arrive in, so until now that table was reachable mainly by
- * spellings nobody uses.
- *
- * Nothing is loosened about AMBIGUITY, which is what the refusals below are
- * for. A month spelled out is unambiguous however it is punctuated; `03/01/2026`
- * is not, and is still refused.
- *
- * Exported so `parseDate` matches with the pattern that ADMITTED the value.
- * Two copies of this regex is how a column got typed `date` by one and refused
- * by the other, which is exactly the failure the `MONTH_NAMES` note records.
- */
-export const NAMED_DATE = /^(\d{1,2})[ .\-/]\s*([A-Za-zÆØÅæøå]{3,})[ .\-/]\s*(\d{2,4})$/;
 
 /**
  * Whether a cell is a date we are willing to claim.
  *
- * `03/01/2026` is 3 January in Copenhagen and 1 March in Chicago, and nothing
- * in the cell says which. A slash date whose first two numbers could both be a
- * month is refused rather than guessed: a merged deck that draws perfectly and
- * is two months wrong is worse than one that shows the cell untouched. An
- * unambiguous slash date still parses.
+ * NOT defined as `parseDate`, and the difference is deliberate. A date can be
+ * well formed and impossible: `31 Feb 2026` has to pass this and fail the
+ * parse, so the author sees what they typed instead of a silently corrected
+ * day. `dateShape` is that shape test, and it lives beside `parseDate` because
+ * the parser is its only other reader — which is what a private copy of the
+ * pattern in `parseDate` failed to be until it typed a column `date` and then
+ * rendered it raw.
  */
 export function looksLikeDate(value: string): boolean {
-  const v = value.trim();
-  if (ISO_DATE.test(v) || NAMED_DATE.test(v)) return true;
-  const slash = /^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/.exec(v);
-  if (!slash) return false;
-  const a = Number(slash[1]);
-  const b = Number(slash[2]);
-  return !(a <= 12 && b <= 12 && a !== b);
+  return dateShape(value);
 }
 
 /**

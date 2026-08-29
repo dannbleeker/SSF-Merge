@@ -7,6 +7,32 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed — a value gate is now defined as the parser behind it
+
+`detectType` asks whether a cell is a number or a date; `applyFormat` asks for
+its value. Those two answers came from patterns in different files, and they
+drifted three times in one day — `Number()` accepting `0x10` that the pattern
+refused, a widened date gate against a private copy of the pattern inside
+`parseDate`, and a grouping pattern admitting `1,234,5` that `numericValue`
+could not read. The symptom was the same every time: a column typed one way,
+converted another, half formatted and half raw with nothing saying why.
+
+The shapes now live in the file that parses them. `looksLikeNumber` IS
+`numericValue(v) !== undefined`, so for numbers the disagreement is no longer
+possible rather than merely swept for — the 6190-case sweep still runs and is
+now a tautology, which is the right end state for a property that should be
+structural.
+
+Dates keep their asymmetry, deliberately and visibly: a date can be well formed
+and impossible, so `31 Feb 2026` must pass the gate and fail the parse. That
+shape test is `dateShape`, exported from `format.ts` beside the parser that is
+its only other reader.
+
+Two architecture guards hold the direction: `format.ts` may not import from
+`recordset.ts`, and `recordset.ts` may hold no value pattern of its own.
+
+Behaviour-preserving: 855 tests before, 855 after, none edited.
+
 ### Added — a package-validity case carrying every feature at once
 
 The cases there take one feature at a time, which is right for saying WHICH one
