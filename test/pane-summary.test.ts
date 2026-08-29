@@ -313,8 +313,16 @@ describe("describeMerge says what the merge DID", () => {
     expect(describeMerge(values(0, 1))).toContain("that point still shows the template's");
   });
 
-  it("says a zero out loud here too", () => {
-    expect(describeMerge(values(0, 3))).toContain("no chart values were filled");
+  it("does NOT say a zero here, because the refusal already says it", () => {
+    // The asymmetry with the pictures is deliberate. Every value placeholder
+    // either fills or refuses, so a zero here is always a refusal and the
+    // clause below names the count — "no chart values were filled · 3 chart
+    // values did not read as a number" is one fact reported twice. A picture
+    // can be absent for a reason the sentence deliberately does not name, so
+    // there the zero is the only thing said.
+    const line = describeMerge(values(0, 3));
+    expect(line).not.toContain("no chart values were filled");
+    expect(line).toContain("3 chart values did not read as a number");
   });
 
   it("stays silent on a merge with no chart values in it", () => {
