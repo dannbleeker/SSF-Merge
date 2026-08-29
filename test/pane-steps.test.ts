@@ -23,6 +23,8 @@ import {
   plannedSlides,
   pictureColumns,
   imageTally,
+  imageNameClashes,
+  clashingPicturesNote,
   imagesWanted,
   slidesPerRecord,
   statusOf,
@@ -656,6 +658,51 @@ describe("what the picked files cover", () => {
     const s = { ...data(), images: files("ada.png", "grace.jpg", "alan.png", "logo.png") };
     expect(imageTally(s)).toMatchObject({ matched: 3, missing: [], spare: ["logo.png"] });
   });
+
+  /**
+   * The hole the two rules above leave between them.
+   *
+   * Cells may carry folders and matching is by base name — both deliberate,
+   * because a browser's file picker hands back `File.name` and that has no
+   * path. Two cells that differ ONLY by the folder are therefore two pictures
+   * to the author and one name to everything else: `imageTally` calls both
+   * matched, the merge fills both from the same file, and one slide carries
+   * the wrong picture with nothing having said so.
+   */
+  it("says when two picture names differ only by their folder", () => {
+    const s: PaneState = {
+      ...EMPTY,
+      ...attached("Name,Photo\nAda,regions/eu/logo.png\nBo,regions/us/logo.png"),
+      images: files("logo.png"),
+    };
+    // The tally is not wrong — both DO resolve to a file that was attached.
+    expect(imageTally(s)).toMatchObject({ wanted: 2, matched: 2, missing: [] });
+    expect(imageNameClashes(s)).toEqual([["regions/eu/logo.png", "regions/us/logo.png"]]);
+    const note = clashingPicturesNote(s) ?? "";
+    expect(note).toContain("regions/eu/logo.png");
+    expect(note).toContain("regions/us/logo.png");
+    expect(note).toContain("same file name in different folders");
+  });
+
+  it("says nothing when the names are genuinely different", () => {
+    expect(imageNameClashes(data())).toEqual([]);
+    expect(clashingPicturesNote(data())).toBeNull();
+  });
+
+  it("counts the rest of the clashes rather than listing every one", () => {
+    const s: PaneState = {
+      ...EMPTY,
+      ...attached("Name,Photo\nA,a/x.png\nB,b/x.png\nC,a/y.png\nD,b/y.png"),
+    };
+    expect(imageNameClashes(s)).toHaveLength(2);
+    expect(clashingPicturesNote(s)).toContain("One more name clashes");
+  });
+
+  it("does not call the same cell in two rows a clash", () => {
+    // `ada.png` twice is one picture wanted twice, which is the ordinary case.
+    const s: PaneState = { ...EMPTY, ...attached("Name,Photo\nAda,ada.png\nBo,ada.png") };
+    expect(imageNameClashes(s)).toEqual([]);
+  });
 });
 
 describe("the token an image column is written as", () => {
@@ -883,6 +930,25 @@ describe("the number above the merge button", () => {
     expect(caution({ ...withPhotos, fields: [] }, "merge") ?? "").not.toContain("will not be placed");
     // And no pictures attached is not a warning about pictures.
     expect(caution({ ...withPhotos, images: undefined }, "merge") ?? "").not.toContain("will not be placed");
+  });
+
+  it("says above the button when two picture names differ only by their folder", () => {
+    // The last chance to see it: the tally says both matched, because both do
+    // resolve to a file that was attached — the same one.
+    const clashing: PaneState = {
+      ...EMPTY,
+      block: { from: 4, to: 6 },
+      fields: ["Name", "Photo"],
+      imageFields: ["Photo"],
+      ...attached("Name,Photo\nAda,eu/logo.png\nBo,us/logo.png"),
+      images: new Map([["logo.png", new Uint8Array([1])]]),
+    };
+    expect(caution(clashing, "merge") ?? "").toContain("same file name in different folders");
+    // And it stacks with the other two rather than replacing either.
+    const alsoUnmatched = { ...clashing, fields: ["Nmae", "Photo"] };
+    const said = caution(alsoUnmatched, "merge") ?? "";
+    expect(said).toContain("No column for Nmae");
+    expect(said).toContain("same file name in different folders");
   });
 
   it("is the number on the BUTTON as well as in the sentence", () => {

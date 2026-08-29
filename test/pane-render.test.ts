@@ -751,6 +751,35 @@ describe("the picture picker", () => {
     expect(pane.querySelector(".images .blocked")).toBeNull();
   });
 
+  it("says when two picture names differ only by their folder", () => {
+    // Before the picker and before the "nothing attached yet" branch, because
+    // the clash is a fact about the DATA: it is there whether or not a file
+    // has been chosen, and the only fix is in the spreadsheet.
+    const clashy = "Name,Photo\nAda,eu/logo.png\nBo,us/logo.png";
+    const parsed = readPastedTable(clashy);
+    const state: PaneState = {
+      ...ready,
+      paste: clashy,
+      records: parsed.records ?? undefined,
+      columns: parsed.columns,
+      rows: parsed.rows,
+    };
+    const before = paneFor(state, "data").textContent ?? "";
+    expect(before, "said before anything is attached").toContain("same file name in different folders");
+    expect(before).toContain("eu/logo.png");
+
+    // And still said once a file that matches both has been chosen, which is
+    // the state the tally calls "All 2 pictures matched".
+    const after = paneFor({ ...state, images: files("logo.png") }, "data").textContent ?? "";
+    expect(after).toContain("All 2 pictures matched.");
+    expect(after, "which is true, and not the whole truth").toContain("same file name in different folders");
+  });
+
+  it("says nothing of the kind when the names are genuinely different", () => {
+    const pane = paneFor({ ...withPhotos, images: files("ada.png", "grace.jpg") }, "data");
+    expect(pane.textContent).not.toContain("different folders");
+  });
+
   it("names the missing ones and marks the line, rather than counting them", () => {
     const pane = paneFor({ ...withPhotos, images: files("ada.png") }, "data");
     expect(pane.querySelector(".images .blocked")?.textContent).toBe("1 of 2 matched. Missing: grace.jpg.");

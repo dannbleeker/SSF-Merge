@@ -252,6 +252,14 @@ pictures the data asks for it has in hand, and names the ones it has not — pic
 those too, or leave them: a row whose picture is missing keeps its placeholder,
 exactly as a text field with no column does.
 
+**Two folders, one file name, and the pane says so.** Because matching ignores
+the folders, `regions/eu/logo.png` and `regions/us/logo.png` are one name by the
+time anything can act on them — and there is no way round it: a file picker
+hands over the file's name and nothing else, so attaching both gives us two
+files called `logo.png` and only one survives. Both rows would get the same
+picture. The pane names the pair under the picker and again above the merge
+button; the fix is to rename the files so they differ.
+
 **Three fits, and the default crops.**
 
 | Written | What you get |

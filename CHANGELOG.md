@@ -7,6 +7,18 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added — the pane says when two picture names differ only by their folder
+
+Picture cells may carry folders, and matching ignores them — it has to, because
+a file picker hands over the file's name and nothing else. So
+`regions/eu/logo.png` and `regions/us/logo.png` are two pictures to you and one
+name to the merge: both rows got the same one, under a line reading "All 2
+pictures matched", with nothing having mentioned it.
+
+Attaching both does not help — two files chosen from different folders arrive
+with the same name and only one survives. So the pane names the pair instead,
+under the picker and again above the merge button, and the fix is to rename them.
+
 ### Fixed — a merge that lost its pane can actually be taken back
 
 Reopen the add-in after a run whose pane closed and it tells you how many slides
