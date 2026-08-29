@@ -12,6 +12,8 @@ import type { Block, BlockSlide } from "./plan.js";
 import { notesPathFor } from "../pptx/clone.js";
 import { graphicPartsOf } from "../pptx/graphics.js";
 import { fieldsIn } from "./text.js";
+import { chartValueFields } from "./numbers.js";
+import { workbookOfChart } from "../pptx/graphics.js";
 
 export interface BlockRequest {
   /** First slide of the template, 1-based, as the thumbnail rail shows it. */
@@ -101,12 +103,28 @@ export async function prepareBlock(pkg: Pkg, req: BlockRequest, runId: string): 
     // fillable. The one rule that keeps it from happening a third time is that
     // this list and `runPlan`'s are the same list.
     //
-    // A chart's WORKBOOK is deliberately not read. Its strings are the same
-    // strings as the chart's own cache, so reading it would name nothing new,
-    // and unzipping every embedding to answer "what is on these slides" is a
-    // cost paid on a screen the user is waiting at.
+    // A chart's WORKBOOK is read for one thing only: the VALUE cells.
+    //
+    // It used to be skipped entirely, on the reasoning that its strings are the
+    // chart's own cache strings and would name nothing new. That was true until
+    // chart numbers became a feature. A value cell holds its placeholder in the
+    // WORKBOOK — `fieldsIn` cannot see it, because `<c:numCache>` is excluded
+    // from the text pass on purpose, a formatted number being unplottable.
+    //
+    // So a slide whose only field was the number its chart plots was refused
+    // with "has no {{fields}}, so every copy would be identical", about a merge
+    // that filled it. The third time this scan has read fewer parts than the
+    // merge writes, after notes and after chart labels, and the first two are
+    // described a few lines above.
+    //
+    // The labels still come from the cache, not the workbook: those two hold
+    // the same strings and reading both would name nothing twice.
     const own = [...fieldsIn(await pkg.doc(path)), ...(notes ? fieldsIn(await pkg.doc(notes)) : [])];
-    for (const part of await graphicPartsOf(pkg, path)) own.push(...fieldsIn(await pkg.doc(part)));
+    for (const part of await graphicPartsOf(pkg, path)) {
+      own.push(...fieldsIn(await pkg.doc(part)));
+      if (!part.startsWith("ppt/charts/")) continue;
+      own.push(...(await chartValueFields(pkg, part, await workbookOfChart(pkg, part))));
+    }
     for (const f of own) if (!fields.includes(f)) fields.push(f);
     const condition = req.conditions?.[req.from + i];
     slides.push({ path, seq: i + 1, fields: own, ...(condition ? { condition } : {}) });
