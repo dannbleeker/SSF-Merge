@@ -7,6 +7,14 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.2.2] — 2026-08-29
+
+A second correction to 0.2.0, from the same hunt. Both defects below are the
+same mistake in two places: a pass that deletes relationships knowing only one
+of the ways a slide names them.
+
 ### Fixed — a merged copy keeps another add-in's tags pointing at its own data
 
 A template slide's own tags do not belong on a copy: BLOCK and SEQ describe the
