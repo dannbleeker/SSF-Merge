@@ -150,3 +150,51 @@ describe("the release workflow", () => {
     for (const name of assets) expect(upload, `${name} is uploaded`).toContain(name);
   });
 });
+
+describe("the deploy waits for the same gate CI runs", () => {
+  /**
+   * Pages ran on every push to `main` with nothing between the push and the
+   * live add-in. CI ran too, but CONCURRENTLY — so a commit could be serving
+   * from the production origin before its tests had finished, and if they then
+   * failed, the broken pane was already what PowerPoint loaded.
+   *
+   * Every commit on main has in fact been green on both, checked over the run
+   * history rather than assumed. It is the ORDERING that was missing, not the
+   * tests.
+   *
+   * The five checks are listed in both workflows rather than wrapped in one
+   * `npm run gate`, because a script chaining `npm run a && npm run b` cannot
+   * run on the maintainer's own machine: npm spawns a shell for the `&&` and
+   * AppLocker refuses it. Two lists is a drift risk, so this holds them against
+   * each other.
+   */
+  /** The `npm run` commands of ONE job, bounded by the next job at the same indent. */
+  const commands = (yaml: string, job: string): string[] => {
+    const lines = yaml.split("\n");
+    const at = lines.findIndex((l) => l === `  ${job}:`);
+    expect(at, `${job} is not a job in this workflow`).toBeGreaterThan(-1);
+    // The next sibling job, or the end. Without this the deploy job's own
+    // `npm run build` reads as one of the gate's checks, which is how the
+    // first version of this test failed against a workflow that was correct.
+    const rest = lines.slice(at + 1);
+    const until = rest.findIndex((l) => /^ {2}[A-Za-z0-9_-]+:$/.test(l));
+    const body = (until === -1 ? rest : rest.slice(0, until)).join("\n");
+    return [...body.matchAll(/run: (npm run [a-z:]+)/g)].map((m) => m[1] as string);
+  };
+
+  it("runs the same checks, in the same order, in both", () => {
+    const ci = readFileSync(".github/workflows/ci.yml", "utf8");
+    const pages = readFileSync(".github/workflows/pages.yml", "utf8");
+
+    const inCi = commands(ci, "test");
+    expect(inCi.length, "the CI gate stopped naming any checks").toBeGreaterThan(3);
+    expect(commands(pages, "gate"), "the deploy gate and CI have drifted").toEqual(inCi);
+  });
+
+  it("and the deploy will not start without it", () => {
+    // The ordering itself. Without `needs`, both jobs start together and the
+    // artifact can be live before the checks finish.
+    const pages = readFileSync(".github/workflows/pages.yml", "utf8");
+    expect(pages, "deploy does not wait for the gate").toMatch(/deploy:\s*\n\s*needs: gate/);
+  });
+});
