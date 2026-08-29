@@ -374,3 +374,73 @@ describe("what the run leaves behind", () => {
     }
   });
 });
+
+describe("no two merged slides share a part the merge writes into", () => {
+  /**
+   * A sweep rather than a list, because the failure this catches is a part type
+   * nobody remembered. Every per-record part is cloned by a named branch of
+   * `cloneSlideGraphics`; a template carrying a kind that has no branch merges
+   * every record into ONE part and the whole deck shows the last row — the
+   * defect this file's header calls "shared by every clone", found three times
+   * already in three different part types.
+   *
+   * Reachability rather than the branch list, so a part reached by a hop nobody
+   * thought about is still covered.
+   *
+   * Layouts, masters, themes and a SmartArt's `layout`, `colors` and
+   * `quickStyle` are deliberately NOT here. They are static definitions that no
+   * pass writes into, and sharing them is as right as sharing the theme. Media
+   * is shared on purpose too — one logo on 240 rows is one part.
+   */
+  const OWNED = /^ppt\/(charts|embeddings|notesSlides|tags)\/|^ppt\/diagrams\/(data|drawing)/;
+
+  /** Every part reachable from a slide, however many hops out. */
+  async function reach(pkg: Pkg, from: string): Promise<string[]> {
+    const seen = new Set<string>();
+    const queue = [from];
+    while (queue.length) {
+      for (const next of await pkg.relatedParts(queue.shift() as string)) {
+        if (seen.has(next)) continue;
+        seen.add(next);
+        queue.push(next);
+      }
+    }
+    return [...seen].filter((p) => OWNED.test(p));
+  }
+
+  it.each([["data"], ["slide"]] as const)("with the diagram drawing hung on the %s part", async (drawingOn) => {
+    const pkg = await Pkg.open(
+      await makeDeck([
+        {
+          paragraphs: [["{{Name}}"]],
+          notes: "Call {{Name}} afterwards",
+          chart: { title: "{{Name}}", categories: ["{{Name}}", "b"], workbook: ["{{Name}}"], values: ["1", "42"] },
+          smartArt: ["{{Name}}", "second"],
+          smartArtDrawingOn: drawingOn,
+        },
+        { paragraphs: [["after"]] },
+      ]),
+    );
+    const records = toRecordSet([["Name"], ["Ada"], ["Bo"], ["Cy"]]);
+    const block = { id: "r1", slides: [{ path: "ppt/slides/slide1.xml", seq: 1, fields: [] }] };
+    const out = await runPlan(pkg, buildPlan(block, records, { runId: "r1" }), records);
+    expect(out.slides).toHaveLength(3);
+
+    const owned = new Map<string, string[]>();
+    for (const slide of out.slides) owned.set(slide, await reach(pkg, slide));
+    // Every slide must have brought something, or "nothing is shared" is only
+    // a statement about an empty set.
+    for (const [slide, parts] of owned) expect(parts.length, `${slide} reached no per-record part`).toBeGreaterThan(4);
+
+    const shared: string[] = [];
+    const slides = [...owned.keys()];
+    for (let i = 0; i < slides.length; i++) {
+      for (let j = i + 1; j < slides.length; j++) {
+        const a = owned.get(slides[i] as string) as string[];
+        const b = owned.get(slides[j] as string) as string[];
+        for (const part of a) if (b.includes(part)) shared.push(`${slides[i]} and ${slides[j]} share ${part}`);
+      }
+    }
+    expect(shared, "two records merge into one part, so the deck shows one of them twice").toEqual([]);
+  });
+});
