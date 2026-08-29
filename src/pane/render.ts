@@ -546,6 +546,17 @@ function imageControl(doc: Document, state: PaneState): HTMLElement {
         multiple: "",
         accept: "image/png,image/jpeg,image/gif,image/bmp",
         "data-field": "images",
+        // NAMED. Every other control on this pane sits inside a `<label>` that
+        // gives it one; this block is a `<div>` because it holds a tally and a
+        // missing-file list as well, so the caption above is next to the input
+        // on screen and attached to nothing underneath it. A file input with no
+        // name is announced as an unlabelled button, and it is the only control
+        // here that attaches the pictures.
+        //
+        // An attribute rather than a re-nesting, because the caption is one of
+        // several children and moving it into a `<label>` is a layout change
+        // this cannot verify from a test.
+        "aria-label": "Choose the picture files",
       },
     }),
   );
