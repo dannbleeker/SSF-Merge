@@ -28,11 +28,12 @@
  */
 import { Pkg, resolveTarget as resolve } from "./pkg.js";
 import { REL_TYPE } from "./parts.js";
-import { PKG_REL_NS, elements } from "./xml.js";
+import { A_NS, MC_NS, PKG_REL_NS, P_NS, R_NS, child, element, elements } from "./xml.js";
 
 /** The embedded workbook behind a chart. Declared as a package, not as a part. */
 
 const CHART_TYPE = "application/vnd.openxmlformats-officedocument.drawingml.chart+xml";
+const CHARTEX_TYPE = "application/vnd.ms-office.chartex+xml";
 const DIAGRAM_DATA_TYPE = "application/vnd.openxmlformats-officedocument.drawingml.diagramData+xml";
 const DIAGRAM_DRAWING_TYPE = "application/vnd.ms-office.drawingml.diagramDrawing+xml";
 const XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -96,6 +97,17 @@ export async function cloneSlideGraphics(pkg: Pkg, slidePath: string): Promise<v
       await copyWithRels(pkg, source, path, CHART_TYPE);
       await cloneChartWorkbook(pkg, path);
       await repoint(pkg, slidePath, rId, `../charts/chart${n}.xml`);
+    } else if (type === REL_TYPE.chartEx) {
+      // A modern chart takes the same three steps as a classic one, and its
+      // workbook takes a fourth that costs nothing: the embedding hangs off it
+      // under the ORDINARY `package` relationship, so `cloneChartWorkbook`
+      // needed no change at all. Numbered in its own `chartEx` sequence, which
+      // is what PowerPoint names them.
+      const n = pkg.nextNumber("ppt/charts/chartEx");
+      const path = `ppt/charts/chartEx${n}.xml`;
+      await copyWithRels(pkg, source, path, CHARTEX_TYPE);
+      await cloneChartWorkbook(pkg, path);
+      await repoint(pkg, slidePath, rId, `../charts/chartEx${n}.xml`);
     } else if (type === REL_TYPE.diagramData) {
       const n = pkg.nextNumber("ppt/diagrams/data");
       const path = `ppt/diagrams/data${n}.xml`;
@@ -113,6 +125,10 @@ export async function cloneSlideGraphics(pkg: Pkg, slidePath: string): Promise<v
       await repoint(pkg, slidePath, rId, `../diagrams/${await copyDiagramDrawing(pkg, source)}`);
     }
   }
+  // After the parts, because it reads the slide's markup and its relationships
+  // and both are settled by now. Cheap on every other deck: a slide with no
+  // modern chart has no `<mc:AlternateContent>` to walk.
+  await replaceModernChartFallbacks(pkg, slidePath);
 }
 
 /**
@@ -225,7 +241,14 @@ export async function graphicPartsOf(pkg: Pkg, slidePath: string): Promise<strin
     // REL_TYPE.diagramDrawing is here because PowerPoint hangs the drawing off
     // the SLIDE. Without it the drawing was cloned per copy but never FILLED,
     // so each merged slide got its own rendering still reading `{{Region}}`.
-    if (type !== REL_TYPE.chart && type !== REL_TYPE.diagramData && type !== REL_TYPE.diagramDrawing) continue;
+    if (
+      type !== REL_TYPE.chart &&
+      type !== REL_TYPE.chartEx &&
+      type !== REL_TYPE.diagramData &&
+      type !== REL_TYPE.diagramDrawing
+    ) {
+      continue;
+    }
     const path = resolve(slidePath, target);
     if (!pkg.has(path) || out.includes(path)) continue;
     out.push(path);
@@ -263,4 +286,165 @@ export async function packagesOfChart(pkg: Pkg, chartPath: string): Promise<stri
     if (pkg.has(path) && !out.includes(path)) out.push(path);
   }
   return out;
+}
+
+/**
+ * What a host too old for a modern chart is shown instead.
+ *
+ * PowerPoint writes the fallback branch as a PICTURE — a PNG of the chart as it
+ * drew it — because it has a renderer and regenerates that picture whenever it
+ * saves. This project has neither, and merging cannot produce one: the copy's
+ * chart says something different from the template's the moment it is filled.
+ *
+ * So the picture is replaced rather than kept, and keeping it is the option
+ * that had to be refused. On a mail merge the template's rendering is not
+ * merely stale, it is ANOTHER RECIPIENT'S FIGURES under this recipient's name,
+ * in the file that gets sent out. That is the same reasoning that keeps a
+ * placeholder with no column visible instead of blanking it: a thing that looks
+ * finished and is not is worse than a thing that says what it is.
+ *
+ * Dropping the branch entirely is legal — `mc:Fallback` is optional — and it is
+ * silent: an old host shows a hole and no reason for it. The shape below costs
+ * the same to write and says why, and its shape is known-good because
+ * LibreOffice ships one very like it for the same reason
+ * (`writeChartexAlternateContent`, `oox/source/export/chartexport.cxx`).
+ *
+ * Nothing on a current host ever sees this. `mc:Choice` wins wherever the
+ * chartex namespace is understood, so the audience is PowerPoint 2013 and
+ * earlier plus third-party viewers.
+ */
+const FALLBACK_TEXT =
+  "This chart needs a newer version of PowerPoint. Its data is in this file — open the deck in a version that supports modern charts to see it.";
+
+/**
+ * Swap every modern chart's fallback picture on this slide for the notice.
+ *
+ * Returns how many branches were replaced. Zero is the ordinary answer: a deck
+ * with no modern chart has no `<mc:AlternateContent>` at all, and one whose
+ * author wrote no fallback has nothing to replace.
+ */
+export async function replaceModernChartFallbacks(pkg: Pkg, slidePath: string): Promise<number> {
+  const doc = await pkg.doc(slidePath);
+  let replaced = 0;
+
+  for (const alternate of elements(doc, MC_NS, "AlternateContent")) {
+    const choice = child(alternate, MC_NS, "Choice");
+    const fallback = child(alternate, MC_NS, "Fallback");
+    if (!choice || !fallback) continue;
+    // Matched on the graphicData URI rather than on the `Requires` token: the
+    // token is cx1, cx2 or cx4 depending on which dated namespace the layout
+    // came from, and a reader keying on one misses the other two.
+    const isChart = elements(choice, A_NS, "graphicData").some((d) =>
+      (d.getAttribute("uri") ?? "").endsWith("/chartex"),
+    );
+    if (!isChart) continue;
+
+    // The graphic frame's own box, so the notice lands where the chart is
+    // rather than at a guessed position. `<p:xfrm>` holds them, and these are
+    // the only `a:off`/`a:ext` a graphic frame has.
+    const off = element(choice, A_NS, "off");
+    const ext = element(choice, A_NS, "ext");
+    while (fallback.firstChild) fallback.removeChild(fallback.firstChild);
+    fallback.appendChild(notice(doc, off, ext));
+    replaced++;
+  }
+
+  if (replaced > 0) await dropUnusedImageRels(pkg, slidePath, doc);
+  return replaced;
+}
+
+/** The notice shape itself: a bordered white box, locked against editing, carrying the sentence. */
+function notice(doc: Document, off: Element | undefined, ext: Element | undefined): Element {
+  const p = (local: string): Element => doc.createElementNS(P_NS, `p:${local}`);
+  const a = (local: string): Element => doc.createElementNS(A_NS, `a:${local}`);
+
+  const sp = p("sp");
+  const nvSpPr = p("nvSpPr");
+  const cNvPr = p("cNvPr");
+  // Id 0 and an empty name, as LibreOffice writes them. A shape inside a
+  // fallback is never addressed by anything, and inventing an id risks
+  // colliding with the Choice branch's own — which carries the SAME id in every
+  // real file, because the two branches are one shape.
+  cNvPr.setAttribute("id", "0");
+  cNvPr.setAttribute("name", "");
+  const cNvSpPr = p("cNvSpPr");
+  const locks = a("spLocks");
+  // So that somebody on an old host cannot type into the notice and save over
+  // a chart they cannot see.
+  locks.setAttribute("noTextEdit", "1");
+  cNvSpPr.appendChild(locks);
+  // `appendChild` one at a time: xmldom implements the DOM Level 3 core and
+  // not `ParentNode.append`, which is a living-standard convenience.
+  for (const node of [cNvPr, cNvSpPr, p("nvPr")]) nvSpPr.appendChild(node);
+
+  const spPr = p("spPr");
+  if (off && ext) {
+    const xfrm = a("xfrm");
+    // Cloned from the Choice branch, so the notice lands exactly where the
+    // chart is rather than at a guessed position.
+    for (const node of [off, ext]) xfrm.appendChild(node.cloneNode(true));
+    spPr.appendChild(xfrm);
+  }
+  const geom = a("prstGeom");
+  geom.setAttribute("prst", "rect");
+  geom.appendChild(a("avLst"));
+  const fill = a("solidFill");
+  const white = a("prstClr");
+  white.setAttribute("val", "white");
+  fill.appendChild(white);
+  const ln = a("ln");
+  ln.setAttribute("w", "12700");
+  const lnFill = a("solidFill");
+  const grey = a("prstClr");
+  grey.setAttribute("val", "gray");
+  lnFill.appendChild(grey);
+  ln.appendChild(lnFill);
+  for (const node of [geom, fill, ln]) spPr.appendChild(node);
+
+  const txBody = p("txBody");
+  const bodyPr = a("bodyPr");
+  bodyPr.setAttribute("vertOverflow", "clip");
+  bodyPr.setAttribute("horzOverflow", "clip");
+  bodyPr.setAttribute("wrap", "square");
+  const para = a("p");
+  const run = a("r");
+  const rPr = a("rPr");
+  rPr.setAttribute("lang", "en-US");
+  rPr.setAttribute("sz", "1100");
+  const t = a("t");
+  t.textContent = FALLBACK_TEXT;
+  for (const node of [rPr, t]) run.appendChild(node);
+  para.appendChild(run);
+  for (const node of [bodyPr, a("lstStyle"), para]) txBody.appendChild(node);
+
+  for (const node of [nvSpPr, spPr, txBody]) sp.appendChild(node);
+  return sp;
+}
+
+/**
+ * Drop relationships to images the slide no longer references.
+ *
+ * The fallback pictures were the only thing pointing at them, so leaving the
+ * relationships behind would keep a rendering of the TEMPLATE's data alive in
+ * the package — reachable by anything that walks relationships rather than
+ * markup, and swept by nothing, because the sweep only removes a part no
+ * relationship names.
+ *
+ * Counted from the slide's own markup, never assumed: a template can perfectly
+ * well use one image as a fallback picture and again as a logo, and removing
+ * the relationship then breaks the logo.
+ */
+async function dropUnusedImageRels(pkg: Pkg, slidePath: string, doc: Document): Promise<void> {
+  const relsPath = Pkg.relsPathFor(slidePath);
+  if (!pkg.has(relsPath)) return;
+  const used = new Set<string>();
+  for (const node of elements(doc, A_NS, "blip")) {
+    const id = node.getAttributeNS(R_NS, "embed") ?? node.getAttribute("r:embed");
+    if (id) used.add(id);
+  }
+  for (const rel of await relsOf(pkg, slidePath)) {
+    if (rel.getAttribute("Type") !== REL_TYPE.image) continue;
+    const id = rel.getAttribute("Id");
+    if (id && !used.has(id)) rel.parentNode?.removeChild(rel);
+  }
 }

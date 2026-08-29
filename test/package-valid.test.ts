@@ -168,6 +168,19 @@ const CASES: { name: string; slides: SlideSpec[]; conditions?: Record<number, st
     ],
   },
   {
+    // A modern chart is a part under a Microsoft relationship, wrapped on the
+    // slide in `mc:AlternateContent` — and the merge REWRITES one of those two
+    // branches and drops a relationship. Both are ways to hand PowerPoint a
+    // package it calls damaged.
+    name: "a slide with a modern chart",
+    slides: [
+      {
+        paragraphs: [["{{First}}"]],
+        modernChart: { title: "Pipeline for {{Last}}", categories: ["{{First}}"], workbook: ["{{First}}"] },
+      },
+    ],
+  },
+  {
     // SmartArt relates to four parts and owns a fifth through one of them. The
     // drawing is the one a naive clone misses, and a copy pointing at a drawing
     // that is not there is a repair prompt.

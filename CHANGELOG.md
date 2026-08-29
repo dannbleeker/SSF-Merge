@@ -7,6 +7,49 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added — modern charts are merged
+
+A waterfall, funnel, treemap, sunburst, histogram, pareto, box-and-whisker or
+region map is not a `<c:chartSpace>` at all: PowerPoint stores it as a separate
+part under a Microsoft relationship, and nothing here knew that type. Such a
+chart was neither cloned per copy nor filled, and — worse than the limit said —
+the fields inside it were never even reported, so a block whose only placeholder
+was in the chart was refused as having none.
+
+The format was read out of real files rather than a specification: two chartEx
+workbooks and, decisively, `funnel-pp1.pptx` in LibreOffice's chart test data, a
+funnel on a SLIDE with its embedded workbook and its fallback picture. Several
+details would have been guessed wrong, and one of them is the same trap the
+classic path already carries: `<cx:pt>` is the element for a category LABEL and
+for a plotted VALUE, told apart only by whether a `<cx:strDim>` or a
+`<cx:numDim>` holds it. Filling the wrong one writes "Nordics" where a number
+belongs and produces a chart PowerPoint reads as corrupt data.
+
+The other trap is that a title is DrawingML in one file and `<cx:v>` in another,
+sometimes both at once. Both are filled, so neither shape merges by luck.
+
+The workbook needed no new code: it hangs off a modern chart under the ordinary
+`package` relationship, so the pass that clones and merges a classic chart's
+workbook already handled it.
+
+### Added — a merged modern chart says why old PowerPoint cannot draw it
+
+A modern chart sits inside `<mc:AlternateContent>` on the slide: the frame in
+`mc:Choice`, and in `mc:Fallback` a PICTURE of the chart for hosts that cannot
+read the format. PowerPoint regenerates that picture whenever it saves, because
+it has a renderer. This engine does not, and merging cannot produce one.
+
+Keeping the template's picture was the option to refuse. On a mail merge it is
+not merely stale: it is another recipient's figures under this recipient's name,
+in the file that gets sent out. Dropping the branch is legal — `mc:Fallback` is
+optional — and silent. So each merged copy gets a short bordered notice instead,
+locked against editing, positioned exactly where the chart is, saying the chart
+needs a newer PowerPoint. The copy also stops relating to the picture, and only
+when nothing else on the slide still uses it.
+
+Nothing from PowerPoint 2016 onwards ever sees this: `mc:Choice` wins wherever
+the format is understood.
+
 ### Changed — the landing page is a landing page
 
 It was a stack of paragraphs with the way in buried mid-sentence. Rendered and
