@@ -7,6 +7,16 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.2.3] — 2026-08-29
+
+Thirteen changes to what the pane says and how it behaves, and none to the
+manifest — so this reaches you without re-installing anything.
+
+Three of them are the same finding in three places: the engine worked something
+out and nothing told you. What became of the pictures, what became of the chart
+values, and — after a run whose pane closed — the fact that there was a button
+to take the slides back with.
+
 ### Fixed — the merge says how many chart values it filled, and how many it could not
 
 A `{{Column}}` in a chart's value cell whose row does not hold a number is left
