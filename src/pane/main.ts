@@ -259,8 +259,9 @@ function onInput(event: Event): void {
       conditions: withCondition(state.conditions, Number(slide), target.value),
       // A changed condition changes what the merge produces, so the finished
       // run's disarmed button goes with it — the same rule every other edit on
-      // this screen follows.
-      added: undefined,
+      // this screen follows. `added` stays: those slides are in the deck, and
+      // the undo card is the only thing offering them back.
+      changedSinceMerge: true,
       notice: undefined,
     };
     draw();
@@ -443,7 +444,7 @@ async function takeImages(files: FileList | null): Promise<void> {
     images,
     // A different set of pictures is a different merge, so a landed run's
     // disarmed button goes with it — the rule every other edit here follows.
-    added: undefined,
+    changedSinceMerge: true,
     ...(refused > 0
       ? { notice: `${refused} of the ${files.length} file(s) could not be read and were left out.` }
       : { notice: undefined }),
@@ -550,7 +551,7 @@ function toggleRow(index: number): void {
   const out = new Set(state.excluded ?? []);
   if (out.has(index)) out.delete(index);
   else out.add(index);
-  state = { ...state, excluded: [...out].sort((a, b) => a - b), added: undefined };
+  state = { ...state, excluded: [...out].sort((a, b) => a - b), changedSinceMerge: true };
   draw();
 }
 
@@ -644,7 +645,9 @@ async function merge(): Promise<void> {
       // `deckAtStart` travels with `added` everywhere, because the undo card
       // asks `sweepPlan` and a positional offer needs both: `added` says how
       // many slides, this says which.
-      ...(outcome.added > 0 ? { added: outcome.added, deckAtStart: outcome.deckAtStart } : {}),
+      ...(outcome.added > 0
+        ? { added: outcome.added, deckAtStart: outcome.deckAtStart, changedSinceMerge: undefined }
+        : {}),
       // What the merge DID. `outcome.detail` says how much the deck GREW,
       // which is equally true of a merge that filled every placeholder and one
       // that matched none of them and inserted 720 copies of the template.
@@ -677,7 +680,12 @@ async function merge(): Promise<void> {
     state = {
       ...state,
       ...(deckAfter !== undefined ? { deckSize: deckAfter } : {}),
-      ...(added > 0 ? { added } : {}),
+      // `deckAtStart` travels with `added`, here as everywhere: the undo card
+      // is a positional offer and needs both. It did not, so the one branch
+      // written for a host that performs a call and then raises on it was the
+      // one branch that left the slides in the deck with no way to remove
+      // them.
+      ...(added > 0 && before !== undefined ? { added, deckAtStart: before, changedSinceMerge: undefined } : {}),
       notice:
         added > 0
           ? `The merge raised, and ${added} slide${added === 1 ? "" : "s"} landed anyway: ${readable(e)}`

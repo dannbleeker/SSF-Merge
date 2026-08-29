@@ -408,7 +408,12 @@ function body(doc: Document, state: PaneState, current: StepId, orange: OrangeHo
   // and left up after it, it says the same sentence the notice says, which is
   // the "does not state the same arithmetic twice" defect one element over.
   // Once a run starts, what actually happened is the notice's to report.
-  const forecast = state.running === undefined && state.added === undefined;
+  //
+  // An EDIT after a landed run brings it back, because the button is armed
+  // again and the sentence is again about a merge that has not happened. It
+  // then sits above the undo card, which is about the slides already in the
+  // deck — two cards, two different runs, and both true.
+  const forecast = state.running === undefined && (state.added === undefined || state.changedSinceMerge === true);
   if (current === "merge" && block && state.rows && forecast) {
     // The heading already states the arithmetic; repeating it here made the
     // screen say "240 rows x 3 slides" twice, which reads as a rendering bug.

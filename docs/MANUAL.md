@@ -554,6 +554,12 @@ then offers the ones that are left, not the number the merge originally added.
 A sweep that removed only some of them keeps the offer up, because the rest are
 still there and only you can finish.
 
+**Editing after a merge does not withdraw the offer.** Untick a row, change a
+condition, attach a different picture or move the template block, and the merge
+button arms again — it is a different merge now. The card stays, because the
+slides the last run added are still in your deck and it is the only thing that
+takes them back.
+
 ## When something goes wrong
 
 **The pane says what it is waiting on.** A merge is legitimately quiet for a

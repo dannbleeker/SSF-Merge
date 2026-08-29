@@ -7,6 +7,23 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — the way back survives an edit, and a merge that raised
+
+After a merge landed, the card offering **"Remove slides 13 to 732, which this
+merge added"** disappeared the moment you touched anything — unticking a row on
+that same screen was enough. The slides stayed in the deck; the pane still held
+the numbers to remove them; nothing on screen said so.
+
+One field was doing two jobs. "A merge just landed" both disarmed the button and
+drew the card, and an edit ends the first without ending the second: the run you
+would press now is a different one, but the slides that landed are still there.
+They are separate now, so the button arms again and the card stays.
+
+A second way to the same place is fixed with it. When the merge RAISED and
+slides landed anyway — this host performs calls it then raises on — the pane
+kept the count and dropped the position it has to be measured from, so the one
+branch written for that case was the one case with no way back.
+
 ### Added — the pane says when attached pictures have nowhere to go
 
 The picture picker appears as soon as your data holds a column of file names,

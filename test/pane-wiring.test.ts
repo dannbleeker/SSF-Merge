@@ -784,6 +784,45 @@ describe("taking a real merge back", () => {
     expect(undoButton(), "still offered, because nothing went").not.toBeNull();
   });
 
+  it("KEEPS the way back when the user edits the merge after it landed", async () => {
+    // `added` did two jobs: it disarmed the button, and it was the only thing
+    // the undo card was drawn from. Every edit cleared it — deliberately, so a
+    // different merge can be pressed — and took the way back with it. The
+    // slides stayed in the deck; the only offer to remove them left the screen
+    // on a keystroke, and `main.ts` still held the numbers to do it.
+    await afterMerge();
+    expect(undoButton()).not.toBeNull();
+
+    // The row list is on this very screen, so the user never leaves the merge
+    // step to lose the offer.
+    document.querySelector<HTMLButtonElement>('[data-action="rows"]')?.click();
+    const box = document.querySelector<HTMLInputElement>('input[data-row="0"]');
+    box?.click();
+    await settle();
+
+    expect(primary().disabled, "a different merge is pressable again").toBe(false);
+    expect(undoButton(), "and the slides that landed are still offered back").not.toBeNull();
+  });
+
+  it("offers the way back when the merge RAISED and slides landed anyway", async () => {
+    // The catch branch kept `added` and dropped `deckAtStart`, three lines
+    // under a comment saying the two travel together everywhere because the
+    // card needs both. So the one case the branch exists for — a host that
+    // performs a call and then raises on it — was the one case with no offer.
+    await reachMerge();
+    office.slideCount.mockResolvedValueOnce(18); // 12 before, 18 after
+    office.runMerge.mockRejectedValueOnce(new Error("gave up waiting for: inserting the merged deck"));
+    primary().click();
+    await settle();
+
+    expect(document.body.textContent).toContain("landed anyway");
+    expect(undoButton(), "six slides in the deck and a way to remove them").not.toBeNull();
+    office.undoMerge.mockResolvedValueOnce({ removed: 6, detail: "removed 6 slide(s) from index 12" });
+    undoButton()?.click();
+    await settle();
+    expect(office.undoMerge.mock.calls[0]?.[0]).toMatchObject({ deckAtStart: 12, added: 6 });
+  });
+
   it("does not take a second press while a sweep is out", async () => {
     await afterMerge();
     const held = deferred<unknown>();
