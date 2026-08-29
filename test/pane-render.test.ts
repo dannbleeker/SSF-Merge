@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { render } from "../src/pane/render.js";
 import type { PaneState } from "../src/pane/steps.js";
@@ -887,5 +888,41 @@ describe("every control the pane draws can be named", () => {
     // A step that drew no controls at all would pass the three rules above
     // while proving nothing, so say that it drew something.
     expect(root.querySelectorAll("button, input, select, textarea").length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * The one thing this suite cannot measure, asserted where it is decided.
+ *
+ * jsdom has no layout, so no test here can see a pane that has gone wider than
+ * the iframe it lives in. What it can see is the rule that stops it, and this
+ * is the same shape as the source scans elsewhere in the repo: weaker than a
+ * measurement, and the only guard available for a defect that was found by
+ * measuring.
+ *
+ * Found at 320px, the narrow end of the width `taskpane.css` designs for, with
+ * a real column header. A pivot table's default headers are what this add-in
+ * is pasted the most, and one of them with no spaces in it took the document
+ * to 545px; a spaceless host error took it to 3751px, with the primary button
+ * off the side of a pane the user cannot scroll usefully.
+ */
+describe("nothing a user supplies may push the pane sideways", () => {
+  const css = readFileSync("src/pane/taskpane.css", "utf8");
+
+  it("wraps inside a word, on the element everything inherits from", () => {
+    const body = css.match(/\nbody \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    expect(body, "found the body block at all").not.toBe("");
+    // `anywhere`, never `break-word`: only `anywhere` shrinks a flex or grid
+    // item's min-content width, and the chips, cards and button rows are flex.
+    // `break-word` leaves all three measured overflows exactly where they were.
+    expect(body).toContain("overflow-wrap: anywhere");
+  });
+
+  it("leaves the two places that deliberately do not wrap", () => {
+    // The rule reaches text that wraps, so its stated scope is only true while
+    // these two keep saying so. The run log is a scroll box a user copies out
+    // of, and a row label is one line with an ellipsis at 320px.
+    expect(css).toMatch(/\.runlog pre \{[^}]*white-space: pre/);
+    expect(css).toMatch(/\.rowlist label \{[^}]*white-space: nowrap/);
   });
 });
