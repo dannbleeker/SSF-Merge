@@ -52,16 +52,27 @@ export function readable(e: unknown): string {
   // An Office.js async failure is not always an `Error`: it is routinely a
   // plain object carrying `name`, `message` and `code`, and the message in it
   // is the whole point.
-  if (typeof e === "object" && "message" in e && typeof (e as { message: unknown }).message === "string") {
-    return short((e as { message: string }).message);
-  }
   if (typeof e === "object") {
+    if ("message" in e && typeof e.message === "string") return short(e.message);
     try {
-      return short(JSON.stringify(e) ?? String(e));
+      // `JSON.stringify` answers `undefined` for a few shapes that reach here,
+      // so the shape is named rather than falling through to a stringification
+      // this whole function exists to avoid.
+      return short(JSON.stringify(e) ?? "the host raised something with no message in it.");
     } catch {
-      // Circular, which is a thing an Office error object can be.
+      // Circular, which an Office error object can be.
       return "the host raised something this pane could not read.";
     }
   }
-  return short(String(e));
+  // A thrown function is a caller's slip, and `String(fn)` prints its whole
+  // source into the sentence. Named, not rendered — the same answer
+  // `formatValue` gives it.
+  if (typeof e === "function") return "the host raised a function, which is a bug in this add-in.";
+  if (typeof e === "symbol") return short(e.toString());
+  // Each primitive named, rather than one `String` over what is left. That is
+  // the shape `formatValue` settled on for the same reason, and it is what the
+  // `no-base-to-string` rule is asking for: `String` over a bare `unknown` is
+  // exactly the call that put "[object Object]" on the screen.
+  if (typeof e === "number" || typeof e === "boolean" || typeof e === "bigint") return short(String(e));
+  return "the host raised something this pane could not read.";
 }
