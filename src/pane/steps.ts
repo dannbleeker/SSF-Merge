@@ -13,6 +13,7 @@
  */
 
 import { canBeField } from "../core/merge/text.js";
+import { baseName } from "../core/merge/images.js";
 import { imageNamesIn, parseDelimited, toRecordSet } from "../core/data/recordset.js";
 import type { RecordSet } from "../core/data/recordset.js";
 
@@ -386,12 +387,6 @@ export function imagesWanted(state: PaneState): string[] {
   const seen = new Set<string>();
   for (const column of imageColumns(state)) for (const name of imageNamesIn(rows, column)) seen.add(name);
   return [...seen];
-}
-
-/** `Photos\\ada.PNG` and `ada.png` are the same picture. Matched the way the engine matches. */
-function baseName(path: string): string {
-  const cut = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
-  return (cut < 0 ? path : path.slice(cut + 1)).toLowerCase();
 }
 
 export interface ImageTally {

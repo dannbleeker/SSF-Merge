@@ -20,7 +20,7 @@ import { prepareBlock } from "../src/core/merge/prepare.js";
 import { buildPlan } from "../src/core/merge/plan.js";
 import { runPlan } from "../src/core/merge/run.js";
 import { toRecordSet } from "../src/core/data/recordset.js";
-import { cellsOfFormula } from "../src/core/merge/numbers.js";
+import { cellsOfFormula, sheetOfFormula } from "../src/core/merge/numbers.js";
 import { makeDeck, type ChartSpec } from "./fixtures/deck.js";
 
 const ROWS = [
@@ -172,5 +172,94 @@ describe("the number that reaches the chart", () => {
       ],
     );
     expect((await sheetCells(zip))["B2"]!.value).toBe("1250000.5");
+  });
+});
+
+describe("which sheet the formula names", () => {
+  it("reads the sheet title out of the formula", () => {
+    expect(sheetOfFormula("Sheet1!$B$2:$B$3")).toBe("Sheet1");
+    expect(sheetOfFormula("'My Sheet'!$B$2")).toBe("My Sheet");
+    expect(sheetOfFormula("'It''s Data'!$B$2")).toBe("It's Data");
+    expect(sheetOfFormula("$B$2")).toBeNull();
+  });
+
+  it("writes into the sheet the chart points at, not the first one holding the address", async () => {
+    /**
+     * The first version of this pass searched every sheet for the address and
+     * took the first hit, reasoning that an embedded chart workbook has one
+     * sheet. True of every one it had met, and not a fact about the format —
+     * add a sheet in Edit Data and `B2` exists twice.
+     *
+     * The failure it produced would have been silent and invisible to a count:
+     * the right NUMBER of cells is written, just not the ones the chart plots.
+     * So this fixture puts a DECOY `B2` on the sheet that sorts first and
+     * points the chart at the second.
+     */
+    const pkg = await Pkg.open(
+      await makeDeck([
+        {
+          paragraphs: [["{{Name}}"]],
+          chart: { categories: ["{{Name}}", "Other"], workbook: ["{{Name}}"], values: ["{{Revenue}}", "42"] },
+        },
+      ]),
+    );
+
+    const S = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"';
+    const REL = 'xmlns="http://schemas.openxmlformats.org/package/2006/relationships"';
+    const embedding = pkg.partNames().find((n) => /^ppt\/embeddings\/.+\.xlsx$/.test(n))!;
+    const book = await JSZip.loadAsync(await pkg.bytes(embedding));
+
+    // sheet1 becomes the decoy, holding a plain number at B2.
+    book.file(
+      "xl/worksheets/sheet1.xml",
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n<worksheet ${S}><sheetData>` +
+        `<row r="2"><c r="B2"><v>999</v></c></row></sheetData></worksheet>`,
+    );
+    // sheet2 is the real one: B2 is the placeholder, as a shared string.
+    const sst = await book.file("xl/sharedStrings.xml")!.async("string");
+    const count = (sst.match(/<si>/g) ?? []).length;
+    book.file("xl/sharedStrings.xml", sst.replace("</sst>", `<si><t>{{Revenue}}</t></si></sst>`));
+    book.file(
+      "xl/worksheets/sheet2.xml",
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n<worksheet ${S}><sheetData>` +
+        `<row r="2"><c r="B2" t="s"><v>${count}</v></c></row></sheetData></worksheet>`,
+    );
+    book.file(
+      "xl/workbook.xml",
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n` +
+        `<workbook ${S} xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>` +
+        `<sheet name="Sheet1" sheetId="1" r:id="rId1"/><sheet name="Sheet2" sheetId="2" r:id="rId3"/>` +
+        `</sheets></workbook>`,
+    );
+    book.file(
+      "xl/_rels/workbook.xml.rels",
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n<Relationships ${REL}>` +
+        `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>` +
+        `<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>` +
+        `<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>` +
+        `</Relationships>`,
+    );
+    pkg.setBytes(embedding, await book.generateAsync({ type: "uint8array" }));
+    pkg.setText(
+      "ppt/charts/chart1.xml",
+      (await pkg.text("ppt/charts/chart1.xml")).replace("Sheet1!$B$2:$B$3", "Sheet2!$B$2:$B$3"),
+    );
+
+    const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "s");
+    if (!prepared.ok) throw new Error(prepared.why);
+    const records = toRecordSet(ROWS);
+    await runPlan(pkg, buildPlan(prepared.block, records, { runId: "s" }), records);
+
+    const zip = await JSZip.loadAsync(await pkg.toBytes());
+    const rels = await zip.file("ppt/charts/_rels/chart2.xml.rels")!.async("string");
+    const merged = await JSZip.loadAsync(
+      await zip.file(`ppt/${/Target="([^"]*\.xlsx)"/.exec(rels)![1]!.replace(/^\.\.\//, "")}`)!.async("nodebuffer"),
+    );
+    const two = await merged.file("xl/worksheets/sheet2.xml")!.async("string");
+    const one = await merged.file("xl/worksheets/sheet1.xml")!.async("string");
+
+    expect(two, "the sheet the chart names did not get the value").toContain("<v>1250000</v>");
+    expect(one, "the decoy sheet was written into instead").toContain("<v>999</v>");
+    expect(one).not.toContain("1250000");
   });
 });

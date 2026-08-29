@@ -26,7 +26,7 @@
  * alone and the deck is right until somebody clicks the button, at which point
  * the merged labels revert to `{{Region}}` in front of them.
  */
-import { Pkg } from "./pkg.js";
+import { Pkg, resolveTarget as resolve } from "./pkg.js";
 import { PKG_REL_NS, elements } from "./xml.js";
 
 const REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
@@ -42,17 +42,6 @@ const CHART_TYPE = "application/vnd.openxmlformats-officedocument.drawingml.char
 const DIAGRAM_DATA_TYPE = "application/vnd.openxmlformats-officedocument.drawingml.diagramData+xml";
 const DIAGRAM_DRAWING_TYPE = "application/vnd.ms-office.drawingml.diagramDrawing+xml";
 const XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-
-/** Resolve a relationship target against the part that owns it. */
-function resolve(ownerPart: string, target: string): string {
-  if (target.startsWith("/")) return target.slice(1);
-  const parts = ownerPart.slice(0, ownerPart.lastIndexOf("/")).split("/");
-  for (const seg of target.split("/")) {
-    if (seg === "..") parts.pop();
-    else if (seg !== ".") parts.push(seg);
-  }
-  return parts.join("/");
-}
 
 /** The relationships of a part, as elements, or an empty list when it has none. */
 async function relsOf(pkg: Pkg, part: string): Promise<Element[]> {

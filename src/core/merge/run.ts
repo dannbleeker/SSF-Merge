@@ -16,7 +16,7 @@ import { writeSlideTags } from "../pptx/tags.js";
 import type { MergePlan } from "./plan.js";
 import { makeResolver, type EmptyPolicy } from "./resolve.js";
 import { mergeDocument } from "./text.js";
-import { MediaCache, placeImages, type ImageOutcome, type ResolveImage } from "./images.js";
+import { MediaCache, baseName, placeImages, type ImageOutcome, type ResolveImage } from "./images.js";
 import { emptyGraphicOutcome, mergeGraphics, tallyGraphics, type GraphicOutcome } from "./graphics.js";
 
 export interface RunOptions {
@@ -152,11 +152,6 @@ function resolveImage(row: Record<string, string>, images: Map<string, Uint8Arra
     for (const [file, bytes] of images) if (baseName(file) === wanted) return bytes;
     return undefined;
   };
-}
-
-function baseName(path: string): string {
-  const cut = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
-  return (cut < 0 ? path : path.slice(cut + 1)).toLowerCase();
 }
 
 function tally(into: ImageOutcome, from: ImageOutcome): void {

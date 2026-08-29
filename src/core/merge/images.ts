@@ -58,6 +58,26 @@ export function imageFieldsIn(doc: Document): string[] {
 }
 
 /** What a row's image field resolves to: the bytes, or nothing. */
+/**
+ * `Photos\ada.PNG` and `ada.png` are the same picture.
+ *
+ * A cell names a file and a file picker hands back a name, and the two disagree
+ * about case and about the folders in front — a user should not have to know
+ * that. Directory separators BOTH ways, because a spreadsheet exported on
+ * Windows writes backslashes and one exported anywhere else does not.
+ *
+ * Exported, and deliberately the only copy. The engine matched with one of
+ * these and the pane matched with a byte-identical private one, so the screen
+ * saying "All 3 pictures matched" and the merge deciding what to fill were two
+ * implementations of one rule — free to drift into a pane that promises a
+ * picture the merge then leaves out. The pane asks the engine everywhere else;
+ * this is the same seam.
+ */
+export function baseName(path: string): string {
+  const cut = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+  return (cut < 0 ? path : path.slice(cut + 1)).toLowerCase();
+}
+
 export type ResolveImage = (name: string) => Uint8Array | undefined;
 
 export interface ImageOutcome {

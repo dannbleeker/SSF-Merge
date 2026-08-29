@@ -13,7 +13,7 @@
  * identity twice, and office-js#6105 reports exactly that failing with
  * `InvalidArgument` on Windows desktop. Every copy gets a fresh one.
  */
-import { Pkg } from "./pkg.js";
+import { Pkg, resolveTarget as resolve } from "./pkg.js";
 import { P_NS, child, element, elements } from "./xml.js";
 
 const SLIDE_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.presentationml.slide+xml";
@@ -177,16 +177,6 @@ export async function creationIdOf(pkg: Pkg, slidePath: string): Promise<number 
   const id = Array.from(doc.getElementsByTagNameNS(P14_NS, "creationId"))[0];
   const val = id?.getAttribute("val");
   return val === undefined || val === null ? undefined : Number(val);
-}
-
-function resolve(ownerPart: string, target: string): string {
-  if (target.startsWith("/")) return target.slice(1);
-  const parts = ownerPart.slice(0, ownerPart.lastIndexOf("/")).split("/");
-  for (const seg of target.split("/")) {
-    if (seg === "..") parts.pop();
-    else if (seg !== ".") parts.push(seg);
-  }
-  return parts.join("/");
 }
 
 /**
