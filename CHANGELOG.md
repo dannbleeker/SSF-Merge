@@ -61,6 +61,25 @@ nowhere else now. The same overloaded-name trap as `<cx:pt>` above, and the
 fixtures had been written without an extension list, so the suite agreed with
 the reader.
 
+### Added — a modern chart's VALUES merge too
+
+Putting `{{Revenue}}` in a chart's data sheet has worked since values were
+added, and it worked for an ordinary bar or line chart only. A waterfall,
+funnel, treemap or sunburst kept its numbers in a different element — a
+`<cx:lvl>` of bare `<cx:pt>` under a `<cx:numDim>`, where a classic chart has a
+`<c:numCache>` of `<c:pt><c:v>` — and the pass that fills them had never heard
+of it. So the manual's promise held for half the chart kinds it named, in
+silence: nothing was reported, the placeholder simply stayed in the cell.
+
+Both shapes are read by one pass now, so which cells hold a placeholder cannot
+come apart from which cells get filled — and the pane offers a column for a
+field that is only in a modern chart's value cell, which it could not before.
+
+Every numeric dimension counts, whatever it is called. A sunburst and a treemap
+plot from `size` where a waterfall plots from `val`, so a reader that looked for
+`val` would have filled some modern charts and skipped others without saying
+which.
+
 ### Changed — the landing page is a landing page
 
 It was a stack of paragraphs with the way in buried mid-sentence. Rendered and
