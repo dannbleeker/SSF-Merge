@@ -13,11 +13,11 @@
  * is written directly and the host has no say.
  */
 import { readImage } from "../image/read.js";
-import { fillShapeWithImage, shapeOf, shapesIn } from "../image/place.js";
+import { fillShapeWithImage, shapeOf } from "../image/place.js";
 import type { FillMode } from "../image/fill.js";
 import type { Pkg } from "../pptx/pkg.js";
 import { A_NS, elements } from "../pptx/xml.js";
-import { FIELD } from "./text.js";
+import { FIELD, editRuns, type Edit } from "./text.js";
 
 const IMAGE_REL_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image";
 
@@ -95,6 +95,16 @@ export interface ImageOutcome {
    * stretched photo reads as a broken image, not as a fact about the template.
    */
   stretched: string[];
+  /**
+   * Fields whose shape already holds a picture from an earlier field.
+   *
+   * A shape has ONE fill, so a template with two image placeholders in one
+   * shape is asking for something that cannot be drawn. The first wins and the
+   * rest are named here with their placeholders left standing, because the
+   * alternative — the second quietly overwriting the first — is a slide that
+   * disagrees with its own count.
+   */
+  crowded: string[];
 }
 
 /**
@@ -149,6 +159,19 @@ function digest(bytes: Uint8Array): string {
  * with four picture frames fills each from its own field rather than all four
  * from the first. A field whose text is not inside a `<p:sp>` at all — in a
  * table cell, say — is reported as missing rather than guessed at.
+ *
+ * That last sentence was written before the code could do it. The walk started
+ * at `<p:sp>`, so a paragraph in a table was never visited: the check for it
+ * sat downstream of the loop that could not reach it and was dead code, and
+ * the field was skipped in silence: no picture, and no mention of it in any
+ * list the caller could look at. Walking paragraphs and asking each which
+ * shape it is in makes the documented answer the real one.
+ *
+ * ONE picture per shape, because a shape has one fill. A second image field in
+ * the same shape used to overwrite the first, count itself into `placed`, and
+ * leave a media part and a relationship behind for a picture that is not on
+ * the slide — a count saying two where the deck shows one. It is reported now
+ * and its placeholder is left standing.
  */
 export async function placeImages(
   pkg: Pkg,
@@ -157,49 +180,62 @@ export async function placeImages(
   resolve: ResolveImage,
   media: MediaCache,
 ): Promise<ImageOutcome> {
-  const out: ImageOutcome = { placed: 0, missing: [], unreadable: [], stretched: [] };
-  // Snapshot the shapes first: filling one edits its `<p:spPr>`, and walking a
-  // live list while editing it is how a pass silently skips every other shape.
-  for (const sp of shapesIn(doc)) {
-    for (const paragraph of elements(sp, A_NS, "p")) {
-      const texts = elements(paragraph, A_NS, "t");
-      const joined = texts.map((t) => t.textContent ?? "").join("");
-      const hit = [...joined.matchAll(new RegExp(FIELD.source, FIELD.flags))].find((h) => imageMode(h[2]));
-      if (!hit?.[1]) continue;
+  const out: ImageOutcome = { placed: 0, missing: [], unreadable: [], stretched: [], crowded: [] };
+  const filled = new Set<Element>();
+
+  for (const paragraph of elements(doc, A_NS, "p")) {
+    const texts = elements(paragraph, A_NS, "t");
+    const joined = texts.map((t) => t.textContent ?? "").join("");
+    // Materialised before the first `await`, because the loop edits the document.
+    const hits = [...joined.matchAll(new RegExp(FIELD.source, FIELD.flags))];
+    const edits: Edit[] = [];
+
+    for (const hit of hits) {
+      const mode = imageMode(hit[2]);
       const name = hit[1];
-      const mode = imageMode(hit[2]) as FillMode;
+      if (!mode || !name) continue;
 
       const bytes = resolve(name);
       if (!bytes) {
         // The placeholder STAYS. Same rule the text pass follows for a field
         // with no column: a blank frame looks finished and is not.
-        if (!out.missing.includes(name)) out.missing.push(name);
+        note(out.missing, name);
         continue;
       }
       const info = readImage(bytes);
       if (!info) {
-        if (!out.unreadable.includes(name)) out.unreadable.push(name);
+        note(out.unreadable, name);
+        continue;
+      }
+      const target = shapeOf(texts[0] ?? paragraph);
+      if (!target) {
+        note(out.missing, name);
+        continue;
+      }
+      if (filled.has(target)) {
+        note(out.crowded, name);
         continue;
       }
 
-      const target = shapeOf(texts[0] ?? paragraph);
-      if (!target) {
-        if (!out.missing.includes(name)) out.missing.push(name);
-        continue;
-      }
       const partPath = await media.part(bytes, info.extension, info.contentType);
       const rId = await pkg.addRel(path, IMAGE_REL_TYPE, relativeTo(path, partPath));
       const placed = fillShapeWithImage(doc, target, rId, mode, { w: info.width, h: info.height });
-      if (placed.mode === "stretch" && mode !== "stretch" && !out.stretched.includes(name)) {
-        out.stretched.push(name);
-      }
-      // The placeholder text goes, now that the picture is there. Left behind
-      // it prints over the photo it was asking for.
-      for (const t of texts) t.textContent = "";
+      if (placed.mode === "stretch" && mode !== "stretch") note(out.stretched, name);
+      filled.add(target);
+      // Only the placeholder's OWN characters. Blanking every text node in the
+      // paragraph took the caption, and any neighbouring field, with it.
+      edits.push({ start: hit.index ?? 0, end: (hit.index ?? 0) + hit[0].length, value: "" });
       out.placed++;
     }
+
+    editRuns(texts, edits);
   }
   return out;
+}
+
+/** Report a field once, however many paragraphs hit the same problem with it. */
+function note(list: string[], name: string): void {
+  if (!list.includes(name)) list.push(name);
 }
 
 /** `ppt/slides/slide1.xml` + `ppt/media/image2.png` → `../media/image2.png`. */

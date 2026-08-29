@@ -215,11 +215,21 @@ row names. Size and position are the template's: the merged deck's pictures all
 sit in the same place, at the same size, on every slide, which is the whole
 reason to do it this way rather than by hand.
 
+**One picture per shape.** A shape has one fill, so two picture fields in the
+same box cannot both be drawn. The first wins and the second keeps its
+placeholder, so you can see which one was not drawn rather than wondering
+where it went. Give each picture its own shape.
+
+Anything else written in that shape stays: a caption beside the placeholder,
+or another field, is untouched. Only the placeholder itself is taken away.
+
 **Where the files come from.** Step 2 grows a picker as soon as a column looks
 like it names pictures. Choose them from the folder they are in — several at
 once, or the whole folder. They are read in the pane and go into the merged
 deck; nothing is uploaded, and no picture is fetched from the network. A cell
-holding a URL is not a picture and is merged as text.
+holding a URL is matched by the file name at the end of it, so
+`https://intranet/photos/ada.png` finds the `ada.png` you picked — and finds
+nothing at all if you did not pick it.
 
 **Matching is by file name, ignoring folders and case.** `Photos\\ada.PNG` in
 the sheet finds `ada.png` from the picker. The pane says how many of the

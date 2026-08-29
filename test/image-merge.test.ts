@@ -265,3 +265,123 @@ function resolveRel(base: string[], to: string[]): string {
   }
   return parts.join("/");
 }
+
+describe("what the picture pass must not take with it", () => {
+  /**
+   * The pass placed its picture and then blanked EVERY text node in the
+   * paragraph. The placeholder went, which was the intent, and so did whatever
+   * else shared the paragraph: a caption, or another field.
+   *
+   * The second is the one worth a test of its own. A caption disappearing is
+   * visible — somebody notices the slide is bare. A merged VALUE disappearing
+   * leaves a slide that looks finished and is missing the thing the merge was
+   * for, on every copy, with nothing in any count saying so.
+   */
+  async function mergeShape(paras: string[][], rows: string[][], images: Map<string, Uint8Array>) {
+    const pkg = await Pkg.open(
+      await makeDeck([{ paragraphs: paras, box: xfrm(200, 100) }, { paragraphs: [["after"]] }]),
+    );
+    const records = toRecordSet(rows);
+    const out = await runPlan(pkg, buildPlan(BLOCK, records, { runId: "r" }), records, { images });
+    const doc = await pkg.doc(out.slides[0] as string);
+    return {
+      images: out.images,
+      text: elements(doc, A_NS, "t")
+        .map((t) => t.textContent)
+        .join(""),
+      fills: elements(doc, A_NS, "blipFill").length,
+    };
+  }
+
+  const one = () => new Map([["ada.png", WIDE]]);
+  const two = () =>
+    new Map([
+      ["ada.png", WIDE],
+      ["bo.jpg", TALL],
+    ]);
+
+  it("keeps a caption written beside the placeholder", async () => {
+    const r = await mergeShape([["Photo: ", "{{Photo|image}}"]], [["Photo"], ["ada.png"]], one());
+    expect(r.text, "the caption was blanked with the placeholder").toBe("Photo: ");
+    expect(r.fills, "no picture was placed").toBe(1);
+  });
+
+  it("keeps a merged value written beside the placeholder", async () => {
+    const r = await mergeShape(
+      [["{{Name}} ", "{{Photo|image}}"]],
+      [
+        ["Name", "Photo"],
+        ["Ada", "ada.png"],
+      ],
+      one(),
+    );
+    expect(r.text.trim(), "the row's own value was blanked with the placeholder").toBe("Ada");
+    expect(r.fills).toBe(1);
+  });
+
+  it("fills a shape once and says so when a second field wanted it", async () => {
+    /**
+     * A shape has ONE fill. The second field used to overwrite the first,
+     * count itself into `placed`, and leave a media part and a relationship
+     * behind for a picture that is not on the slide — a count saying two where
+     * the deck shows one.
+     */
+    const r = await mergeShape(
+      [["{{A|image}} {{B|image}}"]],
+      [
+        ["A", "B"],
+        ["ada.png", "bo.jpg"],
+      ],
+      two(),
+    );
+    expect(r.fills).toBe(1);
+    expect(r.images.placed, "counted a picture that is not on the slide").toBe(1);
+    expect(r.images.crowded, "the second field was dropped in silence").toEqual(["B"]);
+    // Left standing, so the author sees which one could not be drawn.
+    expect(r.text).toContain("{{B|image}}");
+  });
+
+  it("counts the same way when the second field is in its own paragraph", async () => {
+    const r = await mergeShape(
+      [["{{A|image}}"], ["{{B|image}}"]],
+      [
+        ["A", "B"],
+        ["ada.png", "bo.jpg"],
+      ],
+      two(),
+    );
+    expect(r.fills).toBe(1);
+    expect(r.images.placed).toBe(1);
+    expect(r.images.crowded).toEqual(["B"]);
+  });
+
+  it("reports an image field in a table cell rather than skipping it", async () => {
+    /**
+     * The file said this happened long before it could. The walk started at
+     * `<p:sp>`, so a table's paragraph was never visited and the check for it
+     * sat below a loop that could not reach it — dead code under a sentence
+     * promising the behaviour. The field got no picture and no mention.
+     */
+    const table =
+      '<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="9" name="Table"/>' +
+      "<p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr>" +
+      '<p:xfrm><a:off x="0" y="0"/><a:ext cx="1000" cy="1000"/></p:xfrm>' +
+      '<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/table">' +
+      '<a:tbl><a:tr h="1000"><a:tc><a:txBody><a:bodyPr/>' +
+      "<a:p><a:r><a:t>{{Photo|image}}</a:t></a:r></a:p>" +
+      "</a:txBody></a:tc></a:tr></a:tbl></a:graphicData></a:graphic></p:graphicFrame>";
+
+    const pkg = await Pkg.open(await makeDeck([{ paragraphs: [["plain"]] }, { paragraphs: [["after"]] }]));
+    const path = "ppt/slides/slide1.xml";
+    const xml = new TextDecoder().decode(await pkg.bytes(path));
+    pkg.setBytes(path, new TextEncoder().encode(xml.replace("</p:spTree>", table + "</p:spTree>")));
+
+    const records = toRecordSet([["Photo"], ["ada.png"]]);
+    const out = await runPlan(pkg, buildPlan(BLOCK, records, { runId: "r" }), records, {
+      images: one(),
+    });
+
+    expect(out.images.missing, "a field with no shape was skipped in silence").toEqual(["Photo"]);
+    expect(out.images.placed).toBe(0);
+  });
+});
