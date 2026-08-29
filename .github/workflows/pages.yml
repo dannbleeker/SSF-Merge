@@ -18,7 +18,47 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The deploy waits for the gate, and that is the whole point of this job.
+  #
+  # Pages ran on every push to main with nothing between the push and the live
+  # add-in. CI ran too, but CONCURRENTLY: a commit could be serving from
+  # ssf-merge.struktureretsundfornuft.dk before its tests had finished, and if
+  # they then failed the broken pane was already what PowerPoint loaded. Every
+  # commit on main has in fact been green on both, so this has never happened —
+  # it is the ordering that was missing, not the tests.
+  #
+  # The same five checks CI runs, in the same order, one per step — a named
+  # step says which one failed at a glance.
+  #
+  # Listed rather than wrapped in one `npm run gate`, because a script chaining
+  # `npm run a && npm run b` cannot run on the owner's own machine: npm spawns a
+  # shell for the `&&` and AppLocker refuses it. A gate the maintainer cannot
+  # run locally is a gate that only ever speaks through CI.
+  #
+  # Two lists is a drift risk, so `test/release.test.ts` holds them against each
+  # other: the same commands, in the same order, in both workflows.
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Format
+        run: npm run format:check
+      - name: Lint
+        run: npm run lint
+      - name: Types
+        run: npm run typecheck
+      - name: Tests and coverage
+        run: npm run coverage
+      - name: Test count
+        run: npm run test:count
+
   deploy:
+    needs: gate
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}

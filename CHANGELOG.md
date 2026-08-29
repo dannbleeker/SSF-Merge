@@ -7,6 +7,26 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — the deploy no longer races the tests
+
+Pages ran on every push to `main` with nothing between the push and the live
+add-in. CI ran too, but CONCURRENTLY: a commit could be serving from the
+production origin before its tests had finished, and if they then failed, the
+broken pane was already what PowerPoint loaded.
+
+Checked rather than assumed — every commit on `main` has been green on both, so
+this has never happened. It is the ORDERING that was missing, not the tests.
+
+The deploy job now waits on a gate job running the same five checks CI runs.
+
+They are listed in both workflows rather than wrapped in one `npm run gate`,
+which was the first attempt: a script chaining `npm run a && npm run b` cannot
+run on the maintainer's own machine, because npm spawns a shell for the `&&` and
+AppLocker refuses it. A gate that only ever speaks through CI is worse than a
+duplicated list. `test/release.test.ts` holds the two lists against each other —
+same commands, same order — so they cannot drift, and asserts the deploy still
+declares `needs: gate`.
+
 ### Added — a new source directory cannot go unmeasured in silence
 
 `src/core/trace.ts` names this hazard in its own docstring, and says it chose
