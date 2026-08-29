@@ -64,7 +64,7 @@ export async function runPlan(
 ): Promise<RunResult> {
   const slides: string[] = [];
   let paragraphsMerged = 0;
-  const images: ImageOutcome = { placed: 0, missing: [], unreadable: [], stretched: [] };
+  const images: ImageOutcome = { placed: 0, missing: [], unreadable: [], stretched: [], crowded: [] };
   const graphics = emptyGraphicOutcome();
   // One cache for the whole run, which is the point of it: a logo on all 240
   // rows becomes ONE media part rather than 240 copies of the same bytes in a
@@ -156,7 +156,7 @@ function resolveImage(row: Record<string, string>, images: Map<string, Uint8Arra
 
 function tally(into: ImageOutcome, from: ImageOutcome): void {
   into.placed += from.placed;
-  for (const key of ["missing", "unreadable", "stretched"] as const) {
+  for (const key of ["missing", "unreadable", "stretched", "crowded"] as const) {
     for (const name of from[key]) if (!into[key].includes(name)) into[key].push(name);
   }
 }

@@ -7,6 +7,42 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — the picture pass took the rest of the paragraph with it
+
+Placing a picture blanked **every text node in the paragraph**, not the
+placeholder's own characters. Whatever shared the paragraph went with it.
+
+A caption disappearing is at least visible — somebody notices the slide is
+bare. The case worth the fix is `{{Name}} {{Photo|image}}` in one line: the
+picture lands, the merged NAME is wiped, and the slide looks finished on every
+copy with nothing in any count saying otherwise.
+
+Three more defects fell out of the same loop.
+
+**A shape has one fill.** A second picture field in the same shape overwrote the
+first, counted itself into `placed`, and left a media part and a relationship
+behind for a picture that is not on the slide — a count saying two where the
+deck shows one. The first wins now, the rest are reported as `crowded`, and
+their placeholders are left standing so the author can see which was not drawn.
+
+**A table cell was skipped in silence.** The file said otherwise: "A field whose
+text is not inside a `<p:sp>` at all — in a table cell, say — is reported as
+missing rather than guessed at." The walk started at `<p:sp>`, so a table's
+paragraph was never visited and the check for it sat below a loop that could not
+reach it. Dead code under a sentence promising the behaviour. The walk goes over
+paragraphs now and asks each which shape it is in, which makes the documented
+answer the real one.
+
+**`docs/MANUAL.md` was wrong about URLs.** It said a cell holding a URL "is not a
+picture and is merged as text". A column of `https://…/ada.png` is typed as an
+image column, and the name at the END of the URL is matched against the files
+you picked — so it finds `ada.png` if you picked it, and nothing if you did not.
+The manual now says that.
+
+The span arithmetic the text pass already used is now shared rather than
+approximated: `editRuns` replaces characters by offset into a paragraph's joined
+text, and both passes call it.
+
 ### Fixed — one definition of a number, and one of a written date
 
 Two pairs of functions each answered the same question two ways, and in both

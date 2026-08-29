@@ -134,39 +134,63 @@ export function mergeRuns(nodes: Element[], resolve: Resolve): boolean {
   const { spans, joined } = spansOf(nodes);
   if (!spans.length) return false;
 
-  const hits = [...joined.matchAll(FIELD)];
-  if (!hits.length) return false;
-
-  // Per-character buffers, so every offset keeps referring to the ORIGINAL
-  // joined text however many fields one paragraph holds.
-  const bufs = spans.map((s) => (s.node.textContent ?? "").split(""));
-  let changed = false;
-
-  for (const hit of hits) {
+  const edits: Edit[] = [];
+  for (const hit of joined.matchAll(FIELD)) {
     const value = resolve(hit[1] ?? "", hit[2]);
     // A field nobody can resolve stays visible. Blanking it hides the author's
     // typo behind 240 slides that look finished and are not.
     if (value === null) continue;
-
     const start = hit.index ?? 0;
-    const end = start + hit[0].length;
-    let carried = false;
+    edits.push({ start, end: start + hit[0].length, value });
+  }
+  return editRuns(nodes, edits);
+}
 
+/** A replacement, given in offsets into the JOINED text rather than into any one node. */
+export interface Edit {
+  start: number;
+  /** Exclusive. */
+  end: number;
+  value: string;
+}
+
+/**
+ * Apply edits to text held across several nodes. Returns true if any were.
+ *
+ * Taken out of `mergeRuns` because the image pass needs exactly this and had
+ * been doing something coarser: it blanked EVERY text node in the paragraph
+ * once it had placed a picture. A caption beside the placeholder, or a second
+ * field, went with it — silently, on a slide that then looked finished.
+ *
+ * The replacement lands in the FIRST node the edit touches and the covered
+ * characters are removed from the rest, so a value inherits the run properties
+ * of the run its placeholder started in. That is the contract a template author
+ * works against: format the opening brace the way you want the value to look.
+ *
+ * Per-character buffers, so every offset keeps referring to the ORIGINAL joined
+ * text however many edits one paragraph takes.
+ */
+export function editRuns(nodes: Element[], edits: Edit[]): boolean {
+  if (!edits.length) return false;
+  const { spans } = spansOf(nodes);
+  if (!spans.length) return false;
+
+  const bufs = spans.map((s) => (s.node.textContent ?? "").split(""));
+  for (const edit of edits) {
+    let carried = false;
     spans.forEach((s, i) => {
-      if (s.to <= start || s.from >= end) return;
+      if (s.to <= edit.start || s.from >= edit.end) return;
       const buf = bufs[i];
       if (!buf) return;
-      const lo = Math.max(start, s.from) - s.from;
-      const hi = Math.min(end, s.to) - s.from;
+      const lo = Math.max(edit.start, s.from) - s.from;
+      const hi = Math.min(edit.end, s.to) - s.from;
       for (let k = lo; k < hi; k++) buf[k] = "";
       if (!carried) {
-        buf[lo] = value;
+        buf[lo] = edit.value;
         carried = true;
       }
     });
-    changed = true;
   }
-  if (!changed) return false;
 
   spans.forEach((s, i) => {
     const text = (bufs[i] ?? []).join("");

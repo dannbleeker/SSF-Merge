@@ -14,7 +14,7 @@
  * would have to letterbox the image itself before sending. In the package the
  * fill mode is ours to write, and `<a:blipFill>` states it directly.
  */
-import { A_NS, P_NS, R_NS, child, elements } from "../pptx/xml.js";
+import { A_NS, P_NS, R_NS, child } from "../pptx/xml.js";
 
 /**
  * Every ELEMENT child, whatever its name.
@@ -202,9 +202,4 @@ export function shapeOf(node: Node): Element | undefined {
     at = at.parentNode;
   }
   return undefined;
-}
-
-/** Every `<p:sp>` in a part, in document order. */
-export function shapesIn(doc: Document): Element[] {
-  return elements(doc, P_NS, "sp");
 }
