@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { prepareBlock } from "../src/core/merge/prepare.js";
 import { Pkg } from "../src/core/pptx/pkg.js";
 import { makeDeck } from "./fixtures/deck.js";
+import { C_NS, elements } from "../src/core/pptx/xml.js";
 
 /** A deck of `n` slides, the middle ones carrying placeholders. */
 async function deck(n: number, withFields = true): Promise<Pkg> {
@@ -249,5 +250,67 @@ describe("placeholders in the speaker notes", () => {
     const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "run1");
     expect(prepared.ok).toBe(false);
     expect(prepared.ok || prepared.why).toContain("no {{fields}}");
+  });
+});
+
+describe("a block whose only field is the number its chart plots", () => {
+  /**
+   * `prepare.ts` states the rule this breaks: "this list and `runPlan`'s are
+   * the same list". A scan that reads fewer parts than the merge writes REFUSES
+   * a block it would have merged, telling the author to go and type field names
+   * onto a slide that already carries one.
+   *
+   * It had happened twice — speaker notes, then chart labels — and both are
+   * described in that file. This was the third: a value cell holds its
+   * placeholder in the WORKBOOK, and `fieldsIn` cannot see it, because
+   * `<c:numCache>` is left out of the text pass on purpose (a formatted number
+   * is unplottable). So the workbook was not read at all, on a rationale that
+   * was true until chart numbers became a feature.
+   *
+   * The scan is now a dry run of `mergeChartNumbers` itself, so the two cannot
+   * hold different opinions about which cells carry a placeholder.
+   */
+  const CHART = {
+    paragraphs: [["Quarterly revenue"]],
+    chart: {
+      title: "Revenue",
+      categories: ["North", "South"],
+      workbook: ["North"],
+      values: ["{{Revenue}}", "42"],
+    },
+  };
+
+  async function chartDeck(): Promise<Pkg> {
+    return Pkg.open(await makeDeck([CHART, { paragraphs: [["after"]] }]));
+  }
+
+  it("is accepted, and the field is named", async () => {
+    const prepared = await prepareBlock(await chartDeck(), { from: 1, to: 1, offsetInPackage: 0 }, "n");
+    expect(prepared.ok || prepared.why, "refused a block the merge would have filled").toBe(true);
+    expect(prepared.ok && prepared.fields).toEqual(["Revenue"]);
+  });
+
+  it("and the scan that finds it writes nothing", async () => {
+    /**
+     * The dry run drives the real merge with a resolver that answers null, so
+     * "it does not write" is a claim about a code path, not a design. Measured
+     * at the only two places that path can write: the embedded workbook, which
+     * `mergeChartNumbers` repacks with `setBytes`, and the chart's cached
+     * values, which it edits in the document.
+     */
+    const pkg = await chartDeck();
+    const embedding = pkg.partNames().find((p) => p.endsWith(".xlsx")) as string;
+    const before = Buffer.from(await pkg.bytes(embedding));
+    const cached = async (): Promise<(string | null)[]> =>
+      elements(await pkg.doc("ppt/charts/chart1.xml"), C_NS, "numCache")
+        .flatMap((c) => elements(c, C_NS, "v"))
+        .map((v) => v.textContent);
+
+    const cacheBefore = await cached();
+    await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "n");
+
+    expect(Buffer.compare(before, Buffer.from(await pkg.bytes(embedding))), "the workbook was repacked").toBe(0);
+    expect(await cached(), "the cached values moved").toEqual(cacheBefore);
+    expect(cacheBefore, "the fixture stopped carrying a placeholder").toContain("{{Revenue}}");
   });
 });

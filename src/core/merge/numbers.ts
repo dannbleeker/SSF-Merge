@@ -342,3 +342,31 @@ export async function mergeChartNumbers(
   pkg.setBytes(workbookPath, await book.generateAsync({ type: "uint8array", compression: "DEFLATE" }));
   return out;
 }
+
+/**
+ * The field names sitting in a chart's VALUE cells.
+ *
+ * A dry run of `mergeChartNumbers` itself, driven by a resolver that records
+ * every name and answers null. Null is what a placeholder with no column gets
+ * everywhere else in this engine, and it means the same here: the text is left
+ * exactly as it stands, `numericValue` refuses it, nothing is written, and
+ * `touched` stays false so no workbook is repacked.
+ *
+ * The same WALK rather than a second reader, which is the whole point. A
+ * scanner that answered this question its own way would be free to disagree
+ * with the merge about which cells hold a placeholder — and `prepare.ts` states
+ * the rule it would break: "this list and `runPlan`'s are the same list". It is
+ * the same list here because it is the same code.
+ */
+export async function chartValueFields(
+  pkg: Pkg,
+  chartPath: string,
+  workbookPath: string | undefined,
+): Promise<string[]> {
+  const seen: string[] = [];
+  await mergeChartNumbers(pkg, chartPath, workbookPath, (name) => {
+    if (!seen.includes(name)) seen.push(name);
+    return null;
+  });
+  return seen;
+}

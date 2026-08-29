@@ -7,6 +7,41 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a slide whose only field was its chart's number was refused as empty
+
+`prepare.ts` states the rule: "this list and `runPlan`'s are the same list." A
+scan that reads fewer parts than the merge writes refuses a block it would have
+merged, and tells the author to go and type field names onto a slide that
+already carries one.
+
+That has now happened three times. Speaker notes, then chart labels, and now
+chart VALUES — the first two are written up in that same file, a few lines above
+where the third one was.
+
+A value cell holds its placeholder in the **workbook**. `fieldsIn` cannot see it,
+because `<c:numCache>` is deliberately left out of the text pass — a formatted
+number is unplottable — and the workbook was not read at all, on a rationale
+that was true right up until chart numbers became a feature: "its strings are
+the same strings as the chart's own cache, so reading it would name nothing
+new."
+
+So a slide carrying a chart whose numbers vary per row, and nothing else, was
+told it "has no {{fields}}, so every copy would be identical". The merge fills
+it: two numbers across two slides, in the case that found this.
+
+The scan is a dry run of `mergeChartNumbers` itself now, driven by a resolver
+that records each name and answers null — the same answer a placeholder with no
+column gets everywhere else, which leaves the text standing, writes nothing, and
+repacks no workbook. The same WALK rather than a second reader, so the scan and
+the merge cannot hold different opinions about which cells carry a placeholder.
+
+That "writes nothing" is a claim about a code path, so it is measured at the
+only two places that path could write: the embedded workbook's bytes and the
+chart's cached values. Both are asserted unchanged.
+
+The labels still come from the chart's own cache rather than the workbook. Those
+two hold the same strings, and reading both would name nothing twice.
+
 ### Changed — `sweepPlan` checks the count it deletes by, and states its rules as properties
 
 `sweepPlan` decides which slides an undo removes from somebody's presentation.
