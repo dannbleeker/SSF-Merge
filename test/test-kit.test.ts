@@ -30,7 +30,7 @@ import { prepareBlock } from "../src/core/merge/prepare.js";
 import { buildPlan } from "../src/core/merge/plan.js";
 import { runPlan } from "../src/core/merge/run.js";
 import { parseDelimited, toRecordSet } from "../src/core/data/recordset.js";
-import { A_NS, C_NS, PKG_REL_NS, SSML_NS, elements, parseXml } from "../src/core/pptx/xml.js";
+import { A_NS, C_NS, CX_NS, MC_NS, PKG_REL_NS, SSML_NS, elements, parseXml } from "../src/core/pptx/xml.js";
 
 const KIT = "test-kit";
 const PHOTOS = ["ada.png", "grace.png", "alan.png"];
@@ -70,6 +70,39 @@ async function related(zip: JSZip, part: string, endsWith: string): Promise<stri
       }
       return segments.join("/");
     });
+}
+
+/**
+ * Every relationship in the package that names a part which is not there.
+ *
+ * Shared by both decks in this file, because it is the one check that stands
+ * for the whole round: PowerPoint reports a package it cannot resolve as
+ * damaged, repairs it silently, and drops whatever it chose to drop.
+ */
+async function danglingRels(zip: JSZip): Promise<string[]> {
+  const names = new Set(Object.keys(zip.files));
+  const dangling: string[] = [];
+  for (const name of names) {
+    if (!name.endsWith(".rels")) continue;
+    // The package's own `_rels/.rels` has no directory in front of it, and a
+    // bare `indexOf` answers -1 there — which silently produces a base of
+    // "_rels/.rel" and reports every root relationship as dangling. `Pkg`
+    // carries the same warning about the same off-by-one.
+    const cut = name.indexOf("/_rels/");
+    const base = cut < 0 ? "" : name.slice(0, cut);
+    for (const rel of elements(parseXml((await zip.file(name)?.async("string")) ?? ""), PKG_REL_NS, "Relationship")) {
+      if ((rel.getAttribute("TargetMode") ?? "") === "External") continue;
+      const target = rel.getAttribute("Target") ?? "";
+      if (/^[a-z]+:/.test(target)) continue;
+      const segments = base.split("/").filter(Boolean);
+      for (const seg of target.split("/")) {
+        if (seg === "..") segments.pop();
+        else if (seg !== ".") segments.push(seg);
+      }
+      if (!names.has(segments.join("/"))) dangling.push(`${name} -> ${target}`);
+    }
+  }
+  return dangling;
 }
 
 const kit = await runTheKit();
@@ -170,34 +203,7 @@ describe("the kit's template, merged", () => {
     // The failure this whole round exists to catch, in the form a test can
     // reach: PowerPoint reports a package it cannot resolve as damaged, repairs
     // it silently, and drops whatever it chose to drop.
-    const names = new Set(Object.keys(kit.zip.files));
-    const dangling: string[] = [];
-    for (const name of names) {
-      if (!name.endsWith(".rels")) continue;
-      // The package's own `_rels/.rels` has no directory in front of it, and a
-      // bare `indexOf` answers -1 there — which silently produces a base of
-      // "_rels/.rel" and reports every root relationship as dangling. `Pkg`
-      // carries the same warning about the same off-by-one.
-      const cut = name.indexOf("/_rels/");
-      const base = cut < 0 ? "" : name.slice(0, cut);
-      for (const rel of elements(
-        parseXml((await kit.zip.file(name)?.async("string")) ?? ""),
-        PKG_REL_NS,
-        "Relationship",
-      )) {
-        if ((rel.getAttribute("TargetMode") ?? "") === "External") continue;
-        const target = rel.getAttribute("Target") ?? "";
-        if (/^[a-z]+:/.test(target)) continue;
-        const segments = base.split("/").filter(Boolean);
-        for (const seg of target.split("/")) {
-          if (seg === "..") segments.pop();
-          else if (seg !== ".") segments.push(seg);
-        }
-        const path = segments.join("/");
-        if (!names.has(path)) dangling.push(`${name} -> ${target}`);
-      }
-    }
-    expect(dangling).toEqual([]);
+    expect(await danglingRels(kit.zip)).toEqual([]);
   });
 
   it("takes the template's own chart and workbook out with the template slides", () => {
@@ -208,5 +214,171 @@ describe("the kit's template, merged", () => {
     expect(parts.filter((n) => /^ppt\/charts\/chart\d+\.xml$/.test(n))).toHaveLength(3);
     expect(parts.filter((n) => /^ppt\/embeddings\/\S+\.xlsx$/.test(n))).toHaveLength(3);
     expect(parts.some((n) => n.includes("Microsoft_Excel_Sheet1"))).toBe(false);
+  });
+});
+
+/**
+ * The second deck: a SUNBURST, written by real PowerPoint.
+ *
+ * `SSF-Merge-test-template.pptx` above holds a classic `<c:chartSpace>` chart
+ * that python-pptx wrote. A modern chart is a different part under a different
+ * relationship, and until this file arrived every chartEx test in the suite ran
+ * against a fixture whose author was also the reader — the arrangement that let
+ * a real defect through twice in one week, once in what a title looks like and
+ * once in what `a:ext` means.
+ *
+ * Sunburst rather than another waterfall on purpose: a hierarchy chart keeps its
+ * categories as SEVERAL `<cx:lvl>` inside one `<cx:strDim>`, so the level the
+ * merge fills and the level it must leave alone are in the same element.
+ *
+ * `test-kit/strip-thinkcell.py` records the one edit made to this recording
+ * before it was committed, and why.
+ */
+async function runTheSunburst() {
+  const pkg = await Pkg.open(new Uint8Array(readFileSync(`${KIT}/modern-chart.pptx`)));
+  const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "modern");
+  if (!prepared.ok) throw new Error(`the kit's modern chart deck was refused: ${prepared.why}`);
+
+  const records = toRecordSet(parseDelimited(readFileSync(`${KIT}/data.txt`, "utf8")));
+  const result = await runPlan(pkg, buildPlan(prepared.block, records, { runId: "modern" }), records, {});
+
+  const keep = new Set(result.slides);
+  for (const path of await pkg.slidePaths()) if (!keep.has(path)) await pkg.removeSlide(path);
+  return { prepared, result, zip: await JSZip.loadAsync(await pkg.toBytes()) };
+}
+
+const sun = await runTheSunburst();
+
+/** One merged copy's chart part, in the order the copies were produced. */
+async function chartsOf(zip: JSZip, slidePaths: string[]): Promise<Document[]> {
+  const out: Document[] = [];
+  for (const slide of slidePaths) {
+    const part = (await related(zip, slide, "/chartEx"))[0];
+    if (!part) continue;
+    out.push(parseXml((await zip.file(part)?.async("string")) ?? ""));
+  }
+  return out;
+}
+
+/** The `<cx:pt>` text of one dimension, level by level. */
+function levels(doc: Document, ns: string, local: string): string[][] {
+  return elements(doc, ns, local).flatMap((dim) =>
+    elements(dim, CX_NS, "lvl").map((lvl) => elements(lvl, CX_NS, "pt").map((pt) => pt.textContent ?? "")),
+  );
+}
+
+describe("the kit's modern chart, merged", () => {
+  it("reports the fields inside a chart PowerPoint wrote", () => {
+    // `Name` is in three places — the slide's text box, the chart's title and
+    // the series name — and `Region` in one cell of the category sheet. A block
+    // whose only placeholder is inside a chart used to be refused as having
+    // none.
+    expect(sun.prepared.ok && [...sun.prepared.fields].sort()).toEqual(["Name", "Region"]);
+  });
+
+  it("gives every copy its own chart part and its own workbook", () => {
+    const parts = Object.keys(sun.zip.files);
+    expect(parts.filter((n) => /^ppt\/charts\/chartEx\d+\.xml$/.test(n))).toHaveLength(3);
+    expect(parts.filter((n) => /^ppt\/embeddings\/\S+\.xlsx$/.test(n))).toHaveLength(3);
+    // The template's own went out with the template slide.
+    expect(parts.some((n) => n.includes("Microsoft_Excel_Worksheet"))).toBe(false);
+  });
+
+  it("fills the cell of the hierarchy that holds a placeholder, and no other", async () => {
+    // The sheet is `Existing | {{Region}} | 100` over three rows: the INNER
+    // level is a literal grouping and the outer one carries the placeholder in
+    // its FIRST CELL ONLY. So a correct merge and a blind overwrite of every
+    // category look different, which is the whole reason the deck is shaped
+    // this way — Alan's outer level reads `DACH, Benelux, DACH`, and only the
+    // first of those moved.
+    //
+    // Read what the grouping-level assertion can and cannot do. It catches a
+    // merge that wrote where no placeholder was; it does NOT prove the engine
+    // scopes `<cx:pt>` by its dimension, because nothing in this deck puts a
+    // placeholder anywhere a scoping bug would reach. That guard needs a
+    // placeholder in a value cell, which is a chart PowerPoint would not have
+    // drawn, and it lives in `chart-modern.test.ts` where the fixture can hold
+    // one.
+    const outer: string[][] = [];
+    for (const doc of await chartsOf(sun.zip, sun.result.slides)) {
+      const [first, second] = levels(doc, CX_NS, "strDim");
+      expect(second, "the grouping level was written to").toEqual(["Existing", "Existing", "New"]);
+      outer.push(first ?? []);
+    }
+    expect(outer).toEqual([
+      ["Nordics", "Benelux", "DACH"],
+      ["Benelux", "Benelux", "DACH"],
+      ["DACH", "Benelux", "DACH"],
+    ]);
+  });
+
+  it("fills the chart's title, which PowerPoint keeps as DrawingML", async () => {
+    // A modern chart's title can be `<a:t>` inside `<cx:rich>` or a bare
+    // `<cx:v>`, and the engine fills both because two producers were seen doing
+    // different things. This deck settles which one PowerPoint itself writes.
+    const titles: string[] = [];
+    for (const doc of await chartsOf(sun.zip, sun.result.slides)) {
+      titles.push(
+        elements(doc, A_NS, "t")
+          .map((t) => t.textContent ?? "")
+          .join(""),
+      );
+    }
+    expect(titles).toEqual(["Ada pipeline", "Grace pipeline", "Alan pipeline"]);
+  });
+
+  it("fills the series name and leaves the plotted numbers alone", async () => {
+    const names: string[] = [];
+    for (const doc of await chartsOf(sun.zip, sun.result.slides)) {
+      names.push(
+        elements(doc, CX_NS, "txData")
+          .flatMap((d) => elements(d, CX_NS, "v").map((v) => v.textContent ?? ""))
+          .join(""),
+      );
+      // The plotted values, unchanged. Not the guard against writing a label
+      // into a value — these numbers hold no placeholder, so a merge that
+      // ignored the dimension entirely would still leave them alone, and this
+      // line passes against that build. It pins that cloning a chart three ways
+      // did not disturb what it plots; `chart-modern.test.ts` holds the scoping
+      // guard, against a fixture with a placeholder in a value cell.
+      expect(levels(doc, CX_NS, "numDim")).toEqual([["100", "60", "40"]]);
+    }
+    expect(names).toEqual(["Ada", "Grace", "Alan"]);
+  });
+
+  it("fills the workbook each chart opens on Edit Data", async () => {
+    const seen: string[] = [];
+    for (const slide of sun.result.slides) {
+      const chart = (await related(sun.zip, slide, "/chartEx"))[0] ?? "";
+      const book = (await related(sun.zip, chart, "/package"))[0] ?? "";
+      const inner = await JSZip.loadAsync((await sun.zip.file(book)?.async("uint8array")) ?? new Uint8Array());
+      const strings = parseXml((await inner.file("xl/sharedStrings.xml")?.async("string")) ?? "");
+      const text = elements(strings, SSML_NS, "t").map((t) => t.textContent ?? "");
+      expect(text, `${book} kept a placeholder`).not.toContain("{{Region}}");
+      seen.push(text.join("|"));
+    }
+    // Closing Excel refreshes the chart from this, so a copy whose workbook
+    // still said "{{Region}}" would undo its own merge on the first click.
+    expect(seen).toEqual([
+      "Ada|Existing|New|Nordics|Benelux|DACH",
+      "Grace|Existing|New|Benelux|Benelux|DACH",
+      "Alan|Existing|New|DACH|Benelux|DACH",
+    ]);
+  });
+
+  it("swaps the fallback picture for the notice, on a slide PowerPoint laid out", async () => {
+    for (const slide of sun.result.slides) {
+      const doc = parseXml((await sun.zip.file(slide)?.async("string")) ?? "");
+      const said = elements(doc, MC_NS, "Fallback").flatMap((f) =>
+        elements(f, A_NS, "t").map((t) => t.textContent ?? ""),
+      );
+      expect(said.join(""), slide).toMatch(/needs a newer version of PowerPoint/);
+      expect(elements(doc, MC_NS, "Fallback").flatMap((f) => elements(f, A_NS, "blip"))).toHaveLength(0);
+      expect(await related(sun.zip, slide, "/image"), `${slide} still points at a rendering`).toEqual([]);
+    }
+  });
+
+  it("hands over a package with no relationship pointing at nothing", async () => {
+    expect(await danglingRels(sun.zip)).toEqual([]);
   });
 });

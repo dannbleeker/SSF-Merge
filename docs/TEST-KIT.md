@@ -16,6 +16,7 @@ All of it lives in `test-kit/`.
 | File | What it is |
 | --- | --- |
 | `SSF-Merge-test-template.pptx` | The template. Slide 1 is instructions, slides 2–3 are the block. |
+| `modern-chart.pptx` | A second, one-slide deck: a **sunburst** written by real PowerPoint. Its own short round, below. |
 | `data.txt` | Three rows, tab-separated. Copy the whole thing, header included. |
 | `ada.png`, `grace.png`, `alan.png` | The pictures. Deliberately one wide, one tall, one square. |
 
@@ -149,6 +150,41 @@ right and only Edit Data is stale. Tell me the number.
 
 **10. Undo.** Press it. Exactly the 6 merged slides should go, and the template
 and slide 1 should stay.
+
+## The second deck: the modern chart
+
+`modern-chart.pptx` is a separate thirty-second round, and it is worth doing
+because it is a different kind of chart in a different part of the format.
+
+A waterfall, funnel, treemap, sunburst, histogram, pareto, box-and-whisker or
+region map is not a `<c:chartSpace>` at all — PowerPoint stores it as a chartEx
+part under a Microsoft relationship, with its own way of keeping labels. The
+chart in the main template is the classic kind, so nothing in that round touches
+this code.
+
+The deck holds one slide: a sunburst titled `{{Name}} pipeline`, a text box
+reading `Pipeline for {{Name}}`, and a hierarchy whose outer ring's first cell is
+`{{Region}}` with `Benelux` and `DACH` beside it as plain text.
+
+1. Open it, block **from 1 to 1**, paste the same `data.txt`, merge. Three slides.
+2. **Each chart's title names its own row** — *Ada pipeline*, *Grace pipeline*,
+   *Alan pipeline*. Same title on all three means the copies share one chart.
+3. **The outer ring reads that row's region, and only in the first segment.**
+   Alan's should read `DACH`, `Benelux`, `DACH`: one merged, two untouched. All
+   three segments changing is a merge writing where no placeholder was.
+4. **The inner ring still reads `Existing` and `New`.**
+5. **Right-click ▸ Edit Data**, close Excel, look again — as with the main deck,
+   this is where a half-merge shows itself, and it needs desktop PowerPoint.
+6. **Open it in an old PowerPoint if you have one to hand.** A modern chart
+   carries a rendered picture for hosts that cannot draw it, and that picture is
+   the TEMPLATE's data — another recipient's figures under this recipient's
+   name. Each merged copy should show a bordered notice saying the chart needs a
+   newer PowerPoint instead. Nothing from 2016 onwards will ever show it, so
+   this one is genuinely optional.
+
+The deck was recorded on a machine with think-cell installed, which stamps every
+deck it touches. `test-kit/strip-thinkcell.py` is the one edit made to the file
+before it was committed, and says exactly what it removed.
 
 ## What to send back
 
