@@ -12,6 +12,7 @@
  * id, which this host refuses for slides a run just added, and never a
  * zero-based index, which is a number the user has no way to see.
  */
+import { sweepPlan } from "../host/undo.js";
 import type { Block } from "./steps.js";
 import { slidesPerRecord } from "./steps.js";
 
@@ -59,36 +60,46 @@ export function mergeSummary(added: number, deckSize: number): string {
  *
  * Phrased as the slides themselves rather than as "undo", because the pane is
  * offering to delete part of somebody's presentation and the sentence should
- * say so.
+ * say so — and the range therefore has to be the range that will actually go.
+ *
+ * Computed by `sweepPlan`, which is the function the button calls. It used to
+ * be computed here, backwards from the end of the deck, and the two disagreed
+ * whenever the deck had moved since the merge:
+ *
+ * - a colleague appends five slides, and the card offered to remove THEIR five
+ *   by number while the sweep refused and nothing happened;
+ * - the user takes three of the merged slides out by hand, and the card offered
+ *   a five-slide range beginning three slides before the merge started;
+ * - the user takes all of them out, and the card offered to delete five slides
+ *   that pre-date the merge entirely.
+ *
+ * The button was safe in each — `sweepPlan` refuses what it cannot prove is the
+ * run's own — so this was a sentence naming somebody's own slides and a press
+ * that did nothing. `main.ts` already said the refusal here was the sweep's, in
+ * a comment above a line that did not ask it.
  */
-export function undoSummary(added: number, deckSize: number): string {
-  if (!undoIsPossible(added, deckSize)) return "Nothing to take back.";
-  const from = deckSize - added + 1;
-  return added === 1
+export function undoSummary(added: number, deckSize: number, deckAtStart: number): string {
+  const plan = sweepPlan({ deckAtStart, deckNow: deckSize, added });
+  if (!plan) return "Nothing to take back.";
+  // `sweepPlan` counts from zero, because it is read by `getItemAt`. Every
+  // number in this file is the one the thumbnail rail shows.
+  const from = plan.from + 1;
+  const to = plan.from + plan.count;
+  return plan.count === 1
     ? `Remove slide ${from}, which this merge added.`
-    : `Remove slides ${from} to ${deckSize}, which this merge added.`;
+    : `Remove slides ${from} to ${to}, which this merge added.`;
 }
 
 /**
- * Whether the deck can still contain what the run added.
+ * Whether there is anything to offer.
  *
- * The card is a promise to delete a specific range, and the range is computed
- * backwards from the END of the deck — so a deck SMALLER than the run's own
- * output produces a first slide at or below zero. It read `Remove slides -707
- * to 12, which this merge added.` and offered a button.
- *
- * Reachable, and not only through a bad fixture: the crash crumb offers a run
- * back when the pane reopens, and by then the user may have taken those slides
- * out by hand or with Ctrl+Z. `added` is what the run did; `deckSize` is what
- * is there now; nothing keeps them in step across a closed pane.
- *
- * `sweepPlan` already refuses this case, so pressing the button was safe — it
- * answered "nothing to take back". Safe and wrong: the card said the slides
- * were there and named them. This is the pane agreeing with the decision that
- * will actually be taken.
+ * The same question `sweepPlan` answers, asked of the same function, so the
+ * card and the button cannot part company. It began as `deckSize - added + 1 >=
+ * 1` — which catches a deck smaller than the run's own output, and is one of
+ * three ways the two could disagree.
  */
-export function undoIsPossible(added: number, deckSize: number): boolean {
-  return added > 0 && deckSize - added + 1 >= 1;
+export function undoIsPossible(added: number, deckSize: number, deckAtStart: number): boolean {
+  return sweepPlan({ deckAtStart, deckNow: deckSize, added }) !== null;
 }
 
 /** What a finished merge actually did, as opposed to how much the deck grew. */

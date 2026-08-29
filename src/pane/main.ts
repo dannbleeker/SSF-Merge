@@ -641,7 +641,10 @@ async function merge(): Promise<void> {
       ...(outcome.fields.length > 0 ? { fields: outcome.fields, imageFields: outcome.imageFields } : {}),
       // Only a run that ADDED something disarms the button. A refusal that
       // added nothing should leave the user able to press again.
-      ...(outcome.added > 0 ? { added: outcome.added } : {}),
+      // `deckAtStart` travels with `added` everywhere, because the undo card
+      // asks `sweepPlan` and a positional offer needs both: `added` says how
+      // many slides, this says which.
+      ...(outcome.added > 0 ? { added: outcome.added, deckAtStart: outcome.deckAtStart } : {}),
       // What the merge DID. `outcome.detail` says how much the deck GREW,
       // which is equally true of a merge that filled every placeholder and one
       // that matched none of them and inserted 720 copies of the template.
@@ -797,7 +800,9 @@ async function undoRun(): Promise<void> {
       // Only a COMPLETE sweep disarms the button. A partial one leaves slides
       // in the deck and the user is the only one who can finish the job, so
       // the way back has to stay on screen.
-      ...(remaining > 0 ? { added: remaining } : { added: undefined }),
+      ...(remaining > 0
+        ? { added: remaining, deckAtStart: outcome.deckAtStart }
+        : { added: undefined, deckAtStart: undefined }),
       notice:
         remaining > 0
           ? `Some of the merge is still there — ${detail}`
@@ -927,9 +932,15 @@ void Office.onReady(() => {
       //
       // The crumb only matters once the deck's real size is in hand: the offer
       // is a positional sweep, and `sweepPlan` refuses outright if the deck has
-      // moved on since. So this is checked HERE rather than at boot — with the
-      // count, the refusal is the sweep's own and the user gets a sentence
-      // instead of a button that does nothing.
+      // moved on since. So this is read HERE rather than at boot.
+      //
+      // This comment claimed the refusal was already the sweep's own, and for a
+      // while it was not: the card asked a formula of its own that counted back
+      // from the end of the deck, and on a deck that had moved it named the
+      // wrong slides — sometimes slides that pre-date the merge — under a
+      // button that then did nothing. `undoSummary` and `undoIsPossible` call
+      // `sweepPlan` now, which is why `deckAtStart` is carried into the state
+      // beside `added`: a positional offer needs both.
       const crumb = readCrumb();
       if (crumb && crumb.added > 0) {
         last = {
@@ -945,6 +956,7 @@ void Office.onReady(() => {
         state = {
           ...state,
           added: crumb.added,
+          deckAtStart: crumb.deckAtStart,
           notice: `A merge from ${crumb.startedAt.slice(0, 10)} added ${crumb.added} slide(s) and the pane closed before you could take them back.`,
         };
       } else if (crumb) {

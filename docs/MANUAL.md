@@ -534,11 +534,15 @@ added cannot be found by id on PowerPoint for the web. The sweep is clamped so
 it can never reach an index below the deck's size when the merge started, so
 nothing you had before the run can be touched.
 
-**If your deck grew after the merge, it refuses.** Add slides yourself, or have
-a co-author add some, and the last slides in the deck are no longer the ones the
-merge added — so the sweep says nothing was removed and leaves the deck alone.
-Delete those slides by hand. This is the safe direction: the alternative is
-deleting somebody else's work.
+**If your deck grew after the merge, the offer goes away.** Add slides yourself,
+or have a co-author add some, and the last slides in the deck are no longer the
+ones the merge added — so there is no range anybody can name, and the card stops
+being shown rather than naming one that would be wrong. Delete those slides by
+hand. This is the safe direction: the alternative is deleting somebody else's
+work.
+
+The same applies if you take some of the merged slides out yourself: the card
+then offers the ones that are left, not the number the merge originally added.
 
 A sweep that removed only some of them keeps the offer up, because the rest are
 still there and only you can finish.
