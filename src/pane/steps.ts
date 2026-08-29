@@ -194,6 +194,23 @@ export interface PaneState {
    */
   changedSinceMerge?: boolean;
   /**
+   * Whether `added` was recovered from a crumb rather than earned this session.
+   *
+   * The undo card is drawn on the MERGE step, which is where a merge is
+   * pressed from. A run that landed and then lost its pane does not come back
+   * there: the pane reopens on step 1, reads the crumb, says "a merge added
+   * 720 slide(s) and the pane closed before you could take them back" — and
+   * drew no button, because the step it lives on was three gates away behind a
+   * template read, a paste and a field check, none of which has anything to do
+   * with taking those slides out.
+   *
+   * So the offer follows the SLIDES for a recovered run, and the step for an
+   * ordinary one. It costs little on a deck that has moved on: `sweepPlan`
+   * refuses once the deck has grown past what the run added, so the card is
+   * shown only while the deck is exactly as that merge left it.
+   */
+  recovered?: boolean;
+  /**
    * How many slides the deck held BEFORE that merge.
    *
    * The undo card is a positional offer, and position means nothing without
@@ -925,7 +942,9 @@ export function orangeHolder(state: PaneState, step: StepId): OrangeHolder {
   // card offering the slides back is the thing on screen worth looking at, and
   // a tick beside it is a second orange saying "done" about the very state the
   // card exists to undo.
-  if (step === "merge" && (state.added ?? 0) > 0) return "undone";
+  // Wherever the card is — see `recovered`. Gated on the merge step while the
+  // card was not would put a tick beside an orange card on the other four.
+  if ((state.added ?? 0) > 0 && (step === "merge" || state.recovered === true)) return "undone";
   if (step === "fields" && unmatchedFields(state).length > 0) return "unmatched";
   return "tick";
 }

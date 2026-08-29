@@ -979,6 +979,10 @@ void Office.onReady(() => {
           ...state,
           added: crumb.added,
           deckAtStart: crumb.deckAtStart,
+          // The offer follows the slides rather than the step, because this
+          // pane is on step 1 and the run it is about is over. Without it the
+          // sentence below named a button nothing rendered.
+          recovered: true,
           notice: `A merge from ${crumb.startedAt.slice(0, 10)} added ${crumb.added} slide(s) and the pane closed before you could take them back.`,
         };
       } else if (crumb) {
