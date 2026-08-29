@@ -56,6 +56,14 @@ jobs:
         run: npm run coverage
       - name: Test count
         run: npm run test:count
+      # The floor RAISES itself and exits 0, printing "Commit
+      # test/fixtures/test-count.json" — advice nothing enforced. A run that
+      # forgot to commit it therefore passed, and the floor stayed wherever it
+      # was: the guard against deleted tests silently protecting a smaller
+      # number than the suite has. Same pattern `release.yml` already uses for
+      # the manifests.
+      - name: Test count is recorded
+        run: git diff --exit-code -- test/fixtures/test-count.json
 
   deploy:
     needs: gate

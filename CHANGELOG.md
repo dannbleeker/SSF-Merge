@@ -7,6 +7,24 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a test-count floor that was never committed passed CI anyway
+
+`scripts/test-count.mjs` raises the floor when the suite grows, writes the file
+and prints "Commit `test/fixtures/test-count.json`". That is advice, and nothing
+enforced it: the script exits 0, so a run that forgot to commit the file passed.
+
+Measured rather than reasoned — with the recorded floor set to 500 against a
+suite of 900, the script rewrote the file, said "floor raised to 900", and
+exited **0**. The committed floor stays at 500, and the guard against deleted
+tests silently protects a number a third smaller than the suite.
+
+Both gates now fail if the recorded floor is not the committed one, which is the
+same `git diff --exit-code` pattern `release.yml` already uses for the manifests.
+
+The drift test between the two gates compares EVERY `run:` command now, not only
+the `npm run` ones. Narrowed to those, a step that is not an npm script — this
+one — could be in one gate and not the other and the test would say they agreed.
+
 ### Fixed — the deploy no longer races the tests
 
 Pages ran on every push to `main` with nothing between the push and the live

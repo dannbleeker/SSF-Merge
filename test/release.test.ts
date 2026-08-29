@@ -179,7 +179,11 @@ describe("the deploy waits for the same gate CI runs", () => {
     const rest = lines.slice(at + 1);
     const until = rest.findIndex((l) => /^ {2}[A-Za-z0-9_-]+:$/.test(l));
     const body = (until === -1 ? rest : rest.slice(0, until)).join("\n");
-    return [...body.matchAll(/run: (npm run [a-z:]+)/g)].map((m) => m[1] as string);
+    // EVERY `run:` command, not only the `npm run` ones. Narrowed to those, a
+    // step that is not an npm script — the check that the test-count floor was
+    // actually committed — could be in one gate and not the other and this
+    // would say they agreed.
+    return [...body.matchAll(/run: (.+)/g)].map((m) => (m[1] as string).trim());
   };
 
   it("runs the same checks, in the same order, in both", () => {
