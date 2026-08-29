@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { render } from "../src/pane/render.js";
 import type { PaneState } from "../src/pane/steps.js";
 import { readPastedTable } from "../src/pane/steps.js";
+import { toRecordSet } from "../src/core/data/recordset.js";
 
 const ready: PaneState = {
   block: { from: 4, to: 6 },
@@ -752,5 +753,52 @@ describe("the picture picker", () => {
     const input = paneFor(withPhotos, "data").querySelector('[data-field="images"]');
     expect(input?.getAttribute("accept")).toBe("image/png,image/jpeg,image/gif,image/bmp");
     expect(input?.hasAttribute("multiple")).toBe(true);
+  });
+});
+
+describe("the sentence above the merge button", () => {
+  /**
+   * It promised nine slides where the plan built eight, because the count was
+   * slides-per-record times rows and a conditional slide is not produced for
+   * every row.
+   *
+   * Asserted HERE and not only on `plannedSlides`, because the unit test passes
+   * happily while the card goes on calling the old product — which is what a
+   * mutation showed: reverting the call site broke nothing until this existed.
+   */
+  const records = toRecordSet([
+    ["First", "Renewal"],
+    ["Ada", "yes"],
+    ["Bo", "no"],
+    ["Cy", "yes"],
+    ["Di", "no"],
+  ]);
+
+  const withCondition: PaneState = {
+    block: { from: 3, to: 5 },
+    fields: ["First"],
+    columns: ["First", "Renewal"],
+    records,
+    rows: 4,
+    previewing: false,
+    deckSize: 10,
+    // The middle slide only for a renewal, and one row taken out.
+    conditions: { 4: "Renewal" },
+    excluded: [3],
+  };
+
+  it("counts the conditional slides out", () => {
+    const text = paneFor(withCondition, "merge").querySelector(".facts")?.textContent ?? "";
+    // Three rows merge; the middle slide is produced for one of them.
+    expect(text).toContain("8 slides added after slide 10");
+    expect(text).toContain("18 slides in the deck");
+    // The product the card used to show, which was over by one.
+    expect(text, "the card is showing rows x slides again").not.toContain("9 slides added");
+  });
+
+  it("still shows the plain product when nothing is conditional", () => {
+    const plain = { ...withCondition, conditions: undefined };
+    const text = paneFor(plain, "merge").querySelector(".facts")?.textContent ?? "";
+    expect(text).toContain("9 slides added after slide 10");
   });
 });

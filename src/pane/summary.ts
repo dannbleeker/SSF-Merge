@@ -44,19 +44,13 @@ export function mergeArithmetic(block: Block, rows: number): string {
   return `${plural(rows, "row")} × ${plural(slidesPerRecord(block), "slide")}`;
 }
 
-/** How many slides a merge will add. */
-export function slidesAdded(block: Block, rows: number): number {
-  return slidesPerRecord(block) * rows;
-}
-
 /**
  * What the deck will look like afterwards.
  *
  * Says where they LAND as well as how many, because "720 slides added" answers
  * the wrong half of the question a user hesitating over the button is asking.
  */
-export function mergeSummary(block: Block, rows: number, deckSize: number): string {
-  const added = slidesAdded(block, rows);
+export function mergeSummary(added: number, deckSize: number): string {
   return `${plural(added, "slide")} added after slide ${deckSize}, leaving ${plural(deckSize + added, "slide")} in the deck.`;
 }
 

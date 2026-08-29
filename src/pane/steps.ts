@@ -13,6 +13,7 @@
  */
 
 import { canBeField } from "../core/merge/text.js";
+import { slideApplies } from "../core/merge/plan.js";
 import { baseName } from "../core/merge/images.js";
 import { imageNamesIn, parseDelimited, toRecordSet } from "../core/data/recordset.js";
 import type { RecordSet } from "../core/data/recordset.js";
@@ -320,6 +321,33 @@ export function slidesPerRecord(block: Block): number {
  * same way (`req.conditions?.[req.from + i]`), so the pane and the engine agree
  * on what "slide 5" means without either converting.
  */
+/**
+ * How many slides this merge will actually add.
+ *
+ * Not slides-per-record times rows. That product ignores the conditions, so a
+ * block with one conditional slide promised more slides than the plan builds —
+ * in the sentence directly above the button, along with a deck size that was
+ * wrong by the same amount.
+ *
+ * Counted with `slideApplies`, which is the rule `buildPlan` itself applies, so
+ * the promise and the plan cannot answer differently.
+ */
+export function plannedSlides(state: PaneState): number {
+  const block = chosenBlock(state);
+  if (!block) return 0;
+  const records = includedRecords(state);
+  if (!records) return 0;
+  const columns = new Set(records.columns.map((c) => c.name));
+  let n = 0;
+  for (const row of records.rows) {
+    for (const slide of blockSlides(state)) {
+      const condition = conditionFor(state, slide);
+      if (slideApplies(condition === "" ? {} : { condition }, row, columns)) n++;
+    }
+  }
+  return n;
+}
+
 export function blockSlides(state: PaneState): number[] {
   const block = chosenBlock(state);
   if (!block) return [];
