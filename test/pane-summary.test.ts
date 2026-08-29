@@ -189,11 +189,15 @@ describe("describeMerge says what the merge DID", () => {
     expect(describeMerge({ added: 6, deckAtStart: 3, paragraphsMerged: 18 })).toContain("18 placeholders filled");
   });
 
-  it("reconciles rows against slides when a condition skipped some", () => {
+  it("reconciles rows against slides when some were left out", () => {
     // "8 rows" and "6 slides" are both right and a user who cannot reconcile
     // them assumes the merge lost something.
     const line = describeMerge({ added: 6, deckAtStart: 3, paragraphsMerged: 12, skippedRecords: 2 });
-    expect(line).toContain("2 rows skipped by a condition");
+    // A ROW is dropped only by `onEmpty: "skip"`, when a field on one of its
+    // slides has no value; `buildPlan` fills `skippedRecords` from nowhere
+    // else. This said "by a condition", which sends the user to the condition
+    // control, where there is nothing to find. A slide IS left out by one.
+    expect(line).toContain("2 rows skipped for a blank field");
   });
 
   it("stays one short sentence when nothing unusual happened", () => {

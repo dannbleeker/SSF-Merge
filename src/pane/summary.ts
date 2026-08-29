@@ -230,7 +230,13 @@ export function describeMerge(r: MergeReport): string {
   }
   // Skips are why "8 rows" and "6 slides" can both be right, and a user who
   // cannot reconcile those two numbers assumes the merge lost something.
-  if (r.skippedRecords) parts.push(`${plural(r.skippedRecords, "row")} skipped by a condition`);
+  // Two different reasons, and they said the same one. A SLIDE is left out by a
+  // condition; a ROW is left out only under `onEmpty: "skip"`, which drops a
+  // record when a field on one of its slides has no value — `buildPlan` fills
+  // `skippedRecords` from nowhere else. Telling a user their row was dropped
+  // by a condition sends them to the condition control, where there is nothing
+  // to find.
+  if (r.skippedRecords) parts.push(`${plural(r.skippedRecords, "row")} skipped for a blank field`);
   if (r.skippedSlides) parts.push(`${plural(r.skippedSlides, "slide")} skipped by a condition`);
   // The condition that did NOTHING, which is the one worth saying. The engine
   // emits the slide anyway rather than hiding an authoring mistake behind
