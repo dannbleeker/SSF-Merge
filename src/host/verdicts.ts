@@ -112,6 +112,18 @@ export function insertVerdict(o: InsertObservation): InsertVerdict {
  * answer.
  */
 export function creationIdReading(fresh: InsertVerdict, collision: InsertVerdict): string {
+  // An arm that did not RUN is not an arm that did not land. A sheet missing
+  // one — an older probe, or a paste that lost part of the console — used to
+  // read as "neither arm landed... read the errors", about errors that do not
+  // exist. Worse in the other direction: a landed fresh arm beside a missing
+  // collision arm returned CONFIRMED, claiming office-js#6105 reproduces on the
+  // strength of a measurement nobody took.
+  //
+  // Checked first, because every reading below is a COMPARISON and neither
+  // comparison means anything with a side missing.
+  if (fresh.verdict === "unknown" || collision.verdict === "unknown") {
+    return "NOT ANSWERED: one of the two arms did not run, so this sheet says nothing about creation ids either way. Re-run the probe rather than reading the arm that did.";
+  }
   if (fresh.verdict === "yes" && collision.verdict !== "yes") {
     return "CONFIRMED: a fresh creation id inserts and a duplicated one does not. The engine's rewrite is what makes cloning work, and office-js#6105 reproduces here.";
   }

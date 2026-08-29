@@ -46,8 +46,29 @@ line("host version", sheet.host ?? "unknown");
 line("PowerPointApi", (sheet.requirementSets ?? []).join(", ") || "none reported");
 line("deck", `${sheet.deckAtStart} slides at start, ${sheet.deckAtEnd} at end`);
 
-const fresh = insertVerdict({ ...sheet.insertFresh, expected: 2 });
-const collision = insertVerdict({ ...sheet.insertCollision, expected: 2 });
+/**
+ * An arm the sheet does not carry did not RUN, and says so.
+ *
+ * Spreading a missing arm into `insertVerdict` gave it no `before` and no
+ * `after`, so the delta was NaN — neither the expected count nor zero nor
+ * negative — and it fell out as "NaN of 2 slide(s) landed, which is a partial
+ * insert". A definite verdict, in the confident voice, about a measurement
+ * nobody took. Two other arms in this file already answered "not asked"; these
+ * two did not, and the headline built on them read "neither arm landed... read
+ * the errors" about errors that do not exist.
+ */
+const notAsked = (what) => ({
+  verdict: "unknown",
+  landed: 0,
+  detail: `NOT ASKED — this sheet carries no ${what}. Evidence about nothing.`,
+});
+
+const fresh = sheet.insertFresh
+  ? insertVerdict({ ...sheet.insertFresh, expected: 2 })
+  : notAsked("fresh-id insert arm");
+const collision = sheet.insertCollision
+  ? insertVerdict({ ...sheet.insertCollision, expected: 2 })
+  : notAsked("duplicate-id insert arm");
 const destTheme = sheet.insertFreshDestTheme
   ? insertVerdict({ ...sheet.insertFreshDestTheme, expected: 2 })
   : { verdict: "unknown", detail: "not asked — this sheet predates the arm", landed: 0 };
@@ -73,7 +94,12 @@ line("verdict", `${tag.verdict} — ${tag.detail}`);
 
 const sub = sheet.substring ?? {};
 console.log("\n3. Does a targeted substring write keep the formatting around it?");
-if (sub.skipped) {
+if (!sheet.substring) {
+  // Same rule as the arms above: absent is not failed. Without this the reader
+  // built a verdict out of undefined fields and reported "the text came out as
+  // undefined rather than ...", which reads as a measurement.
+  line("verdict", "unknown — NOT ASKED — this sheet carries no substring arm. Evidence about nothing.");
+} else if (sub.skipped) {
   line("verdict", `not asked — ${sub.skipped}`);
 } else if (sub.error) {
   line("verdict", `threw — ${sub.error}`);
