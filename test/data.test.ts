@@ -256,6 +256,37 @@ describe("which delimiter a paste uses", () => {
     expect(parseDelimited("First,Last")).toEqual([["First", "Last"]]);
   });
 
+  it("reads a quote in the MIDDLE of a header cell as a quote, not as an opening one", () => {
+    // The other half of the same rule, and the sniff had it backwards. A quote
+    // only opens a quoted cell at the START of a cell — `Size 6" pipe` is a
+    // cell containing an inch mark, and RFC 4180 and the parser both read it
+    // that way. The sniff toggled on any quote, so it stayed "inside a quote"
+    // for the rest of the paste, ran past the first row, found a tab further
+    // down and read this comma-separated table as tab-separated: one column,
+    // every placeholder unmatched, and nothing on screen saying why.
+    //
+    // The tab in the body is what makes the paste ambiguous to a scanner that
+    // reaches it; there is no tab in the first row, so the answer is a comma.
+    expect(parseDelimited('Name,Size 6" pipe\nAda,x\ty')).toEqual([
+      ["Name", 'Size 6" pipe'],
+      ["Ada", "x\ty"],
+    ]);
+  });
+
+  it("still opens a quoted cell that follows the OTHER delimiter", () => {
+    // The sniff cannot know which delimiter it is about to choose, so it treats
+    // both as cell boundaries. A tab-separated paste whose second cell is
+    // quoted has to keep working, and so does the comma equivalent.
+    expect(parseDelimited('a\t"b\nc"\td\nx\ty\tz')).toEqual([
+      ["a", "b\nc", "d"],
+      ["x", "y", "z"],
+    ]);
+    expect(parseDelimited('a,"b\nc",d\nx,y,z')).toEqual([
+      ["a", "b\nc", "d"],
+      ["x", "y", "z"],
+    ]);
+  });
+
   it("still lets the caller name the delimiter outright", () => {
     // The pane passes "\t" explicitly for a pasted Excel range; the sniff is
     // only for when nobody said.
