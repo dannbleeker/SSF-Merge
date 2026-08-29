@@ -22,9 +22,55 @@ export interface RecordSet {
 
 /** A European "1.234,5" and an American "1,234.5" both mean the same thing, and only one of them parses. */
 const NUMBER = /^-?\d{1,3}(?:[ .,]\d{3})*(?:[.,]\d+)?$|^-?\d+(?:[.,]\d+)?$/;
+
+/**
+ * Whether a cell is a number we are willing to claim — the ONE answer.
+ *
+ * `looksLikeDate` has been the single definition of a date since `format.ts`
+ * started importing it. A number had two: this pattern, which `detectType`
+ * asks, and `Number()` at the end of `numericValue`, which is far broader. They
+ * disagree, and the disagreement is not theoretical — the comment inside
+ * `numericValue` records a merge where "half of it rendered formatted and half
+ * rendered raw" because a column was typed here and converted there.
+ *
+ * What `Number()` admits and a spreadsheet does not: `0x10` is sixteen, `0b11`
+ * is three, `0o17` is fifteen, `1e3` is a thousand, `+7` and `.5` parse. A cell
+ * reading `0x10` is a product code, and turning it into 16 in somebody's deck
+ * is the kind of wrong that looks deliberate.
+ *
+ * Scientific notation is refused with them, which is the one form worth
+ * noticing: it means `1.23E+15` stays text. That is not a change — `detectType`
+ * has always called such a column text, so the pane has never offered it as a
+ * number. This only stops the formatter and the chart writer from disagreeing
+ * with that.
+ */
+export function looksLikeNumber(value: string): boolean {
+  return NUMBER.test(value.trim());
+}
 /** Deliberately narrow. See `looksLikeDate`. */
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}(?:[T ].*)?$/;
-const NAMED_DATE = /^\d{1,2}[ .\-/][A-Za-zÆØÅæøå]{3,}[ .\-/]\d{2,4}$/;
+/**
+ * `1 March 2026`, and `1. marts 2026`.
+ *
+ * The separator may be followed by SPACE, which is not a detail: Danish writes
+ * the day as an ordinal, so `1. marts 2026` — the ordinary long form, and the
+ * one this project's own owner writes — is a period AND a space. Requiring
+ * exactly one separator character admitted `1 marts 2026` and `1.marts 2026`
+ * and refused the form anybody actually types.
+ *
+ * The month-name table was added so Danish dates would be read. This is the
+ * shape most of them arrive in, so until now that table was reachable mainly by
+ * spellings nobody uses.
+ *
+ * Nothing is loosened about AMBIGUITY, which is what the refusals below are
+ * for. A month spelled out is unambiguous however it is punctuated; `03/01/2026`
+ * is not, and is still refused.
+ *
+ * Exported so `parseDate` matches with the pattern that ADMITTED the value.
+ * Two copies of this regex is how a column got typed `date` by one and refused
+ * by the other, which is exactly the failure the `MONTH_NAMES` note records.
+ */
+export const NAMED_DATE = /^(\d{1,2})[ .\-/]\s*([A-Za-zÆØÅæøå]{3,})[ .\-/]\s*(\d{2,4})$/;
 
 /**
  * Whether a cell is a date we are willing to claim.
@@ -62,7 +108,7 @@ const IMAGE_NAME = /\.(png|jpe?g|gif|bmp)$/i;
 export function detectType(values: string[]): ColumnType {
   const filled = values.filter((v) => v.trim() !== "");
   if (!filled.length) return "text";
-  if (filled.every((v) => NUMBER.test(v.trim()))) return "number";
+  if (filled.every(looksLikeNumber)) return "number";
   if (filled.every((v) => looksLikeDate(v))) return "date";
   // Last, because it is the narrowest: a column of file names is not a number
   // and not a date, and asking the other two first costs nothing.

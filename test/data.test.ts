@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyFormat, formatDate, formatNumber, numericValue, parseDate } from "../src/core/data/format.js";
-import { detectType, looksLikeDate, parseDelimited, toRecordSet } from "../src/core/data/recordset.js";
+import { detectType, looksLikeDate, looksLikeNumber, parseDelimited, toRecordSet } from "../src/core/data/recordset.js";
 
 describe("parseDelimited", () => {
   it("reads a range pasted out of Excel, which is tab separated", () => {
@@ -468,5 +468,77 @@ describe("formats that were wrong in small ways", () => {
     const d = parseDate("2026-03-01");
     expect(d && formatDate(d, "Ends d")).toBe("Ends 1");
     expect(d && formatDate(d, "yyyy")).toBe("2026");
+  });
+});
+
+describe("one definition of a number", () => {
+  /**
+   * `detectType` asked a regex; `numericValue` asked `Number()`, which is a far
+   * wider gate. A column of product codes reading `0x10` was called text and
+   * converted as sixteen, and the two answers met on the same slide.
+   *
+   * The invariant is the assertion, not the values: whatever the engine is
+   * willing to CONVERT it must also be willing to CALL a number. That is what
+   * stays true when either side is edited next.
+   */
+  const NOT_NUMBERS = ["0x10", "0b11", "0o17", "1e3", "1E3", ".5", "+7"];
+
+  it.each(NOT_NUMBERS)("refuses %s in both places at once", (raw) => {
+    expect(looksLikeNumber(raw)).toBe(false);
+    expect(numericValue(raw)).toBeUndefined();
+    expect(detectType([raw])).toBe("text");
+  });
+
+  it("leaves a refused cell exactly as the author typed it", () => {
+    // A product code silently turned into 16 across a merged deck reads as
+    // deliberate, which is what makes it worse than a visible refusal.
+    expect(applyFormat("0x10", "number:0")).toBe("0x10");
+    expect(applyFormat("1e3", "number:0")).toBe("1e3");
+  });
+
+  it("still reads the numbers a spreadsheet actually writes", () => {
+    expect(numericValue("  12  ")).toBe(12);
+    expect(numericValue("-7")).toBe(-7);
+    expect(numericValue("1234.5")).toBe(1234.5);
+    expect(detectType(["12", "-7", "1234.5"])).toBe("number");
+  });
+});
+
+describe("the day written as an ordinal", () => {
+  /**
+   * `1. marts 2026` is the ordinary Danish long form. `NAMED_DATE` required
+   * exactly one separator character, so it admitted `1 marts 2026` and
+   * `1.marts 2026` and refused the form people type — leaving the month-name
+   * table above reachable mainly by spellings nobody writes.
+   *
+   * Widening the gate ALONE made it briefly worse: `parseDate` carried a
+   * private copy of the pattern, so a column typed as `date` and then rendered
+   * raw. That is the two-renderings failure again, entered from the other
+   * side. One exported regex now answers for both.
+   */
+  const FORMS = ["1. marts 2026", "1 marts 2026", "1.marts 2026", "1. mar 2026", "1. March 2026"];
+
+  it.each(FORMS)("reads %s as the first of March", (raw) => {
+    expect(looksLikeDate(raw)).toBe(true);
+    expect(parseDate(raw)?.toISOString().slice(0, 10)).toBe("2026-03-01");
+    expect(detectType([raw])).toBe("date");
+    expect(applyFormat(raw, "date:d MMM yyyy")).toBe("1 Mar 2026");
+  });
+
+  it("keeps the gate and the parser answering together", () => {
+    // Not a universal law, and saying so is the point: a well-formed date can
+    // still be an impossible one, and `31 Feb 2026` is meant to pass the gate
+    // and fail the parse. They must agree for every value that is BOTH well
+    // formed and real, which is where the drift above actually hurt.
+    for (const raw of [...FORMS, "1 January 2026", "2026-03-01", "1. januar 26"]) {
+      expect(looksLikeDate(raw)).toBe(true);
+      expect(parseDate(raw)).toBeDefined();
+    }
+  });
+
+  it("still refuses what was always ambiguous", () => {
+    // Punctuation was loosened. Ambiguity was not.
+    expect(looksLikeDate("03/01/2026")).toBe(false);
+    expect(detectType(["03/01/2026"])).toBe("text");
   });
 });

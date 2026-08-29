@@ -6,7 +6,7 @@
  * rather than in a settings screen means the person who can see the slide is
  * the person who decides how it reads.
  */
-import { looksLikeDate } from "./recordset.js";
+import { NAMED_DATE, looksLikeDate, looksLikeNumber } from "./recordset.js";
 
 const MONTHS_EN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 /**
@@ -33,6 +33,9 @@ const MONTHS_FULL_EN = [
 export function numericValue(raw: string): number | undefined {
   const v = raw.trim();
   if (v === "") return undefined;
+  // The same question `detectType` asks, asked once. Without this the two
+  // disagreed: a column of `0x10` was typed text and formatted 16.
+  if (!looksLikeNumber(v)) return undefined;
   const hasComma = v.includes(",");
   const hasDot = v.includes(".");
   let normalised = v.replace(/\s/g, "");
@@ -99,7 +102,10 @@ export function parseDate(raw: string): Date | undefined {
   // `1 Mar 2026` and its Danish and Norwegian spellings. The DAY and the YEAR
   // come from the string; only the month NAME needs the platform, and it is
   // resolved on a day that cannot roll over.
-  const named = /^(\d{1,2})[ .\-/]([A-Za-zÆØÅæøå]{3,})[ .\-/](\d{2,4})$/.exec(v);
+  // The SAME pattern `looksLikeDate` admitted it by. A private copy here is
+  // what let the two drift apart: one said "date", the other said no, and the
+  // column rendered half formatted and half raw with nothing saying why.
+  const named = NAMED_DATE.exec(v);
   if (named) {
     const month = monthFromName(named[2] ?? "");
     if (month === undefined) return undefined;
