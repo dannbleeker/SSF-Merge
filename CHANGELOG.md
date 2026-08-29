@@ -7,6 +7,28 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a creation id could be stamped where PowerPoint does not look
+
+`setCreationId`'s append path is scoped to `cSld` and its comment says why: a
+slide whose shape tree ends in its own `<p:extLst>` had the id appended THERE,
+so PowerPoint invented one on open and two copies were indistinguishable — the
+collision office-js#6105 is about, one step earlier.
+
+The UPDATE path was not scoped. It took the first `p14:creationId` anywhere in
+the part, so a stray one inside the shape tree was updated instead and the
+function returned, leaving the slide with no id of its own. `creationIdOf` read
+the same way and reported the value it had just written into the wrong element,
+so the stamp looked like it had worked.
+
+Not hypothetical: the comment in that file records that an older version of it
+put ids exactly there. A deck merged by that version carries one, and using a
+merged deck as a template is an ordinary thing to do.
+
+Both the write and the read are scoped to the slide's own `extLst` now. The
+stray is left where it is — deleting content out of somebody's deck to tidy up
+is a bigger decision than this function is making, and an ignored extension in a
+shape tree costs nothing.
+
 ### Fixed — a test-count floor that was never committed passed CI anyway
 
 `scripts/test-count.mjs` raises the floor when the suite grows, writes the file

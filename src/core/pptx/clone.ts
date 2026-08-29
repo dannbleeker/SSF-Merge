@@ -131,8 +131,23 @@ export async function setCreationId(pkg: Pkg, slidePath: string, value: number):
   const cSld = element(doc, P_NS, "cSld");
   if (!cSld) throw new Error(`ssf-merge: ${slidePath} has no <p:cSld>`);
 
-  for (const id of Array.from(doc.getElementsByTagNameNS(P14_NS, "creationId"))) {
-    id.setAttribute("val", String(value));
+  // The slide's OWN extLst, not the first creation id anywhere in the part.
+  //
+  // The append path below is already scoped to `cSld` and says why: a slide
+  // whose shape tree ends in its own `<p:extLst>` had the id appended THERE,
+  // where PowerPoint does not look, so it invented one on open and two copies
+  // were indistinguishable. This search was not scoped, and reached the same
+  // failure from the other side — it found a stray id inside the shape tree,
+  // updated THAT, and returned, leaving the slide with no id of its own while
+  // `creationIdOf` reported the stamp had worked.
+  //
+  // Not hypothetical: the comment below records that an older version of this
+  // function put ids exactly there, so a deck merged by it carries one, and
+  // using that deck as a template is an ordinary thing to do.
+  const own = child(cSld, P_NS, "extLst");
+  const existing = own ? Array.from(own.getElementsByTagNameNS(P14_NS, "creationId"))[0] : undefined;
+  if (existing) {
+    existing.setAttribute("val", String(value));
     return;
   }
 
@@ -162,7 +177,12 @@ export async function setCreationId(pkg: Pkg, slidePath: string, value: number):
 /** Read a slide's creation id, for tests and for the pane's diagnostics. */
 export async function creationIdOf(pkg: Pkg, slidePath: string): Promise<number | undefined> {
   const doc = await pkg.doc(slidePath);
-  const id = Array.from(doc.getElementsByTagNameNS(P14_NS, "creationId"))[0];
+  // Scoped like the write. Reading the first one in the part reported a stray
+  // id from inside the shape tree as the slide's own, which is a diagnostic
+  // agreeing with a stamp that never landed.
+  const cSld = element(doc, P_NS, "cSld");
+  const own = cSld ? child(cSld, P_NS, "extLst") : undefined;
+  const id = own ? Array.from(own.getElementsByTagNameNS(P14_NS, "creationId"))[0] : undefined;
   const val = id?.getAttribute("val");
   return val === undefined || val === null ? undefined : Number(val);
 }
