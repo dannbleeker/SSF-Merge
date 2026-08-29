@@ -582,3 +582,77 @@ describe("a tag value's whitespace survives a merge", () => {
     expect(read(xml, TAG_RUN), "our own tag stopped round-tripping").toBe("run-2");
   });
 });
+
+describe("removing a slide leaves nothing of it behind", () => {
+  /**
+   * A part with a content-type override and nothing pointing at it is the shape
+   * this file already chases for notes pages and for comments. Tag parts were
+   * not on the list: `writeSlideTags` writes `ppt/tags/tagN.xml` per slide, one
+   * slide points at it, and `orphanedParts` collected only charts and diagrams
+   * — so every removed slide left its tags behind.
+   *
+   * It reaches further than a swept preview. On the `file` route the package IS
+   * the user's whole presentation and every slide that is not a clone is
+   * removed from it, so a deck whose slides carry tags — this add-in's own from
+   * a previous merge, or another add-in's — shipped one orphan per slide back
+   * into their deck.
+   *
+   * Swept rather than listed, because the part type that was missed is by
+   * definition the one nobody would write an assertion for.
+   */
+  const OWNED = ["ppt/charts/", "ppt/diagrams/", "ppt/embeddings/", "ppt/notesSlides/", "ppt/tags/"];
+
+  async function reach(pkg: Pkg, from: string): Promise<Set<string>> {
+    const seen = new Set<string>();
+    const queue = [from];
+    while (queue.length) {
+      for (const next of await pkg.relatedParts(queue.shift() as string)) {
+        if (seen.has(next)) continue;
+        seen.add(next);
+        queue.push(next);
+      }
+    }
+    return seen;
+  }
+
+  it("no part of a removed slide survives it, of any kind", async () => {
+    const pkg = await Pkg.open(
+      await makeDeck([
+        {
+          paragraphs: [["{{Name}}"]],
+          notes: "Call {{Name}} afterwards",
+          chart: { title: "{{Name}}", categories: ["{{Name}}", "b"], workbook: ["{{Name}}"], values: ["1", "42"] },
+          smartArt: ["{{Name}}", "second"],
+        },
+        { paragraphs: [["after"]] },
+      ]),
+    );
+    const records = toRecordSet([["Name"], ["Ada"], ["Bo"], ["Cy"]]);
+    const block = { id: "r", slides: [{ path: "ppt/slides/slide1.xml", seq: 1, fields: [] }] };
+    const out = await runPlan(pkg, buildPlan(block, records, { runId: "r" }), records);
+    const before = pkg.partNames().length;
+
+    for (const slide of out.slides) await pkg.removeSlide(slide);
+
+    // Alive: anything the presentation or a surviving slide can still reach,
+    // plus the `.rels` companion of anything alive — a companion belongs to its
+    // owner and is not referred to by anybody.
+    const alive = new Set<string>(["ppt/presentation.xml", "[Content_Types].xml", "_rels/.rels"]);
+    for (const p of await reach(pkg, "ppt/presentation.xml")) alive.add(p);
+    for (const slide of await pkg.slidePaths()) {
+      alive.add(slide);
+      for (const p of await reach(pkg, slide)) alive.add(p);
+    }
+    for (const p of [...alive]) alive.add(Pkg.relsPathFor(p));
+
+    const stranded = pkg
+      .partNames()
+      .filter((p) => !alive.has(p) && OWNED.some((prefix) => p.startsWith(prefix)))
+      .sort();
+
+    expect(stranded, "left behind with a content-type override and nothing pointing at it").toEqual([]);
+    expect(before - pkg.partNames().length, "the removal freed nothing, so the sweep proves nothing").toBeGreaterThan(
+      20,
+    );
+  });
+});
