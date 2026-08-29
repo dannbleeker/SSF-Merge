@@ -7,6 +7,18 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added — the pane says when attached pictures have nowhere to go
+
+The picture picker appears as soon as your data holds a column of file names,
+which is before you have written `{{Photo|image}}` on a slide — that is the
+order the steps go in. The merge places a picture where a field ASKS for one, so
+a plain `{{Photo}}` merges to `ada.png` as text.
+
+Both halves are right and nothing put them together: three files attached under
+"3 pictures named in Photo", and 240 slides reading a file name, with nothing
+having mentioned it. The merge step now says so before the press, and names the
+form to write.
+
 ### Fixed — the merge button's number matches the sentence above it
 
 With a conditional slide, the card read "4 slides added after slide 20" and the

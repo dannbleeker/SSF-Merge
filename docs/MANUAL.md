@@ -215,6 +215,13 @@ row names. Size and position are the template's: the merged deck's pictures all
 sit in the same place, at the same size, on every slide, which is the whole
 reason to do it this way rather than by hand.
 
+**The `|image` is what asks for a picture.** A plain `{{Photo}}` is an ordinary
+text field whose cell happens to hold a file name, so it merges to `ada.png` on
+the slide. The pane offers the file picker as soon as your data has a column of
+picture names — before you have written the field, because that is the order the
+steps go in — so it also says, above the merge button, when you have attached
+pictures that no field asks for.
+
 **One picture per shape.** A shape has one fill, so two picture fields in the
 same box cannot both be drawn. The first wins and the second keeps its
 placeholder, so you can see which one was not drawn rather than wondering
