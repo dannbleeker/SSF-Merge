@@ -7,6 +7,16 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — the merge button's number matches the sentence above it
+
+With a conditional slide, the card read "4 slides added after slide 20" and the
+button beside it read "Add 6 slides". The card counted the conditions; the
+button multiplied slides-per-record by rows, which is the arithmetic the card
+stopped using when conditions were added. The wrong number was on the thing
+being pressed.
+
+Both read one function now.
+
 ### Fixed — the undo card names the slides that will actually go
 
 After a merge the pane offers "Remove slides 13 to 732, which this merge added".

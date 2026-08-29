@@ -14,6 +14,7 @@ import {
   includedRecords,
   nextStep,
   primary,
+  slidesToAdd,
   readBlockDraft,
   readPastedTable,
   rowLabel,
@@ -851,6 +852,33 @@ describe("the number above the merge button", () => {
     // And it is not the product that used to be shown, or the test would pass
     // against the bug.
     expect(plannedSlides(state)).not.toBe(slidesPerRecord(state.block as Block) * includedCount(state));
+  });
+
+  it("is the number on the BUTTON as well as in the sentence", () => {
+    /**
+     * The half nobody checked. `plannedSlides` was written, covered, and asked
+     * by the forecast card — and the button's own label went on multiplying
+     * slides-per-record by rows. With this block and these rows the card read
+     * one number and the button beside it read another, and the wrong one was
+     * on the thing being pressed.
+     *
+     * The assertion above already says the two answers differ, so it could
+     * never have caught this: it pins that `plannedSlides` is not the product
+     * without asking whether anything still shows the product.
+     */
+    const label = primary(state, "merge").label;
+    expect(label).toBe(`Add ${plannedSlides(state)} slides`);
+    expect(label).not.toBe(`Add ${slidesPerRecord(state.block as Block) * includedCount(state)} slides`);
+  });
+
+  it("still counts from the row COUNT when the rows themselves are not in hand", () => {
+    // A state can carry `rows` without `records` — the pane knows how many rows
+    // it has before it needs them, and `includedCount` is written for exactly
+    // that. A condition cannot be evaluated without a row, so the product is
+    // the only answer there is, and answering zero would empty the button.
+    const counted = { ...state, records: undefined };
+    expect(slidesToAdd(counted)).toBe(slidesPerRecord(state.block as Block) * includedCount(counted));
+    expect(slidesToAdd(counted)).toBeGreaterThan(0);
   });
 
   it("counts every slide when nothing is conditional", () => {

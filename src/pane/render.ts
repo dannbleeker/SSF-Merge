@@ -23,7 +23,7 @@ import {
   fieldToken,
   pictureColumns,
   imageTally,
-  plannedSlides,
+  slidesToAdd,
   imagesWanted,
   includedCount,
   insertableColumns,
@@ -414,7 +414,7 @@ function body(doc: Document, state: PaneState, current: StepId, orange: OrangeHo
     // screen say "240 rows x 3 slides" twice, which reads as a rendering bug.
     // The card carries the CONSEQUENCE, which is the other half of the answer.
     const card = el(doc, "div", { class: "card summary" });
-    card.append(el(doc, "p", { class: "facts", text: mergeSummary(plannedSlides(state), state.deckSize ?? 0) }));
+    card.append(el(doc, "p", { class: "facts", text: mergeSummary(slidesToAdd(state), state.deckSize ?? 0) }));
     out.push(card);
   }
 
