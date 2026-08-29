@@ -7,6 +7,37 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed — one list of the parts a merge touches
+
+`prepare` reads those parts to say what a block holds; `runPlan` and
+`mergeGraphics` write into them. Each side assembled its own list, from its own
+imports, in its own order — and `prepare.ts` carried the rule they were supposed
+to obey as a COMMENT: "the one rule that keeps it from happening a third time is
+that this list and `runPlan`'s are the same list".
+
+It happened three times. Speaker notes were merged and not scanned, so a block
+whose placeholders lived there was refused as empty. Then chart labels, the same
+way. Then a chart's value cells, which live in a workbook the scan never opened.
+Each was fixed by adding the missing part to one of the two lists, which fixes
+the instance and leaves the class.
+
+`fieldSites` is the list now, and both sides read it. A part type missing from it
+is invisible to both rather than to one — which turns a silent wrong answer into
+a visibly missing feature.
+
+Two lookups collapsed into it. `chartWorkbooksOf` and `workbookOfChart` were the
+same walk of a chart's relationships, one taking every package and one taking
+the first, and `mergeGraphics` ran both — so every chart's relationships were
+walked twice per record. A site carries the list, the numbers pass takes the
+first for its pairing and the text pass takes the deduplicated set, and both
+functions are gone.
+
+Two architecture guards hold it: the three merging files may not import
+`graphicPartsOf` or `notesPathFor`, and no file outside `sites.ts` may call
+them.
+
+Behaviour-preserving: 857 tests before, 857 after, none edited.
+
 ### Changed — a value gate is now defined as the parser behind it
 
 `detectType` asks whether a cell is a number or a date; `applyFormat` asks for

@@ -250,29 +250,6 @@ export async function graphicPartsOf(pkg: Pkg, slidePath: string): Promise<strin
 }
 
 /**
- * The workbooks behind this slide's charts, as package paths.
- *
- * Separate from `graphicPartsOf` because these are not XML parts of this
- * package at all — each is a whole `.xlsx` held as one binary part, opened by
- * the merge pass with its own zip reader.
- */
-export async function chartWorkbooksOf(pkg: Pkg, slidePath: string): Promise<string[]> {
-  const out: string[] = [];
-  for (const chart of await graphicPartsOf(pkg, slidePath)) {
-    if (!chart.startsWith("ppt/charts/")) continue;
-    for (const rel of await relsOf(pkg, chart)) {
-      if (rel.getAttribute("Type") !== PACKAGE_REL_TYPE) continue;
-      if ((rel.getAttribute("TargetMode") ?? "") === "External") continue;
-      const target = rel.getAttribute("Target");
-      if (!target) continue;
-      const path = resolve(chart, target);
-      if (pkg.has(path) && !out.includes(path)) out.push(path);
-    }
-  }
-  return out;
-}
-
-/**
  * The workbook behind ONE chart, or undefined.
  *
  * `chartWorkbooksOf` answers a slide's whole set, which is what the text pass
@@ -280,15 +257,16 @@ export async function chartWorkbooksOf(pkg: Pkg, slidePath: string): Promise<str
  * chart's cache and in one workbook's cell, and filling them from different
  * charts is exactly the mix-up a count would not catch.
  */
-export async function workbookOfChart(pkg: Pkg, chartPath: string): Promise<string | undefined> {
-  if (!chartPath.startsWith("ppt/charts/")) return undefined;
+export async function packagesOfChart(pkg: Pkg, chartPath: string): Promise<string[]> {
+  if (!chartPath.startsWith("ppt/charts/")) return [];
+  const out: string[] = [];
   for (const rel of await relsOf(pkg, chartPath)) {
     if (rel.getAttribute("Type") !== PACKAGE_REL_TYPE) continue;
     if ((rel.getAttribute("TargetMode") ?? "") === "External") continue;
     const target = rel.getAttribute("Target");
     if (!target) continue;
     const path = resolve(chartPath, target);
-    if (pkg.has(path)) return path;
+    if (pkg.has(path) && !out.includes(path)) out.push(path);
   }
-  return undefined;
+  return out;
 }

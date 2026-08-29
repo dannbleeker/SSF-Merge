@@ -20,10 +20,11 @@
  */
 import JSZip from "jszip";
 import { Pkg } from "../pptx/pkg.js";
-import { chartWorkbooksOf, graphicPartsOf, workbookOfChart } from "../pptx/graphics.js";
+
 import { parseXml, serializeXml } from "../pptx/xml.js";
 import { mergeDocument, type Resolve } from "./text.js";
 import { emptyNumberOutcome, mergeChartNumbers, tallyNumbers, type NumberOutcome } from "./numbers.js";
+import { graphicsOf, workbooksOf, type FieldSite } from "./sites.js";
 
 export interface GraphicOutcome {
   /** Text groups filled in chart and SmartArt parts. */
@@ -64,15 +65,18 @@ const WORKBOOK_TEXT = /^xl\/(sharedStrings\.xml|worksheets\/sheet\d+\.xml)$/;
  * the deck is right until somebody edits the data — where a throw would lose
  * the whole run over one unreadable embedding.
  */
-export async function mergeGraphics(pkg: Pkg, slidePath: string, resolve: Resolve): Promise<GraphicOutcome> {
+export async function mergeGraphics(pkg: Pkg, sites: FieldSite[], resolve: Resolve): Promise<GraphicOutcome> {
   const out = emptyGraphicOutcome();
-  // Both lists BEFORE anything is released, because finding the workbooks
-  // walks the same relationships: releasing as it went re-parsed every chart's
-  // rels a moment later and left them held, one per record per chart. Measured
-  // as two documents per record — the exact growth `release` exists to stop,
-  // reintroduced by the order of two loops.
-  const parts = await graphicPartsOf(pkg, slidePath);
-  const workbooks = await chartWorkbooksOf(pkg, slidePath);
+  // Both lists come from the SITES, which `runPlan` walked once for the whole
+  // slide. They used to be two walks of the same relationships — the part list
+  // here, and a second lookup walking them again per chart — and the
+  // original comment was about keeping both of them ahead of the releases,
+  // because releasing between them re-parsed every chart's rels and left them
+  // held, one document per record per chart. One walk cannot have that order
+  // wrong.
+  const graphics = graphicsOf(sites);
+  const parts = graphics.map((site) => site.part);
+  const workbooks = workbooksOf(sites);
 
   // BEFORE the workbook's text pass, and that order is load bearing. The
   // numeric pass recognises a value cell by the placeholder still standing in
@@ -80,9 +84,13 @@ export async function mergeGraphics(pkg: Pkg, slidePath: string, resolve: Resolv
   // which a cell reading "1250000" is indistinguishable from one somebody typed
   // as a label. Going first is what keeps "the user meant this one to merge"
   // knowable at all.
-  for (const part of parts) {
-    if (!part.startsWith("ppt/charts/")) continue;
-    tallyNumbers(out.numbers, await mergeChartNumbers(pkg, part, await workbookOfChart(pkg, part), resolve));
+  for (const site of graphics) {
+    // The FIRST package the chart relates to, which is the pairing the numeric
+    // pass needs: a value lives in one chart's cache and in one workbook's
+    // cell, and filling those from different charts is the mix-up no count
+    // would catch.
+    if (site.workbooks.length === 0) continue;
+    tallyNumbers(out.numbers, await mergeChartNumbers(pkg, site.part, site.workbooks[0], resolve));
   }
 
   for (const part of parts) out.merged += mergeDocument(await pkg.doc(part), resolve);
