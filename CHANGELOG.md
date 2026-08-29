@@ -7,6 +7,29 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added — the release gate refuses a production manifest served over http
+
+Office fetches every address a manifest names and requires HTTPS for all of
+them. A production manifest on `http://` fails Microsoft's validator, and
+sideloaded anyway it fails the way this rule set's other entries describe: no
+ribbon entry, no error, nothing to report.
+
+`checkManifest` matched `https?://` already — the pattern was written wide — but
+the only rule reading it was the localhost one, so an insecure production
+address passed with nothing to say about it. `PROD_ORIGIN` is one constant in
+`manifest-source.mjs`, which is this file's own test for whether a rule earns its
+place: one edit away from being shipped.
+
+The namespace declarations are stripped before the addresses are read, and that
+is the whole difficulty of the rule.
+`xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"` is an IDENTIFIER
+— never fetched, http by definition, and not ours to change. A rule that read
+those would fire on every manifest ever written and would have been deleted
+rather than fixed, so a test asserts the real manifest still passes WHILE
+carrying one.
+
+All four generated manifests pass unchanged.
+
 ### Fixed — the picture picker had no name
 
 Every control on this pane sits inside a `<label>` carrying its caption. The
