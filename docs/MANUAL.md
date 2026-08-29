@@ -679,10 +679,12 @@ so once. Only the chart's Edit Data will still show your placeholders.
 
 ## Limits
 
-- **A chart's NUMBERS are not merged**, only its text. See "Charts and
-  SmartArt" above: a bar's height comes from a cell that has to hold a number,
-  and `{{Revenue}}` is not one. Every merged copy of a chart plots the same
-  figures the template plots.
+- **Modern chart types are not merged at all** — waterfall, funnel, treemap,
+  sunburst, histogram, box and whisker. PowerPoint stores those as a different
+  kind of part from an ordinary bar or line chart, and this add-in does not read
+  it. Every merged copy points at the **same** chart, still showing your
+  placeholders. A classic chart of the same data merges correctly, and is the
+  way round it today.
 - **Cut and paste on PowerPoint for the web loses shape tags**
   ([office-js#3784](https://github.com/OfficeDev/office-js/issues/3784)). A
   merged slide cut and pasted into another deck loses its run tag, so undo will

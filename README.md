@@ -33,7 +33,7 @@ one set of slides per row. All five steps of the pane are built.
 | Run record — every host call named and timed, readable in the pane | done |
 | Undo — take back the slides a merge added, clamped so it cannot reach yours | done |
 | Picture fields — a cell names a file, and the shape it sits in is filled with it | done |
-| Charts and SmartArt — text merged, per copy, workbook and rendering with it | done |
+| Charts and SmartArt — text merged, per copy, workbook and rendering with it | done (not the modern chart types — see the manual's Limits) |
 | Chart VALUES per recipient — `{{Revenue}}` in the chart's data sheet, cache and workbook together | done |
 
 ## How it works
