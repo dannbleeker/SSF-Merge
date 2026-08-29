@@ -208,9 +208,15 @@ export function describeMerge(r: MergeReport): string {
   // The chart values, when the run had any to fill.
   if (r.chartValues) {
     const c = r.chartValues;
-    if (c.filled + c.refused > 0) {
-      parts.push(c.filled === 0 ? "no chart values were filled" : `${plural(c.filled, "chart value")} filled`);
-    }
+    // No zero clause here, and the asymmetry with the pictures above is the
+    // point. Every value placeholder either fills or refuses, so a zero here
+    // is ALWAYS a refusal — and the refusal clause below says the same thing
+    // and names the count. "no chart values were filled · 3 chart values did
+    // not read as a number" is one fact reported twice. A picture can be
+    // absent for a reason this sentence deliberately does not name (an empty
+    // cell keeps its placeholder by design), so there the zero is the only
+    // thing said and has to stay.
+    if (c.filled > 0) parts.push(`${plural(c.filled, "chart value")} filled`);
     // The one a reader cannot see for themselves. Nothing is written when a
     // cell's placeholder does not resolve to a number, so the point keeps the
     // template's — a chart that is wrong under a label that is right.
