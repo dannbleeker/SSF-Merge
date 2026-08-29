@@ -368,6 +368,67 @@ describe("the caret", () => {
     expect(document.activeElement, "still in the box the user is typing in").toBe(field("from"));
   });
 
+  it("stays on the control that was pressed, when that control is still there", async () => {
+    // The caret rule was written for the two text boxes and nothing else, so
+    // every OTHER control lost focus on its own press: the redraw rebuilds the
+    // element and `draw` only looked for `data-field`. A keyboard user
+    // unticking rows in a 200-row list was thrown to the top of the pane after
+    // each one, and had to tab back down to reach the next.
+    //
+    // Four controls, each pressed and each still on the screen afterwards.
+    await reachMerge();
+
+    const rows = document.querySelector<HTMLButtonElement>('[data-action="rows"]');
+    rows?.focus();
+    rows?.click();
+    await settle();
+    expect(document.activeElement, "the disclosure that just opened the list").toBe(
+      document.querySelector('[data-action="rows"]'),
+    );
+
+    const box = document.querySelector<HTMLInputElement>('input[data-row="0"]');
+    box?.focus();
+    box?.click();
+    await settle();
+    expect(document.activeElement, "the row that was just unticked").toBe(
+      document.querySelector('input[data-row="0"]'),
+    );
+
+    const conditions = document.querySelector<HTMLButtonElement>('[data-action="conditions"]');
+    conditions?.focus();
+    conditions?.click();
+    await settle();
+    expect(document.activeElement, "the disclosure that just opened the conditions").toBe(
+      document.querySelector('[data-action="conditions"]'),
+    );
+
+    // A condition select had its own branch before this and no test. It is one
+    // of the same set now, and the reason it was singled out holds: this is a
+    // control whose whole use is setting several in a row.
+    const select = document.querySelector<HTMLSelectElement>('[data-condition="5"]');
+    if (select) {
+      select.focus();
+      select.value = "First";
+      select.dispatchEvent(new Event("input", { bubbles: true }));
+      await settle();
+      expect(document.activeElement, "the condition just chosen").toBe(document.querySelector('[data-condition="5"]'));
+    }
+    expect(select, "the conditions were open at all").not.toBeNull();
+
+    // And a chip, which is on another step. `insertTextAtCursor` resolves, the
+    // chips are rebuilt with a new `data-placed`, and `data-insert` is what
+    // says it is the same chip.
+    (pane().querySelector("[data-back]") as HTMLElement).click(); // preview
+    (pane().querySelector("[data-back]") as HTMLElement).click(); // fields
+    const chip = document.querySelector<HTMLButtonElement>('[data-insert="First"]');
+    chip?.focus();
+    chip?.click();
+    await settle();
+    expect(document.activeElement, "the chip that was just pressed").toBe(
+      document.querySelector('[data-insert="First"]'),
+    );
+  });
+
   it("uses text boxes, because a number input will not say where the caret is", async () => {
     // type="number" answers null for selectionStart and throws on
     // setSelectionRange, so the caret cannot be restored across a redraw at
