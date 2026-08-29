@@ -99,7 +99,15 @@ working around it.
      top and bottom pair. Circles must still be circles — ovals mean it
      stretched, background bands mean it letterboxed.
 
-7. Write test-kit/out/round-<date>.md: what you did, what each check said, the
+7. The second deck, which takes about thirty seconds. test-kit/modern-chart.pptx
+   is one slide holding a SUNBURST written by real PowerPoint — a chartEx part,
+   which is a different half of the format from the classic chart in the main
+   template. Merge it with the same data.txt, block 1 to 1, and check the three
+   things docs/TEST-KIT.md lists: each title names its own row, each outer ring
+   reads that row's region in its FIRST segment only, and the inner ring still
+   says Existing and New. Report it in the round file as its own section.
+
+8. Write test-kit/out/round-<date>.md: what you did, what each check said, the
    pane's summary line, and anything that surprised you. Attach the merged deck
    and the screenshots. Then give me the short version in chat.
 
