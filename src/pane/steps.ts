@@ -378,6 +378,34 @@ export function plannedSlides(state: PaneState): number {
   return n;
 }
 
+/**
+ * How many slides this merge will add — the ONE answer, for every reader.
+ *
+ * `plannedSlides` was written because the product of slides-per-record and rows
+ * ignores conditions, so the forecast above the button promised more slides
+ * than the plan builds. The BUTTON kept the product: with one conditional slide
+ * and three rows the card read "4 slides added after slide 20" and the button
+ * beside it read "Add 6 slides". Two numbers on one screen, and the wrong one
+ * on the thing being pressed.
+ *
+ * The suite already recorded that the two answers differ — `plannedSlides` has
+ * an assertion that it is NOT the product, so that its own test cannot pass
+ * against the bug. Nothing asked whether anything still used the product.
+ *
+ * The product survives here for the one state where it is the only answer
+ * available: rows counted, data not yet in hand. A condition cannot be
+ * evaluated without a row, and `includedCount` works from `state.rows` for
+ * exactly that state — reading only `records` made it answer zero and emptied
+ * the button's number, which is a defect this file already carries a comment
+ * about.
+ */
+export function slidesToAdd(state: PaneState): number {
+  const block = chosenBlock(state);
+  if (!block) return 0;
+  if (state.records) return plannedSlides(state);
+  return slidesPerRecord(block) * includedCount(state);
+}
+
 export function blockSlides(state: PaneState): number[] {
   const block = chosenBlock(state);
   if (!block) return [];
@@ -800,7 +828,7 @@ export function primary(state: PaneState, step: StepId): Primary {
       // The INCLUDED rows, never the pasted ones. A user who has taken three
       // rows out and reads "Add 720 slides" has been told the wrong thing
       // about the button they are pressing.
-      const n = block ? slidesPerRecord(block) * includedCount(state) : 0;
+      const n = slidesToAdd(state);
       return { label: n > 0 ? `Add ${n} slide${n === 1 ? "" : "s"}` : "Add slides", enabled: reachable && n > 0 };
     }
   }
