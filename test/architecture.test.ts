@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import config from "../vitest.config.js";
+// @ts-expect-error — plain .mjs with no types, shared with the scripts.
+import { MEASURED, NOT_MEASURED } from "../scripts/coverage-scope.mjs";
 import { join, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 // @ts-expect-error — plain .mjs with no types, shared with the scripts.
@@ -512,12 +513,8 @@ describe("what coverage measures", () => {
    * The exclusions carry their reason here rather than in a comment beside the
    * glob, so adding a directory is a decision somebody has to write down.
    */
-  const NOT_MEASURED: Record<string, string> = {
-    office:
-      "the Office.js calls themselves — they cannot run in the suite, and every decision they make lives in src/host",
-  };
-
-  const coverage = config.test?.coverage as { include?: string[] } | undefined;
+  const measured = MEASURED as string[];
+  const excused = NOT_MEASURED as Record<string, string>;
 
   it("counts every directory under src, or says why not", () => {
     const dirs = readdirSync("src", { withFileTypes: true })
@@ -525,10 +522,7 @@ describe("what coverage measures", () => {
       .map((e) => e.name);
     expect(dirs.length, "the sweep stopped finding the source").toBeGreaterThan(2);
 
-    const included = coverage?.include ?? [];
-    const unaccounted = dirs.filter(
-      (d) => !included.some((glob) => glob.startsWith(`src/${d}/`)) && !(d in NOT_MEASURED),
-    );
+    const unaccounted = dirs.filter((d) => !measured.includes(d) && !(d in excused));
     expect(unaccounted, "measured by nothing, and no reason written down").toEqual([]);
   });
 
@@ -541,13 +535,9 @@ describe("what coverage measures", () => {
         .filter((e) => e.isDirectory())
         .map((e) => e.name),
     );
-    const included = coverage?.include ?? [];
-    for (const name of Object.keys(NOT_MEASURED)) {
+    for (const name of Object.keys(excused)) {
       expect(dirs.has(name), `src/${name} is excused from coverage and does not exist`).toBe(true);
-      expect(
-        included.some((glob) => glob.startsWith(`src/${name}/`)),
-        `src/${name} is excused from coverage and measured anyway`,
-      ).toBe(false);
+      expect(measured.includes(name), `src/${name} is excused from coverage and measured anyway`).toBe(false);
     }
   });
 });

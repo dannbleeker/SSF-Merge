@@ -1,4 +1,6 @@
 import { defineConfig } from "vitest/config";
+// @ts-expect-error — plain .mjs with no types, shared with the scripts.
+import { MEASURED } from "./scripts/coverage-scope.mjs";
 
 export default defineConfig({
   test: {
@@ -12,7 +14,9 @@ export default defineConfig({
       // the Office.js-touching code, because a well-tested engine hiding behind
       // an untestable pane, or the reverse, is exactly what a pooled number
       // lets happen.
-      include: ["src/core/**", "src/host/**", "src/pane/**"],
+      // From `scripts/coverage-scope.mjs`, so a test can hold the list against
+      // the directories that actually exist. See the note there.
+      include: MEASURED.map((dir) => `src/${dir}/**`),
       // The pane's entry point is the one file there that touches Office.js and
       // cannot run in the suite. Everything else in src/pane — the step
       // machine, the copy, the renderer — is checked in jsdom and earns the

@@ -21,9 +21,16 @@ three measured, `src/office` deliberately not — so this costs nothing today. T
 day somebody adds a fifth, the four thresholds go on passing while saying
 nothing whatever about it.
 
-The guard reads the config as a value rather than as text, and the exclusions
-carry their reason in the test, so adding a directory is a decision somebody has
-to write down rather than a glob they can forget.
+The list lives in `scripts/coverage-scope.mjs`, read by the config and by the
+guard, with the reason for each exclusion beside it — a glob cannot carry one.
+So adding a directory is a decision somebody writes down rather than a line they
+forget.
+
+Importing `vitest.config.ts` into the test was the first attempt and does not
+work: pulling it into a test pulls it into the TypeScript project service, and
+lint refuses a file that is in two projects at once. Sharing the list is the
+better answer anyway — one definition, and the guard still measures it against
+what is actually on disk.
 
 It holds in both directions: a directory measured by nothing fails it, and so
 does an exclusion that has stopped being true — a reason for not measuring a
