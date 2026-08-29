@@ -80,6 +80,20 @@ const PHOTO_PASTE = "First\tPhoto\nAda\tada.png\nGrace\tgrace.png\nAlan\talan.pn
  */
 const UNBROKEN_PASTE = "First\tSumOfQuantityMonthlyForTheNorthernRegionIncludingSubsidiaries\nAda\t42";
 
+/** Enough rows to reach the list's cap and its "search to narrow it" line. */
+const MANY_ROWS = ["First", ...Array.from({ length: 200 }, (_, i) => `Person number ${i + 1} of two hundred`)].join(
+  "\n",
+);
+
+/**
+ * Two pictures the data tells apart and a file picker cannot.
+ *
+ * Matching is by base name, because `File.name` has no path in it, so these
+ * are one name by the time anything can act on them — and the pane says so
+ * rather than filling both from the same file in silence.
+ */
+const CLASH_PASTE = "First\tPhoto\nAda\tregions/eu/logo.png\nBo\tregions/us/logo.png";
+
 const STATES = [
   { name: "1-template-empty", step: "template", state: { fields: [], previewing: false } },
   {
@@ -345,6 +359,48 @@ const STATES = [
     step: "data",
     state: { ...full, paste: UNBROKEN_PASTE },
     paste: UNBROKEN_PASTE,
+  },
+  /**
+   * The row picker open, which nothing here drew.
+   *
+   * It is the densest thing the pane renders — a scrolling list of checkboxes,
+   * a search box, a cap message — and none of it had ever been measured or
+   * looked at.
+   */
+  {
+    name: "5-rows-open",
+    step: "merge",
+    state: { ...full, paste: MANY_ROWS, rowsOpen: true, excluded: [1] },
+    paste: MANY_ROWS,
+  },
+  {
+    name: "5-rows-searched",
+    step: "merge",
+    state: { ...full, paste: MANY_ROWS, rowsOpen: true, rowSearch: "nothing matches this" },
+    paste: MANY_ROWS,
+  },
+  /**
+   * Every merge caution at once. Each is a different thing about to happen and
+   * none may swallow another, so the screen has to hold all three.
+   */
+  {
+    name: "5-merge-every-caution",
+    step: "merge",
+    state: {
+      ...full,
+      paste: CLASH_PASTE,
+      fields: ["First", "Nickname", "Photo"],
+      imageFields: [],
+    },
+    paste: CLASH_PASTE,
+    files: ["logo.png"],
+  },
+  {
+    name: "2-data-picture-clash",
+    step: "data",
+    state: { ...full, paste: CLASH_PASTE },
+    paste: CLASH_PASTE,
+    files: ["logo.png"],
   },
   {
     name: "5-merge-spaceless-notice",
