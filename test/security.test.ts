@@ -18,6 +18,8 @@ import { toRecordSet } from "../src/core/data/recordset.js";
 import { A_NS, elements, parseXml } from "../src/core/pptx/xml.js";
 import { makeDeck } from "./fixtures/deck.js";
 
+const ROOT_RELS_PATH = "_rels/.rels";
+
 /** Merge one row through the ordinary path and hand back the package. */
 async function mergeRows(paragraphs: string[][], table: string[][]) {
   const pkg = await Pkg.open(await makeDeck([{ paragraphs }]));
@@ -191,6 +193,44 @@ describe("a chart's own relationships come out of the deck too", () => {
       expect(pkg.has(key), `a crafted chart relationship swept ${key}`).toBe(true);
     });
   }
+
+  it("counts the package's own relationships as referrers", async () => {
+    /**
+     * The referrer scan tested every `.rels` whose path contained `/_rels/`,
+     * which is every one EXCEPT the package's own `_rels/.rels`. So a part
+     * named only from the root was invisible to it and looked unreferenced.
+     *
+     * `ppt/presentation.xml` is the real instance, and the allowlist above now
+     * keeps it out of reach — which means this needs a part the allowlist DOES
+     * admit to be observable at all. A picture referenced from the root, the
+     * way a thumbnail is, and claimed by the chart on the way out.
+     */
+    const pkg = await Pkg.open(
+      await makeDeck([
+        { paragraphs: [["Cover"]], chart: { title: "T", workbook: ["a"] } },
+        { paragraphs: [["Second"]] },
+      ]),
+    );
+    pkg.setBytes("ppt/media/image9.png", new Uint8Array([137, 80, 78, 71]));
+    const root = await pkg.text(ROOT_RELS_PATH);
+    pkg.setText(
+      ROOT_RELS_PATH,
+      root.replace(
+        "</Relationships>",
+        `<Relationship Id="rIdPic" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/thumbnail" Target="ppt/media/image9.png"/></Relationships>`,
+      ),
+    );
+    pkg.setText(
+      "ppt/charts/_rels/chart1.xml.rels",
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n` +
+        `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+        `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image9.png"/>` +
+        `</Relationships>`,
+    );
+
+    await pkg.removeSlide("ppt/slides/slide1.xml");
+    expect(pkg.has("ppt/media/image9.png"), "a part referenced only from the root was swept").toBe(true);
+  });
 
   it("still sweeps what the slide's chart really does own", async () => {
     // The guard must not become "never sweep anything": a template slide going
