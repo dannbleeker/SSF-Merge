@@ -546,6 +546,14 @@ export function blockedReason(state: PaneState, step: StepId): string | null {
       if (!state.rows) return "Attach your data first.";
       return null;
     case "preview":
+      // A live preview is never blocked, because there IS something to do here
+      // and the button already does it: remove it. The three sentences below
+      // name what is missing before a preview can be MADE, and typing in the
+      // slide-number boxes clears the block without ending one — so this step
+      // could show "Choose the slides that repeat first." directly above a
+      // working "Remove the preview" button, naming the wrong next action at
+      // the one moment the user has an obvious right one.
+      if (state.previewing) return null;
       if (!chosenBlock(state)) return "Choose the slides that repeat first.";
       if (!state.rows) return "Attach your data first.";
       // A preview runs the ORDINARY merge, which refuses a block with no

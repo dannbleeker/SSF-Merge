@@ -670,3 +670,68 @@ describe("the token an image column is written as", () => {
     expect(imageMode(hits[0]?.[2])).toBe("cover");
   });
 });
+
+describe("a blocked step never offers a pressable button", () => {
+  /**
+   * `blockedReason` promises that every sentence "names the thing the user has
+   * to do". A step that shows one of those sentences above a button that WORKS
+   * is naming the wrong thing at the one moment the user has an obvious right
+   * one to do.
+   *
+   * Swept rather than listed. The state that broke it was reachable by a route
+   * nobody would write a case for: preview a row, go back to step 1, and type
+   * in a slide-number box. That clears the committed block — deliberately, it
+   * is stale — and does not end the preview, so step 4 read "Choose the slides
+   * that repeat first." directly above a working "Remove the preview".
+   *
+   * Never stuck, to be clear: navigation is ungated on purpose and the button
+   * always worked. It was the sentence that was wrong.
+   */
+  const STATES: PaneState[] = (() => {
+    const out: PaneState[] = [];
+    for (const block of [undefined, { from: 1, to: 2 }])
+      for (const rows of [undefined, 0, 2])
+        for (const fields of [[], ["Name"], ["Name", "Nickname"]])
+          for (const previewing of [false, true])
+            for (const running of [undefined, "inspect", "merge", "preview"] as const)
+              for (const added of [undefined, 6])
+                for (const excluded of [undefined, [0, 1]])
+                  out.push({
+                    ...(block ? { block } : {}),
+                    fields,
+                    ...(rows === undefined ? {} : { rows, columns: ["Name", "Region"] }),
+                    previewing,
+                    ...(running ? { running } : {}),
+                    ...(added === undefined ? {} : { added }),
+                    ...(excluded ? { excluded } : {}),
+                  });
+    return out;
+  })();
+
+  it("across every combination of the things a step gates on", () => {
+    const violations: string[] = [];
+    for (const state of STATES) {
+      for (const step of STEPS) {
+        const why = blockedReason(state, step);
+        const button = primary(state, step);
+        if (why !== null && button.enabled) violations.push(`${step}: "${why}" over a live "${button.label}"`);
+      }
+    }
+    expect([...new Set(violations)]).toEqual([]);
+    expect(STATES.length, "the sweep stopped covering anything").toBeGreaterThan(500);
+  });
+
+  it("and the route that broke it reads the right way round", () => {
+    // The block goes, the preview stays. Step 4 has one thing to say now.
+    const previewing: PaneState = { fields: ["Name"], rows: 2, columns: ["Name"], previewing: true };
+    expect(blockedReason(previewing, "preview")).toBeNull();
+    expect(primary(previewing, "preview")).toEqual({ label: "Remove the preview", enabled: true });
+  });
+
+  it("without making the step reachable when no preview is on the slides", () => {
+    // The other half: with nothing previewing, the three sentences still stand.
+    const bare: PaneState = { fields: [], previewing: false };
+    expect(blockedReason(bare, "preview")).toBe("Choose the slides that repeat first.");
+    expect(primary(bare, "preview").enabled).toBe(false);
+  });
+});

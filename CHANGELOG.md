@@ -7,6 +7,28 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — step 4 named the wrong thing to do while a preview was on the slides
+
+`blockedReason` promises that every sentence it returns "names the thing the
+user has to do". Preview a row, go back to step 1 and type in a slide-number
+box: that clears the committed block — deliberately, it is stale — and does not
+end the preview. Step 4 then read **"Choose the slides that repeat first."**
+directly above a working **"Remove the preview"** button.
+
+Never stuck. Navigation between steps is ungated on purpose and the button
+always worked; it was the sentence that was wrong, at the one moment the user
+had an obvious right thing to do. A live preview is not a blocked step, because
+there is something to do on it and the button already does it.
+
+Found by sweeping 576 combinations of the things a step gates on — block, rows,
+fields, previewing, running, added, excluded — against the rule that a blocked
+step must never offer a pressable button. 64 states broke it, all this one. The
+sweep is now a test.
+
+What it does NOT catch, said plainly: a guard that goes missing makes the
+sentence and the button AGREE, so the invariant stays true. It sees a wrong
+sentence over a live button, not a missing sentence.
+
 ### Added — a sweep for per-record parts two slides both point at
 
 Every part a merge writes into has to be the merging slide's own. A part type
