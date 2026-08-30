@@ -26,6 +26,7 @@ import {
   EMPTY,
   EMPTY_DRAFT,
   blockedReason,
+  announcement,
   chosenBlock,
   disclosureKey,
   fieldToken,
@@ -89,6 +90,46 @@ function focusedSelector(active: Element | null): string | null {
   return null;
 }
 
+/**
+ * The live region, made once and never rebuilt.
+ *
+ * `render` empties `#pane` and builds fresh elements on every draw, and a live
+ * region CREATED with its content in it does not announce — the region has to
+ * exist first and have text put into it. So this one lives outside the pane, is
+ * made on the first draw, and is only ever written to.
+ *
+ * Made here rather than in `taskpane.html` so there is one definition and the
+ * jsdom wiring tests get it without keeping a copy of the page's markup in step
+ * with the real one. It is off-screen rather than `display: none`, which would
+ * take it out of the accessibility tree along with everything in it.
+ */
+function liveRegion(): HTMLElement {
+  const existing = document.getElementById("announcer");
+  if (existing) return existing;
+  const node = document.createElement("p");
+  node.id = "announcer";
+  node.className = "visually-hidden";
+  // `polite`, never `assertive`: none of this is urgent enough to cut across
+  // what the user is already being told, and `assertive` on a pane that
+  // redraws this often is how a screen reader becomes unusable.
+  node.setAttribute("role", "status");
+  node.setAttribute("aria-live", "polite");
+  document.body.append(node);
+  return node;
+}
+
+/** The last thing announced, so the same sentence is not said twice. */
+let announced = "";
+
+function announce(): void {
+  const say = announcement(state);
+  // Only on a CHANGE. The pane redraws on every keystroke, and writing the same
+  // string back into a live region makes some screen readers say it again.
+  if (say === announced) return;
+  announced = say;
+  liveRegion().textContent = say;
+}
+
 function draw(): void {
   const active = document.activeElement;
   const selector = focusedSelector(active);
@@ -99,6 +140,8 @@ function draw(): void {
     active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement ? selectionOf(active) : null;
 
   render(root(), state, step);
+  // After the render, so the sentence announced is the one now on screen.
+  announce();
 
   if (selector === null) return;
   const node = root().querySelector(selector);

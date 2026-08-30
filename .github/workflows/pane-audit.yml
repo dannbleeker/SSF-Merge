@@ -9,6 +9,12 @@ name: pane audit
 # 2.93:1 "Remove these slides" on the dark theme, and a near-black focus ring
 # drawn on a near-black pane.
 #
+# A fourth was added on 2026-08-30: axe-core over every state, both widths and
+# both themes. It answers the half of accessibility nobody eyeballs — names,
+# roles, labels, duplicate ids — and is a FLOOR rather than a verdict: it was
+# green on this pane while the renderer carried one `aria` attribute and no
+# live region at all, which is the defect that sweep actually found.
+#
 # `scripts/pane-shots.mjs` measures them and exits 1. Somebody has to run it,
 # and "somebody has to remember" is how the first two got in.
 #

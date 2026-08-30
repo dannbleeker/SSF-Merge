@@ -73,9 +73,17 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
-/** The progress rail, one segment per step. */
+/**
+ * The progress rail, one segment per step.
+ *
+ * `aria-hidden`, and that is a decision rather than an oversight. The segments
+ * carry no text — they are five coloured bars — so a screen reader announced
+ * "list, five items" and then five empty ones. What they show is already said
+ * in words directly above them, in the line that reads "Step 3 of 5 · Merge",
+ * so hiding them removes noise and loses nothing.
+ */
 function rail(doc: Document, state: PaneState, current: StepId): HTMLElement {
-  const ul = el(doc, "ul", { class: "rail" });
+  const ul = el(doc, "ul", { class: "rail", attrs: { "aria-hidden": "true" } });
   for (const step of STEPS) {
     ul.append(
       el(doc, "li", {
