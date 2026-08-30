@@ -71,7 +71,8 @@ describe("what the deck will look like afterwards", () => {
     // "720 slides added" answers the wrong half of the question somebody
     // hesitating over the button is actually asking.
     const s = mergeSummary(720, 12);
-    expect(s).toContain("720 slides added after slide 12");
+    // FUTURE tense: nothing has happened when this sentence is on screen.
+    expect(s).toContain("720 slides will be added after slide 12");
     expect(s).toContain("732 slides in the deck");
   });
 });

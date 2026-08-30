@@ -184,7 +184,7 @@ try all three:
 The third is the interesting one, because the number on the button has to change
 the moment you choose it — the forecast and the plan are two different pieces of
 code and they have disagreed before. In 2026-08-30 they agreed: the line became
-*2 of 3 rows × 2 slides · 4 slides added after slide 3*, the button became **Add
+*2 of 3 rows × 2 slides · 4 slides will be added after slide 3*, the button became **Add
 4 slides**, and the merge then reported *4 slides added after slide 3 · 26
 placeholders filled · 2 pictures placed · 1 row skipped for a blank field*.
 

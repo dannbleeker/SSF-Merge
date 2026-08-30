@@ -171,6 +171,13 @@ press Preview, after which the button above does the same job.
 
 ### Step 5 — Merge
 
+<!-- These pictures were taken before the forecast moved to the future tense, so
+     this one still reads "3 slides added" where the pane now says "3 slides
+     will be added". The alt text describes the picture as it actually stands
+     rather than as the pane now reads, because a caption that disagrees with
+     the image under it is worse than a picture one release behind. Refresh them
+     with `scripts/manual-shots.mjs` against a local vite. -->
+
 ![Step 5 of the pane: "3 rows × 1 slide", a forecast reading "3 slides added after slide 8, leaving 11 slides in the deck", and a button reading "Add 3 slides"](images/step-5-merge.png)
 
 The forecast above the button says where the slides land and how big the deck
@@ -592,8 +599,8 @@ deck with a template on slide 3, three merged slides become slides 9, 10 and
 11.
 
 That is what ships, it is not a setting, and the merge screen says it before
-you press anything: the forecast reads *"3 slides added after slide 8, leaving
-11 slides in the deck"*, and the number in it is the deck's size, not your
+you press anything: the forecast reads *"3 slides will be added after slide 8,
+leaving 11 slides in the deck"*, and the number in it is the deck's size, not your
 template's position.
 
 The end of the deck is the one insertion point this add-in has tested on a real

@@ -67,9 +67,19 @@ export function mergeArithmetic(block: Block, rows: number, dropped = 0): string
  *
  * Says where they LAND as well as how many, because "720 slides added" answers
  * the wrong half of the question a user hesitating over the button is asking.
+ *
+ * FUTURE tense, because nothing has happened yet. It read "6 slides added after
+ * slide 3" while sitting directly above an unpressed "Add 6 slides" — the same
+ * words the pane uses AFTERWARDS to report what it did, on a screen where it
+ * had done nothing at all. A reader taking that sentence at face value has been
+ * told their merge already ran, and the only thing telling the two states apart
+ * was which screen they happened to be on.
+ *
+ * The report keeps the past tense and lives in `describeMerge`, so the two no
+ * longer read identically at opposite ends of the press.
  */
 export function mergeSummary(added: number, deckSize: number): string {
-  return `${plural(added, "slide")} added after slide ${deckSize}, leaving ${plural(deckSize + added, "slide")} in the deck.`;
+  return `${plural(added, "slide")} will be added after slide ${deckSize}, leaving ${plural(deckSize + added, "slide")} in the deck.`;
 }
 
 /**
