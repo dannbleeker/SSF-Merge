@@ -355,6 +355,41 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
   }
   const rows = tornInsert(perRecord, added);
 
+  /**
+   * What the run PRODUCED, shared by the two outcomes below.
+   *
+   * They differ in exactly two fields — `ok` and the sentence — and carried
+   * sixteen identical ones each, written out twice. The comments this replaces
+   * are the argument for sharing them: `paragraphsMerged` and `pictures` each
+   * had a paragraph explaining that they are carried "on the SUCCESS path
+   * too", because a merge that adds every slide and fills nothing arrives
+   * looking exactly like a success. Those are notes about an asymmetry
+   * somebody had already had to go back and close, on a pair nothing kept in
+   * step.
+   *
+   * A seventeenth field now lands on both paths or on neither. `nothing`
+   * further up is the same technique for the early returns; this is the pair it
+   * had never been applied to.
+   */
+  const landed = {
+    added,
+    deckAtStart,
+    runId,
+    fields: prepared.fields,
+    imageFields: prepared.imageFields,
+    slideFields: prepared.slideFields,
+    unknownConditions: plan.unknownConditions,
+    paragraphsMerged: result.paragraphsMerged,
+    workbooksUnreadable: result.graphics.unreadable.length,
+    pictures: result.images,
+    chartValues: result.graphics.numbers,
+    skippedRecords: plan.skippedRecords.length,
+    skippedSlides: plan.skippedSlides.length,
+    rowsComplete: rows.complete,
+    rowsTorn: rows.torn,
+    rowsAbsent: rows.absent,
+  };
+
   if (insert.verdict !== "yes") {
     // The RECIPE, so the package can be rebuilt without another round.
     //
@@ -393,50 +428,14 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
         added > 0
           ? `PowerPoint took only part of the merge: ${rows.detail}. Take the slides back and run it again.`
           : `The merge was built but PowerPoint did not take it: ${insert.detail}`,
-      added,
-      deckAtStart,
-      runId,
-      fields: prepared.fields,
-      imageFields: prepared.imageFields,
-      slideFields: prepared.slideFields,
-      unknownConditions: plan.unknownConditions,
-      paragraphsMerged: result.paragraphsMerged,
-      workbooksUnreadable: result.graphics.unreadable.length,
-      pictures: result.images,
-      chartValues: result.graphics.numbers,
-      skippedRecords: plan.skippedRecords.length,
-      skippedSlides: plan.skippedSlides.length,
-      rowsComplete: rows.complete,
-      rowsTorn: rows.torn,
-      rowsAbsent: rows.absent,
+      ...landed,
     };
   }
 
   return {
     ok: true,
     detail: `${added} slide${added === 1 ? "" : "s"} added after slide ${deckAtStart}. ${insert.detail}`,
-    added,
-    deckAtStart,
-    runId,
-    fields: prepared.fields,
-    imageFields: prepared.imageFields,
-    slideFields: prepared.slideFields,
-    unknownConditions: plan.unknownConditions,
-    // Carried on the SUCCESS path too, not only when something went wrong. A
-    // merge that adds every slide and fills no placeholder is the failure this
-    // number exists to name, and it arrives looking exactly like a success.
-    paragraphsMerged: result.paragraphsMerged,
-    workbooksUnreadable: result.graphics.unreadable.length,
-    // On the success path too, for the reason `paragraphsMerged` is: a merge
-    // that placed nothing is the failure this reports, and it arrives looking
-    // exactly like a success.
-    pictures: result.images,
-    chartValues: result.graphics.numbers,
-    skippedRecords: plan.skippedRecords.length,
-    skippedSlides: plan.skippedSlides.length,
-    rowsComplete: rows.complete,
-    rowsTorn: rows.torn,
-    rowsAbsent: rows.absent,
+    ...landed,
   };
 }
 

@@ -325,6 +325,47 @@ describe("a torn insert is reported in rows", () => {
     expect(out).toMatchObject({ rowsComplete: 3, rowsTorn: 0, rowsAbsent: 0 });
     expect(out.detail).not.toMatch(/row\(s\) landed complete/);
   });
+
+  it("reports the same set of facts whether the host took it or tore it", () => {
+    /**
+     * The two full outcomes differ in exactly two fields — `ok` and the
+     * sentence — and everything else is what the RUN produced, which does not
+     * change because the host misbehaved on the way out. They were written out
+     * separately, sixteen identical fields each, and the file still carried two
+     * comments explaining that `paragraphsMerged` and `pictures` are on the
+     * success path "too": notes about an asymmetry somebody had already gone
+     * back to close.
+     *
+     * Shared as one object now, so the type keeps them in step. This is the
+     * behavioural half — a re-inlined pair that forgets a field on one side
+     * fails here, where a compiler would be perfectly happy.
+     *
+     * What it does NOT catch, stated because it was checked: a field present
+     * with the value `undefined`. `Object.keys` counts the key either way, so
+     * this is a guard about the SHAPE of the two outcomes and not about their
+     * values. Comparing values would fail on `detail` and on every count that
+     * legitimately differs between a whole insert and a torn one.
+     */
+    return (async () => {
+      host.readTemplate.mockResolvedValueOnce({ base64: await block(), offset: 0 });
+      host.insertDeck.mockResolvedValueOnce({ verdict: "yes", detail: "landed", landed: 6, before: 2, after: 8 });
+      const whole = await runMerge({ from: 1, to: 2, records: rows });
+
+      host.readTemplate.mockResolvedValueOnce({ base64: await block(), offset: 0 });
+      host.insertDeck.mockResolvedValueOnce({ verdict: "no", detail: "5 of 6", landed: 5, before: 2, after: 7 });
+      const torn = await runMerge({ from: 1, to: 2, records: rows });
+
+      // The premise: one of each. Without this the comparison below could be
+      // between two outcomes of the same kind and would prove nothing.
+      expect(whole.ok).toBe(true);
+      expect(torn.ok).toBe(false);
+
+      const keys = (o: object) => Object.keys(o).sort();
+      expect(keys(torn)).toEqual(keys(whole));
+      // And it is a real set, not an empty object agreeing with itself.
+      expect(keys(whole).length).toBeGreaterThan(10);
+    })();
+  });
 });
 
 describe("a block with no fields on it yet", () => {

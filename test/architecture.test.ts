@@ -332,8 +332,34 @@ describe("every pane state field can actually be set", () => {
     return out;
   }
 
-  const fields = fieldsOf(readFileSync("src/pane/steps.ts", "utf8"));
-  const assigned = assignedFields(readFileSync("src/pane/main.ts", "utf8"));
+  /**
+   * Fields set through the disclosure table instead of by name.
+   *
+   * `main.ts` used to carry a branch per collapsible control, each flipping its
+   * own key by name, and the scan above saw all three. They go through one
+   * computed assignment now — `state = { ...state, [open]: !state[open] }` —
+   * which is exactly the shape a regex over literal keys cannot see, and the
+   * guard reported three perfectly reachable fields as settable by nothing.
+   *
+   * Read out of `steps.ts` rather than listed here, so a fourth control is
+   * covered the moment it joins the table. And gated on `main.ts` actually
+   * CALLING `disclosureKey`: an exemption that outlives its mechanism is worse
+   * than no exemption, because it says a field is reachable when nothing
+   * reaches it.
+   */
+  function tableSetFields(steps: string, main: string): Set<string> {
+    const out = new Set<string>();
+    if (!main.includes("disclosureKey(")) return out;
+    const table = steps.match(/export const DISCLOSURES = \{([^}]+)\}/)?.[1] ?? "";
+    for (const m of table.matchAll(/:\s*"(\w+)"/g)) out.add(m[1] ?? "");
+    return out;
+  }
+
+  const stepsSource = readFileSync("src/pane/steps.ts", "utf8");
+  const mainSource = readFileSync("src/pane/main.ts", "utf8");
+  const fields = fieldsOf(stepsSource);
+  const assigned = assignedFields(mainSource);
+  const viaTable = tableSetFields(stepsSource, mainSource);
 
   it("reads both halves", () => {
     // Guards the two scans. Either answering nothing would make the comparison
@@ -341,10 +367,13 @@ describe("every pane state field can actually be set", () => {
     // twice already.
     expect(fields.length).toBeGreaterThan(10);
     expect(assigned.size).toBeGreaterThan(10);
+    // The third scan, for the same reason: an empty table would exempt nothing
+    // and this guard would pass by measuring less, not by the code being right.
+    expect(viaTable.size, "the disclosure table read as empty").toBeGreaterThan(0);
   });
 
   it("has no field the pane can only read", () => {
-    const unreachable = fields.filter((f) => !assigned.has(f) && !SETTABLE_BY_NOTHING.has(f));
+    const unreachable = fields.filter((f) => !assigned.has(f) && !viaTable.has(f) && !SETTABLE_BY_NOTHING.has(f));
     expect(unreachable, "PaneState fields nothing in main.ts sets").toEqual([]);
   });
 
@@ -355,7 +384,7 @@ describe("every pane state field can actually be set", () => {
     // the mechanism, not the single field that needed it.
     for (const f of SETTABLE_BY_NOTHING) {
       expect(fields, `${f} is not a PaneState field`).toContain(f);
-      expect(assigned.has(f), `${f} is set now — delete it from the list`).toBe(false);
+      expect(assigned.has(f) || viaTable.has(f), `${f} is set now — delete it from the list`).toBe(false);
     }
   });
 });
