@@ -48,6 +48,22 @@ export interface Crumb {
   added: number;
   runId: string;
   startedAt: string;
+  /**
+   * WHICH document the run was against. The store is not scoped to one.
+   *
+   * `localStorage` belongs to the add-in's ORIGIN, and every deck the user opens
+   * shares it. Without this the crumb from one deck's interrupted run was read
+   * while another was open: the real-host round of 2026-08-30 opened a fresh,
+   * never-merged deck and was told "a merge from 2026-08-30 added 6 slide(s)".
+   *
+   * That instance was only alarming — `sweepPlan` saw a deck that had not grown
+   * and refused, so nothing was offered. It is not safe in general, because
+   * every clamp in `sweepPlan` compares SIZES and none of them compares
+   * identity: a stranger deck holding exactly `deckAtStart + added` slides
+   * satisfies all of them and yields a plan to delete slides the run never
+   * created. The missing question was never "how big" but "which deck".
+   */
+  doc: string;
 }
 
 /** The store, or null where there is not one. Never throws. */
@@ -87,13 +103,20 @@ export function clearCrumb(): void {
 }
 
 /**
- * What the last run left, when it left anything.
+ * What the last run left, when it left anything AND it belongs to this deck.
  *
  * Returns undefined for an absent, unreadable, or unrecognisable crumb —
  * including one from an older build. The undo path acts on these numbers, so
  * "I could not read it" and "the deck was this big" must never be confused.
+ *
+ * `here` is the open document's key, handed in rather than read. Only
+ * `src/pane/main.ts` may touch Office.js: the moment this file asked the host
+ * anything, the labels a user presses would stop being checkable without a
+ * PowerPoint, and the pane is exactly where a wrong label is the thing that
+ * gets pressed. Pass "" for a host that will not name the document — it is
+ * treated as "cannot prove", never as a match.
  */
-export function readCrumb(): Crumb | undefined {
+export function readCrumb(here: string): Crumb | undefined {
   const s = store();
   if (!s) return undefined;
   try {
@@ -117,12 +140,26 @@ export function readCrumb(): Crumb | undefined {
     // the caller gets a sentence rather than a button. Negative is still a
     // broken record.
     if ((c.deckAtStart ?? -1) < 0 || (c.added ?? -1) < 0) return undefined;
+    // WHICH deck, asked before the numbers are handed to anything that deletes.
+    //
+    // Refused unless both keys are known and identical. A crumb from an older
+    // build carries no `doc` at all, and an unreadable host answers "", and
+    // neither can be told apart from a match by guessing — so both are refused.
+    //
+    // The cost is a real one: on a host that will not name the document, the
+    // dead-tab recovery this file exists for stops being offered. That is the
+    // direction this project already takes when identity cannot be proven —
+    // `sweepPlan` leaves slides behind rather than delete one it cannot show it
+    // created — and the alternative is offering to delete six slides of
+    // whatever deck happens to be the right size.
+    if (!here || typeof c.doc !== "string" || c.doc === "" || c.doc !== here) return undefined;
     return {
       kind: "ssf-merge-run",
       deckAtStart: c.deckAtStart as number,
       added: c.added as number,
       runId: typeof c.runId === "string" ? c.runId : "unknown",
       startedAt: typeof c.startedAt === "string" ? c.startedAt : "unknown",
+      doc: c.doc,
     };
   } catch {
     return undefined;

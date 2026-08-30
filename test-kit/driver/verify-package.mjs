@@ -132,19 +132,13 @@ console.log(
   );
 }
 
-// ------------------------------------------- 2. part counts
-
-const chartParts = names.filter((n) => /^ppt\/charts\/chart\d+\.xml$/.test(n)).sort();
-const workbookParts = names.filter((n) => /^ppt\/embeddings\/.+\.xlsx$/.test(n)).sort();
-const mediaParts = names.filter((n) => /^ppt\/media\//.test(n)).sort();
-
-record("three chart parts", chartParts.length === 3, `${chartParts.length}: ${chartParts.join(", ") || "none"}`);
-record(
-  "three embedded workbooks",
-  workbookParts.length === 3,
-  `${workbookParts.length}: ${workbookParts.join(", ") || "none"}`,
-);
-record("three media parts", mediaParts.length === 3, `${mediaParts.length}: ${mediaParts.join(", ") || "none"}`);
+// The part COUNTS used to be taken here, over the whole package, and asked for
+// exactly three of each. That is only true of a deck the template has been swept
+// out of: a round done the way the manual asks keeps the template, whose own
+// chart, workbook and diagram are parts too — so a correct deck counted four and
+// was marked down for it three times. They are counted below instead, over the
+// parts the MERGED slides actually reach, which is what "three" was always
+// about.
 
 // ------------------------------------------- per-slide alignment
 
@@ -158,14 +152,68 @@ for (const sp of slidePaths) {
   slideInfo.push({ path: sp, xml, text, rels, row });
 }
 
-const unattributed = slideInfo.filter((s) => !s.row);
-record(
-  "every slide's text names exactly one of the three rows",
-  unattributed.length === 0,
-  unattributed.length === 0
-    ? slideInfo.map((s) => `${s.path.replace("ppt/slides/", "")}=${s.row.name}`).join(", ")
-    : `${unattributed.length} slide(s) name no row: ${unattributed.map((s) => s.path).join(", ")}`,
+/**
+ * Which slides this run PRODUCED, as opposed to the block it copied from.
+ *
+ * A round done the way `docs/TEST-KIT.md` asks leaves the template in the deck:
+ * the merge appends, it does not consume. Every per-row check below is about
+ * the copies, and the template slides are not failures of them — they are not
+ * their business. The notes check already said exactly that and skipped them;
+ * the others did not, so the real-host round of 2026-08-30 scored 5/13 on a
+ * deck that was entirely correct and had to re-derive every claim by hand.
+ *
+ * A template slide is one still holding a placeholder for a field that HAS a
+ * column. `{{Nickname}}` is deliberately excluded: it has no column, it is MEANT
+ * to survive, and every merged copy carries it — keying on it would call the
+ * whole deck a template and skip everything.
+ */
+const TEMPLATE_MARK = /\{\{(?!Nickname\}\})[A-Za-z]/;
+for (const s of slideInfo) s.template = TEMPLATE_MARK.test(s.text);
+
+const short = (s) => s.path.replace("ppt/slides/", "");
+const mergedInfo = slideInfo.filter((s) => s.row && !s.template);
+const templateInfo = slideInfo.filter((s) => !s.row || s.template);
+
+console.log(
+  `merged      : ${mergedInfo.length}  (${mergedInfo.map(short).join(", ") || "none"})\n` +
+    `template    : ${templateInfo.length}  (${templateInfo.map(short).join(", ") || "none"})` +
+    `  — skipped by the per-row checks\n`,
 );
+
+const unattributed = slideInfo.filter((s) => !s.row && !s.template);
+record(
+  "every slide is either a merged row or a template slide",
+  unattributed.length === 0 && mergedInfo.length > 0,
+  unattributed.length
+    ? `${unattributed.length} slide(s) name no row and hold no placeholder: ${unattributed.map(short).join(", ")}`
+    : mergedInfo.length === 0
+      ? "no merged slide found at all, so nothing below can be checked"
+      : `merged ${mergedInfo.map((s) => `${short(s)}=${s.row.name}`).join(", ")}`,
+);
+
+// ------------------------------------------- 2. part counts, over the copies
+
+{
+  const charts = new Set();
+  const workbooks = new Set();
+  const media = new Set();
+  for (const s of mergedInfo) {
+    for (const r of s.rels) {
+      const p = resolveTarget(s.path, r.target);
+      if (r.type.endsWith("/chart")) {
+        charts.add(p);
+        for (const wr of await readRels(zip, p)) {
+          if (wr.type.endsWith("/package") || /\.xlsx$/.test(wr.target)) workbooks.add(resolveTarget(p, wr.target));
+        }
+      }
+      if (r.type.endsWith("/image") && !r.external) media.add(p);
+    }
+  }
+  const list = (s) => [...s].sort().join(", ") || "none";
+  record("three chart parts, one per merged row", charts.size === 3, `${charts.size}: ${list(charts)}`);
+  record("three embedded workbooks, one per merged row", workbooks.size === 3, `${workbooks.size}: ${list(workbooks)}`);
+  record("three media parts, one per merged row", media.size === 3, `${media.size}: ${list(media)}`);
+}
 
 // ------------------------------------------- 3. charts: title + strCache
 
@@ -173,7 +221,7 @@ record(
   const detail = [];
   let ok = true;
   let seen = 0;
-  for (const s of slideInfo) {
+  for (const s of mergedInfo) {
     const chartRels = s.rels.filter((r) => r.type.endsWith("/chart"));
     for (const cr of chartRels) {
       seen++;
@@ -210,7 +258,7 @@ record(
   const detail = [];
   let ok = true;
   let seen = 0;
-  for (const s of slideInfo) {
+  for (const s of mergedInfo) {
     for (const cr of s.rels.filter((r) => r.type.endsWith("/chart"))) {
       const cp = resolveTarget(s.path, cr.target);
       const crels = await readRels(zip, cp);
@@ -262,7 +310,7 @@ record(
   const detail = [];
   let ok = true;
   let seen = 0;
-  for (const s of slideInfo) {
+  for (const s of mergedInfo) {
     const drawRels = s.rels.filter((r) => r.type.endsWith("/diagramDrawing"));
     const dataRels = s.rels.filter((r) => r.type.endsWith("/diagramData"));
     if (!dataRels.length) continue;
@@ -304,11 +352,14 @@ record(
 // ------------------------------------------- 6. {{Nickname}} survives
 
 {
-  const withNickname = slideInfo.filter((s) => s.text.includes("{{Nickname}}"));
+  // Counted over the COPIES. The template slide it came from carries it too, so
+  // asking the whole deck for exactly three found five on a correct round and
+  // called it a failure.
+  const withNickname = mergedInfo.filter((s) => s.text.includes("{{Nickname}}"));
   record(
-    "{{Nickname}} still present (no such column, must not blank out)",
+    "{{Nickname}} still present on the copies (no such column, must not blank out)",
     withNickname.length === 3,
-    `${withNickname.length} slide(s) carry it: ${withNickname.map((s) => s.path.replace("ppt/slides/", "")).join(", ") || "none"}`,
+    `${withNickname.length} of ${mergedInfo.length} merged slide(s) carry it: ${withNickname.map(short).join(", ") || "none"}`,
   );
 }
 
@@ -318,10 +369,7 @@ record(
   const detail = [];
   let ok = true;
   let seen = 0;
-  for (const s of slideInfo) {
-    // A deck that still carries its template slides has slides that name no
-    // row. They are not failures; they simply are not this check's business.
-    if (!s.row) continue;
+  for (const s of mergedInfo) {
     for (const nr of s.rels.filter((r) => r.type.endsWith("/notesSlide"))) {
       seen++;
       const np = resolveTarget(s.path, nr.target);
@@ -353,8 +401,7 @@ record(
 {
   const detail = [];
   let ok = true;
-  for (const s of slideInfo) {
-    if (!s.row) continue;
+  for (const s of mergedInfo) {
     const flat = s.text.replace(/\s*·\s*/g, "");
     const wantsRevenue = flat.includes("EUR");
     if (!wantsRevenue) continue;
@@ -378,7 +425,7 @@ record(
   const detail = [];
   let ok = true;
   const seenHashes = new Map();
-  for (const s of slideInfo) {
+  for (const s of mergedInfo) {
     for (const ir of s.rels.filter((r) => r.type.endsWith("/image") && !r.external)) {
       const ip = resolveTarget(s.path, ir.target);
       const buf = await zip.file(ip)?.async("nodebuffer");
@@ -413,7 +460,7 @@ record(
   if (want.size === 3) {
     const detail = [];
     let ok = true;
-    for (const s of slideInfo) {
+    for (const s of mergedInfo) {
       for (const ir of s.rels.filter((r) => r.type.endsWith("/image") && !r.external)) {
         const ip = resolveTarget(s.path, ir.target);
         const h = sha(await zip.file(ip).async("nodebuffer"));

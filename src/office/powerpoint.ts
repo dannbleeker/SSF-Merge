@@ -99,6 +99,29 @@ export function hostEnvironment(): Environment {
   });
 }
 
+/**
+ * What names the open document, or "" where the host will not say.
+ *
+ * The undo crumb lives in `localStorage`, which belongs to the add-in's ORIGIN
+ * and is shared by every deck opened against it — so the crumb has to record
+ * which deck it was written on, and something has to say which deck is open
+ * now. `Office.context.document.url` is the only identity available without a
+ * round-trip through the file itself.
+ *
+ * Answers a string rather than throwing, and "" is a real answer the reader
+ * treats as "cannot prove" rather than as a match. It lives HERE rather than
+ * beside the crumb because only the pane's entry point may touch Office.js: a
+ * pane file that asks the host stops being checkable without a PowerPoint, and
+ * the pane is where a wrong label is the thing the user presses.
+ */
+export function documentKey(): string {
+  try {
+    return String(Office.context.document.url ?? "");
+  } catch {
+    return "";
+  }
+}
+
 export async function slideCount(): Promise<number> {
   return withTimeout(
     PowerPoint.run(async (context) => {

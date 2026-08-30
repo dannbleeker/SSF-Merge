@@ -4,10 +4,15 @@ Everything shipped since v0.1.0 in one deck: text, formats, speaker notes,
 picture fields, charts and SmartArt. It takes about ten minutes.
 
 The point of this round is that the chart in the template was **not written by
-SSF Merge**. It was written by a different tool, and the SmartArt will be
-written by PowerPoint itself. Every test in CI checks the engine against
-fixtures the engine's own author wrote; this checks it against somebody else's
-file, which is the one thing a test suite here cannot do.
+SSF Merge**. It was written by a different tool, and the SmartArt on slide 3 by
+PowerPoint itself. Every test in CI checks the engine against fixtures the
+engine's own author wrote; this checks it against somebody else's file, which is
+the one thing a test suite here cannot do.
+
+That gap is not theoretical. On 2026-08-30 the integrity checker called a sound
+package damaged the moment a real SmartArt was in it — sixteen problems, every
+one of them PowerPoint's ordinary `r:blip=""` markup, which no fixture here had
+ever written.
 
 ## Files
 
@@ -15,7 +20,7 @@ All of it lives in `test-kit/`.
 
 | File | What it is |
 | --- | --- |
-| `SSF-Merge-test-template.pptx` | The template. Slide 1 is instructions, slides 2–3 are the block. |
+| `SSF-Merge-test-template.pptx` | The template. Slide 1 is instructions, slides 2–3 are the block. Slide 3 carries the SmartArt, already authored. |
 | `modern-chart.pptx` | A second, one-slide deck: a **sunburst** written by real PowerPoint. Its own short round, below. |
 | `data.txt` | Three rows, tab-separated. Copy the whole thing, header included. |
 | `ada.png`, `grace.png`, `alan.png` | The pictures. Deliberately one wide, one tall, one square. |
@@ -29,37 +34,37 @@ prompt for that, with what to expect from Playwright against PowerPoint for the
 web. Read its caveats first — the browser can drive the web host only, and the
 merged file is the evidence either way.
 
-`test-kit/driver/` holds the scripts that did it on 2026-08-28: sideload the
-add-in, drive the pane, fetch the merged deck out of the browser, and check the
-package. Its README names the traps, which are not guessable and cost that round
-hours. Start there rather than from scratch.
+`test-kit/driver/` holds the scripts that did it on 2026-08-28 and again on
+2026-08-30: sideload the add-in, drive the pane, fetch the merged deck out of the
+browser, and check the package. Its README names the traps, which are not
+guessable, cost those rounds hours, and read as your own mistake when you hit
+them — two of them make a working pane look broken. Start there rather than from
+scratch.
 
-## Before you start: add the SmartArt
+## The SmartArt is already in the template
 
-Nothing outside PowerPoint can author a SmartArt graphic, so this one step is
-yours — and a diagram PowerPoint wrote is a better test than one I wrote.
+It used to be yours to add by hand at the start of every round. It is committed
+now — authored in desktop PowerPoint on 2026-08-30, both halves checked before
+use — so there is nothing to do here. It is still PowerPoint's own markup rather
+than a fixture's, which is the whole reason the diagram is in this deck.
 
-1. Open `SSF-Merge-test-template.pptx`, go to **slide 3**.
-2. **Insert ▸ SmartArt ▸ Process ▸ Basic Process.**
-3. Type into the three boxes:
-   - `{{Name}}`
-   - `{{Region}}`
-   - `Renewal {{Renewal|date:d MMM}}`
-4. Delete the grey instruction box.
-5. **Click somewhere else on the slide before saving**, so the last box you
-   typed into loses focus.
-6. Save.
+What that step guarded is worth keeping, because it will bite anyone who
+re-authors it. A SmartArt stores its text **twice** — the model in `dataN.xml`
+and the laid-out rendering in `drawingN.xml` — and PowerPoint writes the
+rendering only when the diagram is done being edited. Save with the caret still
+in a box and that box reaches the file with text in the model and **none in the
+drawing**. It happened on 2026-08-28: `{{Name}}` was empty in `drawing1.xml`, so
+every merged copy showed an empty first box and the merge took the blame for
+what the template had done before it ever ran.
 
-Step 5 is not fussiness. A SmartArt stores its text twice — the model in
-`dataN.xml` and the laid-out rendering in `drawingN.xml` — and PowerPoint writes
-the rendering when the diagram is done being edited. Save with the caret still
-in a box and that box can reach the file with text in the model and **none in
-the drawing**. It happened on 2026-08-28: the `{{Name}}` box was empty in
-`drawing1.xml`, so every merged copy showed an empty first box, and the merge
-took the blame for something the template did before it ever ran.
+If you ever rebuild it: **Insert ▸ SmartArt ▸ Process ▸ Basic Process**, three
+boxes reading `{{Name}}`, `{{Region}}` and `Renewal {{Renewal|date:d MMM}}`,
+delete the grey box, **click empty space on the slide before saving**, then
+confirm all three strings appear in `ppt/diagrams/drawing1.xml` and not only in
+`data1.xml`.
 
-Worth checking if anything looks blank later: unzip the template and confirm all
-three strings appear in `ppt/diagrams/drawing1.xml`, not just in `data1.xml`.
+And if a merged SmartArt ever looks blank, check the TEMPLATE's drawing part
+before suspecting the merge.
 
 ## The run
 
@@ -143,27 +148,32 @@ than blank out — a blank slide looks finished when it is not.
 **8. Speaker notes.** View ▸ Notes. Each merged slide should read *Call Ada
 before 1 Mar*, with the row's own name — the notes page is per-copy content.
 
-**9. The pane's own line.** It should read something like *6 slides added after
-slide 3 · 30 placeholders filled*. If it says **the data behind N charts could
-not be merged**, that is the one soft failure in this list: the slides are still
-right and only Edit Data is stale. Tell me the number.
+**9. The pane's own line.** On 2026-08-30 it read, exactly:
+
+> 6 slides added after slide 3 · 39 placeholders filled · 3 pictures placed.
+
+Thirty-nine, not thirty — the older number in this file predated the chart and
+SmartArt placeholders being counted, and a round comparing against it reported a
+discrepancy that was not one. If it says **the data behind N charts could not be
+merged**, that is the one soft failure in this list: the slides are still right
+and only Edit Data is stale. Tell me the number.
 
 **10. Undo.** Press it. Exactly the 6 merged slides should go, and the template
 and slide 1 should stay.
 
-## What no round has covered yet
+## The second half of the run
 
-The list above has been run before, and everything on it has passed at least
-once. This section is the other half: the things that have shipped since the
-last real round on 2026-08-28 and have therefore only ever been checked against
-fixtures. They need no extra files — the same `data.txt` and the same template
-do all four — and they take about three minutes between them.
+These four had only ever been checked against fixtures until 2026-08-30, when
+all four passed in PowerPoint for the web. They stay on the list because they
+are cheap — the same `data.txt` and the same template do all of them, about
+three minutes between them — and because three of them are about numbers the
+pane PROMISES before it acts, which is exactly the kind of thing that drifts.
 
-**1. The blank-cell control.** This is the one shipped control that has never
-run in a real host. Paste `data.txt` as usual, then **clear one cell in the
-paste box** — Grace's `Region` is a good one, since a chart, a SmartArt and the
-slide text all name it. On the merge step, under the row list, a line reads *A
-blank cell leaves a blank — change what happens*. Open it and try all three:
+**1. The blank-cell control.** Paste `data.txt` as usual, then **clear one cell
+in the paste box** — Grace's `Region` is the one to pick, since a chart, a
+SmartArt and the slide text all name it. On the merge step, under the row list,
+a line reads *A blank cell leaves a blank — change what happens*. Open it and
+try all three:
 
 | Choice | What the merged deck should show |
 | --- | --- |
@@ -171,28 +181,52 @@ blank cell leaves a blank — change what happens*. Open it and try all three:
 | **Show the field, like `{{Region}}`** | those same four read `{{Region}}` |
 | **Leave the whole row out** | Grace produces no slides at all: **4 slides added, not 6**, and the line above the button says why |
 
-The third is the interesting one, because the number on the button has to
-change the moment you choose it — the forecast and the plan are two different
-pieces of code and they have disagreed before.
+The third is the interesting one, because the number on the button has to change
+the moment you choose it — the forecast and the plan are two different pieces of
+code and they have disagreed before. In 2026-08-30 they agreed: the line became
+*2 of 3 rows × 2 slides · 4 slides added after slide 3*, the button became **Add
+4 slides**, and the merge then reported *4 slides added after slide 3 · 26
+placeholders filled · 2 pictures placed · 1 row skipped for a blank field*.
+
+> **If you are driving this from a script, use real key events.** It is a
+> `<select>`, and setting `.value` with a dispatched `change` moves the DOM
+> without moving React — the button goes on saying "Add 6 slides" and it looks
+> exactly like the forecast bug this check exists to find. `cdp-key.mjs`.
 
 **2. A semicolon-separated paste.** Take the same three rows, replace every tab
 with `;`, and paste that instead. It should read **3 rows** and name the same
 five columns. This is what Excel writes on any machine whose locale uses the
 comma as a decimal point — Danish, German, French — so it is what a colleague's
-export actually looks like, and until this week it produced one column named
-`Name;Region;Revenue;Renewal;Photo` and a dead merge button. A paste with a
-decimal comma in it, `1250000` → `1,25`, is the case that made the first rule
-wrong; if you have a moment, try one.
+export actually looks like, and it once produced one column named
+`Name;Region;Revenue;Renewal;Photo` and a dead merge button.
 
-**3. What the pane says it did.** The summary line now reports the pictures and
-the chart values as well as the slides, and those sentences have only ever been
-read in a browser. Send the whole line back whatever it says.
+Also try one with a decimal comma, `1250000` → `1,25`: that is the case that
+made the first rule wrong. It reads as a DECIMAL separator, so `1,25`, `0,88`
+and `1,64` render through `number:0` as `1 EUR`, `1 EUR` and `2 EUR`.
+
+**3. What the pane says it did.** Send the whole summary line back whatever it
+says — see check 9 above for what it said last time.
 
 **4. Undo names its range.** Before pressing it, the card should name the slides
 it is about to remove, and that range should match what step 5 said it added.
+Last time: *"Remove slides 4 to 9, which this merge added"* against *"6 slides
+added after slide 3"*, and *"Remove slides 4 to 7"* on the skip run.
 
 Nothing here needs a re-install: the add-in is served from GitHub Pages and only
 a change to the manifest itself would.
+
+## What still has no real-host answer
+
+**Edit Data, on both decks.** It needs DESKTOP PowerPoint, and both rounds so
+far were driven in the browser. The bytes are right — each merged chart's
+workbook holds its own region — but whether PowerPoint's Excel round-trip
+preserves them has never been watched happen. "Did not run" and "passed" are
+different answers.
+
+**The preview step.** Step 4 is optional and has been skipped both times.
+
+**The old-PowerPoint fallback notice.** Genuinely optional, and nothing from
+2016 onwards will show it.
 
 ## The second deck: the modern chart
 
@@ -236,7 +270,24 @@ before it was committed, and says exactly what it removed.
   description of it.
 - The pane's summary line.
 - Anything on the list above that did not match.
+- Which host you drove, and what you therefore did NOT run.
+
+Save the deck to `test-kit/out/round-<date>.pptx` and run the checker over it:
+
+```bash
+node test-kit/driver/verify-package.mjs test-kit/out/round-<date>.pptx
+```
+
+It should say **13/13**, and it understands a deck that still holds its template
+block — it counts the parts the MERGED slides reach, not the parts in the
+package. If you intend to believe its verdict, run `mutate.mjs` over the same
+deck first and read the line that says how many guards it actually proved.
 
 If the deck fails to open at all, that is still a good result: send the file and
 the message. It is the failure mode this round exists to find, and the merged
 deck plus the template together are enough to locate it.
+
+**Two habits worth keeping, both learned the expensive way.** A check that fires
+on PowerPoint's own markup is a bug in the check, not in the merge — confirm
+what the tool is objecting to before writing it up. And a tool that reports
+success without saying what it proved has told you nothing: read the counts.

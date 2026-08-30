@@ -45,12 +45,31 @@ console.log(`profile : ${PROFILE}`);
 console.log(`Waiting up to ${MINUTES} minutes for sign-in. Sign in in the window that just opened.`);
 console.log("Watching for the app launcher / account manager to appear...\n");
 
-/** Signed-in markers that only render once a session exists. */
-async function signedIn() {
+/**
+ * Signed-in markers that only render once a session exists.
+ *
+ * Two things made this miss a sign-in that had plainly worked, on 2026-08-30,
+ * and cost the round a detour into "did the login fail?".
+ *
+ * The chrome MOVED. `office.com` now redirects to `m365.cloud.microsoft/chat`,
+ * a Copilot shell that renders none of the five markers below — so the watcher
+ * sat there reporting nothing while OneDrive was one click away and fully
+ * signed in. Landing on a known signed-in HOST is therefore an answer in its
+ * own right: those hosts do not serve a signed-out page, they redirect to a
+ * login one, and the line above already refuses login hosts.
+ *
+ * And it watched ONE tab. Sign-in can land in a new tab or leave the first on
+ * an interstitial, and the first tab is not the one to ask by then, so every
+ * open page is asked and any of them may answer.
+ */
+const SIGNED_IN_HOST = /m365\.cloud\.microsoft|onedrive\.live\.com|-my\.sharepoint\.com|office\.com\/launch/;
+
+async function pageSignedIn(p) {
   try {
-    const url = page.url();
+    const url = p.url();
     if (/login\.microsoftonline\.com|login\.live\.com/.test(url)) return false;
-    const hit = await page
+    if (SIGNED_IN_HOST.test(url)) return true;
+    return await p
       .locator(
         [
           '[aria-label="App launcher"]',
@@ -63,10 +82,16 @@ async function signedIn() {
       .first()
       .isVisible()
       .catch(() => false);
-    return hit;
   } catch {
     return false;
   }
+}
+
+async function signedIn() {
+  for (const p of ctx.pages()) {
+    if (await pageSignedIn(p)) return true;
+  }
+  return false;
 }
 
 const deadline = Date.now() + MINUTES * 60_000;
