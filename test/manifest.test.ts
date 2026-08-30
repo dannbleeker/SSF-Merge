@@ -204,6 +204,39 @@ describe("the XML manifests are well-formed", () => {
   });
 });
 
+describe("the links a submission is judged on are pages, not repositories", () => {
+  /**
+   * All three of these were GitHub links, and all three would have failed.
+   *
+   * Microsoft's submission FAQ: the support URL must be a public web page that
+   * does not require authentication, and "you can't use personal social media
+   * pages or GitHub repositories", nor "links to files hosted online". A
+   * repository is out and so is a file inside one.
+   *
+   * The privacy link was the sharp one. It pointed at `SECURITY.md`, a policy
+   * for reporting vulnerabilities rather than a privacy policy, so a reviewer
+   * following it would read the wrong document and conclude there wasn't one.
+   * Missing or invalid links of exactly this kind are among the five most
+   * common reasons an Office add-in submission is rejected.
+   */
+  it("points support and privacy at our own site, and never at GitHub", () => {
+    for (const key of ["support", "privacy"] as const) {
+      const url = String((DEFINITION as unknown as Record<string, string>)[key]);
+      expect(url, `${key} is not https`).toMatch(/^https:\/\//);
+      expect(url, `${key} points at GitHub, which a submission refuses`).not.toContain("github.com");
+      expect(url, `${key} is not on our own origin`).toContain("ssf-merge.struktureretsundfornuft.dk");
+    }
+  });
+
+  it("has a EULA that is not the source licence", () => {
+    // MIT governs the SOURCE. A licence telling a developer they may fork the
+    // repository is not one telling a user what they may do with the add-in.
+    const terms = String((DEFINITION as unknown as Record<string, string>).terms);
+    expect(terms).toMatch(/^https:\/\//);
+    expect(terms, "the EULA is pointing at the repository's own LICENSE").not.toContain("github.com");
+  });
+});
+
 describe("every icon a manifest names is a file this repo builds", () => {
   it("has each one under public/assets", () => {
     // A manifest pointing at an icon nobody generated is a blank square in the

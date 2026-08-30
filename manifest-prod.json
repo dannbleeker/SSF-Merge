@@ -14,8 +14,8 @@
   "developer": {
     "name": "StruktureretSundFornuft",
     "websiteUrl": "https://struktureretsundfornuft.dk",
-    "privacyUrl": "https://github.com/dannbleeker/SSF-Merge/blob/main/SECURITY.md",
-    "termsOfUseUrl": "https://github.com/dannbleeker/SSF-Merge/blob/main/LICENSE"
+    "privacyUrl": "https://ssf-merge.struktureretsundfornuft.dk/privacy.html",
+    "termsOfUseUrl": "https://support.office.com/client/61994a3b-2c87-41c4-a88d-a6455efa362d"
   },
   "icons": {
     "outline": "assets/icon-outline-32.png",

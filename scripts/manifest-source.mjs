@@ -59,9 +59,37 @@ export const DEFINITION = {
   displayName: "SSF Merge",
   shortDescription: "One template block of slides, one set per row of your data.",
   description: DESCRIPTION,
-  support: "https://github.com/dannbleeker/SSF-Merge",
-  privacy: "https://github.com/dannbleeker/SSF-Merge/blob/main/SECURITY.md",
-  terms: "https://github.com/dannbleeker/SSF-Merge/blob/main/LICENSE",
+  /**
+   * All three were GitHub links, and all three would have failed a submission.
+   *
+   * Microsoft's submission FAQ is explicit about the support URL: it must be a
+   * public web page that does not require authentication, and "you can't use
+   * personal social media pages or GitHub repositories", nor "links to files
+   * hosted online". That rules out a repository AND a file inside one, which is
+   * what all three of these were.
+   *
+   * The privacy link was the worst of them. It pointed at `SECURITY.md` — a
+   * policy for reporting vulnerabilities, not a privacy policy — so a reviewer
+   * following it would have read the wrong document entirely and rejected the
+   * submission for not having one. AppSource does not certify without a valid
+   * privacy link, and missing or invalid links are among the five most common
+   * reasons a submission fails.
+   *
+   * `terms` pointed at the MIT licence, which governs the SOURCE. A licence
+   * telling a developer they may fork the repository is not a licence telling a
+   * user what they may do with the add-in.
+   *
+   * GitHub is still linked FROM the support page, which is allowed: what the
+   * rule forbids is a repository being the destination.
+   */
+  support: "https://ssf-merge.struktureretsundfornuft.dk/support.html",
+  privacy: "https://ssf-merge.struktureretsundfornuft.dk/privacy.html",
+  /**
+   * Microsoft's own standard EULA, which they offer to publishers who have no
+   * lawyer of their own and have taken the point up with one. Chosen
+   * deliberately on 2026-08-30 rather than left as a placeholder.
+   */
+  terms: "https://support.office.com/client/61994a3b-2c87-41c4-a88d-a6455efa362d",
   /** Navy, the pane's own heading colour. */
   accent: "#00254C",
   button: {
