@@ -3,98 +3,221 @@
 Mail merge for PowerPoint. You build one slide, or one block of slides, put
 placeholders where the data goes, and SSF Merge produces one copy per row.
 
-> **Status.** The engine, the task pane and the five steps are built and
-> shipped. What is still *planned* is marked, and it is now single options
-> inside sections rather than whole sections: sending the merge somewhere other
-> than this deck, doing anything to the template afterwards, and reading data
-> from a file or from Excel.
+> **Status.** Everything described here is built and shipped, with two
+> exceptions, both marked where they appear: two things that could happen to
+> your template after a merge, and two data sources that are not the paste box.
+> Neither is on the backlog — `docs/BACKLOG.md` is empty — so read them as
+> *designed and not scheduled*, not as *coming soon*.
 >
-> Nothing here is aspirational: a line moves out of *planned* in the same change
-> that makes it true. This block said the pane was not written for some days
-> after it shipped, which is the failure it exists to prevent.
+> Nothing here is aspirational: a line moves out of *not scheduled* in the same
+> change that makes it true. This block said the pane was not written for some
+> days after it shipped, which is the failure it exists to prevent.
 
 ## Contents
 
-- [Your first merge](#your-first-merge)
+**Start here**
+
+- [Before you start](#before-you-start) — installing it, once
+- [Your first merge, end to end](#your-first-merge-end-to-end) — ten minutes, with pictures
 - [The idea](#the-idea)
+
+**Building the template**
+
 - [Placeholders](#placeholders)
-- [Formats](#formats)
+- [Formats](#formats) — [numbers](#numbers), [dates](#dates)
+- [Pictures](#pictures)
+- [Charts and SmartArt](#charts-and-smartart)
 - [What repeats](#what-repeats)
-- [Your data](#your-data)
-  - [Choosing which slides are conditional](#choosing-which-slides-are-conditional)
-- [Where the merged slides go](#where-the-merged-slides-go) *(one of three)*
-- [What happens to the template](#what-happens-to-the-template) *(default only)*
-- [The pane](#the-pane)
-- [Installing it](#installing-it)
-- [Tags SSF Merge writes](#tags-ssf-merge-writes)
+
+**Your data**
+
+- [Your data](#your-data) — what the box accepts
+- [What a blank cell does](#what-a-blank-cell-does)
+- [Choosing which slides are conditional](#choosing-which-slides-are-conditional)
+- [Choosing which rows merge](#choosing-which-rows-merge)
+- [When a cell is not what its format expects](#when-a-cell-is-not-what-its-format-expects)
+
+**Running it**
+
+- [The pane](#the-pane) — [what a preview actually is](#what-a-preview-actually-is)
+- [Where the merged slides go](#where-the-merged-slides-go)
+- [What happens to the template](#what-happens-to-the-template)
+- [Taking a merge back](#taking-a-merge-back)
+
+**When it goes wrong**
+
+- [When something goes wrong](#when-something-goes-wrong)
+- [If PowerPoint takes only part of the merge](#if-powerpoint-takes-only-part-of-the-merge)
 - [Limits](#limits)
 
-## Your first merge
+**Reference**
 
-Five minutes, on a deck you do not mind adding slides to. Nothing here deletes
-anything: a merge only ever **adds** slides after your template, and step 4
-offers to take them straight back out again.
+- [Installing it](#installing-it) — [what needs re-installing](#what-needs-re-installing-and-what-does-not), [which PowerPoint](#why-it-does-not-say-which-powerpoint-it-needs)
+- [Tags SSF Merge writes](#tags-ssf-merge-writes)
 
-1. **Make a template slide.** Any slide will do. Put two placeholders on it,
-   typed exactly like this, braces included. (Working from a deck rather than
-   from this example? Open the pane, type your slide numbers, and press *Attach
-   data first to see your column names* — then you know what to type.)
+## Before you start
 
-   ```
-   {{First}}
-   {{City}}
-   ```
+You need the add-in installed, a deck you do not mind adding slides to, and
+your rows somewhere you can copy them from.
 
-   Note which slide number it is in the thumbnail rail on the left — say it is
-   slide 3. A template can be several slides in a row; one is enough to start.
+**Installing takes one file and one upload**, and you do it once — see
+[Installing it](#installing-it) for the four places you can do it from. If the
+**Mail merge** button is already on your Home tab, you are ready.
 
-2. **Open the pane.** Home tab → **Mail merge**.
+Nothing in this manual deletes anything. A merge only ever **adds** slides
+after your template, and the last screen offers to take them straight back out.
 
-3. **Step 1 — Template.** Type `3` into both boxes. The button reads **Choose
-   the slides that repeat** until the numbers make sense, then becomes **Use
-   slides 3 to 3** — press it. The pane reads the slide and goes on. It does not
-   need any `{{fields}}` on it yet: you put those on at step 3, from the column
-   names in the data you attach at step 2.
+## Your first merge, end to end
 
-4. **Step 2 — Data.** Paste this into the box, including the header row:
+Ten minutes, start to finish, on a deck you do not mind adding slides to. Every
+picture below is the real pane, and the numbers in them are this walkthrough's
+numbers — a deck of **8 slides**, a template on **slide 3**, **3 rows**.
 
-   ```
-   First	City
-   Ada	London
-   Grace	New York
-   Katherine	Hampton
-   ```
+**What you will have at the end:** three new slides at the end of your deck,
+one per row, each a copy of slide 3 with that row's values in it — and a button
+that takes all three back out.
 
-   Copy it out of a spreadsheet, or type it with real tab characters between the
-   columns. The pane will say **3 rows · First, City**. Press **Use 3 rows**.
+### The data
 
-5. **Step 3 — Fields.** There is a button per column: **{{First}}** and
-   **{{City}}**. Click into a text box on the slide, then press one — the field
-   is typed in at the cursor. If PowerPoint will not take it (usually because
-   nothing on the slide is selected) the pane puts it on your clipboard instead
-   and says so, and you paste it yourself.
+Copy these four lines. The columns are separated by real tab characters, which
+is what you get when you copy a range out of Excel.
 
-   When the fields are all on the slides, press **Check the slides for
-   fields**. The pane reads them again and lists what it found, with any chip
-   that has no column behind it outlined. If it finds none, the braces are
-   probably curly quotes.
+```
+First	City	Role
+Ada	London	Analyst
+Grace	New York	Engineer
+Katherine	Hampton	Mathematician
+```
 
-6. **Step 4 — Preview.** Press **Preview the first row**. One row is merged
-   into your deck so you can look at it, and **Remove the preview** takes it
-   out again. This is an ordinary one-row merge, not a mock-up — what you see
-   is what step 5 produces. **Skip to the merge** goes on without previewing.
+### The template slide
 
-7. **Step 5 — Merge.** The button reads **Add 3 slides** — the count, not the
-   word "merge" — and the line above says where they land and how big the deck
-   will be afterwards. Press it, look at the result, and if you do not like it
-   press **Remove these slides**.
+Pick a slide — say slide 3 — and put **three text boxes** on it, or use three
+that are already there. Type something into each one: PowerPoint throws away a
+text box you leave empty, so a slide of three empty boxes is a slide of
+nothing, and step 3 will have nowhere to put a field.
 
-   If a placeholder on your slides has no column behind it, this screen names it
-   and says it will stay on the slides as written. That is a **warning, not a
-   refusal** — press on if you meant it, or go back and fix the spelling if you
-   did not. It used to stop the merge, which was wrong in both directions: it
-   refused something the engine does deliberately, and it did not help anyone
-   who genuinely wanted the placeholder left alone.
+**Do not type any `{{placeholders}}` yet.** You have not attached the data, so
+you do not know what the columns are called; step 3 gives you a button per
+column and types them in for you. This is the whole shape of the pane, and it
+is deliberate — an earlier version asked for the placeholders first and left
+first-time users guessing at names they had no way to know.
+
+Note the slide's number in the thumbnail rail on the left. A template can be
+several slides in a row; one is enough to start.
+
+### Step 1 — Template
+
+Open the pane: **Home** tab → **Mail merge**. Type `3` into both boxes.
+
+![Step 1 of the pane: first slide 3, last slide 3, and a button reading "Use slides 3 to 3"](images/step-1-template.png)
+
+The button reads **Choose the slides that repeat** until the numbers make
+sense, then becomes **Use slides 3 to 3**. Press it — the pane reads that slide
+out of the open deck and moves on.
+
+### Step 2 — Data
+
+Paste the four lines, header row included.
+
+![Step 2 of the pane: the pasted table in the box, and "3 rows · First, City, Role" underneath](images/step-2-data.png)
+
+**Read the line under the box.** It says `3 rows · First, City, Role` — the
+count *and the column names*. The column names are the half that matters: a
+copy that arrives as plain text parses into one column, and a row count on its
+own looks perfectly healthy when that happens.
+
+Press **Use 3 rows**.
+
+### Step 3 — Fields
+
+There is now a button per column, and the pane says what to do with them:
+*Click into a text box on the slide, then press a column to put its field
+there.* Do that on slide 3 — `{{First}}` is typed in at the cursor — and repeat
+for the other two, in whichever boxes you want them.
+
+If PowerPoint will not type it in — usually because nothing on the slide is
+selected — the pane puts the field on your clipboard instead and says so, and
+you paste it yourself.
+
+When all three are placed, press the button at the bottom. **It reads *Check
+the slides for fields* until the pane knows of any, then *Use 3 fields*** —
+either way, pressing it reads the slides again. It has to: there is no event
+that tells a task pane you typed something on a slide, so the list is only ever
+as fresh as the last read.
+
+![Step 3 of the pane: three column buttons, three matched chips under "On the slides now", and a button reading "Use 3 fields"](images/step-3-fields.png)
+
+Under **On the slides now** is what the pane actually found. Three plain chips
+means every placeholder has a column behind it. If it finds nothing at all, the
+braces are probably curly quotes — retype them.
+
+### Step 4 — Preview
+
+Press **Preview the first row**.
+
+![Step 4 of the pane: a card reading "Slide 9 is a preview of the first row. Your template is untouched"](images/step-4-preview.png)
+
+Ada's row is merged and the result put at the end of your deck, as slide 9. Go
+and look at it. **This is not a mock-up** — it is the ordinary merge run over
+one row, so if slide 9 looks right, the other two will be right.
+
+**Remove the preview** deletes it again. **Skip to the merge** goes on without
+previewing.
+
+### Step 5 — Merge
+
+![Step 5 of the pane: "3 rows × 1 slide", a forecast reading "3 slides added after slide 8, leaving 11 slides in the deck", and a button reading "Add 3 slides"](images/step-5-merge.png)
+
+The forecast above the button says where the slides land and how big the deck
+will be afterwards, before you press anything. The button carries the count —
+**Add 3 slides**, not "Merge" — so you can check it against the deck in front
+of you.
+
+The three links above it are the options you have not needed yet: which rows to
+include, which slides are conditional, and what a blank cell does. Skip them
+for now.
+
+Press it.
+
+### What you get
+
+![Step 5 after the merge: "3 slides added after slide 8 · 9 placeholders filled", and an orange card reading "Remove slides 9 to 11, which this merge added"](images/step-5-done.png)
+
+Slides 9, 10 and 11 are Ada, Grace and Katherine. The line above says what
+happened — the count of slides *and* the count of placeholders actually filled,
+which is the number worth reading. **A zero there** means the merge added the
+slides and changed nothing on them, and almost always means the placeholder
+names do not match the column headers.
+
+Your template is untouched, on slide 3, exactly as you left it. Change a row
+and run the whole thing again.
+
+The card names the slides it would take — *Remove slides 9 to 11, which this
+merge added* — and the button under it reads **Remove these slides**. It is
+still there if you close the pane and reopen it.
+
+### If a placeholder has no column
+
+The commonest thing a first merge gets wrong is a spelling. `{{Roel}}` against
+a column headed `Role` is reported twice, and the first time is the cheap one —
+step 3 outlines the chip and names it:
+
+![Step 3 with an unmatched field: the "Roel" chip outlined in orange, and "No column for Roel." underneath](images/step-3-fields-unmatched.png)
+
+If you get past that, step 5 says so again above the button:
+
+![Step 5 with an unmatched field: "No column for Roel. It will stay on the slides as written", with the "Add 3 slides" button still live](images/field-with-no-column.png)
+
+**That is a warning, not a refusal.** The button is still live, because
+sometimes a placeholder is meant to stay on the slide as written. Press on if
+you meant it; go back and fix the spelling if you did not.
+
+### Where to go next
+
+- Values that need formatting — `{{Total|number:0}}`, `{{Signed|date:d MMM yyyy}}` — are in [Formats](#formats).
+- A template of several slides is in [What repeats](#what-repeats).
+- Photographs, one per row, are in [Pictures](#pictures).
+- Leaving rows out, or slides out, is in [Choosing which rows merge](#choosing-which-rows-merge).
 
 If any step does anything other than this, the pane's run record is at the
 bottom of the screen once a run finishes — open **What this run did, step by
@@ -447,9 +570,20 @@ clears the filter, because a row number means nothing against different data.
 
 ## Where the merged slides go
 
-**Into this deck, after the template block.** That is what ships, it is not a
-setting, and the merge screen says where the slides will land and how large the
-deck will be afterwards before you press anything.
+**Into this deck, at the END of it.** Not directly after your template — after
+the deck's last slide, wherever your template happens to sit. On an 8-slide
+deck with a template on slide 3, three merged slides become slides 9, 10 and
+11.
+
+That is what ships, it is not a setting, and the merge screen says it before
+you press anything: the forecast reads *"3 slides added after slide 8, leaving
+11 slides in the deck"*, and the number in it is the deck's size, not your
+template's position.
+
+The end of the deck is the one insertion point this add-in has tested on a real
+host, and a preview lands there for the same reason. This section used to say
+"after the template block", which is true only for a template that is already
+last.
 
 Two more destinations were designed and are **not being built**, decided on
 2026-08-29:
@@ -473,13 +607,18 @@ afterwards. `docs/BACKLOG.md` carries the full reasoning.
 **Nothing. It stays exactly where it is**, which is what ships and what makes a
 merge re-runnable: change a row, run it again. A merge only ever ADDS slides.
 
-Two alternatives are designed and not built, both of them one-way enough to be
-worth doing carefully rather than quickly:
+Two alternatives are designed, **not built, and not scheduled** — the backlog
+that would carry them is empty. Both are one-way enough to be worth doing
+carefully rather than quickly:
 
 - **move it to the end** — out of the way, still re-runnable. PowerPoint's
-  add-in API cannot hide a slide, so this is as close as it gets. *Planned.*
+  add-in API cannot hide a slide, so this is as close as it gets.
 - **delete it** — ends re-run for that deck, so it would happen only after the
-  merge is confirmed to have landed. *Planned.*
+  merge is confirmed to have landed.
+
+Until 2026-08-30 both of these were marked *Planned.* while nothing anywhere
+was planning them. If either is what stands between you and using this add-in,
+say so in an issue — that is what puts something back on the backlog.
 
 ## Tags SSF Merge writes
 
@@ -531,10 +670,16 @@ the deck in front of you; "Merge" is only a promise.
 host refuses ids for slides a run has just added — and never a zero-based index,
 which is a number you have no way to see.
 
-**One orange thing per screen.** Normally the small tick above the heading. When
-something is temporarily untrue on the slide — a preview showing, a placeholder
-with no column — the orange moves there and the tick goes away. Two oranges in
-one glance and neither means anything.
+**One orange thing per screen.** Normally the small tick above the heading.
+Three things outrank it and take the orange for themselves, and the tick then
+goes away: a **preview card**, the card offering a landed **merge back**, and
+an **unmatched chip on the fields step**. Two oranges in one glance and neither
+means anything.
+
+The merge step's warning about an unmatched placeholder is deliberately *not*
+orange — the tick already holds the screen's one orange there, and the warning
+reads in the same muted grey as every other sentence above the button. This
+paragraph claimed the opposite until 2026-08-30.
 
 **A link back on every screen but the first.** A wizard you can only walk
 forwards through is one you restart to change a number.
