@@ -8,6 +8,7 @@
  *
  * Swept 2026-08-29. What it found is written up in SECURITY.md.
  */
+import { readFileSync, readdirSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import JSZip from "jszip";
 import { Pkg, resolveTarget } from "../src/core/pptx/pkg.js";
@@ -245,5 +246,94 @@ describe("a chart's own relationships come out of the deck too", () => {
     expect(pkg.has("ppt/charts/chart1.xml")).toBe(true);
     await pkg.removeSlide("ppt/slides/slide1.xml");
     expect(pkg.has("ppt/charts/chart1.xml"), "the chart should have gone with its slide").toBe(false);
+  });
+});
+
+describe("the XML parser does not fetch or expand what a deck tells it to", () => {
+  /**
+   * From the sweep of 2026-08-30. A .pptx is a zip of XML and a user can be
+   * sent one, so the two classic parser attacks are the first question anybody
+   * asks of this codebase — and until now the answer was a property of a
+   * dependency that nothing here had checked.
+   *
+   * `@xmldom/xmldom` refuses both. These run so that a version bump which
+   * changes its mind is a red test rather than a discovery.
+   */
+  it("does not resolve an external entity", () => {
+    const doc = parseXml('<?xml version="1.0"?>\n<!DOCTYPE r [ <!ENTITY x SYSTEM "file:///etc/passwd"> ]>\n<r>&x;</r>');
+    // The reference comes through as TEXT. Not "the file was empty" — the
+    // parser never went looking, which is why the literal is still there.
+    expect(doc.documentElement?.textContent).toBe("&x;");
+  });
+
+  it("does not expand a nested entity bomb", () => {
+    const bomb =
+      '<?xml version="1.0"?>\n<!DOCTYPE r [\n' +
+      '<!ENTITY a "aaaaaaaaaa">\n' +
+      '<!ENTITY b "&a;&a;&a;&a;&a;&a;&a;&a;&a;&a;">\n' +
+      '<!ENTITY c "&b;&b;&b;&b;&b;&b;&b;&b;&b;&b;">\n' +
+      '<!ENTITY d "&c;&c;&c;&c;&c;&c;&c;&c;&c;&c;">\n' +
+      '<!ENTITY e "&d;&d;&d;&d;&d;&d;&d;&d;&d;&d;">\n' +
+      "]>\n<r>&e;</r>";
+    // Four levels is 100,000 characters if expanded, and the published attack
+    // has nine. Custom entities are not expanded at all, so what comes out is
+    // the reference itself.
+    const text = parseXml(bomb).documentElement?.textContent ?? "";
+    expect(text.length).toBeLessThan(100);
+    expect(text).toBe("&e;");
+  });
+});
+
+describe("the claims on the front of SECURITY.md are executable", () => {
+  /**
+   * That page says the add-in makes no network calls and never writes markup.
+   * Both are properties of the SOURCE, so both can be read off it — and a
+   * security page whose claims nothing re-checks is the failure the page's own
+   * preamble warns about.
+   */
+  const sources = (): string[] => {
+    const out: string[] = [];
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const path = `${dir}/${entry.name}`;
+        if (entry.isDirectory()) walk(path);
+        else if (/\.(ts|html)$/.test(entry.name)) out.push(path);
+      }
+    };
+    walk("src");
+    return out;
+  };
+
+  it("reads the source at all", () => {
+    // The vacuity guard this suite asks for twice elsewhere: an empty file list
+    // would satisfy every assertion below forever.
+    expect(sources().length).toBeGreaterThan(20);
+  });
+
+  it("makes no network call", () => {
+    for (const path of sources()) {
+      const src = readFileSync(path, "utf8");
+      for (const call of ["fetch(", "XMLHttpRequest", "WebSocket", "sendBeacon"]) {
+        // Comments are stripped, because this repo's files explain themselves
+        // and several of them name these APIs in prose.
+        const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+        expect(code.includes(call), `${path} calls ${call}`).toBe(false);
+      }
+    }
+  });
+
+  it("writes text, never markup", () => {
+    for (const path of sources()) {
+      const code = readFileSync(path, "utf8")
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/^\s*\/\/.*$/gm, "");
+      for (const sink of ["outerHTML", "insertAdjacentHTML", "document.write", "eval(", "new Function"]) {
+        expect(code.includes(sink), `${path} uses ${sink}`).toBe(false);
+      }
+      // `innerHTML` is READ once, in the page's own no-Office fallback, to ask
+      // whether anything has been drawn yet. Assigning to it is the thing this
+      // forbids.
+      expect(/innerHTML\s*=/.test(code), `${path} assigns innerHTML`).toBe(false);
+    }
   });
 });

@@ -289,7 +289,21 @@ const MONTH_NAMES: Readonly<Record<string, number>> = Object.freeze({
  * through as 3 March: the parser had moved the month before anything looked.
  */
 function monthFromName(word: string): number | undefined {
-  const known = MONTH_NAMES[word.toLowerCase()];
+  // `hasOwnProperty`, because `word` is a cell out of the user's data and the
+  // table is an object. `Object.freeze` does not remove the prototype chain:
+  // a cell reading `1 constructor 2026` passes the shape gate — `NAMED_DATE`
+  // takes any word of three letters or more — and `MONTH_NAMES["constructor"]`
+  // then answers the `Object` FUNCTION, which `known !== undefined` accepts as
+  // a month. `__proto__` answers `Object.prototype` the same way.
+  //
+  // Today both come out benign, and only by luck: a function reaches
+  // `Date.UTC` as a month, the arithmetic is NaN, the date is invalid, and the
+  // cell is printed as it stands — which is the right answer arrived at by
+  // accident. This repo's own rule is to guard any table keyed by a config or
+  // data string, and the guard is one line where the luck is one refactor deep.
+  const known = Object.prototype.hasOwnProperty.call(MONTH_NAMES, word.toLowerCase())
+    ? MONTH_NAMES[word.toLowerCase()]
+    : undefined;
   if (known !== undefined) return known;
   const probe = new Date(`1 ${word} 2001 00:00:00Z`);
   if (Number.isNaN(probe.getTime())) return undefined;
