@@ -78,59 +78,51 @@ category rather than on what the thing does.
 
 ## Description
 
-Roughly 380 words. It answers the four questions Microsoft says a description
-should answer: how it benefits the user, what is special about it, the different
-ways it could be used, and who would use it.
+Maximum 10,000 characters in Microsoft's table and 4,000 in its prose on the
+same page; 300 to 500 words recommended, key message in the first 300. This one
+is 378 words and 2,293 characters including its tags, so the contradiction costs
+nothing either way.
 
----
+**The field takes HTML, not markdown.** Partner Center's own help says "simple
+HTML tags", and Microsoft publishes the list:
+[supported HTML tags for offer descriptions](https://learn.microsoft.com/en-us/partner-center/marketplace-offers/supported-html-tags).
+Supported are `b`, `i`, `br`, `p`, `ul`/`li`, `ol`/`li` and `h1` through `h6`.
+There is no `code` and no `a`, so a placeholder cannot be marked up as code and
+a link cannot be embedded. An earlier draft of this section was markdown, which
+would have put literal asterisks and backticks in the listing.
 
-Mail merge, for slides instead of letters.
+It opens on the manifest's own `Description`, because
+[the guidance](https://learn.microsoft.com/en-us/partner-center/marketplace-offers/create-effective-office-store-listings)
+says the listing description "should match the description in your manifest as
+closely as possible". The same page says to include search keywords, which is
+why Excel is named: pasting a range copied from Excel is step 2 of the pane.
 
-Mark the slides that repeat, paste a table, and get one set of slides per row —
-each with that row's name, numbers, dates and picture in place. What took an
-afternoon of copy, paste and retype takes a minute, and nothing is retyped, so
-nothing is mistyped.
+It answers the four questions that page asks a description to answer: how it
+benefits the user, what is special about it, the different ways it could be
+used, and who would use it.
 
-**Your formatting survives, because nothing re-authors it.**
+Paste this as it is, and use Partner Center's preview before saving.
 
-Most tools that fill in a slide rebuild the text, and your fonts, spacing and
-theme colours quietly change. This one copies the slides you designed and
-replaces only the placeholder, leaving every other property exactly as
-PowerPoint wrote it. A deck merged this way looks like the deck you built.
-
-**What it fills in**
-
-- Text anywhere on the slide, including speaker notes
-- Numbers and dates, formatted the way you ask: `{{Revenue|number:0}}`,
-  `{{Renewal|date:d MMM yyyy}}`
-- Pictures, one per row, cropped to fill the frame you drew without distortion
-- Chart data and titles, including the workbook behind a chart, so Edit Data
-  shows that row's figures
-- SmartArt, in both halves it is stored in, so the diagram on screen says the
-  right thing
-
-**Before it does anything**
-
-It tells you what it is about to do — how many slides it will add and where
-they will land — and shows you one row merged, so you can look at a real result
-before committing. Afterwards it will take those slides back out again, and it
-names exactly which ones it will remove.
-
-**Who it is for**
-
-Anyone who makes the same deck repeatedly with different names on it: account
-reviews, candidate packs, store or regional reports, class or cohort summaries,
-certificates, starter packs. If you have ever duplicated a slide twelve times
-and edited each copy by hand, this replaces that afternoon.
-
-**Where your data goes**
-
-Nowhere. There is no server, no account and no sign-in, and the add-in makes no
-network requests while it runs. Your slides and your table are read inside the
-task pane, on your own device, and the merged slides are written straight back
-into the presentation you already have open.
-
----
+```html
+<p>Mail merge for PowerPoint. Mark a block of slides as your template, paste a table, and get one set of slides per row, each with that row's name, numbers, dates and picture in place. Your rows can be a range copied straight out of Excel, or any table you can paste.</p>
+<p>What used to take an afternoon of duplicating a slide and editing each copy takes a minute, and every name and number comes from your table rather than from your typing.</p>
+<p><b>Your formatting survives, because nothing re-authors it.</b></p>
+<p>Most tools that fill in a slide rebuild the text, and your fonts, spacing and theme colours quietly change. This one copies the slides you designed and replaces only the placeholder, leaving every other property exactly as PowerPoint wrote it. A deck merged this way looks like the deck you built.</p>
+<h2>What it fills in</h2>
+<ul>
+<li>Text anywhere on the slide, including speaker notes</li>
+<li>Numbers and dates, formatted the way you ask: {{Revenue|number:0}}, {{Renewal|date:d MMM yyyy}}</li>
+<li>Pictures, one per row, cropped to fill the frame you drew without distortion</li>
+<li>Chart data and titles, including the workbook behind a chart, so Edit Data shows that row's figures</li>
+<li>SmartArt, in both halves it is stored in, so the diagram on screen says the right thing</li>
+</ul>
+<h2>Before it does anything</h2>
+<p>It tells you what it is about to do, how many slides it will add and where they will land, and it shows you one row merged so you can look at a real result before you commit to the rest. Afterwards it will take those slides back out again, and it names exactly which ones it will remove.</p>
+<h2>Who it is for</h2>
+<p>Anyone who makes the same deck repeatedly with different names on it: account reviews, candidate packs, store or regional reports, class or cohort summaries, certificates, starter packs. If you have ever duplicated a slide twelve times and edited each copy by hand, this replaces that afternoon.</p>
+<h2>Where your data goes</h2>
+<p>Nowhere. There is no server, no account and no sign-in, and the add-in makes no network requests while it runs. Your slides and your table are read inside the task pane, on your own device, and the merged slides are written straight back into the presentation you already have open.</p>
+```
 
 ## Screenshots
 
