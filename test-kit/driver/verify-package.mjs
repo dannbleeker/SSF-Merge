@@ -36,6 +36,21 @@ function record(check, ok, detail) {
   results.push({ check, ok, detail });
 }
 
+/** Print the table and leave with the right code. Never returns. */
+function report() {
+  const width = Math.max(...results.map((r) => r.check.length));
+  console.log("=".repeat(width + 10));
+  for (const r of results) {
+    console.log(`${r.ok ? "PASS" : "FAIL"}  ${r.check.padEnd(width)}`);
+    console.log(`      ${r.detail}\n`);
+  }
+  const failed = results.filter((r) => !r.ok);
+  console.log("=".repeat(width + 10));
+  console.log(`${results.length - failed.length}/${results.length} checks passed.`);
+  if (failed.length) console.log(`FAILED: ${failed.map((r) => r.check).join(" ; ")}`);
+  process.exit(failed.length ? 1 : 0);
+}
+
 // ---------------------------------------------------------------- helpers
 
 const REL_RE = /<Relationship\b[^>]*>/g;
@@ -190,6 +205,142 @@ record(
       ? "no merged slide found at all, so nothing below can be checked"
       : `merged ${mergedInfo.map((s) => `${short(s)}=${s.row.name}`).join(", ")}`,
 );
+
+// ------------------------------------------- which deck IS this
+
+/**
+ * The kit has two decks and this checker only ever knew one of them.
+ *
+ * Pointed at `modern-chart.pptx` it reported 4/13 — not because anything was
+ * wrong with the deck, but because every check below is about the MAIN
+ * template's shape: three classic charts, three photos, notes pages, a
+ * `{{Nickname}}` that has to survive. The sunburst deck has none of those. The
+ * round of 2026-08-30 read that 4/13 correctly as "wrong tool" and verified the
+ * sunburst by hand, which is not something the next round should have to work
+ * out for itself. A red that means nothing is worse than no red.
+ *
+ * A modern chart is not a `<c:chartSpace>` at all — PowerPoint stores it as a
+ * chartEx part under its own relationship — so the two shapes are told apart by
+ * which kind of chart part the deck actually holds.
+ */
+const chartExParts = names.filter((n) => /^ppt\/charts\/chartEx\d+\.xml$/.test(n)).sort();
+const classicChartParts = names.filter((n) => /^ppt\/charts\/chart\d+\.xml$/.test(n)).sort();
+const deckKind = classicChartParts.length > 0 ? "kit" : chartExParts.length > 0 ? "modern" : "unknown";
+console.log(`deck kind   : ${deckKind}\n`);
+
+if (deckKind === "unknown") {
+  // Said as a refusal rather than as a dozen failures. This checker knows two
+  // decks; anything else gets an answer it can act on instead of a tally that
+  // reads like a product defect.
+  record(
+    "this is a deck the checker knows how to check",
+    false,
+    "no classic chart and no chartEx part: this is neither the kit's main template " +
+      "nor modern-chart.pptx, and every per-row check below is about one of those two. " +
+      "Nothing is being claimed about this file.",
+  );
+  report();
+}
+
+if (deckKind === "modern") {
+  // ----------------------------------------- the sunburst deck's own checks
+  //
+  // What the manual asks a human to look at, read off the bytes: each copy's
+  // chart titled for its own row, the outer ring's FIRST segment merged and the
+  // rest left alone, the inner ring untouched, and a fallback picture per copy
+  // rather than the template's under somebody else's name.
+  const charts = [];
+  for (const s of mergedInfo) {
+    for (const r of s.rels.filter((x) => /chart/i.test(x.type))) {
+      const p = resolveTarget(s.path, r.target);
+      if (/chartEx\d+\.xml$/.test(p)) charts.push({ slide: s, path: p, xml: await zip.file(p)?.async("string") });
+    }
+  }
+
+  record(
+    "one chartEx part per merged row",
+    charts.length === mergedInfo.length && charts.length > 0,
+    `${charts.length} chart(s) for ${mergedInfo.length} merged slide(s): ${charts.map((c) => c.path.replace("ppt/charts/", "")).join(", ") || "none"}`,
+  );
+
+  {
+    const detail = [];
+    let ok = charts.length > 0;
+    for (const c of charts) {
+      const text = textOf(c.xml ?? "");
+      const own = text.includes(c.slide.row.name);
+      const placeholder = /\{\{Name\}\}/.test(text);
+      const foreign = ROWS.filter((r) => r !== c.slide.row && text.includes(`${r.name} pipeline`)).map((r) => r.name);
+      if (!own || placeholder || foreign.length) ok = false;
+      detail.push(
+        `${c.path.replace("ppt/charts/", "")} own=${own ? c.slide.row.name : "NO"}` +
+          (placeholder ? " PLACEHOLDER-LEFT" : "") +
+          (foreign.length ? ` FOREIGN=${foreign.join("/")}` : ""),
+      );
+    }
+    record("each chart's title names its OWN row", ok, detail.join(" | ") || "no chartEx found on any merged slide");
+  }
+
+  {
+    // The outer ring's first cell is the placeholder; the two beside it are
+    // plain text in the template and must come through untouched. All three
+    // changing is a merge writing where no placeholder was — the failure this
+    // deck exists to catch.
+    const detail = [];
+    let ok = charts.length > 0;
+    for (const c of charts) {
+      const pts = [...(c.xml ?? "").matchAll(/<cx:pt[^>]*>(.*?)<\/cx:pt>/gs)].map((m) => m[1].trim());
+      const first = pts[0] ?? "";
+      const merged = first === c.slide.row.region;
+      const untouched = pts.includes("Benelux") && pts.includes("DACH");
+      const placeholder = pts.includes("{{Region}}");
+      if (!merged || !untouched || placeholder) ok = false;
+      detail.push(
+        `${c.path.replace("ppt/charts/", "")} first=${first || "(none)"}${merged ? "" : ` WANTED ${c.slide.row.region}`}` +
+          (untouched ? "" : " OUTER-RING-OVERWRITTEN") +
+          (placeholder ? " PLACEHOLDER-LEFT" : ""),
+      );
+    }
+    record("the outer ring's FIRST segment is merged and the others are not", ok, detail.join(" | ") || "no chartEx");
+  }
+
+  {
+    const detail = [];
+    let ok = charts.length > 0;
+    for (const c of charts) {
+      const pts = [...(c.xml ?? "").matchAll(/<cx:pt[^>]*>(.*?)<\/cx:pt>/gs)].map((m) => m[1].trim());
+      const kept = pts.includes("Existing") && pts.includes("New");
+      if (!kept) ok = false;
+      detail.push(`${c.path.replace("ppt/charts/", "")} ${kept ? "Existing+New kept" : "INNER RING LOST"}`);
+    }
+    record("the inner ring still reads Existing and New", ok, detail.join(" | ") || "no chartEx");
+  }
+
+  {
+    // A modern chart carries a rendered picture for hosts that cannot draw it.
+    // If the copies share one, every recipient is looking at the TEMPLATE's
+    // figures under their own name — which no other check here would notice,
+    // because the chart data itself is right.
+    const byslide = [];
+    for (const s of mergedInfo) {
+      for (const r of s.rels.filter((x) => x.type.endsWith("/image") && !x.external)) {
+        const p = resolveTarget(s.path, r.target);
+        const buf = await zip.file(p)?.async("nodebuffer");
+        if (buf) byslide.push({ slide: short(s), part: p.replace("ppt/media/", ""), sha: sha(buf) });
+      }
+    }
+    const distinct = new Set(byslide.map((b) => b.sha));
+    record(
+      "each copy carries its OWN fallback picture, not the template's",
+      byslide.length > 0 && distinct.size === byslide.length,
+      byslide.length === 0
+        ? "no fallback picture on any merged slide"
+        : `${distinct.size} distinct across ${byslide.length}: ${byslide.map((b) => `${b.slide}->${b.part} ${b.sha}`).join(" | ")}`,
+    );
+  }
+
+  report();
+}
 
 // ------------------------------------------- 2. part counts, over the copies
 
@@ -480,16 +631,4 @@ record(
   }
 }
 
-// ---------------------------------------------------------------- table
-
-const width = Math.max(...results.map((r) => r.check.length));
-console.log("=".repeat(width + 10));
-for (const r of results) {
-  console.log(`${r.ok ? "PASS" : "FAIL"}  ${r.check.padEnd(width)}`);
-  console.log(`      ${r.detail}\n`);
-}
-const failed = results.filter((r) => !r.ok);
-console.log("=".repeat(width + 10));
-console.log(`${results.length - failed.length}/${results.length} checks passed.`);
-if (failed.length) console.log(`FAILED: ${failed.map((r) => r.check).join(" ; ")}`);
-process.exit(failed.length ? 1 : 0);
+report();

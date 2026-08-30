@@ -181,7 +181,7 @@ describe("the one primary button", () => {
     // template through an API that re-authors text. Nothing is taken from the
     // template now, so nothing is put back — slides are deleted.
     const label = primary({ ...ready, previewing: true }, "preview").label;
-    expect(label).toContain("Remove the preview");
+    expect(label).toBe("On to the merge");
     expect(label).not.toContain("template");
   });
 
@@ -193,7 +193,7 @@ describe("the one primary button", () => {
     // on the card beside the slides it names; the primary is the way onward,
     // as it is on every other step.
     const action = primary({ ...ready, previewing: true }, "preview");
-    expect(action.label).toBe("Remove the preview and merge");
+    expect(action.label).toBe("On to the merge");
     expect(action.advances, "the primary has to be the door here, or the step has none").toBe("merge");
   });
 
@@ -805,7 +805,7 @@ describe("a blocked step never offers a pressable button", () => {
     // The block goes, the preview stays. Step 4 has one thing to say now.
     const previewing: PaneState = { fields: ["Name"], rows: 2, columns: ["Name"], previewing: true };
     expect(blockedReason(previewing, "preview")).toBeNull();
-    expect(primary(previewing, "preview")).toMatchObject({ label: "Remove the preview and merge", enabled: true });
+    expect(primary(previewing, "preview")).toMatchObject({ label: "On to the merge", enabled: true });
   });
 
   it("without making the step reachable when no preview is on the slides", () => {

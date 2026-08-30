@@ -620,7 +620,7 @@ describe("the preview", () => {
     await settle();
     // deckAtStart 12, added 3 — so slides 13 to 15.
     expect(pane().querySelector(".card.undo")?.textContent).toContain("Slides 13 to 15");
-    expect(primary().textContent).toBe("Remove the preview and merge");
+    expect(primary().textContent).toBe("On to the merge");
     expect(removePreview().textContent, "the plain way back is on the card").toBe("Remove the preview");
   });
 

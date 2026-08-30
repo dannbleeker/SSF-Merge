@@ -27,7 +27,7 @@ one machine on one day does not belong in the repo.
 | `close-popup.mjs` | Closes pages whose URL matches a substring. |
 | `upload-template.mjs` | Uploads a local file into the OneDrive folder currently on screen. |
 | `fetch-deck.mjs` | Downloads the open deck's bytes through the page's own session, and prints its slide count. `--expect-slides N` waits for OneDrive to commit rather than handing back last save. |
-| `verify-package.mjs` | Thirteen checks over a merged deck, anchored per row to the slide's own title. Understands a deck that still holds its template. |
+| `verify-package.mjs` | Checks a merged deck, anchored per row to the slide's own title. Knows BOTH kit decks — thirteen checks for the main template, seven for the sunburst — understands a deck that still holds its template, and refuses a deck that is neither. |
 | `mutate.mjs` | Breaks a reference deck six ways and asserts each is caught by its own guard — and refuses to count a guard whose check was already red. |
 
 ## The run, roughly
