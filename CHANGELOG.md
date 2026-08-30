@@ -7,6 +7,30 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.3.0] — 2026-08-30
+
+### Changed — the add-in's own links point somewhere a stranger can use
+
+The manifest's support and privacy links pointed at the GitHub repository. That
+is fine for someone who already knows what this is, and no use to someone who
+has just installed it and wants help — and Microsoft's submission rules disallow
+a repository as a support destination outright, so the same links would have
+stopped a Marketplace listing. Support now goes to
+[a support page](https://ssf-merge.struktureretsundfornuft.dk/support.html) that
+says how to reach a human and what to include, privacy to
+[the privacy policy](https://ssf-merge.struktureretsundfornuft.dk/privacy.html),
+and the terms link to Microsoft's standard app EULA.
+
+The high-resolution icon was pointed at the 80-pixel file. AppSource wants 64
+for a task pane add-in and 80 is the ribbon size, so it now points at
+`icon-64.png`, which the icon build was already producing.
+
+The manifest version goes from 1.0.0.0 to 1.0.1.0 with them. That number is the
+only way Office is told an installed add-in has changed, so it moves when the
+manifest does, and it is deliberately not the package version.
+
 ### Fixed — the notice for older PowerPoint sits in the middle of its box
 
 The chart types PowerPoint added in 2016 cannot be drawn by PowerPoint 2013 and
