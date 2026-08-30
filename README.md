@@ -51,7 +51,7 @@ reports custom bullets reverting to defaults when it does. In the file, each
 designer's slide comes out the way they built it.
 
 ```
-data (paste, .xlsx, Graph)  ─┐
+data (a pasted table)       ─┐
                              ├─► merge engine (pure TypeScript) ─► .pptx bytes ─► one host call
 template block (the deck)   ─┘
 ```

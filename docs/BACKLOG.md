@@ -20,13 +20,64 @@ the work, in priority order.
 
 ## After the first release
 
-### Excel via Microsoft Graph
-**Priority: high.** Feasibility: medium.
-A named table on OneDrive or SharePoint, read through `/workbook/tables/{id}/rows`.
-Refreshable, shareable, and the reason people ask for this. Needs nested app
-authentication, which removes a middle tier rather than adding one.
+**Empty.** The last item here — an Excel table through Microsoft Graph — was
+dropped by the owner on 2026-08-30 and is recorded below. Nothing is queued
+behind it.
+
+An empty backlog is a statement, not an oversight: this add-in does one thing,
+and the two most recent entries were both dropped because they would have made
+it do a second. The next item comes from somebody reporting a wall they hit,
+which is what the rejected entries below are each waiting on.
 
 ## Rejected — do not re-propose
+
+- **Excel via Microsoft Graph.** Dropped by the owner on 2026-08-30: the
+  security cost is too large for what this tool is.
+
+  A named table on OneDrive or SharePoint, read through
+  `/workbook/tables/{id}/rows`, was the highest-priority item on this list for
+  the life of the backlog, and the research that killed it did not find it hard
+  to build. The engine needed no change at all — `RecordSet` is the one shape
+  every source answers with, and its own docstring already named a Graph-read
+  table as a future one. The manifest needed no change either, so no re-install:
+  nested app authentication is brokered by the Office host, and Microsoft's own
+  reference sample ships the same `<Permissions>ReadWriteDocument</Permissions>`
+  this add-in already has, with no `WebApplicationInfo` and no requirement-set
+  declaration. The measurable costs were a dynamically-imported
+  `@azure/msal-browser` (+72.6 KB gzipped against a 74.0 KB pane), roughly 760
+  lines across sign-in, reader and pane, and an Azure app registration.
+
+  What settled it is the permission, and it is not a detail that better wording
+  could soften. **Microsoft publishes no read-only path to a workbook's rows.**
+  Every Excel endpoint a reader would call — list rows, get range, list tables,
+  list worksheets, get table — publishes delegated `Files.ReadWrite` as its
+  *least privileged* permission with "Not available" in the higher column. So a
+  merge that only ever reads has to ask the user to let it write, and the
+  consent dialog says so in Microsoft's words, not ours: *"Have full access to
+  all files user can access."*
+
+  That is the opposite of what `SECURITY.md` is able to promise today — no
+  network calls, no backend, no server to breach, no log to leak, and a manifest
+  that asks for nothing beyond its own host. A tool whose data is usually names,
+  addresses, salaries and patient identifiers trades on exactly that, and
+  trading it for a more convenient step 2 is a bad exchange. The paste box is
+  one keystroke from a range selected in Excel and needs no token, no tenant and
+  no trust.
+
+  Three limits are worth keeping written down, because they narrow who the
+  feature would have reached even at full price. Workbooks on **personal**
+  OneDrive are refused by the Excel API outright ("only the files stored in
+  business platform are supported"), so it was a work-account feature only. On
+  Office **on the web** — the only host this project has ever validated against
+  — nested app authentication 1.1 is supported "only for documents that are
+  opened from Microsoft SharePoint Online and OneDrive", so a deck opened from
+  disk would get no silent sign-in there. And `Files.ReadWrite.All` needs no
+  admin consent by Microsoft's default, but a tenant that has turned user
+  consent off turns the dialog into a ticket for IT.
+
+  Reviving it means Microsoft publishing a read-only permission for the Excel
+  API. That is the specific thing to watch for — not user demand, which was
+  never the doubt.
 
 - **Somewhere other than the current deck to put a merge.** Dropped by the owner
   on 2026-08-29, covering both destinations the manual had listed as designed:
@@ -61,8 +112,11 @@ authentication, which removes a middle tier rather than adding one.
 
   Reviving it means somebody actually sending merged decks out one per
   recipient, which is the blocked half — so the thing to watch for is that
-  request, not the easy half's availability. If Excel-via-Graph ships, the
-  authentication this needs already exists and the calculation changes.
+  request, not the easy half's availability. This entry used to add that
+  Excel-via-Graph would supply the authentication for free and change the
+  calculation; that item was itself dropped on 2026-08-30, so the token this
+  half needs has no other reason to exist and would have to be justified on its
+  own.
 
 - **A filter expression language.** Dropped by the owner on 2026-08-29. Row
   filters shipped as a searchable checkbox list and nothing has asked for more.
