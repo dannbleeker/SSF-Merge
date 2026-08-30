@@ -493,10 +493,21 @@ your files. This one makes no network calls at all, and that is worth more than
 a shorter step 2. `docs/BACKLOG.md` records the reasoning in full.
 
 Select the range in Excel, copy, and paste into the box on step 2. That arrives
-tab-separated and is read as such; a comma-separated paste is read too. The
-columns found are listed under the box beside the row count, deliberately — a
-copy that came through as plain text parses into ONE column, and a row count on
-its own looks perfectly healthy when that happens.
+tab-separated and is read as such. **Commas and semicolons are read too**, so a
+CSV opened in a text editor and pasted in works either way — including the
+semicolon files Excel writes on a Danish, German or French machine, where the
+comma is the decimal point.
+
+Which one it uses is worked out from the paste rather than from the header
+alone: the separator is the one that splits *every* row into the same number of
+cells, and into the most of them. That is what keeps `Ada;1,5` from being read
+as two cells because of the decimal comma. One case stays genuinely ambiguous —
+a two-column paste like `Navn;Beløb, EUR` reads consistently either way, and
+nothing in the text says which — and there the comma wins.
+
+The columns found are listed under the box beside the row count, deliberately —
+a copy that came through as plain text parses into ONE column, and a row count
+on its own looks perfectly healthy when that happens.
 
 A header row with nothing under it is refused rather than counted as zero rows,
 because "Add 0 slides" does not say which half was wrong.

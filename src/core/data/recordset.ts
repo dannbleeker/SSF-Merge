@@ -97,57 +97,85 @@ export function imageNamesIn(rows: Record<string, string>[], column: string): st
  * honoured so a comma inside a company name does not split a row.
  */
 /**
- * The first row, as the PARSER will see it.
+ * The separators a paste can arrive with, in the order they are preferred.
  *
- * `src.indexOf("\n")` is not where the first row ends. A quoted cell may
- * contain a newline — Excel writes one whenever a cell holds a line break, and
- * it is legal CSV — so the first `\n` in the text can be INSIDE the first
- * header cell. The sniff below then samples half a cell, never reaches the tab
- * that separates the columns, and reads a whole tab-separated table as one
- * column: every placeholder unmatched, the merge button down, and nothing on
- * screen saying why.
+ * **Tab first**, because the commonest input by far is a range copied out of
+ * Excel and pasted into the pane, and that arrives tab-separated.
  *
- * Walking with the same quote rule the parser uses is the only sample that
- * cannot disagree with it — and for a while this did not, which cost the reverse
- * of the bug above. A quote only OPENS a quoted cell at the START of a cell:
- * `Size 6" pipe` is a cell containing a quote, not the beginning of a quoted
- * one, and RFC 4180 and the parser below both read it that way. A bare toggle
- * does not, so a header holding an inch mark left this scanner "inside a quote"
- * for the rest of the paste. It then ran past the first row, found a tab
- * somewhere further down, and read an ordinary comma-separated table as
- * tab-separated: one column, every placeholder unmatched.
- *
- * Which cell boundaries to honour is the one thing the parser knows and this
- * cannot, because the delimiter is what it is here to work out. So it treats
- * BOTH candidates as separators. That is a superset of whichever turns out to
- * be right, and the only case it reads differently from the parser is a quote
- * opening a cell that follows the delimiter NOT chosen — where the parser sees
- * a quote in the middle of a cell holding the other character. That is an edge
- * of an edge, and it is one step further out than the case that shipped.
+ * **Semicolon last, and it is new.** Excel writes `;` as its CSV separator on
+ * any machine whose locale uses the comma as a decimal point — Danish, German,
+ * French — and such a paste used to read as ONE column named `Navn;Beløb`,
+ * with every placeholder unmatched. The order only breaks ties; which one wins
+ * is decided by `chooseDelimiter` below.
  */
-function firstRow(src: string): string {
-  let quoted = false;
-  let atCellStart = true;
-  for (let i = 0; i < src.length; i++) {
-    const c = src[i];
-    if (quoted) {
-      // `""` inside a quoted cell is an escaped quote, and skipping both is what
-      // the parser does. Toggling twice reaches the same state, but only if
-      // nothing between them consults `atCellStart`.
-      if (c === '"' && src[i + 1] === '"') i++;
-      else if (c === '"') quoted = false;
-      continue;
-    }
-    if (c === '"' && atCellStart) quoted = true;
-    else if (c === "\n") return src.slice(0, i);
-    atCellStart = c === "," || c === "\t";
+const DELIMITERS: readonly string[] = ["\t", ",", ";"];
+
+/**
+ * How many rows the sniff looks at.
+ *
+ * The header alone is not enough — see `chooseDelimiter` — and the whole paste
+ * is not needed: it is scored three times, on every keystroke in the box. Ten
+ * rows is enough for a count to be consistent or not, and it bounds the work
+ * on a 240-row paste to something that does not depend on its length.
+ */
+const SNIFF_ROWS = 10;
+
+/**
+ * Which character is separating the cells.
+ *
+ * **Not "the first candidate the header contains".** That was the rule for a
+ * day and it is wrong on the input the semicolon was added for: a Danish sheet
+ * headed `Navn;Beløb, EUR;Dato` holds a comma, so the comma won, and
+ * `Ada;1,5;2026-01-01` split into `Ada;1` and `5;2026-01-01`. Decimal commas
+ * are everywhere in exactly the data that uses semicolons, so a rule that
+ * consults only the header meets one at the first opportunity.
+ *
+ * The rule instead is the one a CSV sniffer uses, and it reads the BODY:
+ *
+ * 1. Split the sample on each candidate.
+ * 2. Keep the candidates that give the SAME number of cells in every row, and
+ *    more than one — a separator that is really a separator does that, and a
+ *    character that merely appears in the text does not.
+ * 3. Of those, take the one giving the MOST cells. `Navn;Beløb, EUR;Dato` is
+ *    three columns on the semicolon and two on the comma, and three is the
+ *    answer.
+ * 4. Tie-break by the order in `DELIMITERS`, and fall back to the comma when
+ *    nothing qualifies — a one-column paste has no separator to find, and every
+ *    caller wants one column rather than a refusal.
+ *
+ * Step 4's fallback is what keeps a one-column header holding a semicolon —
+ * `Notes; extra` over two more rows — reading as one column: the semicolon
+ * splits the first row and not the others, so it is not consistent and never
+ * qualifies. The header-only rule split it, and that would have been a
+ * regression shipped as a documented trade.
+ *
+ * **What it still cannot do**, stated because it is a real limit rather than an
+ * oversight: `Navn;Beløb, EUR` over one data row is two consistent columns on
+ * BOTH characters, and nothing in the text says which. The tie goes to the
+ * comma, which is the commoner file worldwide. That is the same shape as the
+ * ambiguous slash date this project refuses to guess at — except that here
+ * there is no option to refuse, so the tie is broken rather than dodged.
+ *
+ * Scoring with the real splitter is also what retired the header sampler this
+ * replaced. That function existed to read the first row with the parser's own
+ * quote rule, and it cost two bugs to get right — a quoted newline inside a
+ * header cell, and an inch mark in `Size 6" pipe` leaving it inside a quote for
+ * the rest of the paste. Both are now handled by construction, because the
+ * thing being scored IS the parse. The tests for them are kept and still pass.
+ */
+function chooseDelimiter(src: string): string {
+  let best: { d: string; cells: number } | undefined;
+  for (const d of DELIMITERS) {
+    const rows = splitOn(src, d, SNIFF_ROWS);
+    const cells = rows[0]?.length ?? 0;
+    if (cells < 2 || !rows.every((r) => r.length === cells)) continue;
+    if (!best || cells > best.cells) best = { d, cells };
   }
-  return src;
+  return best?.d ?? ",";
 }
 
-export function parseDelimited(text: string, delimiter?: string): string[][] {
-  const src = text.replace(/\r\n?/g, "\n").replace(/\n$/, "");
-  const d = delimiter ?? (firstRow(src).includes("\t") ? "\t" : ",");
+/** The whole parse, given the delimiter. Stops after `limit` rows when asked. */
+function splitOn(src: string, d: string, limit?: number): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
   let cell = "";
@@ -171,6 +199,7 @@ export function parseDelimited(text: string, delimiter?: string): string[][] {
     } else if (c === "\n") {
       row.push(cell);
       rows.push(row);
+      if (limit !== undefined && rows.length >= limit) return rows;
       row = [];
       cell = "";
     } else cell += c ?? "";
@@ -178,6 +207,11 @@ export function parseDelimited(text: string, delimiter?: string): string[][] {
   row.push(cell);
   rows.push(row);
   return rows;
+}
+
+export function parseDelimited(text: string, delimiter?: string): string[][] {
+  const src = text.replace(/\r\n?/g, "\n").replace(/\n$/, "");
+  return splitOn(src, delimiter ?? chooseDelimiter(src));
 }
 
 /**
