@@ -163,22 +163,28 @@ slide", and any stemmer treats those as the same word.
 
 Required: at least one, at **1366×768**, under 1024 KB, PNG/JPEG/GIF, up to five.
 
-**The two committed here are still the old placeholders.** `01-attach-your-rows.png`
-and `02-see-what-it-will-add.png` are real captures of the real product and they
-should not be uploaded, for five reasons:
+`shots/` holds them, captured from the demo deck below in one pass through the
+pane on PowerPoint for the web. `test/listing.test.ts` opens every one on every
+run and fails on the wrong size, a truncated file, a gap in the numbering, or
+the reappearance of the two placeholders that used to sit here.
 
-1. The photograph is the kit's crop fixture, a blue rectangle with four yellow
+Those placeholders — `01-attach-your-rows.png` and `02-see-what-it-will-add.png`
+— were real captures of the real product and were still wrong to upload, for
+five reasons worth keeping written down, because every one of them is a trap the
+next capture session can walk back into:
+
+1. The photograph was the kit's crop fixture, a blue rectangle with four yellow
    dots positioned to prove a cover-crop keeps the right axis. A customer reads
    it as a broken image.
-2. The chart values are 18 and 42, which are two numbers chosen to tell a swap
+2. The chart values were 18 and 42, which are two numbers chosen to tell a swap
    from a fill.
-3. The title bar reads `SSF-Merge-test-template`.
-4. Slide 1 is a wall of instructions addressed to whoever runs the test round.
-5. **There is a profile photo of a real person in the top right corner.**
+3. The title bar read `SSF-Merge-test-template`.
+4. Slide 1 was a wall of instructions addressed to whoever ran the test round.
+5. **There was a profile photo of a real person in the top right corner.**
    Microsoft: "Be sure to remove any personal information from your images that
    you don't want customers to see."
 
-### The deck to shoot instead
+### The deck they are shot from
 
 `demo/` holds one, built rather than improvised so the numbers in the pictures
 agree with each other:
@@ -200,30 +206,44 @@ Merging pictures is real and it is in the description, but a screenshot of it
 needs a photograph that looks like one, and anything generated would be a
 coloured rectangle: the placeholder problem again in a different colour.
 
-### The five shots
+### The five
 
-One per step of the story, in the order the pane walks:
+| File | What it shows |
+| --- | --- |
+| `shots/1-mark-the-block.png` | slides 2 and 3 selected in the rail, the pane offering "Use slides 2 to 3" |
+| `shots/2-attach-your-rows.png` | the four columns pasted, "3 rows attached" |
+| `shots/3-preview-one-row.png` | the Nordwind Retail slide merged, beside the card that offers to take it back out |
+| `shots/4-before-the-merge.png` | "6 slides will be added after slide 3, leaving 9 slides in the deck", above the button that does it |
+| `shots/5-after-the-merge.png` | nine slides in the rail, and the card naming the six it can remove |
 
-1. **Step 1, the template block marked** — the rail showing slides 2 and 3
-   selected, the pane naming them.
-2. **Step 2, the rows attached** — the paste box holding the four columns, "3
-   rows attached", the field chips.
-3. **Step 4, one row previewed** — the merged slide for Nordwind Retail on
-   screen beside the card that offers to take it back out.
-4. **Step 5, before the press** — "6 slides will be added after slide 3, leaving
-   9 slides in the deck", above the button that does it.
-5. **After the merge** — the rail showing three sets of two, and the card naming
-   the slides it will remove.
+`shots/spare-map-the-fields.png` is step 3, the field chips. It is a good
+picture and it lost its place to the one after the merge, which is the only shot
+that shows the result rather than the process. The name does not start with a
+digit, which is how the guard tells an upload from a spare.
 
-### Capturing them
+### Capturing them again
 
-- **1366×768 exactly.** Emulate the size in the browser first rather than
-  scaling a larger shot, or the pane's text softens.
-- **No avatar.** The account picture sits in the top right of PowerPoint for the
-  web and is in every shot. Use a profile without a personal photo.
-- **No Script Lab** or any other developer add-in in the ribbon.
-- **Open the demo deck from a folder with a plain name.** The file name is in
-  the title bar of every shot.
+    node test-kit/driver/reset.mjs
+    node test-kit/driver/listing-shots.mjs
+
+against a signed-in PowerPoint for the web with the demo deck open and the
+add-in sideloaded. The second walks all five pane steps and writes all five
+files. The first is not optional on a deck that has been merged before: the pane
+resumes where it was left, so an un-reset run photographs step 1 already saying
+"repeat together, 3 times" and offering a "What this run did" disclosure, which
+is a state no new customer can be in. The conditions it enforces, each of which cost
+a session to learn:
+
+- **1366×768 exactly.** The viewport is emulated before the shutter, not cropped
+  after, or the pane's text softens. `Emulation.setDeviceMetricsOverride` and
+  the screenshot must share one CDP session, and `scale: "css"` is required or
+  the desktop's 1.5 display scale silently produces a 2049-wide file.
+- **No avatar, no developer add-in.** `test-kit/driver/shot.mjs` hides the
+  account button — which carries a real person's face and their name in its
+  aria-label — and any Script Lab tab, and throws if it finds neither, because
+  a capture that quietly failed to hide them looks exactly like one that did.
+- **A folder with a plain name.** The file name is in the title bar of every
+  shot.
 
 Microsoft's guidance is worth reading before the session rather than after:
 images should "show real content rather than an empty document", stay legible,

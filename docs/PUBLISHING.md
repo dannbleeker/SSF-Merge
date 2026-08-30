@@ -101,19 +101,19 @@ Checked, so it is not re-litigated later.
       does the Publisher Name on the account.
 
 - [~] **Listing assets.** Drafted in [listing/LISTING.md](listing/LISTING.md) —
-      summary at 70 characters, description at 353 words, both inside
-      Microsoft's bands, and two screenshots at exactly 1366×768 and under
-      100 KB against a 1024 KB cap.
+      summary at 67 characters, description at 378 words, both inside
+      Microsoft's bands, a 300×300 marketplace icon, and five screenshots at
+      exactly 1366×768, each around 110 KB against a 1024 KB cap.
 
-      Two things are deliberately not finished there. **The screenshots are
-      placeholders**: they are captured from `test-kit/`'s deck, which exists to
-      test the engine rather than show it off, so the photograph in them is the
-      crop fixture — a blue rectangle with four yellow dots — and the chart's
-      numbers are 18 and 42. A customer reads that as a broken image. The
-      listing wants a small honest demo deck instead, which is half an hour of
-      deck-building and nobody's to do but the owner's.
+      **The screenshots are done.** They were placeholders captured from
+      `test-kit/`'s deck, which exists to test the engine rather than show it
+      off: the photograph was the crop fixture, a blue rectangle with four
+      yellow dots, the chart's numbers were 18 and 42, and a real person's face
+      was in the corner. There is a purpose-built demo deck now in
+      `listing/demo/`, and `test/listing.test.ts` fails if the old pair ever
+      returns. Retaking them is two commands, described in LISTING.md.
 
-      **And the name is a question, not a draft.** Microsoft's guidance says
+      **The name is still a question, not a draft.** Microsoft's guidance says
       avoid unfamiliar acronyms and do not rely on a brand to say what a thing
       does, which is both halves of "SSF Merge" — while separately ruling out
       the obvious fix, because a name may not contain the Microsoft product

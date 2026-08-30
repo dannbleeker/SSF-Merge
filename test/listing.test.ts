@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 /**
@@ -201,6 +201,58 @@ describe("the Marketplace icon", () => {
 
     const [r, g, b] = big(2, Math.round(MARKETPLACE / 2));
     expect([r, g, b], "the ground is navy in both").toEqual(NAVY);
+  });
+});
+
+describe("the Screenshots field", () => {
+  /** Partner Center's own limits on the listing page's screenshot uploads. */
+  const SHOT_W = 1366;
+  const SHOT_H = 768;
+  const SHOT_MAX_BYTES = 1024 * 1024;
+  const SHOT_MAX_COUNT = 5;
+  const dir = "docs/listing/shots";
+
+  /** The ones meant for upload: `1-` to `5-`. Anything else is a spare. */
+  const uploads = readdirSync(dir)
+    .filter((f) => /^\d-.*\.png$/.test(f))
+    .sort();
+
+  it(`has at least one and no more than ${SHOT_MAX_COUNT}`, () => {
+    // Partner Center takes up to five. Shooting a sixth is cheap and choosing
+    // between them is not, so the extras stay in the folder under a name that
+    // does not start with a digit rather than being deleted.
+    expect(uploads.length).toBeGreaterThan(0);
+    expect(uploads.length).toBeLessThanOrEqual(SHOT_MAX_COUNT);
+  });
+
+  it("is numbered from 1 with no gaps, because the store shows them in order", () => {
+    expect(uploads.map((f) => f[0])).toEqual(uploads.map((_, i) => String(i + 1)));
+  });
+
+  it.each(uploads)(`%s is a whole PNG at exactly ${SHOT_W} by ${SHOT_H}`, (name) => {
+    // Exactly, not merely close. Partner Center scales anything else, and the
+    // pane's text is small enough that resampling visibly softens it — which is
+    // the whole reason the capture emulates the viewport instead of cropping.
+    //
+    // The IEND check catches the truncation that the header check does not: a
+    // file cut short keeps its signature and its IHDR, so width and height
+    // still read correctly on a file no decoder will open.
+    const bytes = readFileSync(`${dir}/${name}`);
+    expect(bytes.subarray(0, 8).toString("hex"), "PNG signature").toBe("89504e470d0a1a0a");
+    expect(bytes.readUInt32BE(16), "width").toBe(SHOT_W);
+    expect(bytes.readUInt32BE(20), "height").toBe(SHOT_H);
+    expect(bytes.subarray(-8).toString("hex"), "IEND chunk").toBe("49454e44ae426082");
+    expect(bytes.length, "under the 1024 KB the field accepts").toBeLessThanOrEqual(SHOT_MAX_BYTES);
+  });
+
+  it("is not the old placeholder pair", () => {
+    // Those two were real captures of the real product and were still wrong to
+    // upload: a crop fixture that reads as a broken image, a title bar saying
+    // SSF-Merge-test-template, and a photograph of a real person in the corner.
+    // They were deleted rather than renamed, so this asserts they are gone.
+    for (const old of ["docs/listing/01-attach-your-rows.png", "docs/listing/02-see-what-it-will-add.png"]) {
+      expect(existsSync(old), `${old} is a placeholder and must never be uploaded`).toBe(false);
+    }
   });
 });
 

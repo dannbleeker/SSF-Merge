@@ -7,7 +7,46 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
-Nothing yet.
+### Added — the Marketplace screenshots, and a driver that can retake them
+
+`docs/listing/shots/` holds the five 1366x768 captures the listing needs, taken
+from the demo deck in one unattended pass through the pane on PowerPoint for the
+web. The two that were there before were placeholders: real captures of the real
+product showing a crop fixture that reads as a broken image, a title bar saying
+`SSF-Merge-test-template`, and a photograph of a real person. They are deleted,
+and `test/listing.test.ts` now fails if either comes back, or if a shot is the
+wrong size, truncated, over 1024 KB, or leaves a gap in the numbering.
+
+Retaking them is `node test-kit/driver/reset.mjs` then
+`node test-kit/driver/listing-shots.mjs`. The reset is not optional on a deck
+that has been merged before, because the pane resumes where it was left and an
+un-reset run photographs step 1 already saying "repeat together, 3 times".
+
+`test-kit/driver/pane.mjs` is the vocabulary underneath: `says`, `click`,
+`fill`, `until`, `selectSlides`, `currentSlide`. Before it, every one of those
+was an ad-hoc `Runtime.evaluate` string in a throwaway script, which is why a
+real-host round cost dozens of round trips and kept re-learning the same traps.
+Each verb now proves its own effect rather than reporting that it was attempted,
+which is what caught all four defects found while writing it:
+
+- The slide rail was read by array index, so it selected slide 5 while reporting
+  slide 4 once a merge had scrolled the rail. It keys on `aria-posinset` now.
+- A thumbnail below the rail's fold is in the DOM and unclickable; the click is
+  accepted and changes nothing. Slides are scrolled into view first, and a
+  thumbnail still off-screen is an error rather than a silent no-op.
+- A slide with speaker notes is labelled `Slide, Has notes,` rather than
+  `Slide`, so an exact-match selector could not see it at all — and the demo
+  deck has notes on slide 3. This was first misdiagnosed as a re-render race.
+- `Page.reload` on the pane's out-of-process target does nothing, while the
+  script that sent it printed "reloaded the pane" unconditionally. The reload is
+  now proved with a marker.
+
+`test-kit/driver/shot.mjs` pins the viewport to exactly 1366x768 before the
+shutter rather than scaling afterwards, and hides the account button — which
+carries a real person's face and their name in its `aria-label` — along with any
+developer add-in tab. It throws if it finds neither, because a capture that
+quietly failed to hide them looks exactly like one that did.
+
 
 ## [0.3.0] — 2026-08-30
 

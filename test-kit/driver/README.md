@@ -31,6 +31,10 @@ one machine on one day does not belong in the repo.
 | `fetch-deck.mjs` | Downloads the open deck's bytes through the page's own session, and prints its slide count. `--expect-slides N` waits for OneDrive to commit rather than handing back last save. |
 | `verify-package.mjs` | Checks a merged deck, anchored per row to the slide's own title. Knows BOTH kit decks — thirteen checks for the main template, seven for the sunburst — understands a deck that still holds its template, and refuses a deck that is neither. |
 | `mutate.mjs` | Breaks a reference deck six ways and asserts each is caught by its own guard — and refuses to count a guard whose check was already red. |
+| `pane.mjs` | The vocabulary the rest of them are written in: `says`, `click`, `fill`, `until`, `controls`, `selectSlides`, `currentSlide`. Talks to each out-of-process iframe on its own websocket, goes through React's native value setter, and proves every action took before returning. |
+| `shot.mjs` | Photographs the deck tab at an exact pixel size, hiding the account button and any developer add-in tab first, and throwing if it finds neither. |
+| `reset.mjs` | Undoes a merge and reloads the pane, so a second capture run starts where a stranger would. Proves the reload with a marker rather than announcing it. |
+| `listing-shots.mjs` | Walks all five pane steps against the demo deck and writes the five Marketplace screenshots. One command, unattended. |
 
 ## The run, roughly
 
