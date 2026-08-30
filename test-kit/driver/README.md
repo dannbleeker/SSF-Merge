@@ -25,6 +25,7 @@ one machine on one day does not belong in the repo.
 | `cdp-key.mjs` | Sends real ArrowUp/ArrowDown/Enter to an element. What the pane's `<select>` needs — `.value` plus a `change` event does not move React. |
 | `cdp-setfile.mjs` | Puts local files on an `<input type=file>`, including one inside a nested frame. |
 | `close-popup.mjs` | Closes pages whose URL matches a substring. |
+| `close-browser.mjs` | Shuts the whole browser down through CDP `Browser.close`. Use it instead of killing the process. |
 | `upload-template.mjs` | Uploads a local file into the OneDrive folder currently on screen. |
 | `fetch-deck.mjs` | Downloads the open deck's bytes through the page's own session, and prints its slide count. `--expect-slides N` waits for OneDrive to commit rather than handing back last save. |
 | `verify-package.mjs` | Checks a merged deck, anchored per row to the slide's own title. Knows BOTH kit decks — thirteen checks for the main template, seven for the sunburst — understands a deck that still holds its template, and refuses a deck that is neither. |
@@ -139,6 +140,14 @@ old signed-in markers, so the watcher reported nothing on a session that was
 fully signed in. It now also accepts a known signed-in host, and asks every open
 tab rather than the first. If it still says nothing, open OneDrive and look
 before concluding the login failed.
+
+**Do not KILL the browser when you are done with it.** `Stop-Process -Force` and
+`taskkill /F` both work and both leave the profile marked as having crashed, so
+the next launch comes up with a "Restore pages?" bubble sitting over the window
+— somebody else's dialog on top of the round, which a driver clicking by
+coordinate will hit instead of the thing it meant to. `close-browser.mjs` closes
+the tabs and then asks CDP for `Browser.close`, which is the same shutdown the
+window's X button runs and records a clean exit.
 
 **Clear the run crumb between experiments.** The pane keeps an interrupted-run
 record in `localStorage` under `ssf-merge.run.v1`. It is now keyed to the

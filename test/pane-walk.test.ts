@@ -145,7 +145,7 @@ function faults(): string[] {
   // after slide 20" beside a button offering a different count. Both are on
   // screen together on the merge step, so a walk can simply read them.
   const offer = /^Add (\d+) slides?$/.exec(button?.textContent ?? "");
-  const forecast = /^(\d+) slides? added after slide (\d+), leaving (\d+) slides? in the deck\.$/.exec(
+  const forecast = /^(\d+) slides? will be added after slide (\d+), leaving (\d+) slides? in the deck\.$/.exec(
     pane().querySelector(".card:not(.undo) p")?.textContent ?? "",
   );
   if (offer && forecast) {

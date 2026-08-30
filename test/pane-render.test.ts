@@ -449,7 +449,7 @@ describe("the row picker", () => {
   it("puts the INCLUDED count in the summary card, not the pasted one", () => {
     const some = { ...withData, excluded: [1, 2], deckSize: 12 };
     // 1 row x 3 slides.
-    expect(paneFor(some, "merge").querySelector(".facts")?.textContent).toContain("3 slides added");
+    expect(paneFor(some, "merge").querySelector(".facts")?.textContent).toContain("3 slides will be added");
   });
 
   it("writes a row's label as TEXT — it came from a pasted file", () => {
@@ -885,16 +885,16 @@ describe("the sentence above the merge button", () => {
   it("counts the conditional slides out", () => {
     const text = paneFor(withCondition, "merge").querySelector(".facts")?.textContent ?? "";
     // Three rows merge; the middle slide is produced for one of them.
-    expect(text).toContain("8 slides added after slide 10");
+    expect(text).toContain("8 slides will be added after slide 10");
     expect(text).toContain("18 slides in the deck");
     // The product the card used to show, which was over by one.
-    expect(text, "the card is showing rows x slides again").not.toContain("9 slides added");
+    expect(text, "the card is showing rows x slides again").not.toContain("9 slides will be added");
   });
 
   it("still shows the plain product when nothing is conditional", () => {
     const plain = { ...withCondition, conditions: undefined };
     const text = paneFor(plain, "merge").querySelector(".facts")?.textContent ?? "";
-    expect(text).toContain("9 slides added after slide 10");
+    expect(text).toContain("9 slides will be added after slide 10");
   });
 });
 
