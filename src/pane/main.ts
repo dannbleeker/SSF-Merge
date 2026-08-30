@@ -347,6 +347,65 @@ function onInput(event: Event): void {
 }
 
 /**
+ * One host job at a time, and the pane says so while it runs.
+ *
+ * "One host call at a time" is a documented property of this product, not an
+ * implementation detail — it is in the manual — and it had a scar behind it
+ * before it had a flag: going back a step and forward again during a
+ * ninety-second template read handed the user a live "Add 720 slides" over a
+ * merge already in flight, and their deck got both. `PaneState.running` is the
+ * fix, and until 2026-08-30 it was applied by hand in six places: six guards,
+ * six sets on the way in, and six `finally` blocks clearing it.
+ *
+ * Five of those `finally` blocks were character-for-character identical. That
+ * is not a tidiness complaint — the rule that matters is "the button comes back
+ * on EVERY path", and a rule written out six times is a rule that holds until
+ * somebody writes the seventh without a `finally`.
+ *
+ * `entering` is whatever else goes into the state in the SAME assignment that
+ * raises the flag, and it is one patch rather than a set of named options
+ * because the call sites want three different things from `notice` alone: a
+ * string SAYS something while the call is out ("Reading the slides…"),
+ * `notice: undefined` CLEARS whatever the last run said, and omitting the key
+ * keeps what is on screen — which is what ending a preview wants, since the
+ * sentence above the button is about the merge and not about the preview being
+ * taken back. Spread semantics already express all three, so nothing here has
+ * to encode them.
+ *
+ * Same assignment, and that is the point rather than a convenience: the flag
+ * and everything cleared alongside it reach the screen in one draw. The merge
+ * clears two more fields on the way in, and doing that in a second statement
+ * would put one draw on screen carrying this run's flag beside the last run's
+ * waiting line.
+ *
+ * `whenItRaises` is optional, and its absence means the body handles its own
+ * failures. Only the merge does: a raise there does not mean nothing happened,
+ * so it has to count the deck and keep the numbers an undo is clamped against,
+ * which is not a thing a generic handler can do.
+ */
+async function duringRun(
+  kind: NonNullable<PaneState["running"]>,
+  opts: { entering?: Partial<PaneState>; whenItRaises?: (e: unknown) => string },
+  body: () => Promise<void>,
+): Promise<void> {
+  // The busy check lives HERE, so a seventh caller cannot forget it. Callers
+  // keep their own preconditions — a block to read, a run to take back —
+  // because those are about the caller and this is about the pane.
+  if (state.running) return;
+  state = { ...state, running: kind, ...opts.entering };
+  draw();
+  try {
+    await body();
+  } catch (e) {
+    if (!opts.whenItRaises) throw e;
+    state = { ...state, notice: opts.whenItRaises(e) };
+  } finally {
+    state = { ...state, running: undefined };
+    draw();
+  }
+}
+
+/**
  * Fill the two boxes from the slides the user has selected.
  *
  * Fills the DRAFT rather than committing a block, so the numbers land in the
@@ -356,10 +415,7 @@ function onInput(event: Event): void {
  * show nothing.
  */
 async function useSelection(): Promise<void> {
-  if (state.running) return;
-  state = { ...state, running: "inspect", notice: "Reading your selection…" };
-  draw();
-  try {
+  await duringRun("inspect", { entering: { notice: "Reading your selection…" } }, async () => {
     const picked = await selectedBlock();
     // `block` cleared so it keeps meaning "a block whose placeholders have been
     // READ". Nothing observable distinguishes this from committing the
@@ -368,10 +424,7 @@ async function useSelection(): Promise<void> {
     state = picked.ok
       ? { ...blockMoved(state), draft: { from: String(picked.from), to: String(picked.to) }, notice: undefined }
       : { ...state, notice: picked.why };
-  } finally {
-    state = { ...state, running: undefined };
-    draw();
-  }
+  });
 }
 
 /**
@@ -384,10 +437,8 @@ async function useSelection(): Promise<void> {
  */
 async function useBlock(from: StepId): Promise<void> {
   const block = chosenBlock(state);
-  if (!block || state.running) return;
-  state = { ...state, running: "inspect", notice: "Reading the slides…" };
-  draw();
-  try {
+  if (!block) return;
+  await duringRun("inspect", { entering: { notice: "Reading the slides…" }, whenItRaises: readable }, async () => {
     // The deck's size, re-read while we are spending a round trip anyway. It
     // was taken once when the pane opened and never again, so a user who added
     // slides and came back was being told about a deck that no longer existed.
@@ -433,17 +484,7 @@ async function useBlock(from: StepId): Promise<void> {
     // cannot advance onto a step it would immediately draw as blocked.
     const next = nextStep(from);
     if (report.ok && next && blockedReason(state, next) === null) step = next;
-  } catch (e) {
-    // `inspectBlock` answers rather than raising, so a raise here is something
-    // below it. Said out loud, because the alternative is a pane that reads
-    // "Reading the slides…" for the rest of the session.
-    state = { ...state, notice: readable(e) };
-  } finally {
-    // In a `finally`, so the button comes back on every path. A flag cleared
-    // only on the happy path is a pane that has to be reopened.
-    state = { ...state, running: undefined };
-    draw();
-  }
+  });
 }
 
 /**
@@ -605,141 +646,146 @@ async function merge(): Promise<void> {
   // The rows the user left ticked, never everything they pasted.
   const records = includedRecords(state);
   const conditions = state.conditions;
-  if (!block || !records || records.rows.length === 0 || state.running) return;
-  // In the STATE. The first version disabled the button by hand, on a DOM node
-  // every later `draw()` replaces with one `primary()` had re-enabled — so a
-  // Back and a Continue during a two-minute merge handed the user a live
-  // "Add 720 slides" over a run already in flight, and their deck got both.
-  state = { ...state, running: "merge", notice: undefined, inFlight: undefined, log: undefined };
-  // A run of its own, so the record is this merge and not this session. Pairing
-  // one run's numbers with another run's failures is the wrong turn that costs
-  // an hour.
-  beginRun();
-  // AFTER the mark, never at wiring time. A sibling project's environment line
-  // was emitted when the pane loaded and the run's slice began later, so it
-  // reached NONE of its archived rounds — present in the code, absent from
-  // every artefact anyone read.
-  trace("pane", "run starting", { ...hostEnvironment(), deck: state.deckSize ?? "unknown" });
-  // The window and the record, both kept current as the run goes.
-  //
-  // The record used to be written ONCE, in the `finally` below, and this
-  // comment used to explain that "a run log can only be handed over once the
-  // run ends, and the runs worth explaining are the ones that never do". The
-  // first half was never true: the entries are in memory from the first call,
-  // and `traceText` will format them at any moment. Only the second half was —
-  // and it is the argument for writing the record continuously, not for
-  // withholding it.
-  //
-  // What it cost: on a host that wedges, the pane sat on "Waiting on
-  // PowerPoint: inserting the merged deck…" forever with nothing to copy, on
-  // exactly the run somebody needs to explain. A task pane has no devtools and
-  // cannot hand over a file, so what is on screen is the only channel there is.
-  //
-  // Cheap enough to do on every entry: a merge emits about ten, and the cap is
-  // 500. This is not a hot loop.
-  onTrace((e) => {
-    const call = e.scope === "host" && e.message === "issued" ? e.data?.call : undefined;
-    state = { ...state, log: traceText(), ...(typeof call === "string" ? { inFlight: call } : {}) };
-    draw();
-  });
-  // Seeded, not left to the first entry that arrives after the line above.
-  // `onTrace` only sees what is written AFTER it subscribes, and the run's
-  // first line — the environment, which is the most useful thing in the record
-  // — is written before it. A run whose first host call is slow would then
-  // show an empty record for as long as that call takes, which is the window
-  // this whole change is about.
-  state = { ...state, log: traceText() };
-  draw();
-  try {
-    // BEFORE the call that makes an undo necessary. `deckAtStart` is the floor
-    // every sweep is clamped to and it lives in a module variable, so a tab
-    // that dies during the insert leaves the deck holding the slides and the
-    // pane unable to take them back. `added` is 0 until the deck answers; the
-    // crumb is rewritten with the real number below.
-    dropCrumb({ deckAtStart: state.deckSize ?? 0, added: 0, runId: "pending" });
-    const outcome = await runMerge({
-      from: block.from,
-      to: block.to,
-      records,
-      ...(conditions ? { conditions } : {}),
-      ...(state.onEmpty ? { onEmpty: state.onEmpty } : {}),
-      // The pictures too, so a preview and a merge produce the same slides.
-      ...(state.images ? { images: state.images } : {}),
+  if (!block || !records || records.rows.length === 0) return;
+  // The flag, and the two fields that belong in the same assignment as it: a
+  // draw carrying THIS run's flag beside the LAST run's waiting line is a pane
+  // saying it is waiting on a call nobody made. `duringRun` owns the flag —
+  // see there for why it is a flag in the state and not a disabled button.
+  await duringRun("merge", { entering: { notice: undefined, inFlight: undefined, log: undefined } }, async () => {
+    // A run of its own, so the record is this merge and not this session. Pairing
+    // one run's numbers with another run's failures is the wrong turn that costs
+    // an hour.
+    beginRun();
+    // AFTER the mark, never at wiring time. A sibling project's environment line
+    // was emitted when the pane loaded and the run's slice began later, so it
+    // reached NONE of its archived rounds — present in the code, absent from
+    // every artefact anyone read.
+    trace("pane", "run starting", { ...hostEnvironment(), deck: state.deckSize ?? "unknown" });
+    // The window and the record, both kept current as the run goes.
+    //
+    // The record used to be written ONCE, in the `finally` below, and this
+    // comment used to explain that "a run log can only be handed over once the
+    // run ends, and the runs worth explaining are the ones that never do". The
+    // first half was never true: the entries are in memory from the first call,
+    // and `traceText` will format them at any moment. Only the second half was —
+    // and it is the argument for writing the record continuously, not for
+    // withholding it.
+    //
+    // What it cost: on a host that wedges, the pane sat on "Waiting on
+    // PowerPoint: inserting the merged deck…" forever with nothing to copy, on
+    // exactly the run somebody needs to explain. A task pane has no devtools and
+    // cannot hand over a file, so what is on screen is the only channel there is.
+    //
+    // Cheap enough to do on every entry: a merge emits about ten, and the cap is
+    // 500. This is not a hot loop.
+    onTrace((e) => {
+      const call = e.scope === "host" && e.message === "issued" ? e.data?.call : undefined;
+      state = { ...state, log: traceText(), ...(typeof call === "string" ? { inFlight: call } : {}) };
+      draw();
     });
-    last = outcome;
-    if (outcome.added > 0) dropCrumb({ deckAtStart: outcome.deckAtStart, added: outcome.added, runId: outcome.runId });
-    else clearCrumb();
-    state = {
-      ...state,
-      deckSize: outcome.deckAtStart + outcome.added,
-      // The fields the RUN found, which is the authority: `inspectBlock` read
-      // them before the merge and this is the same read after it.
-      ...(outcome.fields.length > 0
-        ? { fields: outcome.fields, imageFields: outcome.imageFields, slideFields: outcome.slideFields }
-        : {}),
-      // Only a run that ADDED something disarms the button. A refusal that
-      // added nothing should leave the user able to press again.
-      // `deckAtStart` travels with `added` everywhere, because the undo card
-      // asks `sweepPlan` and a positional offer needs both: `added` says how
-      // many slides, this says which.
-      ...(outcome.added > 0
-        ? { added: outcome.added, deckAtStart: outcome.deckAtStart, changedSinceMerge: undefined }
-        : {}),
-      // What the merge DID. `outcome.detail` says how much the deck GREW,
-      // which is equally true of a merge that filled every placeholder and one
-      // that matched none of them and inserted 720 copies of the template.
-      notice: outcome.ok ? describeMerge(outcome) : outcome.detail,
-    };
-  } catch (e) {
-    // A raise does not mean nothing happened. This host takes calls it does
-    // not perform AND performs calls it then raises on — `insertDeck` reads
-    // the deck DELTA for exactly that reason, and its own re-count sits
-    // outside the try it uses to do so, so a timeout there rejects with the
-    // slides already in the deck. Count again and keep the numbers, because an
-    // undo is positional and clamped against them: a run whose numbers are
-    // lost cannot be taken back at all.
-    const deckAfter = await slideCount().catch(() => undefined);
-    const before = state.deckSize;
-    const added = deckAfter !== undefined && before !== undefined ? Math.max(0, deckAfter - before) : 0;
-    if (added > 0 && before !== undefined) {
-      dropCrumb({ deckAtStart: before, added, runId: "recovered" });
-      last = {
-        ok: false,
-        detail: readable(e),
-        added,
-        deckAtStart: before,
-        runId: "recovered",
-        fields: [],
-        imageFields: [],
-        slideFields: [],
-        unknownConditions: [],
-      };
-    }
-    state = {
-      ...state,
-      ...(deckAfter !== undefined ? { deckSize: deckAfter } : {}),
-      // `deckAtStart` travels with `added`, here as everywhere: the undo card
-      // is a positional offer and needs both. It did not, so the one branch
-      // written for a host that performs a call and then raises on it was the
-      // one branch that left the slides in the deck with no way to remove
-      // them.
-      ...(added > 0 && before !== undefined ? { added, deckAtStart: before, changedSinceMerge: undefined } : {}),
-      notice:
-        added > 0
-          ? `The merge raised, and ${added} slide${added === 1 ? "" : "s"} landed anyway: ${readable(e)}`
-          : `The merge did not run: ${readable(e)}`,
-    };
-  } finally {
-    // Stop watching before the last draw: the window is for the wait, and a
-    // subscriber left attached would relabel `inFlight` on the next run's
-    // first call while this run's summary is still on screen.
-    onTrace(undefined);
-    // Banked whatever happened, and ESPECIALLY when it did not work — a task
-    // pane has no devtools a user can open, so the only way this record
-    // reaches anybody is by being on screen to copy.
-    state = { ...state, running: undefined, inFlight: undefined, log: traceText() };
+    // Seeded, not left to the first entry that arrives after the line above.
+    // `onTrace` only sees what is written AFTER it subscribes, and the run's
+    // first line — the environment, which is the most useful thing in the record
+    // — is written before it. A run whose first host call is slow would then
+    // show an empty record for as long as that call takes, which is the window
+    // this whole change is about.
+    state = { ...state, log: traceText() };
     draw();
-  }
+    try {
+      // BEFORE the call that makes an undo necessary. `deckAtStart` is the floor
+      // every sweep is clamped to and it lives in a module variable, so a tab
+      // that dies during the insert leaves the deck holding the slides and the
+      // pane unable to take them back. `added` is 0 until the deck answers; the
+      // crumb is rewritten with the real number below.
+      dropCrumb({ deckAtStart: state.deckSize ?? 0, added: 0, runId: "pending" });
+      const outcome = await runMerge({
+        from: block.from,
+        to: block.to,
+        records,
+        ...(conditions ? { conditions } : {}),
+        ...(state.onEmpty ? { onEmpty: state.onEmpty } : {}),
+        // The pictures too, so a preview and a merge produce the same slides.
+        ...(state.images ? { images: state.images } : {}),
+      });
+      last = outcome;
+      if (outcome.added > 0)
+        dropCrumb({ deckAtStart: outcome.deckAtStart, added: outcome.added, runId: outcome.runId });
+      else clearCrumb();
+      state = {
+        ...state,
+        deckSize: outcome.deckAtStart + outcome.added,
+        // The fields the RUN found, which is the authority: `inspectBlock` read
+        // them before the merge and this is the same read after it.
+        ...(outcome.fields.length > 0
+          ? { fields: outcome.fields, imageFields: outcome.imageFields, slideFields: outcome.slideFields }
+          : {}),
+        // Only a run that ADDED something disarms the button. A refusal that
+        // added nothing should leave the user able to press again.
+        // `deckAtStart` travels with `added` everywhere, because the undo card
+        // asks `sweepPlan` and a positional offer needs both: `added` says how
+        // many slides, this says which.
+        ...(outcome.added > 0
+          ? { added: outcome.added, deckAtStart: outcome.deckAtStart, changedSinceMerge: undefined }
+          : {}),
+        // What the merge DID. `outcome.detail` says how much the deck GREW,
+        // which is equally true of a merge that filled every placeholder and one
+        // that matched none of them and inserted 720 copies of the template.
+        notice: outcome.ok ? describeMerge(outcome) : outcome.detail,
+      };
+    } catch (e) {
+      // A raise does not mean nothing happened. This host takes calls it does
+      // not perform AND performs calls it then raises on — `insertDeck` reads
+      // the deck DELTA for exactly that reason, and its own re-count sits
+      // outside the try it uses to do so, so a timeout there rejects with the
+      // slides already in the deck. Count again and keep the numbers, because an
+      // undo is positional and clamped against them: a run whose numbers are
+      // lost cannot be taken back at all.
+      const deckAfter = await slideCount().catch(() => undefined);
+      const before = state.deckSize;
+      const added = deckAfter !== undefined && before !== undefined ? Math.max(0, deckAfter - before) : 0;
+      if (added > 0 && before !== undefined) {
+        dropCrumb({ deckAtStart: before, added, runId: "recovered" });
+        last = {
+          ok: false,
+          detail: readable(e),
+          added,
+          deckAtStart: before,
+          runId: "recovered",
+          fields: [],
+          imageFields: [],
+          slideFields: [],
+          unknownConditions: [],
+        };
+      }
+      state = {
+        ...state,
+        ...(deckAfter !== undefined ? { deckSize: deckAfter } : {}),
+        // `deckAtStart` travels with `added`, here as everywhere: the undo card
+        // is a positional offer and needs both. It did not, so the one branch
+        // written for a host that performs a call and then raises on it was the
+        // one branch that left the slides in the deck with no way to remove
+        // them.
+        ...(added > 0 && before !== undefined ? { added, deckAtStart: before, changedSinceMerge: undefined } : {}),
+        notice:
+          added > 0
+            ? `The merge raised, and ${added} slide${added === 1 ? "" : "s"} landed anyway: ${readable(e)}`
+            : `The merge did not run: ${readable(e)}`,
+      };
+    } finally {
+      // Stop watching before the last draw: the window is for the wait, and a
+      // subscriber left attached would relabel `inFlight` on the next run's
+      // first call while this run's summary is still on screen.
+      onTrace(undefined);
+      // Banked whatever happened, and ESPECIALLY when it did not work — a task
+      // pane has no devtools a user can open, so the only way this record
+      // reaches anybody is by being on screen to copy.
+      //
+      // INSIDE the body's own `finally`, which runs before `duringRun`'s: that
+      // one clears the flag and draws, so this lands in the same paint rather
+      // than needing a draw of its own.
+      state = { ...state, inFlight: undefined, log: traceText() };
+    }
+  });
 }
 
 /**
@@ -767,48 +813,45 @@ async function preview(): Promise<void> {
   const block = chosenBlock(state);
   // The first row that will actually MERGE, not the first that was pasted.
   const preview = firstIncludedRow(state);
-  if (!block || !preview || state.running) return;
-  state = { ...state, running: "preview", notice: undefined };
-  draw();
-  try {
-    const outcome = await runMerge({
-      from: block.from,
-      to: block.to,
-      records: preview,
-      ...(state.conditions ? { conditions: state.conditions } : {}),
-      // The blank-cell answer too. A preview run under a different policy from
-      // the merge is a preview of something nobody is going to get, which is
-      // the rule `firstIncludedRow` already follows for an unticked row.
-      ...(state.onEmpty ? { onEmpty: state.onEmpty } : {}),
-      // A preview is the ORDINARY merge over one row, so it gets the pictures
-      // too. Without them the preview shows a placeholder where the real merge
-      // shows a photo, which is a preview of something nobody is going to get.
-      ...(state.images ? { images: state.images } : {}),
-    });
-    if (!outcome.ok || outcome.added === 0) {
-      state = { ...state, notice: outcome.detail };
-      return;
-    }
-    shown = outcome;
-    // Where they landed, so the card can name them. The insert is anchored
-    // after the last slide, so they are the last `added` in the deck.
-    const from = outcome.deckAtStart + 1;
-    state = {
-      ...state,
-      previewing: true,
-      previewSlides: { from, to: outcome.deckAtStart + outcome.added },
-      deckSize: outcome.deckAtStart + outcome.added,
-      ...(outcome.fields.length > 0
-        ? { fields: outcome.fields, imageFields: outcome.imageFields, slideFields: outcome.slideFields }
-        : {}),
-      notice: undefined,
-    };
-  } catch (e) {
-    state = { ...state, notice: `The preview did not run: ${readable(e)}` };
-  } finally {
-    state = { ...state, running: undefined };
-    draw();
-  }
+  if (!block || !preview) return;
+  await duringRun(
+    "preview",
+    { entering: { notice: undefined }, whenItRaises: (e) => `The preview did not run: ${readable(e)}` },
+    async () => {
+      const outcome = await runMerge({
+        from: block.from,
+        to: block.to,
+        records: preview,
+        ...(state.conditions ? { conditions: state.conditions } : {}),
+        // The blank-cell answer too. A preview run under a different policy from
+        // the merge is a preview of something nobody is going to get, which is
+        // the rule `firstIncludedRow` already follows for an unticked row.
+        ...(state.onEmpty ? { onEmpty: state.onEmpty } : {}),
+        // A preview is the ORDINARY merge over one row, so it gets the pictures
+        // too. Without them the preview shows a placeholder where the real merge
+        // shows a photo, which is a preview of something nobody is going to get.
+        ...(state.images ? { images: state.images } : {}),
+      });
+      if (!outcome.ok || outcome.added === 0) {
+        state = { ...state, notice: outcome.detail };
+        return;
+      }
+      shown = outcome;
+      // Where they landed, so the card can name them. The insert is anchored
+      // after the last slide, so they are the last `added` in the deck.
+      const from = outcome.deckAtStart + 1;
+      state = {
+        ...state,
+        previewing: true,
+        previewSlides: { from, to: outcome.deckAtStart + outcome.added },
+        deckSize: outcome.deckAtStart + outcome.added,
+        ...(outcome.fields.length > 0
+          ? { fields: outcome.fields, imageFields: outcome.imageFields, slideFields: outcome.slideFields }
+          : {}),
+        notice: undefined,
+      };
+    },
+  );
 }
 
 /**
@@ -828,44 +871,41 @@ async function preview(): Promise<void> {
  */
 async function undoRun(): Promise<void> {
   const outcome = last;
-  if (!outcome || state.running) return;
-  state = { ...state, running: "undo", notice: undefined };
-  draw();
-  try {
-    const { removed, detail } = await undoMerge(outcome);
-    if (removed <= 0) {
-      // A refusal is an OUTCOME and the detail already says why — usually that
-      // the deck changed underneath the run, which is a thing the user can
-      // check and act on rather than a failure of the pane.
-      state = { ...state, notice: `Nothing was removed — ${detail}` };
-      return;
-    }
-    const remaining = outcome.added - removed;
-    last = remaining > 0 ? { ...outcome, added: remaining } : undefined;
-    // The slides are the crumb's whole reason. Gone, and it is noise that would
-    // offer a stale recovery on the next open.
-    if (remaining > 0) dropCrumb({ deckAtStart: outcome.deckAtStart, added: remaining, runId: outcome.runId });
-    else clearCrumb();
-    state = {
-      ...state,
-      deckSize: (state.deckSize ?? outcome.deckAtStart + outcome.added) - removed,
-      // Only a COMPLETE sweep disarms the button. A partial one leaves slides
-      // in the deck and the user is the only one who can finish the job, so
-      // the way back has to stay on screen.
-      ...(remaining > 0
-        ? { added: remaining, deckAtStart: outcome.deckAtStart }
-        : { added: undefined, deckAtStart: undefined }),
-      notice:
-        remaining > 0
-          ? `Some of the merge is still there — ${detail}`
-          : `${plural(removed, "slide")} removed. Your deck is back to ${outcome.deckAtStart}.`,
-    };
-  } catch (e) {
-    state = { ...state, notice: `The slides could not be removed: ${readable(e)}` };
-  } finally {
-    state = { ...state, running: undefined };
-    draw();
-  }
+  if (!outcome) return;
+  await duringRun(
+    "undo",
+    { entering: { notice: undefined }, whenItRaises: (e) => `The slides could not be removed: ${readable(e)}` },
+    async () => {
+      const { removed, detail } = await undoMerge(outcome);
+      if (removed <= 0) {
+        // A refusal is an OUTCOME and the detail already says why — usually that
+        // the deck changed underneath the run, which is a thing the user can
+        // check and act on rather than a failure of the pane.
+        state = { ...state, notice: `Nothing was removed — ${detail}` };
+        return;
+      }
+      const remaining = outcome.added - removed;
+      last = remaining > 0 ? { ...outcome, added: remaining } : undefined;
+      // The slides are the crumb's whole reason. Gone, and it is noise that would
+      // offer a stale recovery on the next open.
+      if (remaining > 0) dropCrumb({ deckAtStart: outcome.deckAtStart, added: remaining, runId: outcome.runId });
+      else clearCrumb();
+      state = {
+        ...state,
+        deckSize: (state.deckSize ?? outcome.deckAtStart + outcome.added) - removed,
+        // Only a COMPLETE sweep disarms the button. A partial one leaves slides
+        // in the deck and the user is the only one who can finish the job, so
+        // the way back has to stay on screen.
+        ...(remaining > 0
+          ? { added: remaining, deckAtStart: outcome.deckAtStart }
+          : { added: undefined, deckAtStart: undefined }),
+        notice:
+          remaining > 0
+            ? `Some of the merge is still there — ${detail}`
+            : `${plural(removed, "slide")} removed. Your deck is back to ${outcome.deckAtStart}.`,
+      };
+    },
+  );
 }
 
 /**
@@ -877,10 +917,8 @@ async function undoRun(): Promise<void> {
  */
 async function endPreview(): Promise<void> {
   const outcome = shown;
-  if (!outcome || state.running) return;
-  state = { ...state, running: "preview" };
-  draw();
-  try {
+  if (!outcome) return;
+  await duringRun("preview", { whenItRaises: (e) => `The preview could not be removed: ${readable(e)}` }, async () => {
     const { removed, detail } = await undoMerge(outcome);
     if (removed < outcome.added) {
       // Said out loud rather than assumed. A sweep that removed fewer slides
@@ -897,12 +935,7 @@ async function endPreview(): Promise<void> {
       deckSize: outcome.deckAtStart,
       notice: undefined,
     };
-  } catch (e) {
-    state = { ...state, notice: `The preview could not be removed: ${readable(e)}` };
-  } finally {
-    state = { ...state, running: undefined };
-    draw();
-  }
+  });
 }
 
 /** The preview currently on the slides, so it can be taken back exactly. */
