@@ -168,7 +168,29 @@ export function render(root: HTMLElement, state: PaneState, current: StepId): vo
   // would not name every slide between 4 and 6" is not a thing the user did
   // wrong, and filing it under the same sentence as "Attach your data first"
   // makes both read as nagging.
-  if (state.notice) main.append(el(doc, "p", { class: "blocked notice", text: state.notice }));
+  /**
+   * A recovered run interrupts the pane; it is not part of the step's own job.
+   *
+   * These two nodes render in place for an ordinary run — a notice about the
+   * merge you just did belongs after the merge you just did. When the pane has
+   * come back to a run that lost its tab, they are hoisted to the TOP instead.
+   *
+   * Where they used to land is the whole finding. Step 1 read: "Which slides
+   * repeat?", the instruction, the two number boxes, THEN "a merge from
+   * 2026-08-30 added 6 slide(s)" and a Remove button, then the step's own
+   * button. The interruption sat in the middle of a form, between the fields
+   * and the control that submits them, and it was the loudest thing on the
+   * screen. Two unrelated jobs, interleaved.
+   *
+   * At the top it is a banner: deal with it or read past it, then start.
+   */
+  const interruption: HTMLElement[] = [];
+  const place = (node: HTMLElement): void => {
+    if (state.recovered === true) interruption.push(node);
+    else main.append(node);
+  };
+
+  if (state.notice) place(el(doc, "p", { class: "blocked notice", text: state.notice }));
 
   // What a finished merge added, and the way back.
   //
@@ -200,8 +222,13 @@ export function render(root: HTMLElement, state: PaneState, current: StepId): vo
         attrs: { "data-action": "undo", ...(state.running ? { disabled: "" } : {}) },
       }),
     );
-    main.append(card);
+    place(card);
   }
+
+  // Above the step line, in the order they were built, so the interruption
+  // reads as one thing before the wizard starts rather than as two sentences
+  // wedged between a form and its button.
+  if (interruption.length) main.prepend(...interruption);
 
   // WHICH host call is in flight, while one is.
   //
@@ -435,7 +462,11 @@ function body(doc: Document, state: PaneState, current: StepId, orange: OrangeHo
       el(doc, "p", {
         class: "muted",
         text: previewBlock
-          ? `Adds ${plural(slidesPerRecord(previewBlock), "slide")} to the end of the deck — the first row, merged the way every row will be. Look at them, then remove them.`
+          ? // "Look at them, then remove them" was true when removing them was
+            // the only way out of this step. It is not the route any more —
+            // the button afterwards takes them back out and carries on — and
+            // an instruction that names a dead end is how the step read as one.
+            `Adds ${plural(slidesPerRecord(previewBlock), "slide")} to the end of the deck — the first row, merged the way every row will be. Look at them, then carry on to the merge.`
           : "Choose the slides that repeat first.",
       }),
     );

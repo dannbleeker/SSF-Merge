@@ -1041,18 +1041,25 @@ export function primary(state: PaneState, step: StepId): Primary {
       // described a design this project's own rejected list forbids.
       //
       // While a preview is up, the primary CARRIES ON rather than merely
-      // clearing up, and says both halves of what it does. It used to read
-      // "Remove the preview" and stop there, which left the pane with no
-      // control naming the merge at all — the word did not appear on the screen
-      // — and the only route onward was to work out that clearing the preview
-      // was it. Four presses to reach a step the wizard was already on its way
-      // to.
+      // clearing up. It used to read "Remove the preview" and stop there, which
+      // left the pane with no control naming the merge at all — the word did
+      // not appear on the screen — and the only route onward was to work out
+      // that clearing the preview was it. Four presses to reach a step the
+      // wizard was already on its way to.
       //
-      // The plain "Remove the preview" is still offered, on the card beside the
-      // slides it names. That is where an undo belongs, and it is exactly where
-      // the merge step already keeps "Remove these slides".
+      // It says where it GOES, not what it merges. "Remove the preview and
+      // merge" was the first attempt and promised an outcome one press early:
+      // it lands on step 5 with the deck still unmerged and "Add 6 slides"
+      // still to press. This project's own rule is that a button states what it
+      // does — "Merge" is a promise, "Add 720 slides" is a statement — and that
+      // label was the promise kind. It also began with the same three words as
+      // the card's button right above it, which is the half a reader scans.
+      //
+      // The removal is not hidden by the shorter label: the card's own sentence
+      // says these slides are deleted, and it is the card that offers to do it
+      // without leaving.
       return state.previewing
-        ? { label: "Remove the preview and merge", enabled: true, advances: "merge" }
+        ? { label: "On to the merge", enabled: true, advances: "merge" }
         : { label: "Preview the first row", enabled: reachable };
     case "merge": {
       // A run that already landed. Re-arming this button beside a notice

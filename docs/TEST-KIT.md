@@ -243,6 +243,14 @@ The deck holds one slide: a sunburst titled `{{Name}} pipeline`, a text box
 reading `Pipeline for {{Name}}`, and a hierarchy whose outer ring's first cell is
 `{{Region}}` with `Benelux` and `DACH` beside it as plain text.
 
+`verify-package.mjs` checks this deck too now. It tells the two shapes apart by
+which kind of chart part the deck holds, and answers **7/7** on a good sunburst
+merge. It used to report 4/13 here — the main template's checklist run against a
+deck that has no classic charts, no photos, no notes and no `{{Nickname}}` — and
+the round of 2026-08-30 read that correctly as the wrong tool and checked the
+sunburst by hand. A deck that is neither shape is now refused outright rather
+than scored, because a red that means nothing is worse than no red.
+
 1. Open it, block **from 1 to 1**, paste the same `data.txt`, merge. Three slides.
 2. **Each chart's title names its own row** — *Ada pipeline*, *Grace pipeline*,
    *Alan pipeline*. Same title on all three means the copies share one chart.
@@ -278,7 +286,7 @@ Save the deck to `test-kit/out/round-<date>.pptx` and run the checker over it:
 node test-kit/driver/verify-package.mjs test-kit/out/round-<date>.pptx
 ```
 
-It should say **13/13**, and it understands a deck that still holds its template
+It should say **13/13** for the main deck and **7/7** for the sunburst, and it understands a deck that still holds its template
 block — it counts the parts the MERGED slides reach, not the parts in the
 package. If you intend to believe its verdict, run `mutate.mjs` over the same
 deck first and read the line that says how many guards it actually proved.

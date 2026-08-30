@@ -798,6 +798,59 @@ describe("the picture picker", () => {
   });
 });
 
+describe("a run the pane came back to", () => {
+  const recovered: PaneState = {
+    fields: [],
+    previewing: false,
+    recovered: true,
+    added: 6,
+    deckAtStart: 3,
+    deckSize: 9,
+    notice: "A merge from 2026-08-30 added 6 slide(s) and the pane closed before you could take them back.",
+  };
+
+  /** Where a node sits among `main`'s children, so two can be put in reading order. */
+  function positionOf(root: HTMLElement, selector: string): number {
+    const main = root.querySelector("main");
+    const node = root.querySelector(selector);
+    return Array.from(main?.children ?? []).indexOf(node as Element);
+  }
+
+  it("puts the interruption ABOVE the step, not inside its form", () => {
+    // Step 1 used to read: "Which slides repeat?", the instruction, the two
+    // number boxes, THEN "a merge from 2026-08-30 added 6 slide(s)" with a
+    // Remove button, and only then the step's own button. The interruption sat
+    // between the fields and the control that submits them, and it was the
+    // loudest thing on screen — two unrelated jobs interleaved, on the one
+    // screen a first-time user meets first.
+    const pane = paneFor(recovered, "template");
+    const notice = positionOf(pane, ".notice");
+    const card = positionOf(pane, ".card.undo");
+    const stepLine = positionOf(pane, ".step-of");
+
+    expect(notice, "the notice is not a direct child of main").toBeGreaterThanOrEqual(0);
+    expect(notice).toBeLessThan(stepLine);
+    expect(card).toBeLessThan(stepLine);
+    // In that order: what happened, then what to do about it.
+    expect(notice).toBeLessThan(card);
+  });
+
+  it("still offers the way back, with the step's own job underneath", () => {
+    const pane = paneFor(recovered, "template");
+    expect(pane.querySelector('[data-action="undo"]')?.textContent).toBe("Remove these slides");
+    expect(pane.querySelector("h1")?.textContent).toBe("Which slides repeat?");
+    expect(pane.querySelector("button.primary")?.textContent).toBe("Choose the slides that repeat");
+  });
+
+  it("leaves an ORDINARY run's card where it was, after the merge it describes", () => {
+    // Only a RECOVERED run is an interruption. The card for a merge just
+    // pressed belongs below the forecast it followed, not above the step line.
+    const justMerged: PaneState = { ...ready, added: 6, deckAtStart: 12, deckSize: 18 };
+    const pane = paneFor(justMerged, "merge");
+    expect(positionOf(pane, ".card.undo")).toBeGreaterThan(positionOf(pane, ".step-of"));
+  });
+});
+
 describe("the sentence above the merge button", () => {
   /**
    * It promised nine slides where the plan built eight, because the count was
