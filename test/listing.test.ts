@@ -132,6 +132,78 @@ describe("the Description field", () => {
   });
 });
 
+describe("the Marketplace icon", () => {
+  /** Partner Center's own limits on the listing page's icon upload. */
+  const ICON_PX = 300;
+  const ICON_MAX_BYTES = 512 * 1024;
+  const file = `docs/listing/marketplace-icon-${ICON_PX}.png`;
+
+  it(`is a whole PNG, ${ICON_PX} by ${ICON_PX}`, () => {
+    // A truncated or zero-byte file still satisfies existsSync, and Partner
+    // Center rejecting the upload is a slower way to learn that than this.
+    //
+    // The IEND check is here because the header check alone did NOT catch a
+    // truncation: cutting this file to its first 900 bytes left the signature
+    // and the IHDR intact, so width and height still read 300 and only the
+    // byte-identity test below noticed. A PNG ends with a twelve-byte IEND
+    // chunk, and a file that stops early does not have one.
+    const bytes = readFileSync(file);
+    expect(bytes.subarray(0, 8).toString("hex"), "PNG signature").toBe("89504e470d0a1a0a");
+    expect(bytes.readUInt32BE(16), "width").toBe(ICON_PX);
+    expect(bytes.readUInt32BE(20), "height").toBe(ICON_PX);
+    expect(bytes.subarray(-8).toString("hex"), "IEND chunk").toBe("49454e44ae426082");
+  });
+
+  it("is under the 512 KB the field accepts", () => {
+    expect(readFileSync(file).length).toBeLessThanOrEqual(ICON_MAX_BYTES);
+  });
+
+  it("is byte-identical to what scripts/build-icons.mjs draws", async () => {
+    // The same reason the manifest's icons are pinned: a committed binary is
+    // the one kind of file a reviewer cannot read. If this fails, either the
+    // drawing changed and the PNG was not rebuilt, or it was edited by hand.
+    // @ts-expect-error — plain .mjs with no types.
+    const icons = await import("../scripts/build-icons.mjs");
+    const drawn = icons.png(icons.MARKETPLACE, icons.supersampled(icons.MARKETPLACE)) as Buffer;
+    expect(Buffer.compare(drawn, readFileSync(file))).toBe(0);
+  });
+
+  /**
+   * Microsoft: "both images should be of the same logo or icon. This way, the
+   * user sees the same logo in Microsoft Marketplace and when the solution is
+   * displayed in Office."
+   *
+   * Asserted on the drawing rather than by comparing pixels across a 300 and a
+   * 32, which differ legitimately: the listing icon is supersampled and the
+   * ribbon icons are not. What has to hold is that both come from `markPixel`,
+   * so a change to the mark cannot reach one and miss the other.
+   */
+  it("is the same mark the manifest's icons draw", async () => {
+    // @ts-expect-error — plain .mjs with no types.
+    const { markPixel, supersampled, MARKETPLACE, NAVY, ORANGE } = await import("../scripts/build-icons.mjs");
+    const big = supersampled(MARKETPLACE) as (x: number, y: number) => number[];
+    const small = markPixel(32) as (x: number, y: number) => number[];
+
+    // The centre of each icon is ground in both, and the orange row sits at the
+    // same fraction of the height in both.
+    const orangeRowAt = (at: (x: number, y: number) => number[], size: number) => {
+      for (let y = 0; y < size; y++) {
+        const [r, g, b] = at(Math.round(size / 2), y);
+        if (r === ORANGE[0] && g === ORANGE[1] && b === ORANGE[2]) return y / size;
+      }
+      return -1;
+    };
+    const wide = orangeRowAt(big, MARKETPLACE);
+    const narrow = orangeRowAt(small, 32);
+    expect(wide, "no orange row in the marketplace icon").toBeGreaterThan(0);
+    expect(narrow, "no orange row in icon-32").toBeGreaterThan(0);
+    expect(Math.abs(wide - narrow)).toBeLessThan(0.02);
+
+    const [r, g, b] = big(2, Math.round(MARKETPLACE / 2));
+    expect([r, g, b], "the ground is navy in both").toEqual(NAVY);
+  });
+});
+
 describe("the Search keywords field", () => {
   const keywords = block("Search keywords")
     .split("\n")
