@@ -66,19 +66,56 @@ Checked, so it is not re-litigated later.
       agrees. The repository is MIT-licensed, which is not the same thing and
       does not satisfy this.
 
-- [ ] **One version number.** `manifest-prod.xml` says `1.0.0.0` and
-      `package.json` says `0.2.3`. The policy requires the version to increment
-      on every update, and today there is no single source of truth for what it
-      is. This is worth fixing whichever route is taken.
+- [ ] **Bump the manifest version on every submitted update.** `VERSION` in
+      `scripts/manifest-source.mjs` is the constant `1.0.0.0` and has never
+      moved. AppSource requires the version to increment with each update, so
+      the first update after listing is where a constant becomes a rejection.
+      Nothing today bumps it, and nothing needs to until there is a listing.
+
+      **This entry previously called the split between `1.0.0.0` and
+      `package.json`'s `0.2.3` a defect. It is not, and the claim was wrong.**
+      The decoupling is deliberate, reasoned in that file and pinned by
+      `test/manifest.test.ts`: Office rejects anything below 1.0 outright and
+      wants four parts, npm wants semver, and a sibling project shipped `0.1.0`
+      in four manifests for the life of its repo because every one of its own
+      tests passed and nobody had asked Microsoft. Tying them together would
+      reintroduce exactly that.
+
+- [x] **The store icons are the sizes AppSource asks for.** Fixed here. For a
+      TASK PANE add-in the store icon must be 32×32 and its high-resolution
+      partner **64×64**; `HighResolutionIconUrl` pointed at `icon-80.png`.
+
+      80 is the RIBBON size, which is a different image in a different element
+      a few lines below in the same generated file — so the wrong number looked
+      exactly like the right one, and only AppSource validation would have said
+      otherwise. `icon-64.png` was already being built and used by the JSON
+      manifest; nothing new had to be drawn. Fixed in the generator rather than
+      the generated XML, or `npm run manifests` would have put it back.
 
 - [x] **`ProviderName` must match the Partner Center publisher name.** Done, and
       it needed no change: the manifest says `StruktureretSundFornuft` and so
       does the Publisher Name on the account.
 
-- [ ] **Listing assets.** At least one screenshot is required, plus a short
-      description and a long one with HTML formatting. The pictures in
-      `docs/images` are 380px pane captures — right for the manual, too small
-      for a store listing.
+- [~] **Listing assets.** Drafted in [listing/LISTING.md](listing/LISTING.md) —
+      summary at 70 characters, description at 353 words, both inside
+      Microsoft's bands, and two screenshots at exactly 1366×768 and under
+      100 KB against a 1024 KB cap.
+
+      Two things are deliberately not finished there. **The screenshots are
+      placeholders**: they are captured from `test-kit/`'s deck, which exists to
+      test the engine rather than show it off, so the photograph in them is the
+      crop fixture — a blue rectangle with four yellow dots — and the chart's
+      numbers are 18 and 42. A customer reads that as a broken image. The
+      listing wants a small honest demo deck instead, which is half an hour of
+      deck-building and nobody's to do but the owner's.
+
+      **And the name is a question, not a draft.** Microsoft's guidance says
+      avoid unfamiliar acronyms and do not rely on a brand to say what a thing
+      does, which is both halves of "SSF Merge" — while separately ruling out
+      the obvious fix, because a name may not contain the Microsoft product
+      name. `Slide Mail Merge` is suggested and not applied: the manifest's
+      `DisplayName` must match whatever is chosen, and that is what users see in
+      the ribbon after install. A rename is the owner's call.
 
 - [x] **A Partner Center account, enrolled in the Microsoft 365 and Copilot
       program, with seller verification completed.** Done — the legal business

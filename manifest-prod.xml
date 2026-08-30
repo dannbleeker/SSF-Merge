@@ -13,7 +13,13 @@
   <DisplayName DefaultValue="SSF Merge" />
   <Description DefaultValue="Mail merge for PowerPoint. Mark a block of slides as your template, attach a table, and get one set of slides per row with every font, colour and placement intact." />
   <IconUrl DefaultValue="https://ssf-merge.struktureretsundfornuft.dk/assets/icon-32.png" />
-  <HighResolutionIconUrl DefaultValue="https://ssf-merge.struktureretsundfornuft.dk/assets/icon-80.png" />
+  <!-- 64, not 80. For a TASK PANE add-in the store's icon must be 32x32 and its
+       high-resolution partner 64x64; 128 is the Outlook size and 80 is the
+       RIBBON size, which is a different image in a different element below.
+       This said 80 and would have been caught by AppSource validation rather
+       than by anyone here — the ribbon uses 80 correctly a few lines down, so
+       the wrong number looked like the right one. -->
+  <HighResolutionIconUrl DefaultValue="https://ssf-merge.struktureretsundfornuft.dk/assets/icon-64.png" />
   <SupportUrl DefaultValue="https://github.com/dannbleeker/SSF-Merge" />
 
   <Hosts>
