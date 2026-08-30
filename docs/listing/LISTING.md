@@ -124,6 +124,41 @@ Paste this as it is, and use Partner Center's preview before saving.
 <p>Nowhere. There is no server, no account and no sign-in, and the add-in makes no network requests while it runs. Your slides and your table are read inside the task pane, on your own device, and the merged slides are written straight back into the presentation you already have open.</p>
 ```
 
+## Search keywords
+
+Up to three. Partner Center's own help: "Don't add words or acronyms that are
+already included in your product's name, summary, or description." Nothing in
+Microsoft's published documentation covers this field, so that sentence is the
+whole rule, and it is the one thing here a machine can check. `listing.test.ts`
+does, against the manifest's `DisplayName` and the two blocks above.
+
+```
+bulk
+personalized
+csv
+```
+
+Each is absent from the name, the summary and the description, so no slot is
+spent repeating a word the search engine already has from those.
+
+- **bulk** is what somebody types when they have been doing this by hand. It is
+  the highest-intent word not already spent.
+- **personalized** is the standard mail-merge word for the outcome, and the
+  description never uses it. American spelling deliberately: it is the one with
+  the search volume, and the store's default locale is en-US.
+- **csv** is true rather than aspirational. `src/core/data/recordset.ts` reads
+  `["\t", ",", ";"]`, so tab, comma and semicolon pastes all parse.
+
+**The caveat on `csv`.** The add-in reads a pasted table; there is no file
+picker, and the manual records that as a decision rather than a gap. Somebody
+searching "csv" may be after file import and will find paste-only. Pasting the
+contents of a .csv works, so the keyword is accurate, but `automation` is the
+swap if that expectation is not worth inviting. It is free and safe and generic
+enough to compete with half the store, which is the trade.
+
+`duplicate` was considered and rejected: the description says "duplicating a
+slide", and any stemmer treats those as the same word.
+
 ## Screenshots
 
 Required: at least one, at **1366×768**, under 1024 KB, PNG/JPEG/GIF, up to five.

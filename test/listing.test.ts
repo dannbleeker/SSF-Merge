@@ -131,3 +131,38 @@ describe("the Description field", () => {
     expect(text.startsWith(opening)).toBe(true);
   });
 });
+
+describe("the Search keywords field", () => {
+  const keywords = block("Search keywords")
+    .split("\n")
+    .map((k) => k.trim())
+    .filter(Boolean);
+
+  it("has at most the three the field accepts", () => {
+    expect(keywords.length).toBeGreaterThan(0);
+    expect(keywords.length).toBeLessThanOrEqual(3);
+  });
+
+  /**
+   * Partner Center's help on the field: "Don't add words or acronyms that are
+   * already included in your product's name, summary, or description."
+   *
+   * Nothing Microsoft publishes covers this field, so that sentence is the whole
+   * rule, and a repeated word is a wasted slot out of three. The name comes from
+   * the manifest rather than from prose in the listing doc, because Microsoft
+   * requires the two to match — "You specify your add-in name in two places, so
+   * be sure to use the same name in both" — which means renaming the product
+   * moves this guard with it and cannot leave it checking the old name.
+   */
+  it("spends no slot on a word the name, summary or description already has", () => {
+    const manifest = readFileSync("manifest-prod.xml", "utf8");
+    const name = manifest.match(/<DisplayName DefaultValue="([^"]+)"/)?.[1] ?? "";
+    expect(name, "manifest-prod.xml has no DisplayName").toBeTruthy();
+
+    const spent = new Set(
+      `${name} ${block("Summary")} ${textOf(block("Description", "html"))}`.toLowerCase().match(/[a-z]+/g),
+    );
+    const repeated = keywords.filter((k) => spent.has(k.toLowerCase()));
+    expect(repeated).toEqual([]);
+  });
+});
