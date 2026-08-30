@@ -1,9 +1,11 @@
 # Driving the round in PowerPoint for the web
 
-Eleven small scripts that put the add-in through the kit's run in a real host,
+Twelve small scripts that put the add-in through the kit's run in a real host,
 and check what came back. Built during the round of 2026-08-28, which found two
 defects with them ([#64](https://github.com/dannbleeker/SSF-Merge/pull/64),
-[#66](https://github.com/dannbleeker/SSF-Merge/pull/66)).
+[#66](https://github.com/dannbleeker/SSF-Merge/pull/66)), and extended by the
+round of 2026-08-30, which found one defect in the product and two in these
+tools.
 
 They are here so the next round starts from a working driver. Rebuilding this
 was most of the cost of the last one, and none of it was interesting.
@@ -20,12 +22,13 @@ one machine on one day does not belong in the repo.
 | `drive.mjs` | Stepwise driver for the page: `goto`, `shot`, `text`, `ui`, `frames`, `click`, `clicktext`, `mouseclick`, `press`, `fill`, `upload`, `eval`, `url`. |
 | `cdp-eval.mjs` | Evaluates JavaScript inside one CDP target, by URL substring. `list` prints the targets. |
 | `cdp-type.mjs` | Focuses an element and types into it with real key events; `insert` mode pastes. |
+| `cdp-key.mjs` | Sends real ArrowUp/ArrowDown/Enter to an element. What the pane's `<select>` needs — `.value` plus a `change` event does not move React. |
 | `cdp-setfile.mjs` | Puts local files on an `<input type=file>`, including one inside a nested frame. |
 | `close-popup.mjs` | Closes pages whose URL matches a substring. |
 | `upload-template.mjs` | Uploads a local file into the OneDrive folder currently on screen. |
-| `fetch-deck.mjs` | Downloads the open deck's bytes through the page's own session. |
-| `verify-package.mjs` | Thirteen checks over a merged deck, anchored per row to the slide's own title. |
-| `mutate.mjs` | Breaks a reference deck six ways and asserts each is caught by its own guard. |
+| `fetch-deck.mjs` | Downloads the open deck's bytes through the page's own session, and prints its slide count. `--expect-slides N` waits for OneDrive to commit rather than handing back last save. |
+| `verify-package.mjs` | Thirteen checks over a merged deck, anchored per row to the slide's own title. Understands a deck that still holds its template. |
+| `mutate.mjs` | Breaks a reference deck six ways and asserts each is caught by its own guard — and refuses to count a guard whose check was already red. |
 
 ## The run, roughly
 
@@ -36,8 +39,20 @@ node test-kit/driver/web-login.mjs                 # once; sign in by hand
 node test-kit/driver/drive.mjs url
 node test-kit/driver/upload-template.mjs test-kit/SSF-Merge-test-template.pptx
 node test-kit/driver/cdp-eval.mjs list
-node test-kit/driver/fetch-deck.mjs test-kit/out/round.pptx
+
+# The pane is its own CDP target. Match it on the ADD-IN's host: "taskpane.html"
+# also matches a Microsoft pane, and answers about the wrong frame convincingly.
+PANE=ssf-merge.struktureretsundfornuft.dk
+node test-kit/driver/cdp-eval.mjs $PANE "document.body.innerText"
+
+# Text boxes need real typing, and so does the blank-cell <select>.
+node test-kit/driver/cdp-type.mjs $PANE "document.querySelectorAll('input[type=text]')[0]" 2
+node test-kit/driver/cdp-key.mjs $PANE "[...document.querySelectorAll('select')][0]" ArrowDown 2
+
+# 9 = 3 template slides + 6 merged. Without it you can get last save, silently.
+node test-kit/driver/fetch-deck.mjs test-kit/out/round.pptx --expect-slides 9
 node test-kit/driver/verify-package.mjs test-kit/out/round.pptx
+node test-kit/driver/mutate.mjs test-kit/out/round.pptx   # before believing it
 ```
 
 `SSF_CDP` overrides the debugging endpoint, `SSF_PROFILE` the browser profile,
@@ -75,6 +90,14 @@ Enter submits.
 the Office Add-ins dialog. An agent reading the dialog's text concludes the
 option is not there and gives up on sideloading. Query for the element.
 
+The path to it, since it is four clicks and none of them obvious: **Home ▸
+Add-ins** (a flyout, not a `[role=dialog]`, so a query for dialogs finds
+nothing) **▸ More Add-ins** ▸ the **MY ADD-INS** tab ▸ the **Manage My Add-ins**
+dropdown at the top right, which is where the link actually lives. The store
+listing renders in its own `inclient.store.office.com` OOPIF, and the link is
+NOT in it — searching that frame's DOM for "upload" returns nothing, which reads
+exactly like the option being absent.
+
 **The Store half of that dialog cannot authenticate on a personal account** —
 *"The application is a first party application, the user does not have consent…"*.
 Sideloading still works; that error is about the store listing.
@@ -86,6 +109,42 @@ the ribbon button again.
 **Clicking Download in OneDrive puts the file nowhere you can find it.** Use
 `fetch-deck.mjs`, which fetches from inside the page and hands the bytes back
 over CDP.
+
+The five below were found on 2026-08-30.
+
+**The `<select>` needs real keys, exactly like the text boxes did.** Setting
+`.value` and dispatching `change` on the blank-cell control moved the DOM and
+not React: the select read `skip` while the button still said "Add 6 slides".
+That looks precisely like the defect the round was sent to look for — a forecast
+that does not follow the control — and it is not one. `cdp-key.mjs` sends real
+ArrowDown keys, after which the line becomes "2 of 3 rows × 2 slides" and the
+button "Add 4 slides". **Never report a control as not responding until it has
+been driven with real key events.**
+
+**`fetch-deck.mjs` can race OneDrive's save.** PowerPoint for the web autosaves,
+and the download endpoint serves what has been COMMITTED. A fetch straight after
+a merge returned the pre-merge deck: 3 slides, 58 KB, HTTP 200, no error. Byte
+count will not tell you — 58 KB looks like a plausible deck. Pass
+`--expect-slides N` and let it wait.
+
+**Playwright's `page.screenshot` can render the editor at the wrong size.** It
+produced 695×705 captures of a page whose own `innerWidth` was 1918, so the
+Office Add-ins dialog came out clipped and looked like the known display-scale
+trap. It is not that: the window and the page were both fine. Use CDP
+`Page.captureScreenshot` on the target for anything you intend to read.
+
+**`web-login.mjs` used to watch for chrome that has moved.** `office.com` now
+redirects to `m365.cloud.microsoft/chat`, a Copilot shell carrying none of the
+old signed-in markers, so the watcher reported nothing on a session that was
+fully signed in. It now also accepts a known signed-in host, and asks every open
+tab rather than the first. If it still says nothing, open OneDrive and look
+before concluding the login failed.
+
+**Clear the run crumb between experiments.** The pane keeps an interrupted-run
+record in `localStorage` under `ssf-merge.run.v1`. It is now keyed to the
+document, so it will not follow you to another deck — but re-running the same
+deck with a stale crumb still starts you in a recovery state. One line:
+`cdp-eval.mjs <pane-host> "localStorage.removeItem('ssf-merge.run.v1')"`.
 
 ## The verifier is checked too
 
@@ -109,5 +168,21 @@ reported as a defect in the product:
    correctly-merged date look like a lost one.
 3. It assumed every slide maps to a data row, and crashed on a deck that still
    holds its template slides.
+4. Having stopped crashing on those decks, it still MARKED THEM DOWN: every
+   per-row check treated the template slides as failures, and the part counts
+   charged the deck for the template's own chart, workbook and diagram. A round
+   done exactly as the manual asks scored 5/13 while being entirely correct, and
+   the report had to be re-derived from the XML by hand to get past it. It now
+   splits merged from template once and reads 13/13 on that same deck.
 
 A verifier that has only ever seen a good deck is an untested instrument.
+
+**And a mutation harness that cannot fail is the same thing one level up.**
+`mutate.mjs` used to ask only whether the expected check was red AFTER the
+mutation. If it was red BEFORE, that is true no matter what the mutation did.
+On the deck above, four of the six mutants asserted against an already-red
+check — and it printed *"Every mutation was caught by its own guard"* and exited
+0. It now reports those as `CANNOT PROVE`, counts how many guards were really
+exercised, and refuses to certify the run. **Read the count, not the last
+line:** `6/6 mutation(s) actually proved their guard` is the sentence that
+means something.

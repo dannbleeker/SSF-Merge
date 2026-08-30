@@ -10,12 +10,31 @@
  * Everything it needs is read off the open editor tab, so there is nothing to
  * configure and nothing about one machine or one account baked in.
  *
- * Usage: node test-kit/driver/fetch-deck.mjs <out-file>
+ * IT CAN RACE THE SAVE. PowerPoint for the web autosaves, and the download
+ * endpoint serves what OneDrive has COMMITTED — not what is on the screen. On
+ * 2026-08-30 a fetch taken straight after a merge returned the pre-merge file:
+ * 3 slides, 58 KB, HTTP 200, no error of any kind, and the only thing wrong
+ * with it was that it was last minute's deck. A byte count is not a signal
+ * here; the slide count is.
+ *
+ * So the slide count is always printed, and `--expect-slides N` turns it into
+ * an assertion that waits: it re-fetches until the deck says N, rather than
+ * handing back a stale file that looks perfectly sound.
+ *
+ * Usage: node test-kit/driver/fetch-deck.mjs <out-file> [--expect-slides N]
  */
 import { writeFileSync } from "node:fs";
+import JSZip from "jszip";
 
 const BASE = process.env.SSF_CDP ?? "http://127.0.0.1:9333";
-const out = process.argv[2] ?? "test-kit/out/host-deck.pptx";
+const args = process.argv.slice(2).filter((a) => !a.startsWith("--"));
+const out = args[0] ?? "test-kit/out/host-deck.pptx";
+const expectIdx = process.argv.indexOf("--expect-slides");
+const expectSlides = expectIdx === -1 ? null : Number(process.argv[expectIdx + 1]);
+if (expectIdx !== -1 && !Number.isInteger(expectSlides)) {
+  console.error("--expect-slides needs a whole number");
+  process.exit(2);
+}
 
 const targets = await (await fetch(`${BASE}/json/list`)).json();
 
@@ -90,17 +109,53 @@ const expression = `
 })()
 `;
 
-try {
-  const res = await send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true });
-  if (res.exceptionDetails) throw new Error(res.exceptionDetails.exception?.description ?? "evaluate threw");
-  const payload = JSON.parse(res.result.value);
-  if (payload.error) {
-    console.log(`FAILED: ${payload.error}`);
-    process.exit(1);
+/** How many slides a fetched package holds, or null if it will not open. */
+async function slidesIn(buf) {
+  try {
+    const zip = await JSZip.loadAsync(buf);
+    return Object.keys(zip.files).filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n)).length;
+  } catch {
+    return null;
   }
+}
+
+/**
+ * Long enough for OneDrive to commit a merge, short enough to fail a round
+ * rather than hang it. The observed lag on 2026-08-30 was under thirty seconds.
+ */
+const TRIES = expectSlides === null ? 1 : 12;
+
+try {
+  let payload;
+  let slides = null;
+  for (let attempt = 1; attempt <= TRIES; attempt++) {
+    const res = await send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true });
+    if (res.exceptionDetails) throw new Error(res.exceptionDetails.exception?.description ?? "evaluate threw");
+    payload = JSON.parse(res.result.value);
+    if (payload.error) {
+      console.log(`FAILED: ${payload.error}`);
+      process.exit(1);
+    }
+    slides = await slidesIn(Buffer.from(payload.b64, "base64"));
+    if (expectSlides === null || slides === expectSlides) break;
+    console.log(`waiting: deck says ${slides} slide(s), expected ${expectSlides} (attempt ${attempt}/${TRIES})`);
+    await new Promise((r) => setTimeout(r, 5000));
+  }
+
   writeFileSync(out, Buffer.from(payload.b64, "base64"));
   console.log(`from : ${payload.url}`);
-  console.log(`WROTE: ${out} (${payload.size} bytes)`);
+  console.log(`WROTE: ${out} (${payload.size} bytes, ${slides ?? "unreadable"} slide(s))`);
+
+  if (expectSlides !== null && slides !== expectSlides) {
+    // Said loudly, and with a non-zero exit. A stale deck is the failure this
+    // whole option exists for, and it is indistinguishable from a good one
+    // until somebody counts.
+    console.log(
+      `STALE: expected ${expectSlides} slide(s) and the download still serves ${slides}. ` +
+        `OneDrive has not committed the merge — the file written is LAST SAVE, not what is on screen.`,
+    );
+    process.exit(1);
+  }
 } finally {
   ws.close();
 }
