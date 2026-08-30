@@ -56,7 +56,10 @@ describe("the rules this project would be bitten by", () => {
     // — and a sibling project shipped 0.1.0 in four manifests for months with
     // a fully green suite, because nothing had ever asked Microsoft.
     expect(
-      checkManifest(xml.replace("<Version>1.0.0.0</Version>", "<Version>0.1.0</Version>"), "manifest-prod.xml"),
+      checkManifest(
+        xml.replace(`<Version>${DEFINITION.version}</Version>`, "<Version>0.1.0</Version>"),
+        "manifest-prod.xml",
+      ),
     ).toEqual([expect.stringContaining("below 1.0")]);
 
     // A changed GUID is a different add-in: every sideload orphaned, with

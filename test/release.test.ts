@@ -5,6 +5,12 @@ import { describe, expect, it } from "vitest";
 import { RELEASE_ASSETS, assetsPromisedByDocs, releaseProblems } from "../scripts/release-assets.mjs";
 // @ts-expect-error — as above.
 import { withoutHashComments } from "../scripts/without-prose.mjs";
+// @ts-expect-error — as above. Imported so the mutation below anchors on the
+// version the manifest ACTUALLY carries. It was the literal "1.0.0.0", and the
+// first bump made that replace match nothing: the mutation stopped being
+// applied and the check then ran against an unbroken file. Both tests noticed,
+// which is the only reason this was caught during a release rather than after.
+import { DEFINITION } from "../scripts/manifest-source.mjs";
 
 /**
  * What a release ships.
@@ -71,7 +77,8 @@ describe("what a release must never ship", () => {
   it("refuses a manifest Office would reject", () => {
     // Every rule the offline checker holds applies to the file being shipped,
     // not only to the one in the tree.
-    const broken = (name: string) => read(name).replace("<Version>1.0.0.0</Version>", "<Version>0.1.0</Version>");
+    const broken = (name: string) =>
+      read(name).replace(`<Version>${DEFINITION.version}</Version>`, "<Version>0.1.0</Version>");
     expect(releaseProblems(broken, ["manifest-prod.xml"], [])).toEqual([expect.stringContaining("below 1.0")]);
   });
 

@@ -31,8 +31,18 @@ export const ID = "43ebbbac-44ad-42b2-a582-0ef079093e6c";
  * a sibling project shipped `0.1.0` in four manifests for the whole life of the
  * repo because every one of its own tests passed and nothing had ever asked
  * Microsoft. Four parts, because the XML manifest wants `a.b.c.d`.
+ *
+ * **Bumped when the MANIFEST changes, not when the project releases.** That is
+ * the moment Office has to be told an installed add-in has been updated, and it
+ * is the moment AppSource requires a new number: a submission whose version has
+ * not moved is refused as an update.
+ *
+ * 1.0.0.0 → 1.0.1.0 on 2026-08-30, for the first change to this file that a
+ * user's PowerPoint would care about: `HighResolutionIconUrl` moved from the
+ * 80px ribbon icon to the 64px one AppSource actually asks for, and the support
+ * link stopped being a GitHub repository, which a submission refuses.
  */
-export const VERSION = "1.0.0.0";
+export const VERSION = "1.0.1.0";
 
 /**
  * The requirement floor, as the manifests' comment states it.

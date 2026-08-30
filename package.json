@@ -1,6 +1,6 @@
 {
   "name": "ssf-merge",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "private": true,
   "description": "Mail merge for PowerPoint: one template block, one slide set per row, formatting preserved.",
   "type": "module",
