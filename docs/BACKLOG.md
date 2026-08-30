@@ -8,6 +8,14 @@ done.
 Priority is what it costs the product to be without it, not how interesting it
 is to build.
 
+**One list this does not hold.** What an AppSource listing would need is in
+[PUBLISHING.md](PUBLISHING.md). Those are not product features — a privacy
+policy, a seller account, a screenshot at the store's size — and mixing them in
+would put "open a Partner Center account" beside "read a semicolon paste" as
+though they were the same kind of thing. This file is the curated list of what
+the ADD-IN is missing; that one is the curated list of what a SUBMISSION is
+missing. Neither repeats the other.
+
 ## Next
 
 **Nothing is waiting on an answer any more.** This section held the probe

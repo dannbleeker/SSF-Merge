@@ -85,6 +85,7 @@ slide looks finished; `{{Territory}}` does not, and that is the point.
 | [docs/MANUAL.md](docs/MANUAL.md) | How to use it: placeholders, formats, blocks, data, limits |
 | [docs/TEST-KIT.md](docs/TEST-KIT.md) | The real-host round: a template with a chart, SmartArt and pictures, and what to check |
 | [docs/BACKLOG.md](docs/BACKLOG.md) | What is open, what it would cost, and what has been rejected |
+| [docs/PUBLISHING.md](docs/PUBLISHING.md) | What an AppSource listing would need: what is already met, and what is not |
 | [CHANGELOG.md](CHANGELOG.md) | What changed, newest first |
 | [docs/PROBE.md](docs/PROBE.md) | How to run the host probe, and what each answer decides |
 | [docs/SIBLING.md](docs/SIBLING.md) | What we know from PowerChart, what was done about each item, and how new findings get here (`npm run sibling-watch`) |
