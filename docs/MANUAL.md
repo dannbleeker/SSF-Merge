@@ -155,7 +155,7 @@ braces are probably curly quotes — retype them.
 
 Press **Preview the first row**.
 
-![Step 4 of the pane: a card reading "Slide 9 is a preview of the first row. Your template is untouched"](images/step-4-preview.png)
+![Step 4 of the pane: a card reading "Slide 9 is a preview of the first row. Your template is untouched", with "Remove the preview" on the card and a button reading "On to the merge" below it](images/step-4-preview.png)
 
 Ada's row is merged and the result put at the end of your deck, as slide 9. Go
 and look at it. **This is not a mock-up** — it is the ordinary merge run over
@@ -171,14 +171,7 @@ press Preview, after which the button above does the same job.
 
 ### Step 5 — Merge
 
-<!-- These pictures were taken before the forecast moved to the future tense, so
-     this one still reads "3 slides added" where the pane now says "3 slides
-     will be added". The alt text describes the picture as it actually stands
-     rather than as the pane now reads, because a caption that disagrees with
-     the image under it is worse than a picture one release behind. Refresh them
-     with `scripts/manual-shots.mjs` against a local vite. -->
-
-![Step 5 of the pane: "3 rows × 1 slide", a forecast reading "3 slides added after slide 8, leaving 11 slides in the deck", and a button reading "Add 3 slides"](images/step-5-merge.png)
+![Step 5 of the pane: "3 rows × 1 slide", a forecast reading "3 slides will be added after slide 8, leaving 11 slides in the deck", and a button reading "Add 3 slides"](images/step-5-merge.png)
 
 The forecast above the button says where the slides land and how big the deck
 will be afterwards, before you press anything. The button carries the count —
