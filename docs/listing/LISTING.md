@@ -188,7 +188,35 @@ in the browser first, or the pane's text softens.
 
 ## Logo
 
-Met already, and no work needed. AppSource wants **32×32** for the store icon and
-**64×64** for its high-resolution partner on a task pane add-in; the manifest now
-points `IconUrl` at `icon-32.png` and `HighResolutionIconUrl` at `icon-64.png`,
-both of which the icon build already produces.
+There are **three** images, not two, and this section used to say the logo was
+"met already, and no work needed". That was true of the two the manifest names
+and wrong about the third, which is a separate upload on the listing page and is
+marked required.
+
+| Image | Size | Where it goes | Built by |
+| --- | --- | --- | --- |
+| `IconUrl` | 32×32 | `manifest-prod.xml`, served from the site | `npm run icons` |
+| `HighResolutionIconUrl` | 64×64 | `manifest-prod.xml`, served from the site | `npm run icons` |
+| Marketplace icon | 300×300, max 512 KB | uploaded to Partner Center by hand | `npm run icons` |
+
+Upload `docs/listing/marketplace-icon-300.png`. It sits beside the screenshots
+rather than in `public/assets` because no manifest points at it, so serving it
+would put a file on the web that nothing ever requests.
+
+It is the same mark as the ribbon icons, drawn from the same `markPixel`, which
+is what Microsoft asks for: "both images should be of the same logo or icon.
+This way, the user sees the same logo in Microsoft Marketplace and when the
+solution is displayed in Office."
+
+**It is supersampled and the small ones are not.** `markPixel` decides whether a
+pixel is inside the rounded square with a hard yes or no. At sixteen pixels the
+staircase on the corners is invisible; at three hundred, on a listing page, it
+is the first thing you see. The marketplace icon is drawn at 1200 and averaged
+down sixteen samples to a pixel. The averaging is premultiplied by alpha, which
+is not a detail: averaging the colours raw leaves every corner pixel at rgb
+`0,9,19` instead of the true navy `0,37,76`, and that composites over a light
+page as a grey fringe around the icon.
+
+`listing.test.ts` pins all of it: 300×300, a whole PNG rather than a truncated
+one, under 512 KB, byte-identical to what the build draws, and the same mark at
+300 as at 32.

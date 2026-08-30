@@ -128,12 +128,68 @@ export function markPixel(size) {
 /** The sizes Office asks for. 64 is the unified manifest's colour icon. */
 export const SIZES = [16, 32, 64, 80];
 
+/**
+ * The Marketplace icon, which is a listing upload rather than a manifest URL.
+ *
+ * Partner Center asks for 300x300 and at most 512 KB on the offer listing page,
+ * and it is a separate thing from the two icons the manifest names. The Logo
+ * section of `docs/listing/LISTING.md` said the logo needed no work, which was
+ * true of the manifest pair and wrong about this.
+ */
+export const MARKETPLACE = 300;
+
+/**
+ * The mark, drawn at `factor` times the size and averaged back down.
+ *
+ * `markPixel`'s `outside` test is a hard boolean: a pixel is in the rounded
+ * square or it is not. At sixteen pixels nobody can see the staircase on the
+ * corners, and at three hundred, blown up on a listing page, it is the first
+ * thing you see. Averaging 16 samples per pixel gives the corners the partial
+ * coverage they should have had.
+ *
+ * The averaging is PREMULTIPLIED. Outside pixels are transparent black, so
+ * averaging the colour channels raw drags every edge pixel toward black and
+ * rings the icon in grey. Weighting each sample by its own alpha is the
+ * difference between a smooth edge and a dirty one.
+ *
+ * The four sizes above are deliberately NOT drawn this way. They ship, they are
+ * pinned byte-for-byte by `manifest.test.ts`, and a small icon that Office
+ * scales again is better off with hard pixels than with soft ones.
+ */
+export function supersampled(size, factor = 4) {
+  const fine = markPixel(size * factor);
+  return (x, y) => {
+    let r = 0;
+    let g = 0;
+    let b = 0;
+    let a = 0;
+    for (let dy = 0; dy < factor; dy++) {
+      for (let dx = 0; dx < factor; dx++) {
+        const [sr, sg, sb, sa] = fine(x * factor + dx, y * factor + dy);
+        r += sr * sa;
+        g += sg * sa;
+        b += sb * sa;
+        a += sa;
+      }
+    }
+    if (a === 0) return [0, 0, 0, 0];
+    return [Math.round(r / a), Math.round(g / a), Math.round(b / a), Math.round(a / (factor * factor))];
+  };
+}
+
 export function main() {
-  const out = join(dirname(dirname(fileURLToPath(import.meta.url))), "public", "assets");
+  const root = dirname(dirname(fileURLToPath(import.meta.url)));
+  const out = join(root, "public", "assets");
   mkdirSync(out, { recursive: true });
   for (const size of SIZES) {
     writeFileSync(join(out, `icon-${size}.png`), png(size, markPixel(size)));
   }
+  // Beside the screenshots rather than in public/assets: it is uploaded to
+  // Partner Center by hand and no manifest points at it, so serving it from the
+  // site would put a file on the web that nothing ever requests.
+  const listing = join(root, "docs", "listing");
+  mkdirSync(listing, { recursive: true });
+  writeFileSync(join(listing, `marketplace-icon-${MARKETPLACE}.png`), png(MARKETPLACE, supersampled(MARKETPLACE)));
   // The unified manifest wants a monochrome OUTLINE icon as well, and it is a
   // different picture rather than the same one recoloured: it is drawn on a
   // transparent ground and stencilled by the host, so a navy square would come
@@ -146,7 +202,10 @@ export function main() {
       return a === 255 && !isGround ? [255, 255, 255, 255] : [0, 0, 0, 0];
     }),
   );
-  console.log(`icons: ${SIZES.map((s) => `icon-${s}.png`).join(", ")}, icon-outline-32.png`);
+  console.log(
+    `icons: ${SIZES.map((s) => `icon-${s}.png`).join(", ")}, icon-outline-32.png, ` +
+      `marketplace-icon-${MARKETPLACE}.png`,
+  );
 }
 
 if (isMain(import.meta.url)) main();
