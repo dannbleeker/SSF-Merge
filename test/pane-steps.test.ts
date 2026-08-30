@@ -985,6 +985,43 @@ describe("the number above the merge button", () => {
       expect(firstIncludedRow(skipping)?.rows[0]?.Name).toBe("Bo");
     });
 
+    it("ignores a blank column that is on no slide", () => {
+      // A spreadsheet routinely carries columns a template does not use, and
+      // half of them are empty. Dropping a row for one of those would make the
+      // control useless on real data — and it is the pane, not the engine,
+      // that puts the number on the button.
+      const spare = toRecordSet([
+        ["Name", "Renewal", "Note", "Comment"],
+        ["Ada", "no", "kept", ""],
+        ["Bo", "no", "kept", ""],
+      ]);
+      const withSpare = {
+        ...skipping,
+        records: spare,
+        rows: spare.rows.length,
+        columns: [...spare.columns.map((c) => c.name)],
+      };
+      expect(skippedRows(withSpare)).toEqual([]);
+      expect(caution(withSpare, "merge") ?? "").not.toContain("will be left out");
+      // And the count is what it would be without the policy at all — which is
+      // the claim, and not the product: a condition is live on this fixture,
+      // so slides-per-record times rows is the wrong comparison and asserting
+      // it fails on arithmetic that has nothing to do with blank cells.
+      expect(plannedSlides(withSpare)).toBe(plannedSlides({ ...withSpare, onEmpty: "blank" }));
+    });
+
+    it("ignores a field the data has no column for", () => {
+      // An unmatched field is an author's typo and is reported as one. It is
+      // not a blank cell, and treating it as one dropped every row — a merge
+      // deleted by a misspelling, under a caution that in the same breath said
+      // the placeholder would stay on the slides.
+      const misspelled = { ...skipping, slideFields: [["Name"], ["Regoin"], []], fields: ["Name", "Regoin"] };
+      expect(skippedRows(misspelled)).toEqual([]);
+      const said = caution(misspelled, "merge") ?? "";
+      expect(said).toContain("No column for Regoin");
+      expect(said, "and does not also say every row is going").not.toContain("will be left out");
+    });
+
     it("says so when the answer leaves nothing to merge", () => {
       const everyRowBlank = toRecordSet([
         ["Name", "Renewal", "Note"],
