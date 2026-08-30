@@ -26,6 +26,7 @@ one machine on one day does not belong in the repo.
 | `cdp-setfile.mjs` | Puts local files on an `<input type=file>`, including one inside a nested frame. |
 | `close-popup.mjs` | Closes pages whose URL matches a substring. |
 | `close-browser.mjs` | Shuts the whole browser down through CDP `Browser.close`. Use it instead of killing the process. |
+| `force-fallback.mjs` | Makes every host take a modern chart's `mc:Fallback`, so the notice meant for PowerPoint 2013 can be seen in a current one. |
 | `upload-template.mjs` | Uploads a local file into the OneDrive folder currently on screen. |
 | `fetch-deck.mjs` | Downloads the open deck's bytes through the page's own session, and prints its slide count. `--expect-slides N` waits for OneDrive to commit rather than handing back last save. |
 | `verify-package.mjs` | Checks a merged deck, anchored per row to the slide's own title. Knows BOTH kit decks — thirteen checks for the main template, seven for the sunburst — understands a deck that still holds its template, and refuses a deck that is neither. |
@@ -148,6 +149,27 @@ the next launch comes up with a "Restore pages?" bubble sitting over the window
 coordinate will hit instead of the thing it meant to. `close-browser.mjs` closes
 the tabs and then asks CDP for `Browser.close`, which is the same shutdown the
 window's X button runs and records a clean exit.
+
+**Forcing a modern chart's fallback: repoint the namespace, do NOT delete the
+Choice.** The notice SSF Merge writes for hosts too old to draw a chartEx is
+only reached by PowerPoint 2013 and earlier, so seeing it needs the branch
+forced. `mc:Choice` carries a `Requires` naming a namespace prefix; point that
+namespace at a URI nobody understands and every host, current PowerPoint
+included, falls through to the `mc:Fallback`. That is what `force-fallback.mjs`
+does.
+
+Deleting the `mc:Choice` is the obvious alternative and it is a trap.
+`mc:AlternateContent` must carry at least one Choice, so the result is malformed
+— PowerPoint for the web opened one READ ONLY with **"We repaired your
+presentation. The original file is available."** That looks exactly like the
+merged deck being damaged, which is the single finding this kit exists to catch,
+and it is a fact about the mangling. The same run's unmangled deck opened clean,
+which is the check to make before believing any repair prompt you produced
+yourself.
+
+LibreOffice is not a stand-in either. Since 26.8 it imports chartEx and shows
+its own "unsupported chart type" message, so it reads the `mc:Choice` and never
+takes the fallback at all.
 
 **Clear the run crumb between experiments.** The pane keeps an interrupted-run
 record in `localStorage` under `ssf-merge.run.v1`. It is now keyed to the

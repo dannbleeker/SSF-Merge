@@ -233,19 +233,26 @@ is PowerPoint refreshing the chart from that workbook when Excel closes, which i
 where a merge that filled only the chart would revert in front of you. "Did not
 run" and "passed" are different answers.
 
-**The old-PowerPoint fallback notice.** A modern chart carries a rendered picture
-for hosts that cannot draw it, and each merged copy should show a bordered notice
-rather than the template's figures under this recipient's name. That the copies
-carry their OWN pictures is now checked from the bytes — `verify-package.mjs`
-asserts three distinct payloads — so what is left is only whether the notice
-LOOKS right in a host old enough to fall back to it. Nothing from 2016 onwards
-will, so this stays optional.
+**Answered since, and no longer open.**
 
-**Answered since, and no longer open.** The preview step was skipped on
-2026-08-28 and on the first round of 2026-08-30. The third round pressed it and
-left by both routes: **On to the merge**, which removed the two slides and landed
-on step 5 with the deck back to 3, and **Remove the preview** on the card, which
-removed them and stayed on step 4. Both behaved.
+The preview step was skipped on 2026-08-28 and on the first round of 2026-08-30.
+The third round pressed it and left by both routes: **On to the merge**, which
+removed the two slides and landed on step 5 with the deck back to 3, and **Remove
+the preview** on the card, which removed them and stayed on step 4.
+
+The **old-PowerPoint fallback notice** was seen on 2026-08-30, in a current
+PowerPoint, by forcing the branch — `node test-kit/driver/force-fallback.mjs
+<deck>` repoints the namespace the `mc:Choice` requires so every host falls
+through to the `mc:Fallback`. All three merged copies drew the notice, bordered
+and legible, and the deck opened with no repair prompt. It was centred in its
+frame off the back of that: the shape inherits the chart's whole area, and the
+sentence had been sitting along the top edge of it.
+
+Read the driver's README before repeating it. Deleting the `mc:Choice` instead
+of repointing it produces a malformed file that PowerPoint opens READ ONLY with
+"We repaired your presentation" — which reads exactly like the failure this kit
+exists to find, and is not one. LibreOffice is not a stand-in either: since 26.8
+it reads the chartEx and shows its own message rather than taking the fallback.
 
 ## The second deck: the modern chart
 
@@ -279,12 +286,22 @@ than scored, because a red that means nothing is worse than no red.
 4. **The inner ring still reads `Existing` and `New`.**
 5. **Right-click ▸ Edit Data**, close Excel, look again — as with the main deck,
    this is where a half-merge shows itself, and it needs desktop PowerPoint.
-6. **Open it in an old PowerPoint if you have one to hand.** A modern chart
-   carries a rendered picture for hosts that cannot draw it, and that picture is
-   the TEMPLATE's data — another recipient's figures under this recipient's
-   name. Each merged copy should show a bordered notice saying the chart needs a
-   newer PowerPoint instead. Nothing from 2016 onwards will ever show it, so
-   this one is genuinely optional.
+6. **The notice for a host too old to draw the chart.** A modern chart carries a
+   rendered picture for those hosts, and that picture is the TEMPLATE's data —
+   another recipient's figures under this recipient's name. Each merged copy
+   should show a bordered notice instead, centred in the chart's frame.
+
+   You do not need an old PowerPoint, and 2016 onwards will never show it on its
+   own. Force the branch and any host will:
+
+   ```bash
+   node test-kit/driver/force-fallback.mjs test-kit/out/round-<date>-modern-chart.pptx
+   ```
+
+   Open what it writes. The merged copies should read _"This chart needs a newer
+   version of PowerPoint"_ — not a chart, and not a hole. The template slide
+   keeps its own picture and still draws the sunburst, which is how you know the
+   forcing worked rather than broke something.
 
 The deck was recorded on a machine with think-cell installed, which stamps every
 deck it touches. `test-kit/strip-thinkcell.py` is the one edit made to the file
