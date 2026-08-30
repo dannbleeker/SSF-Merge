@@ -50,6 +50,46 @@ describe("error text that reaches a user is bounded", () => {
     expect(readable(null)).toBe("the host raised nothing this pane can describe.");
   });
 
+  it("names a circular object rather than raising while reporting a raise", () => {
+    // An Office error object can carry a cycle, and `JSON.stringify` throws on
+    // one. A reporter that raises while reporting a raise loses both the
+    // original failure and the pane, so this branch answers instead.
+    const cyclic: Record<string, unknown> = { code: 5 };
+    cyclic.self = cyclic;
+    expect(readable(cyclic)).toBe("the host raised something this pane could not read.");
+  });
+
+  it("names a thrown function instead of printing its source at the user", () => {
+    // `String(fn)` prints the whole body into the sentence. This is a caller's
+    // slip rather than a host failure, and it says so — `formatValue` in
+    // `trace.ts` gives the same answer for the same reason.
+    expect(readable(() => 1)).toBe("the host raised a function, which is a bug in this add-in.");
+  });
+
+  it("reads the primitives a throw can be, each as itself", () => {
+    /**
+     * One `String()` over "everything left" is the call that put
+     * "[object Object]" on screen in the first place, so each of these is named
+     * by its own branch. They were reachable and untested: this file is on the
+     * path of every failure the pane reports, and was its worst-covered by a
+     * wide margin.
+     */
+    expect(readable(0)).toBe("0");
+    expect(readable(false)).toBe("false");
+    expect(readable(10n)).toBe("10");
+    expect(readable(Symbol("InvalidArgument"))).toBe("Symbol(InvalidArgument)");
+  });
+
+  it("caps every shape, not only an Error's message", () => {
+    // `short` is applied per branch rather than once at the exit, so a branch
+    // added without it is a branch with no cap. A 200k string thrown bare is
+    // the case that reaches the pane through `state.notice` to a DOM node.
+    const huge = "B".repeat(200_000);
+    expect(readable(huge).length).toBeLessThan(ERROR_CHARS + 60);
+    expect(readable({ message: huge }).length).toBeLessThan(ERROR_CHARS + 60);
+    expect(readable({ note: huge }).length).toBeLessThan(ERROR_CHARS + 60);
+  });
+
   it("does not cut a message that is exactly at the limit", () => {
     const exact = "A".repeat(ERROR_CHARS);
     expect(short(exact)).toBe(exact);
