@@ -23,10 +23,20 @@ addresses, salaries, patient identifiers.
   pane cannot navigate off it, and no `WebApplicationInfo`, so it requests no
   Microsoft identity or Graph scope.
 
-Two backlog items — an Excel table through Microsoft Graph, and saving one file
-per recipient to OneDrive — would each add a network destination and a token.
-**Neither is built.** This page said they were, in the present tense, until
-2026-08-29. When either lands, this section is part of the work.
+This is now a decision rather than a state the project happens to be in. The
+two backlog items that would each have added a network destination and a token
+— an Excel table through Microsoft Graph, and saving one file per recipient to
+OneDrive — were both dropped by the owner, the second of them on 2026-08-30 and
+explicitly on the strength of this page: Microsoft publishes no read-only
+permission for the Excel API, so reading a table would have meant asking the
+user for write access to their files. `docs/BACKLOG.md` has the full reasoning
+and what would make either worth revisiting.
+
+Anything that changes that stands as a change to this section as much as to the
+code. This page said both features existed, in the present tense, until
+2026-08-29 — which is the failure to watch for here: a security page is read by
+people deciding whether to trust the tool, and it is the last page anyone thinks
+to update.
 
 ## Handling untrusted input
 

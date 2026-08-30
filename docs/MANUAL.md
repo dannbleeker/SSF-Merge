@@ -336,13 +336,23 @@ PowerPoint answers with at that instant.
 
 ## Your data
 
-*Partly planned.* Pasting works; the other two sources are still to come.
+*Pasting works.* One of the two other sources once listed here has been dropped
+outright, and the row says so rather than disappearing — a feature that was
+promised and then decided against is worth telling the reader about.
 
 | Source | State |
 | --- | --- |
 | Paste a range copied from Excel | built — step 2 of the pane |
 | A .csv or .xlsx file | planned |
-| An Excel table on OneDrive or SharePoint via Microsoft Graph | planned |
+| An Excel table on OneDrive or SharePoint via Microsoft Graph | **not planned** |
+
+Reading a table straight out of a workbook on OneDrive or SharePoint was the
+highest-priority thing on this project's backlog and was dropped on 2026-08-30.
+It is not a difficulty: Microsoft publishes no read-only permission for the
+Excel API, so an add-in that only ever reads your rows would still have to ask
+you to let it write to all of your files. This one makes no network calls at
+all, and that is worth more than a shorter step 2. `docs/BACKLOG.md` records the
+reasoning in full.
 
 Select the range in Excel, copy, and paste into the box on step 2. That arrives
 tab-separated and is read as such; a comma-separated paste is read too. The
