@@ -1196,3 +1196,41 @@ export function includedRecords(state: PaneState): RecordSet | undefined {
   const rows = state.records.rows.filter((_, i) => rowIncluded(state, i));
   return { columns: state.records.columns, rows };
 }
+
+/**
+ * The three collapsible controls on the merge step, and the one place that
+ * knows they exist.
+ *
+ * Each is a button that toggles a flag on the state and a body drawn only when
+ * that flag is set, and until 2026-08-30 each was written out three times: a
+ * builder in `render.ts`, a `data-action` branch in `main.ts`, and a key here.
+ * Three copies of one fact, added one at a time — the row picker, then the
+ * conditions, then the blank-cell control — and each addition had to find all
+ * three places by memory.
+ *
+ * The KEY is the `data-action` the button carries and the VALUE is the state
+ * field it flips, so the click handler needs no branch per control and the
+ * renderer needs no flag lookup of its own. A fourth control is one entry.
+ *
+ * Read through `disclosureKey`, never by indexing this directly: the key comes
+ * off a DOM attribute, so `constructor` and `__proto__` reach
+ * `Object.prototype` and answer something.
+ */
+export const DISCLOSURES = {
+  rows: "rowsOpen",
+  conditions: "conditionsOpen",
+  empties: "emptiesOpen",
+} as const satisfies Record<string, keyof PaneState>;
+
+export type DisclosureKind = keyof typeof DISCLOSURES;
+
+/**
+ * The state field a `data-action` toggles, or undefined if it toggles nothing.
+ *
+ * `hasOwnProperty`, because the argument is whatever string was on the clicked
+ * element: `"constructor" in DISCLOSURES` is true, and a bare lookup would
+ * hand the caller a function to treat as a state key.
+ */
+export function disclosureKey(action: string): (typeof DISCLOSURES)[DisclosureKind] | undefined {
+  return Object.prototype.hasOwnProperty.call(DISCLOSURES, action) ? DISCLOSURES[action as DisclosureKind] : undefined;
+}

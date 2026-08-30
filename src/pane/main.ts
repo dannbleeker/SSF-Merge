@@ -27,6 +27,7 @@ import {
   EMPTY_DRAFT,
   blockedReason,
   chosenBlock,
+  disclosureKey,
   fieldToken,
   pictureColumns,
   firstIncludedRow,
@@ -226,18 +227,12 @@ function onClick(event: Event): void {
     void useBlock(action);
     return;
   }
-  if (action === "rows") {
-    state = { ...state, rowsOpen: !state.rowsOpen };
-    draw();
-    return;
-  }
-  if (action === "conditions") {
-    state = { ...state, conditionsOpen: !state.conditionsOpen };
-    draw();
-    return;
-  }
-  if (action === "empties") {
-    state = { ...state, emptiesOpen: !state.emptiesOpen };
+  // The three collapsible controls, from the one table that knows they exist.
+  // Three branches stood here, identical but for the key they flipped, and a
+  // fourth control meant remembering to add a fourth.
+  const open = disclosureKey(action);
+  if (open) {
+    state = { ...state, [open]: !state[open] };
     draw();
     return;
   }

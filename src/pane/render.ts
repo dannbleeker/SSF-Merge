@@ -42,8 +42,9 @@ import {
   statusOf,
   visibleRows,
   unmatchedFields,
+  DISCLOSURES,
 } from "./steps.js";
-import type { OrangeHolder, PaneState, StepId } from "./steps.js";
+import type { DisclosureKind, OrangeHolder, PaneState, StepId } from "./steps.js";
 import {
   blockName,
   blockSummary,
@@ -737,110 +738,151 @@ function insertControl(doc: Document, state: PaneState): HTMLElement {
  * opens this pays one line for it. The line states the current ANSWER rather
  * than naming the feature.
  */
-function emptyCellPicker(doc: Document, state: PaneState): HTMLElement {
-  const wrap = el(doc, "div", { class: "conditions" });
+/**
+ * The wrapper class each disclosure draws into.
+ *
+ * A `Record<DisclosureKind, …>`, so a fourth control cannot be added without
+ * answering this question — the class is a CSS fact and does not belong in the
+ * state table over in `steps.ts`.
+ *
+ * `empties` deliberately shares the conditions styling. They are the same
+ * shape on screen — a summary line that opens into one labelled control — and
+ * a second identical block of CSS is a second block to keep in step.
+ */
+const DISCLOSURE_CLASS: Record<DisclosureKind, string> = {
+  rows: "rows",
+  conditions: "conditions",
+  empties: "conditions",
+};
+
+/**
+ * A collapsible control: a line that states the current answer, and a body.
+ *
+ * The three on the merge step were written out separately and drifted in the
+ * small ways separate copies do — one used a local `const summary` and the
+ * others inlined it, one checked its own open flag twice. What they share is
+ * the whole skeleton: a wrapper, a toggle button carrying the `data-action`
+ * the click handler dispatches on, and a body drawn only when open.
+ *
+ * `body` is a THUNK rather than an array. The row picker's body walks the
+ * records and builds up to sixty checkboxes; building that to throw it away on
+ * every draw of a shut control is work nobody asked for, and the shut state is
+ * the common one.
+ *
+ * The shut label is the caller's because it STATES THE ANSWER — "All 3 rows",
+ * "2 slides conditional", "A blank cell leaves a blank" — which is what makes
+ * these discoverable without being open. A summary that says nothing is a
+ * control nobody finds.
+ */
+function disclosure(
+  doc: Document,
+  kind: DisclosureKind,
+  state: PaneState,
+  labels: { shut: string; open: string },
+  body: () => HTMLElement[],
+): HTMLElement {
+  const wrap = el(doc, "div", { class: DISCLOSURE_CLASS[kind] });
+  const open = state[DISCLOSURES[kind]] === true;
   wrap.append(
     el(doc, "button", {
-      class: "back empties-toggle",
-      text: state.emptiesOpen ? "Hide what a blank cell does" : emptyCellSummary(state),
-      attrs: { "data-action": "empties" },
+      class: `back ${kind}-toggle`,
+      text: open ? labels.open : labels.shut,
+      attrs: { "data-action": kind },
     }),
   );
-  if (!state.emptiesOpen) return wrap;
-
-  wrap.append(
-    el(doc, "p", {
-      class: "muted",
-      text: "A cell with nothing in it. Not the same as a field with no column at all — that one always stays on the slide, whatever this says.",
-    }),
-  );
-
-  const label = el(doc, "label", { class: "field" });
-  label.append(el(doc, "span", { class: "caption", text: "When a cell is blank" }));
-  const select = el(doc, "select", { attrs: { "data-empty": "onEmpty" } });
-  const choices: [string, string][] = [
-    ["blank", "Leave the space empty"],
-    ["keep", "Show the field, like {{Notes}}"],
-    ["skip", "Leave the whole row out"],
-  ];
-  for (const [value, text] of choices) {
-    const option = el(doc, "option", { text, attrs: { value } });
-    if ((state.onEmpty ?? "blank") === value) option.setAttribute("selected", "");
-    select.append(option);
-  }
-  select.value = state.onEmpty ?? "blank";
-  label.append(select);
-  wrap.append(label);
+  if (open) for (const node of body()) wrap.append(node);
   return wrap;
+}
+
+function emptyCellPicker(doc: Document, state: PaneState): HTMLElement {
+  return disclosure(
+    doc,
+    "empties",
+    state,
+    { shut: emptyCellSummary(state), open: "Hide what a blank cell does" },
+    () => {
+      const label = el(doc, "label", { class: "field" });
+      label.append(el(doc, "span", { class: "caption", text: "When a cell is blank" }));
+      const select = el(doc, "select", { attrs: { "data-empty": "onEmpty" } });
+      const choices: [string, string][] = [
+        ["blank", "Leave the space empty"],
+        ["keep", "Show the field, like {{Notes}}"],
+        ["skip", "Leave the whole row out"],
+      ];
+      for (const [value, text] of choices) {
+        const option = el(doc, "option", { text, attrs: { value } });
+        if ((state.onEmpty ?? "blank") === value) option.setAttribute("selected", "");
+        select.append(option);
+      }
+      select.value = state.onEmpty ?? "blank";
+      label.append(select);
+      return [
+        el(doc, "p", {
+          class: "muted",
+          text: "A cell with nothing in it. Not the same as a field with no column at all — that one always stays on the slide, whatever this says.",
+        }),
+        label,
+      ];
+    },
+  );
 }
 
 function conditionPicker(doc: Document, state: PaneState): HTMLElement {
   const slides = blockSlides(state);
-  const wrap = el(doc, "div", { class: "conditions" });
   const set = slides.filter((n) => conditionFor(state, n) !== "").length;
+  const shut = set === 0 ? "Every slide, every row — add a condition" : `${plural(set, "slide")} conditional — change`;
 
-  wrap.append(
-    el(doc, "button", {
-      class: "back conditions-toggle",
-      text: state.conditionsOpen
-        ? "Hide the conditions"
-        : set === 0
-          ? "Every slide, every row — add a condition"
-          : `${plural(set, "slide")} conditional — change`,
-      attrs: { "data-action": "conditions" },
-    }),
-  );
-  if (!state.conditionsOpen) return wrap;
-
-  wrap.append(
-    el(doc, "p", {
-      class: "muted",
-      text: "A conditional slide is left out for a row whose cell in that column is empty, or reads false, no or 0.",
-    }),
-  );
-
-  const list = el(doc, "ul", { class: "conditionlist" });
-  for (const slide of slides) {
-    const item = el(doc, "li");
-    const label = el(doc, "label");
-    label.append(el(doc, "span", { class: "caption", text: `Slide ${slide}` }));
-    const select = el(doc, "select", { attrs: { "data-condition": String(slide) } });
-    const chosen = conditionFor(state, slide);
-    // "Always" first and selected by default, so the control opens saying what
-    // is true rather than proposing the first column as an answer.
-    select.append(el(doc, "option", { text: "Always", value: "" }));
-    for (const column of state.columns ?? []) {
-      select.append(el(doc, "option", { text: `Only when ${column}`, value: column }));
-    }
-    // A column the data no longer has. Kept as an option rather than dropped,
-    // because dropping it would silently rewrite the user's answer to "Always"
-    // and change what the merge produces with nothing said.
-    if (chosen !== "" && !(state.columns ?? []).includes(chosen)) {
-      select.append(el(doc, "option", { text: `Only when ${chosen} (no such column)`, value: chosen }));
-    }
-    // The PROPERTY, not the attribute — the pane rebuilds itself on every
-    // change, and `selected` as an attribute is the default a control reverts
-    // to. Same reason the row checkboxes set `.checked`.
-    select.value = chosen;
-    label.append(select);
-    item.append(label);
-    list.append(item);
-  }
-  wrap.append(list);
-
-  const dangling = danglingConditions(state);
-  if (dangling.length > 0) {
-    wrap.append(
+  return disclosure(doc, "conditions", state, { shut, open: "Hide the conditions" }, () => {
+    const nodes: HTMLElement[] = [
       el(doc, "p", {
-        class: "blocked",
-        // Says what will HAPPEN, not just that something is wrong. The engine
-        // emits the slide anyway, and a user who expects it to be left out
-        // would otherwise find out by counting slides in the output.
-        text: `No column for ${dangling.join(", ")} — those slides will be included for every row.`,
+        class: "muted",
+        text: "A conditional slide is left out for a row whose cell in that column is empty, or reads false, no or 0.",
       }),
-    );
-  }
-  return wrap;
+    ];
+
+    const list = el(doc, "ul", { class: "conditionlist" });
+    for (const slide of slides) {
+      const item = el(doc, "li");
+      const label = el(doc, "label");
+      label.append(el(doc, "span", { class: "caption", text: `Slide ${slide}` }));
+      const select = el(doc, "select", { attrs: { "data-condition": String(slide) } });
+      const chosen = conditionFor(state, slide);
+      // "Always" first and selected by default, so the control opens saying what
+      // is true rather than proposing the first column as an answer.
+      select.append(el(doc, "option", { text: "Always", value: "" }));
+      for (const column of state.columns ?? []) {
+        select.append(el(doc, "option", { text: `Only when ${column}`, value: column }));
+      }
+      // A column the data no longer has. Kept as an option rather than dropped,
+      // because dropping it would silently rewrite the user's answer to "Always"
+      // and change what the merge produces with nothing said.
+      if (chosen !== "" && !(state.columns ?? []).includes(chosen)) {
+        select.append(el(doc, "option", { text: `Only when ${chosen} (no such column)`, value: chosen }));
+      }
+      // The PROPERTY, not the attribute — the pane rebuilds itself on every
+      // change, and `selected` as an attribute is the default a control reverts
+      // to. Same reason the row checkboxes set `.checked`.
+      select.value = chosen;
+      label.append(select);
+      item.append(label);
+      list.append(item);
+    }
+    nodes.push(list);
+
+    const dangling = danglingConditions(state);
+    if (dangling.length > 0) {
+      nodes.push(
+        el(doc, "p", {
+          class: "blocked",
+          // Says what will HAPPEN, not just that something is wrong. The engine
+          // emits the slide anyway, and a user who expects it to be left out
+          // would otherwise find out by counting slides in the output.
+          text: `No column for ${dangling.join(", ")} — those slides will be included for every row.`,
+        }),
+      );
+    }
+    return nodes;
+  });
 }
 
 /**
@@ -864,60 +906,55 @@ const ROW_LIST_CAP = 60;
 
 function rowPicker(doc: Document, state: PaneState): HTMLElement {
   const records = state.records;
-  const wrap = el(doc, "div", { class: "rows" });
   const total = records ? records.rows.length : 0;
   const taken = total - includedCount(state);
+  const shut =
+    taken === 0 ? `All ${plural(total, "row")} — choose which` : `${plural(taken, "row")} taken out — choose which`;
 
-  const summary = el(doc, "button", {
-    class: "back rows-toggle",
-    text: state.rowsOpen
-      ? "Hide the rows"
-      : taken === 0
-        ? `All ${plural(total, "row")} — choose which`
-        : `${plural(taken, "row")} taken out — choose which`,
-    attrs: { "data-action": "rows" },
-  });
-  wrap.append(summary);
-  if (!state.rowsOpen || !records) return wrap;
+  return disclosure(doc, "rows", state, { shut, open: "Hide the rows" }, () => {
+    // Open with nothing to list. The flag says open and there is no data to
+    // draw, which is reachable by going back and clearing the paste box.
+    if (!records) return [];
 
-  const label = el(doc, "label", { class: "field" });
-  label.append(el(doc, "span", { class: "caption", text: "Search the rows" }));
-  label.append(
-    el(doc, "input", {
-      value: state.rowSearch ?? "",
-      attrs: { type: "text", autocomplete: "off", "data-field": "rowSearch" },
-    }),
-  );
-  wrap.append(label);
-
-  const matches = visibleRows(records, state.rowSearch ?? "");
-  const shown = matches.slice(0, ROW_LIST_CAP);
-  const list = el(doc, "ul", { class: "rowlist" });
-  for (const index of shown) {
-    const item = el(doc, "li");
-    const line = el(doc, "label");
-    const box = el(doc, "input", { attrs: { type: "checkbox", "data-row": String(index) } });
-    // The PROPERTY, not the attribute — same reason the two slide-number boxes
-    // use it: `checked` as an attribute is the default a control reverts to,
-    // and this pane rebuilds itself on every change.
-    box.checked = rowIncluded(state, index);
-    line.append(box);
-    line.append(el(doc, "span", { text: rowLabel(records, index) }));
-    item.append(line);
-    list.append(item);
-  }
-  wrap.append(list);
-
-  if (matches.length === 0) {
-    wrap.append(el(doc, "p", { class: "muted", text: "No row matches that." }));
-  } else if (matches.length > shown.length) {
-    // Counted, never silently dropped.
-    wrap.append(
-      el(doc, "p", {
-        class: "muted",
-        text: `Showing ${shown.length} of ${plural(matches.length, "match", "matches")} — search to narrow it.`,
+    const label = el(doc, "label", { class: "field" });
+    label.append(el(doc, "span", { class: "caption", text: "Search the rows" }));
+    label.append(
+      el(doc, "input", {
+        value: state.rowSearch ?? "",
+        attrs: { type: "text", autocomplete: "off", "data-field": "rowSearch" },
       }),
     );
-  }
-  return wrap;
+    const nodes: HTMLElement[] = [label];
+
+    const matches = visibleRows(records, state.rowSearch ?? "");
+    const shown = matches.slice(0, ROW_LIST_CAP);
+    const list = el(doc, "ul", { class: "rowlist" });
+    for (const index of shown) {
+      const item = el(doc, "li");
+      const line = el(doc, "label");
+      const box = el(doc, "input", { attrs: { type: "checkbox", "data-row": String(index) } });
+      // The PROPERTY, not the attribute — same reason the two slide-number boxes
+      // use it: `checked` as an attribute is the default a control reverts to,
+      // and this pane rebuilds itself on every change.
+      box.checked = rowIncluded(state, index);
+      line.append(box);
+      line.append(el(doc, "span", { text: rowLabel(records, index) }));
+      item.append(line);
+      list.append(item);
+    }
+    nodes.push(list);
+
+    if (matches.length === 0) {
+      nodes.push(el(doc, "p", { class: "muted", text: "No row matches that." }));
+    } else if (matches.length > shown.length) {
+      // Counted, never silently dropped.
+      nodes.push(
+        el(doc, "p", {
+          class: "muted",
+          text: `Showing ${shown.length} of ${plural(matches.length, "match", "matches")} — search to narrow it.`,
+        }),
+      );
+    }
+    return nodes;
+  });
 }

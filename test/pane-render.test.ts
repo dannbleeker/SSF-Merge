@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { render } from "../src/pane/render.js";
 import type { PaneState } from "../src/pane/steps.js";
-import { readPastedTable, STEPS } from "../src/pane/steps.js";
+import { DISCLOSURES, readPastedTable, STEPS } from "../src/pane/steps.js";
 import { toRecordSet } from "../src/core/data/recordset.js";
 
 const ready: PaneState = {
@@ -1039,5 +1039,73 @@ describe("nothing a user supplies may push the pane sideways", () => {
     // of, and a row label is one line with an ellipsis at 320px.
     expect(css).toMatch(/\.runlog pre \{[^}]*white-space: pre/);
     expect(css).toMatch(/\.rowlist label \{[^}]*white-space: nowrap/);
+  });
+});
+
+describe("the collapsible controls agree with the table that names them", () => {
+  /**
+   * `DISCLOSURES` in `steps.ts` is the one place that knows these controls
+   * exist: the renderer builds each from it and the click handler dispatches on
+   * it. That only holds while the two ends actually agree, and a shared table
+   * with a call site nobody wired is a failure this project has recorded before
+   * — a legend predicate extracted, two of three readers changed, and the third
+   * drawing into a reservation of zero.
+   *
+   * So: every kind in the table draws a toggle carrying its own `data-action`,
+   * and every toggle drawn is a kind in the table. A fourth entry with no
+   * builder fails here, and a builder emitting an action the handler cannot
+   * dispatch fails here too.
+   */
+  const merging: PaneState = {
+    ...ready,
+    records: toRecordSet([
+      ["Name", "City"],
+      ["Ada", "London"],
+    ]),
+    columns: ["Name", "City"],
+    rows: 1,
+  };
+
+  it("draws one toggle per kind in the table", () => {
+    const pane = paneFor(merging, "merge");
+    for (const kind of Object.keys(DISCLOSURES)) {
+      const toggle = pane.querySelector(`button[data-action="${kind}"]`);
+      expect(toggle, `no toggle for the "${kind}" disclosure`).not.toBeNull();
+      // The class the stylesheet hangs off, derived from the same key.
+      expect(toggle?.className, `the "${kind}" toggle is not classed from its key`).toContain(`${kind}-toggle`);
+    }
+  });
+
+  it("draws no toggle the click handler could not dispatch", () => {
+    const pane = paneFor(merging, "merge");
+    const kinds = new Set(Object.keys(DISCLOSURES));
+    const drawn = Array.from(pane.querySelectorAll("button[class*='-toggle']")).map((n) =>
+      n.getAttribute("data-action"),
+    );
+    // Vacuity: a selector that matched nothing would pass this forever.
+    expect(drawn.length, "no disclosure toggles were drawn at all").toBe(kinds.size);
+    for (const action of drawn) {
+      expect(action, "a toggle carries no data-action").not.toBeNull();
+      expect(kinds, `a toggle dispatches on "${action}", which is not in DISCLOSURES`).toContain(action);
+    }
+  });
+
+  it("opens only the one that was asked for", () => {
+    // The whole risk of a computed key: one flag flipping two bodies. Each
+    // kind is opened alone and the others must stay shut, which is visible as
+    // the body each one draws.
+    const bodies: Record<string, string> = {
+      rows: ".rowlist",
+      conditions: ".conditionlist",
+      empties: "select[data-empty]",
+    };
+    for (const [kind, key] of Object.entries(DISCLOSURES)) {
+      const pane = paneFor({ ...merging, [key]: true }, "merge");
+      for (const [other, selector] of Object.entries(bodies)) {
+        const body = pane.querySelector(selector);
+        if (other === kind) expect(body, `opening "${kind}" drew no body`).not.toBeNull();
+        else expect(body, `opening "${kind}" also opened "${other}"`).toBeNull();
+      }
+    }
   });
 });
