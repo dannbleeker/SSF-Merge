@@ -36,6 +36,7 @@ import {
 import type { Block, PaneState, StepId } from "../src/pane/steps.js";
 import { toRecordSet, type RecordSet } from "../src/core/data/recordset.js";
 import { buildPlan, slideCount } from "../src/core/merge/plan.js";
+import { blockMoved } from "../src/pane/transitions.js";
 import { fieldPattern } from "../src/core/merge/text.js";
 import { imageMode } from "../src/core/merge/images.js";
 
@@ -1020,6 +1021,20 @@ describe("the number above the merge button", () => {
       const said = caution(misspelled, "merge") ?? "";
       expect(said).toContain("No column for Regoin");
       expect(said, "and does not also say every row is going").not.toContain("will be left out");
+    });
+
+    it("stops counting the moment the block moves", () => {
+      // The count is read off a SNAPSHOT of the block's slides. Typing in the
+      // slide-number boxes runs `blockMoved`, which clears the flat field list
+      // — and left the per-slide one standing, so the pane went on dropping a
+      // row for a blank in a `{{Note}}` on a slide the state no longer named.
+      //
+      // Asserted here rather than through the pane, because after a block move
+      // the user is on the template step, where the caution does not render at
+      // all: a wiring test would pass against the bug.
+      const moved = blockMoved(skipping);
+      expect(moved.fields, "the flat list goes, as it always did").toEqual([]);
+      expect(skippedRows({ ...moved, draft: { from: "8", to: "9" } })).toEqual([]);
     });
 
     it("says so when the answer leaves nothing to merge", () => {

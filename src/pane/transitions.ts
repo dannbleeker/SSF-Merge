@@ -20,7 +20,8 @@ import type { PaneState } from "./steps.js";
  * Everything that stops being true when the block moves.
  *
  * The block is the slides a merge repeats. Move it and the placeholders read
- * off the old slides are stale, the picture fields read with them are stale,
+ * off the old slides are stale, the picture fields and the per-slide field
+ * lists read with them are stale,
  * the conditions are stale because they are keyed by SLIDE NUMBER — "slide 5
  * only when Renewal" is about the fifth slide of the deck, and a block starting
  * one slide later would apply it to a different slide — and a finished run's
@@ -40,6 +41,11 @@ export function blockMoved(state: PaneState): PaneState {
     block: undefined,
     fields: [],
     imageFields: [],
+    // Read off the same slides in the same pass, and just as stale. Left
+    // standing, `skippedRows` went on counting rows against the OLD block's
+    // per-slide fields — dropping a row for a blank in a `{{Note}}` that is on
+    // a slide this state no longer names, and saying so above the button.
+    slideFields: undefined,
     conditions: undefined,
     changedSinceMerge: true,
     // The note names a token that was put on a slide in the OLD block. Left
