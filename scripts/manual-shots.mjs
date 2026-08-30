@@ -5,8 +5,14 @@
  * Separate from `pane-shots.mjs` on purpose, and the split is by JOB rather
  * than by convenience. That script is an AUDIT: every state the pane can
  * reach, both widths, both themes, measured for overflow and contrast, exit 1
- * on a finding. This one is a DOCS BUILD: six pictures, one width, one theme,
- * committed to the repository so GitHub can render them.
+ * on a finding. This one is a DOCS BUILD: one picture per state in `STATES`
+ * below, one width, one theme, committed to the repository so GitHub can
+ * render them.
+ *
+ * The count is deliberately not written out here. It used to be, and it said
+ * six while `STATES` held eight — a number in a comment beside the list it
+ * counts is a number that drifts, and this file's whole subject is a picture
+ * that disagrees with what it claims to show.
  *
  * Wiring the manual to the audit's output would have coupled a document to a
  * tool whose whole point is to grow — 172 shots today — and would have put the
@@ -15,16 +21,19 @@
  *   npx vite --port 5199 --strictPort &
  *   node scripts/manual-shots.mjs
  *
- * **The six states tell ONE story, and the numbers across them agree.** A deck
- * of 8 slides, a template on slide 3, three rows of three columns, three slides
+ * **The states tell ONE story, and the numbers across them agree.** A deck of 8
+ * slides, a template on slide 3, three rows of three columns, three slides
  * added, eleven in the deck afterwards, nine placeholders filled — three
- * paragraphs a slide, three slides. `pane-shots.mjs` has a comment recording
- * what it cost to get this wrong twice there: a fixture pairing a pre-merge
- * deck size with a post-merge count drew `Remove slides -707 to 12`, and
- * somebody was going to spend a morning hunting a product bug that did not
- * exist. In a MANUAL that is worse than a wasted morning — the reader has no
- * way to know the screenshot is lying, and they will type the numbers back at
- * you when they report it.
+ * paragraphs a slide, three slides. Most of them walk that merge through in
+ * order; the last two are the same deck going WRONG, an unmatched field at the
+ * step where it is cheap to fix and at the step where it is not. They spread
+ * the same fixture as the rest, so they are not a second story with numbers of
+ * their own. `pane-shots.mjs` has a comment recording what it cost to get this
+ * wrong twice there: a fixture pairing a pre-merge deck size with a post-merge
+ * count drew `Remove slides -707 to 12`, and somebody was going to spend a
+ * morning hunting a product bug that did not exist. In a MANUAL that is worse
+ * than a wasted morning — the reader has no way to know the screenshot is
+ * lying, and they will type the numbers back at you when they report it.
  *
  * One theme and one width, both chosen rather than defaulted. **Light**,
  * because it is what PowerPoint opens as, and a manual is not the place to
