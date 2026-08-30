@@ -298,6 +298,89 @@ describe("which delimiter a paste uses", () => {
     ]);
   });
 
+  it("reads a semicolon-separated paste, which is what European Excel writes", () => {
+    // On a machine whose locale uses the comma as a decimal point — Danish,
+    // German, French — Excel's CSV separator is `;`. Before this, such a paste
+    // was ONE column named "First;Last", every placeholder unmatched.
+    expect(parseDelimited("First;Last\nAda;Lovelace")).toEqual([
+      ["First", "Last"],
+      ["Ada", "Lovelace"],
+    ]);
+  });
+
+  it("prefers a comma to a semicolon, so nothing that parses today moves", () => {
+    // The whole safety argument for adding the semicolon at all: it is only
+    // reached when the first row holds neither a tab nor a comma, so the new
+    // branch is reachable only where the old rule already gave one column.
+    //
+    // `1,5` is a European decimal and `;` is its separator — but this header
+    // has a comma, so the comma wins and the row splits on it. That is what
+    // this paste did before and has to keep doing.
+    expect(parseDelimited("a,b\nx;y,z")).toEqual([
+      ["a", "b"],
+      ["x;y", "z"],
+    ]);
+    // And a tab still beats both.
+    expect(parseDelimited("a\tb\nx;y\tz,w")).toEqual([
+      ["a", "b"],
+      ["x;y", "z,w"],
+    ]);
+  });
+
+  it("opens a quoted cell that follows a SEMICOLON too", () => {
+    // The sniff scanner and the delimiter list are one fact: a candidate that
+    // can be chosen has to be a cell boundary the scanner honours, or a quoted
+    // cell after it leaves the scanner inside a quote for the rest of the
+    // paste. That is the defect two tests above, in a third delimiter.
+    expect(parseDelimited('a;"b\nc";d\nx;y;z')).toEqual([
+      ["a", "b\nc", "d"],
+      ["x", "y", "z"],
+    ]);
+  });
+
+  it("keeps a one-column header that happens to hold a semicolon", () => {
+    // The semicolon splits the FIRST row and no other, so it is not a
+    // separator and never qualifies. A rule that looked only at the header
+    // split this — which is why this rule does not look only at the header.
+    expect(parseDelimited("Notes; extra\nfine\nalso")).toEqual([["Notes; extra"], ["fine"], ["also"]]);
+  });
+
+  it("reads a Danish sheet whose header ALSO holds a comma", () => {
+    // The case that killed the first rule. "Beløb, EUR" puts a comma in the
+    // header, so a header-only sniff chose the comma and split `Ada;1,5;…`
+    // into `Ada;1` and `5;…`. Decimal commas are everywhere in exactly the data
+    // that uses semicolons, so that rule met one at the first opportunity.
+    //
+    // Three consistent columns on the semicolon against two on the comma, so
+    // the semicolon wins on count.
+    expect(parseDelimited("Navn;Beløb, EUR;Dato\nAda;1,5;2026-01-01\nGrace;2,25;2026-02-01")).toEqual([
+      ["Navn", "Beløb, EUR", "Dato"],
+      ["Ada", "1,5", "2026-01-01"],
+      ["Grace", "2,25", "2026-02-01"],
+    ]);
+  });
+
+  it("gives a genuinely ambiguous paste to the comma, and that is a decision", () => {
+    // Two columns on the semicolon, two on the comma, both consistent: nothing
+    // in the text says which. The tie goes to the commoner file worldwide.
+    // Asserted so the answer is a decision somebody can find and change rather
+    // than an accident of iteration order.
+    expect(parseDelimited("Navn;Beløb, EUR\nAda;1,5")).toEqual([
+      ["Navn;Beløb", " EUR"],
+      ["Ada;1", "5"],
+    ]);
+  });
+
+  it("takes the delimiter that gives MORE columns, not the first one that fits", () => {
+    // The step that does the work. Both split every row consistently here —
+    // the comma into two, the semicolon into three — and more columns is the
+    // reading that used every separator in the row.
+    expect(parseDelimited("a;b, c;d\nx;y, z;w")).toEqual([
+      ["a", "b, c", "d"],
+      ["x", "y, z", "w"],
+    ]);
+  });
+
   it("still lets the caller name the delimiter outright", () => {
     // The pane passes "\t" explicitly for a pasted Excel range; the sniff is
     // only for when nobody said.

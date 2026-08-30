@@ -7,6 +7,37 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added — a semicolon-separated paste is read
+
+Excel writes `;` as its CSV separator on any machine whose locale uses the
+comma as a decimal point — Danish, German, French. Pasting one of those files
+produced **one column** named `Navn;Beløb`, every placeholder unmatched and the
+merge button down.
+
+The separator is no longer guessed from the header. It is the candidate that
+splits **every** sampled row into the same number of cells, and into the most
+of them; ties go to the comma, and a paste where nothing qualifies is one
+column. Reading the body is what makes it survive the data these files
+actually carry: a header-only rule chose the comma in `Navn;Beløb, EUR;Dato`
+and split `Ada;1,5;2026-01-01` into `Ada;1` and `5;2026-01-01`, because decimal
+commas are everywhere in exactly the sheets that use semicolons.
+
+Nothing that parsed before parses differently, and one case gets *better* than
+the first attempt at this: a one-column header holding a semicolon —
+`Notes; extra` — stays one column, because the semicolon splits that row and no
+other. The header-only rule split it, and that would have shipped as a
+documented trade.
+
+One limit, stated: `Navn;Beløb, EUR` over a single data row is two consistent
+columns on either character, and nothing in the text decides. The comma wins,
+being the commoner file worldwide.
+
+This also retired the header sampler, which existed to read the first row with
+the parser's own quote rule and cost two bugs to get right — a quoted newline
+inside a header cell, and an inch mark in `Size 6" pipe`. Both are handled by
+construction now, because the thing being scored *is* the parse. Their tests
+are kept and still pass.
+
 ### Added — the manual walks the whole thing through, with pictures
 
 `docs/MANUAL.md` opened on a five-minute sketch and no screenshots at all, so
