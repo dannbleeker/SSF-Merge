@@ -152,6 +152,48 @@ describe("the documentation set is whole", () => {
       expect(readme, `${doc} is not linked from the README`).toContain(doc);
     }
   });
+
+  it("does not promise work the backlog is not carrying", () => {
+    /**
+     * The drift this catches happened, and it outlived two rejections. The
+     * manual's data-source table listed "A .csv or .xlsx file | planned" while
+     * that source was on no backlog section at all — neither open nor rejected
+     * — so the one document a user reads was promising work the one document
+     * the project curates had never heard of.
+     *
+     * The rule is the weakest one that would have caught it, and it is
+     * mechanical: a table cell in the manual may say `planned` on its own only
+     * while the backlog's open section actually holds an entry. It says nothing
+     * about WHICH entry, because a backlog item need not be a data source and a
+     * gate that tried to pair them would be matching prose against prose.
+     *
+     * `not planned` and `not scheduled` are the honest spellings and are left
+     * alone: the cell has to BE the promise, not merely contain the word.
+     */
+    const open = backlog.slice(backlog.indexOf("## After the first release"));
+    const openBody = open.slice(0, open.indexOf("\n## ", 3));
+    // Entries in that section are `### Title`. Vacuity guard: if the heading
+    // ever moves, this finds nothing and the count below is meaningless.
+    expect(backlog, "the backlog's open section is not where this test looks").toContain("## After the first release");
+    const openEntries = [...openBody.matchAll(/^### /gm)].length;
+
+    // Lookahead, not a consumed closing pipe: `| a | b |` shares its pipes, so
+    // a consuming match swallows the separator and reads every OTHER cell. The
+    // first version of this did exactly that, passed against the very row it
+    // was written for, and was caught only by re-adding the bug.
+    const cells = [...manual.matchAll(/\|([^|\n]+)(?=\|)/g)].map((m) => (m[1] ?? "").trim());
+    // Same vacuity guard on the other side: a manual with no tables would pass
+    // this forever.
+    expect(cells.length, "no table cells found in the manual").toBeGreaterThan(10);
+    const promises = cells.filter((c) => c.replace(/\*/g, "").toLowerCase() === "planned");
+
+    if (openEntries === 0) {
+      expect(
+        promises,
+        `the manual marks ${promises.length} row(s) "planned" while the backlog's open section is empty`,
+      ).toEqual([]);
+    }
+  });
 });
 
 describe("the probe's question numbers", () => {
