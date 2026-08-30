@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Support — SSF Merge</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="How to get help with SSF Merge, what to check first, and what to include when you report a problem.">
+<link rel="icon" href="/assets/icon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="/assets/icon-80.png">
+
+<!-- The support URL a Marketplace listing points at. It has to be a public web
+     PAGE on a domain of ours: Microsoft's submission FAQ rules out GitHub
+     repositories, personal social media, and links to hosted files such as a
+     document on OneDrive or Google Docs, and says the page must not require
+     authentication. GitHub appears BELOW as one route to take, which is allowed
+     — what is not allowed is the repository being the destination itself. -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="Support — SSF Merge">
+<meta property="og:description" content="How to get help with SSF Merge, what to check first, and what to include when you report a problem.">
+<meta property="og:url" content="https://ssf-merge.struktureretsundfornuft.dk/support.html">
+<meta property="og:image" content="https://ssf-merge.struktureretsundfornuft.dk/assets/icon-80.png">
+<meta name="twitter:card" content="summary">
+
+<style>
+  /* The landing page's palette and rhythm, unchanged. */
+  :root {
+    --navy: #00254c;
+    --blue: #2b6cb0;
+    --orange: #ed8936;
+    --ink: #1a202c;
+    --grey: #6b7280;
+    --calm: #edf2f7;
+    --hair: #cbd5e0;
+  }
+  body {
+    margin: 0;
+    padding: 12vh 24px;
+    background: var(--calm);
+    color: var(--ink);
+    font-family: "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+    line-height: 1.6;
+  }
+  main { max-width: 34rem; margin: 0 auto }
+  .tick {
+    display: block;
+    width: 26px;
+    height: 3px;
+    background: var(--orange);
+    margin-bottom: 14px;
+    border-radius: 1px;
+  }
+  h1 { color: var(--navy); font-size: 2rem; margin: 0 0 12px; letter-spacing: -.02em }
+  h2 { color: var(--navy); font-size: 1.1rem; margin: 28px 0 8px }
+  p, li { color: var(--grey); margin: 0 0 12px }
+  .lede { color: var(--ink) }
+  a { color: var(--blue) }
+  ul { padding-left: 1.2rem }
+  strong { color: var(--ink) }
+  code {
+    font-family: Consolas, "Cascadia Mono", monospace;
+    font-size: .95em;
+    background: #fff;
+    border: 1px solid var(--hair);
+    border-radius: 3px;
+    padding: 1px 5px;
+  }
+  /* The one place on the page somebody in trouble needs to land. Blue, like the
+     landing page's button: the single orange is spent on the tick. */
+  .contact {
+    display: block;
+    background: #fff;
+    border: 1px solid var(--hair);
+    border-left: 3px solid var(--blue);
+    border-radius: 4px;
+    padding: 14px 16px;
+    margin: 4px 0 12px;
+  }
+  .contact a { font-weight: 600; font-size: 1.05rem }
+  .rule { border: 0; border-top: 1px solid var(--hair); margin: 28px 0 16px }
+  .from { font-size: .95rem }
+</style>
+
+<main>
+  <span class="tick"></span>
+  <h1>Support</h1>
+
+  <p class="lede">SSF Merge is a mail-merge add-in for Microsoft PowerPoint: mark the slides that
+    repeat, paste a table, and get one set of slides per row. If it is not doing that, here is how
+    to get it sorted.</p>
+
+  <h2>Get in touch</h2>
+  <p>Email is the quickest route, and it comes straight to me.</p>
+  <p class="contact"><a href="mailto:dann@struktureretsundfornuft.dk">dann@struktureretsundfornuft.dk</a></p>
+  <p>You can also <a href="https://github.com/dannbleeker/SSF-Merge/issues">open an issue on
+    GitHub</a> if you would rather it were public and trackable. I read both.</p>
+  <p><strong>What to expect:</strong> SSF Merge is maintained by one person, so this is best effort
+    rather than a support desk with hours. I wrote the code, so you will get a real answer rather
+    than a ticket number, usually within a few working days.</p>
+
+  <h2>Please include this</h2>
+  <p>It turns a report into something reproducible, and usually saves a round trip:</p>
+  <ul>
+    <li><strong>The build code.</strong> The task pane prints it in its own header, on the right:
+      seven characters, like <code>4faaae5</code>. It says exactly which version you were running.</li>
+    <li><strong>Which PowerPoint:</strong> on the web, Windows, or Mac.</li>
+    <li><strong>What you did, and what happened instead.</strong> The step you were on is enough to
+      place it, because the pane numbers them one to five.</li>
+    <li><strong>The deck, if you can share it.</strong> A file says more than a description of one,
+      and a merge problem is usually about the template rather than the data. Do not send anything
+      confidential. A cut-down deck that still shows the problem is better for both of us.</li>
+  </ul>
+
+  <h2>Worth checking first</h2>
+  <ul>
+    <li><strong>Does the pane say it cannot run?</strong> SSF Merge needs PowerPointApi 1.2 to read
+      your deck and insert the merged slides. PowerPoint 2013 does not have it, so on an old enough
+      PowerPoint the add-in installs and then tells you it cannot run. There is no way around that
+      one short of a newer PowerPoint.</li>
+    <li><strong>Nothing found on the slides?</strong> The braces are probably curly quotes rather
+      than straight ones. <code>{{Name}}</code> has to be typed, not autocorrected. Retype them.</li>
+    <li><strong>A placeholder still showing after a merge?</strong> That is deliberate when no column
+      matches it: a field with no data stays on the slide rather than blanking out, because a slide
+      that looks finished and is not is worse than one that says what is missing.</li>
+    <li><strong>Everything else</strong> is in <a href="https://github.com/dannbleeker/SSF-Merge/blob/main/docs/MANUAL.md">the
+      manual</a>: placeholders, number and date formats, pictures, charts, and what each step does.</li>
+  </ul>
+
+  <h2>Your data</h2>
+  <p>SSF Merge has no server and sends nothing anywhere: your slides and your table are read inside
+    the task pane, on your own device. The <a href="/privacy.html">privacy policy</a> says so in
+    full, including the one thing it stores locally and why.</p>
+
+  <hr class="rule">
+  <p class="from"><a href="/">SSF Merge</a> &middot;
+    <a href="/privacy.html">Privacy policy</a> &middot;
+    <a href="https://github.com/dannbleeker/SSF-Merge">Source and progress</a> &middot;
+    From <a href="https://struktureretsundfornuft.dk">StruktureretSundFornuft.dk</a>.</p>
+</main>
+</html>

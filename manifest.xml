@@ -20,7 +20,7 @@
        than by anyone here — the ribbon uses 80 correctly a few lines down, so
        the wrong number looked like the right one. -->
   <HighResolutionIconUrl DefaultValue="https://localhost:3000/assets/icon-64.png" />
-  <SupportUrl DefaultValue="https://github.com/dannbleeker/SSF-Merge" />
+  <SupportUrl DefaultValue="https://ssf-merge.struktureretsundfornuft.dk/support.html" />
 
   <Hosts>
     <Host Name="Presentation" />
@@ -84,7 +84,7 @@
       </bt:Images>
       <bt:Urls>
         <bt:Url id="Taskpane.Url" DefaultValue="https://localhost:3000/taskpane.html" />
-        <bt:Url id="Support.Url" DefaultValue="https://github.com/dannbleeker/SSF-Merge" />
+        <bt:Url id="Support.Url" DefaultValue="https://ssf-merge.struktureretsundfornuft.dk/support.html" />
       </bt:Urls>
       <bt:ShortStrings>
         <bt:String id="Group.Label" DefaultValue="SSF Merge" />

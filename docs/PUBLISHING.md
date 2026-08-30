@@ -61,10 +61,14 @@ Checked, so it is not re-litigated later.
       the key and lists its fields, which is what makes "we collect nothing"
       checkable rather than a slogan.
 
-- [ ] **An End User Licence Agreement, at an HTTPS URL.** Also required.
-      Microsoft publishes a standard EULA that may be used if your own counsel
-      agrees. The repository is MIT-licensed, which is not the same thing and
-      does not satisfy this.
+- [x] **An End User Licence Agreement, at an HTTPS URL.** Done. Microsoft's own
+      standard EULA, chosen by the owner on 2026-08-30:
+      `https://support.office.com/client/61994a3b-2c87-41c4-a88d-a6455efa362d`.
+      It is in the manifest's `termsOfUseUrl` and resolves.
+
+      It previously pointed at the repository's MIT `LICENSE`, which governs the
+      SOURCE. A licence telling a developer they may fork the repository is not
+      one telling a user what they may do with the add-in.
 
 - [ ] **Bump the manifest version on every submitted update.** `VERSION` in
       `scripts/manifest-source.mjs` is the constant `1.0.0.0` and has never
@@ -134,10 +138,23 @@ Checked, so it is not re-litigated later.
       a pasted table and a file picker, and none of that has been tried without
       a keyboard.
 
-- [ ] **Decide whether a GitHub repository is the support page.** It is
-      compliant — an HTTPS URL, and not an email address, which is what the
-      policy forbids — but a README is a thin answer to "where do I go when this
-      breaks".
+- [x] **A support page.** Done —
+      `https://ssf-merge.struktureretsundfornuft.dk/support.html`, shipping from
+      `public/` beside the privacy policy and linked from the landing page.
+
+      **This entry used to call the GitHub repository "compliant" and it was
+      wrong.** Microsoft's submission FAQ says the support URL must be a public
+      page that does not require authentication, and that "you can't use personal
+      social media pages or GitHub repositories", nor "links to files hosted
+      online". A repository is out, and so is a file inside one. It was a
+      blocker, not a matter of taste.
+
+      The privacy and terms links were the same mistake and were fixed with it.
+      Privacy pointed at `SECURITY.md` — a policy for reporting vulnerabilities
+      rather than a privacy policy — so a reviewer following it would have read
+      the wrong document and concluded there wasn't one. All three are now pages
+      on our own site or Microsoft's, and a test refuses any of them going back
+      to GitHub.
 
 - [ ] **Edit Data on desktop PowerPoint.** Not a policy item. It is the one
       product behaviour no round has ever verified, and desktop is exactly where
