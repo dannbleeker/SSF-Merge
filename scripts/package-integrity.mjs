@@ -119,7 +119,27 @@ export function referencesIn(xml) {
   for (const m of xml.matchAll(/<([A-Za-z0-9]+:)?([A-Za-z0-9]+)\b([^>]*)>/g)) {
     const [, prefix = "", element = "", attrs = ""] = m;
     for (const a of attrs.matchAll(/\br:([A-Za-z]+)="([^"]*)"/g)) {
-      out.push({ element, prefix: prefix.replace(":", ""), attr: a[1] ?? "", id: a[2] ?? "" });
+      const id = a[2] ?? "";
+      // An EMPTY id names no relationship, so it is not a reference to resolve.
+      //
+      // `r:blip=""` is the ordinary OOXML idiom for "no image here", and it is
+      // PowerPoint's own markup: a SmartArt layout part carries one on every
+      // `<dgm:shape>` that has no picture, and that part correctly has no
+      // `.rels` beside it at all. Counting them as references asked the
+      // relationship map for `""`, got nothing back, and reported a sound
+      // package as naming relationships it does not have — four per layout
+      // part, on markup this engine never wrote. The real-host round of
+      // 2026-08-30 saw sixteen of them and no genuine problem, on a deck
+      // PowerPoint then opened with no repair prompt.
+      //
+      // `relationshipIdsIn` in src/core/pptx/xml.ts collects the same empty
+      // value, and is INERT there rather than wrong: that set is asked
+      // `has(id)` for each relationship the part really has, and no
+      // relationship has an empty Id. It reads markup to decide what to KEEP;
+      // this reads it to decide what must RESOLVE, and only the second
+      // direction can be misled by an id that was never meant to name anything.
+      if (id === "") continue;
+      out.push({ element, prefix: prefix.replace(":", ""), attr: a[1] ?? "", id });
     }
   }
   return out;

@@ -193,6 +193,31 @@ describe("the checker itself", () => {
     expect(problems(parts).join("\n")).toContain("names a relationship the part does not have");
   });
 
+  it("says nothing about an EMPTY relationship id, which names nothing", async () => {
+    // PowerPoint's own SmartArt markup, and the false alarm of 2026-08-30.
+    //
+    // `r:blip=""` on a `<dgm:shape>` means "no picture here". The layout part
+    // carrying it has no `.rels` beside it and correctly needs none, so reading
+    // the empty string as a relationship id reported four problems per layout
+    // part on a sound package — sixteen on that round's deck, every one of them
+    // this, none of them real, on a deck PowerPoint opened with no repair.
+    //
+    // No fixture caught it: this suite's SmartArt is built by the fixture, and
+    // the fixture writes no layout part. PowerPoint writes one. That gap is the
+    // reason the real-host round exists, so the shape is pinned here as raw
+    // markup rather than waiting for the next deck a human makes by hand.
+    const parts = await goodParts();
+    parts.set(
+      "ppt/diagrams/layout9.xml",
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<dgm:layoutDef xmlns:dgm="http://schemas.openxmlformats.org/drawingml/2006/diagram"' +
+        ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+        '<dgm:shape r:blip=""/><dgm:shape r:blip=""/>' +
+        "</dgm:layoutDef>",
+    );
+    expect(problems(parts).join("\n")).not.toContain("names a relationship the part does not have");
+  });
+
   it("names a reference that leads to the wrong KIND of part", async () => {
     // #126: the id freed by a delete and taken by the next thing that needed
     // one, so the reference still resolves — to somebody else's data. Both
