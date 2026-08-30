@@ -7,6 +7,16 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — moving the template block stops the blank-cell count
+
+Choose **leave the whole row out**, then go back and pick different slides. The
+pane went on counting rows against the block you left: a row dropped for a blank
+in a `{{Note}}` that sits on a slide those numbers no longer name, said above a
+button for a merge nobody had read the slides for.
+
+Everything a template read produces is now cleared together when the block moves,
+the way the field list always was.
+
 ### Fixed — a misspelled field no longer deletes the merge
 
 Under **leave the whole row out**, a placeholder with no column behind it —

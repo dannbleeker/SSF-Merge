@@ -1209,6 +1209,43 @@ describe("what a blank cell does, driven", () => {
     expect(document.activeElement).toBe(pane().querySelector("[data-empty]"));
   });
 
+  it("follows the slides when the user goes back and changes which fields are on them", async () => {
+    /**
+     * The count is read off a SNAPSHOT — the per-slide fields a template read
+     * answered — and the user can go and change the slides in PowerPoint
+     * between one read and the next. Nothing tells the pane that happened;
+     * pressing the fields step's button is what re-reads, and the count has to
+     * follow that press.
+     *
+     * Proven against a build where only the FIRST read fills `slideFields` in:
+     * the caution then still says "1 of 2 rows will be left out" about a
+     * `{{Last}}` no slide carries any more.
+     */
+    await toMergeWithBlanks();
+    (pane().querySelector('[data-action="empties"]') as HTMLElement).click();
+    choose("skip");
+    await settle();
+    // Ada's Last is blank and {{Last}} is on the second slide, so she goes.
+    expect(pane().textContent).toContain("1 of 2 rows will be left out");
+
+    // Back to the fields step, and this time the slides no longer carry
+    // {{Last}} anywhere — the user took it off.
+    (pane().querySelector("[data-back]") as HTMLElement).click(); // preview
+    (pane().querySelector("[data-back]") as HTMLElement).click(); // fields
+    office.inspectBlock.mockResolvedValueOnce({
+      ...REPORT,
+      fields: ["First"],
+      slideFields: [["First"], []],
+    });
+    primary().click(); // re-read
+    await settle();
+    (pane().querySelector("[data-forward]") as HTMLElement).click(); // -> merge
+
+    const said = pane().textContent ?? "";
+    expect(said, "nothing is dropped once the blank field is off the slides").not.toContain("will be left out");
+    expect(said, "and the heading goes back to one number").toContain("2 rows ×");
+  });
+
   it("does not take a change while a merge is out", async () => {
     await toMergeWithBlanks();
     (pane().querySelector('[data-action="empties"]') as HTMLElement).click();

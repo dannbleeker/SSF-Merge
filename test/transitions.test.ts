@@ -5,6 +5,7 @@
  * six is a RULE, and a rule written out at each call site drifts — this one had,
  * four ways.
  */
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { blockMoved, dataChanged } from "../src/pane/transitions.js";
 import type { PaneState } from "../src/pane/steps.js";
@@ -14,6 +15,7 @@ const FULL: PaneState = {
   fields: ["Name", "Photo"],
   imageFields: ["Photo"],
   conditions: { 5: "Renewal" },
+  slideFields: [["Name"], ["Photo"]],
   added: 12,
   fieldNote: "{{Name}} put on the slide.",
   columns: ["Name"],
@@ -35,6 +37,36 @@ describe("when the block moves", () => {
     // Read off the block's slides in the same pass as `fields`, and added
     // after the other three call sites were written — so no path cleared it.
     expect(after.imageFields).toEqual([]);
+  });
+
+  /**
+   * Everything a template read produces, cleared together.
+   *
+   * Named from `BlockReport` rather than listed here, because listing is how
+   * the last one was missed: `slideFields` was added to the read, to the
+   * outcome and to the state, and not to this rule — so moving the block left
+   * the pane counting rows against the OLD block's per-slide fields, dropping
+   * a row for a blank in a `{{Note}}` on a slide the state no longer named.
+   *
+   * A fourth field on that report joins this automatically.
+   */
+  it("drops everything the template read produced, whatever it is called", () => {
+    const source = readFileSync("src/office/merge.ts", "utf8");
+    const at = source.indexOf("export interface BlockReport");
+    const body = source.slice(at, source.indexOf("\n}", at));
+    const produced = [...body.matchAll(/^ {2}(\w+)\??:/gm)]
+      .map((m) => m[1] ?? "")
+      // Not read off the slides: one is the verdict and one is its sentence.
+      .filter((name) => name !== "ok" && name !== "detail");
+
+    expect(produced, "found the report's fields at all").toContain("slideFields");
+    for (const name of produced) {
+      const before = (FULL as unknown as Record<string, unknown>)[name];
+      expect(before, `${name} is set on the state going in, or this proves nothing`).toBeTruthy();
+      const value = (after as unknown as Record<string, unknown>)[name];
+      const gone = value === undefined || (Array.isArray(value) && value.length === 0);
+      expect(gone, `blockMoved left ${name} standing, read off slides it no longer names`).toBe(true);
+    }
   });
 
   it("drops the conditions, which are keyed by slide NUMBER", () => {
