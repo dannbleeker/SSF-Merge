@@ -76,7 +76,11 @@ before suspecting the merge.
    then say **All 3 pictures matched.**
 4. **Step 3** — the chips should list `Name`, `Region`, `Renewal`, `Revenue`,
    `Photo`, `Nickname`. `Nickname` should be marked as having no column.
-5. **Step 4** — preview one row if you want to. Remove it afterwards.
+5. **Step 4** — press **Preview the first row**. Two slides land at the end of
+   the deck and a card names them. Leave by one of the two routes, which are
+   different journeys and worth trying across rounds: **On to the merge** takes
+   them back out and carries you to step 5 in one press, and **Remove the
+   preview** on the card takes them out and leaves you here.
 6. **Step 5** — merge. It should add **6 slides**.
 
 ## What to check, in order of what would matter most
@@ -217,16 +221,31 @@ a change to the manifest itself would.
 
 ## What still has no real-host answer
 
-**Edit Data, on both decks.** It needs DESKTOP PowerPoint, and both rounds so
-far were driven in the browser. The bytes are right — each merged chart's
-workbook holds its own region — but whether PowerPoint's Excel round-trip
-preserves them has never been watched happen. "Did not run" and "passed" are
-different answers.
+This is the list to read when somebody asks what is open, so it is kept short
+and it is kept true. An item leaves it when a round has actually done the thing,
+not when the code looks right.
 
-**The preview step.** Step 4 is optional and has been skipped both times.
+**Edit Data, on both decks.** The one that matters. It needs DESKTOP PowerPoint,
+and all three rounds — 2026-08-28 and twice on 2026-08-30 — were driven in the
+browser. The bytes are right, and checked: each merged chart's workbook holds its
+own region, on both the classic charts and the sunburst. What nobody has watched
+is PowerPoint refreshing the chart from that workbook when Excel closes, which is
+where a merge that filled only the chart would revert in front of you. "Did not
+run" and "passed" are different answers.
 
-**The old-PowerPoint fallback notice.** Genuinely optional, and nothing from
-2016 onwards will show it.
+**The old-PowerPoint fallback notice.** A modern chart carries a rendered picture
+for hosts that cannot draw it, and each merged copy should show a bordered notice
+rather than the template's figures under this recipient's name. That the copies
+carry their OWN pictures is now checked from the bytes — `verify-package.mjs`
+asserts three distinct payloads — so what is left is only whether the notice
+LOOKS right in a host old enough to fall back to it. Nothing from 2016 onwards
+will, so this stays optional.
+
+**Answered since, and no longer open.** The preview step was skipped on
+2026-08-28 and on the first round of 2026-08-30. The third round pressed it and
+left by both routes: **On to the merge**, which removed the two slides and landed
+on step 5 with the deck back to 3, and **Remove the preview** on the card, which
+removed them and stayed on step 4. Both behaved.
 
 ## The second deck: the modern chart
 
