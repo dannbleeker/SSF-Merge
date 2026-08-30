@@ -96,6 +96,11 @@ describe("the manual keeps up with the code", () => {
       "Choose the slides that repeat",
       "Preview the first row",
       "Remove the preview",
+      // The primary while a preview is up, and the way ON from step 4. The
+      // walkthrough is the only place that says so, and a reader told only
+      // about "Remove the preview" is back to guessing that clearing up is how
+      // you continue — which is the trap this label was added to close.
+      "Remove the preview and merge",
       "Skip to the merge",
       // The two controls the five-step order added. Both are the answer to
       // "how do I insert the fields?", which is the question a first run

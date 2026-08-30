@@ -161,8 +161,13 @@ Ada's row is merged and the result put at the end of your deck, as slide 9. Go
 and look at it. **This is not a mock-up** — it is the ordinary merge run over
 one row, so if slide 9 looks right, the other two will be right.
 
-**Remove the preview** deletes it again. **Skip to the merge** goes on without
-previewing.
+When you have seen enough, **Remove the preview and merge** takes those slides
+back out and carries you to the last step in one press. If you would rather stay
+on this step — to change a field, or go back — **Remove the preview** on the
+card deletes them and leaves you where you are.
+
+**Skip to the merge** goes on without previewing at all. It is offered until you
+press Preview, after which the button above does the same job.
 
 ### Step 5 — Merge
 

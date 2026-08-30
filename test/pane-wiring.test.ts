@@ -118,6 +118,15 @@ function pane(): HTMLElement {
 function primary(): HTMLButtonElement {
   return pane().querySelector("button.primary") as HTMLButtonElement;
 }
+/**
+ * The card's plain "Remove the preview", which takes the row out and STAYS.
+ *
+ * The primary beside it removes and carries on to the merge, so the two are
+ * different journeys and every test below has to name which one it means.
+ */
+function removePreview(): HTMLButtonElement {
+  return pane().querySelector('[data-action="end-preview"]') as HTMLButtonElement;
+}
 function field(name: string): HTMLInputElement | HTMLTextAreaElement {
   return pane().querySelector(`[data-field="${name}"]`) as HTMLInputElement;
 }
@@ -611,7 +620,8 @@ describe("the preview", () => {
     await settle();
     // deckAtStart 12, added 3 — so slides 13 to 15.
     expect(pane().querySelector(".card.undo")?.textContent).toContain("Slides 13 to 15");
-    expect(primary().textContent).toBe("Remove the preview");
+    expect(primary().textContent).toBe("Remove the preview and merge");
+    expect(removePreview().textContent, "the plain way back is on the card").toBe("Remove the preview");
   });
 
   it("takes it back with the same clamped sweep an undo uses", async () => {
@@ -621,12 +631,51 @@ describe("the preview", () => {
     await settle();
 
     office.undoMerge.mockResolvedValueOnce({ removed: 3, detail: "removed 3 slide(s) from index 12" });
-    primary().click();
+    removePreview().click();
     await settle();
 
     expect(office.undoMerge).toHaveBeenCalledWith(expect.objectContaining({ deckAtStart: 12, added: 3 }));
     expect(pane().querySelectorAll(".card.undo")).toHaveLength(0);
     expect(primary().textContent).toBe("Preview the first row");
+  });
+
+  it("carries ON to the merge in ONE press, taking the preview out on the way", async () => {
+    // The journey the step exists for, and the one it used to make people
+    // guess at. While a preview was up the pane offered "Back to fields" and
+    // "Remove the preview" and nothing else — the word "merge" was nowhere on
+    // the screen — so the way on was to work out that clearing up was the way
+    // on, and it took four presses.
+    await reachPreview();
+    office.runMerge.mockResolvedValueOnce(PREVIEW);
+    primary().click();
+    await settle();
+    expect(pane().textContent, "the merge has to be nameable from here").toContain("merge");
+
+    office.undoMerge.mockResolvedValueOnce({ removed: 3, detail: "removed 3 slide(s) from index 12" });
+    primary().click();
+    await settle();
+
+    // The preview is gone AND the wizard has moved on, off the one press.
+    expect(office.undoMerge).toHaveBeenCalledWith(expect.objectContaining({ deckAtStart: 12, added: 3 }));
+    expect(pane().querySelector(".step-of")?.textContent).toBe("Step 5 of 5 · Merge");
+    expect(pane().querySelectorAll(".card.undo")).toHaveLength(0);
+  });
+
+  it("stays put when the sweep could not take the whole preview back", async () => {
+    // Advancing on a partial removal would land the user on a merge step
+    // refusing with "End the preview before merging." while the sentence
+    // explaining what actually happened sat one screen behind them.
+    await reachPreview();
+    office.runMerge.mockResolvedValueOnce(PREVIEW);
+    primary().click();
+    await settle();
+
+    office.undoMerge.mockResolvedValueOnce({ removed: 1, detail: "removed 1 slide(s) from index 12" });
+    primary().click();
+    await settle();
+
+    expect(pane().querySelector(".step-of")?.textContent).toBe("Step 4 of 5 · Preview");
+    expect(pane().textContent).toContain("Some of the preview is still there");
   });
 
   it("says so when the sweep left some of it behind", async () => {
@@ -683,7 +732,7 @@ describe("the preview", () => {
 
     const held = deferred<unknown>();
     office.undoMerge.mockReturnValueOnce(held.promise);
-    primary().click();
+    removePreview().click();
     await settle();
     expect(primary().textContent).toBe("Removing…");
     expect(primary().disabled).toBe(true);
