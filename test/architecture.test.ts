@@ -581,3 +581,73 @@ describe("what coverage measures", () => {
     }
   });
 });
+
+describe("one host job at a time, decided in one place", () => {
+  /**
+   * `PaneState.running` is what stops a second host call starting while one is
+   * out, and it is a documented property of the product rather than an
+   * implementation detail. It had a scar before it had a flag: going back a
+   * step and forward again during a ninety-second template read handed the user
+   * a live "Add 720 slides" over a merge already in flight.
+   *
+   * Six functions used to raise and clear it by hand, five of them with a
+   * character-for-character identical `finally`. `duringRun` owns it now, and
+   * this holds that: the flag is WRITTEN nowhere else in the file. Reading it
+   * is fine and there are three such reads — a select refusing input while a
+   * call is out is not a lifecycle.
+   *
+   * A source scan rather than a behavioural test, deliberately, because the
+   * claim is about a function that does not exist yet: the seventh caller,
+   * written by somebody who did not know the rule. `pane-wiring.test.ts` holds
+   * the behaviour for the two paths it can drive.
+   */
+  const main = readFileSync("src/pane/main.ts", "utf8");
+
+  /** The body of `duringRun`, brace-matched from its signature. */
+  function duringRunBody(source: string): string {
+    const found = source.indexOf("async function duringRun(");
+    expect(found, "duringRun is not in main.ts").toBeGreaterThan(-1);
+    // From the brace that OPENS THE BODY, not from the signature. The parameter
+    // list holds an object type — `{ entering?: …; whenItRaises?: … }` — so a
+    // matcher started at the signature closes on the parameters and returns
+    // them, which reads as "duringRun writes the flag nowhere" and is how this
+    // guard first went red against correct code.
+    const at = source.indexOf("): Promise<void> {", found);
+    expect(at, "duringRun's body does not start where expected").toBeGreaterThan(found);
+    let depth = 0;
+    let started = false;
+    for (let i = at; i < source.length; i++) {
+      const c = source[i];
+      if (c === "{") {
+        depth++;
+        started = true;
+      } else if (c === "}") {
+        depth--;
+        if (started && depth === 0) return source.slice(at, i + 1);
+      }
+    }
+    throw new Error("duringRun's body does not close");
+  }
+
+  const body = duringRunBody(main);
+
+  it("writes the running flag nowhere but duringRun", () => {
+    // Both directions of the write: raising it and clearing it.
+    const writes = /running:\s*(?:kind|undefined|"[a-z]+")/g;
+    const everywhere = main.match(writes) ?? [];
+    const inside = body.match(writes) ?? [];
+    // Vacuity: a pattern that matched nothing would pass this forever, and the
+    // flag is raised once and cleared once.
+    expect(inside.length, "duringRun does not write the flag at all").toBeGreaterThanOrEqual(2);
+    expect(
+      everywhere.length,
+      `the running flag is written ${everywhere.length - inside.length} time(s) outside duringRun`,
+    ).toBe(inside.length);
+  });
+
+  it("still lets other code READ the flag", () => {
+    // The other half of the rule, so nobody "fixes" this by banning the word.
+    // A control that refuses input while a call is out reads it and should.
+    expect((main.match(/state\.running/g) ?? []).length).toBeGreaterThan(1);
+  });
+});
