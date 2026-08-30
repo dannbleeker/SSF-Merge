@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { canBeField, fieldsIn, mergeDocument, mergeParagraph } from "../src/core/merge/text.js";
+import { applyFormat } from "../src/core/data/format.js";
+import { imageMode } from "../src/core/merge/images.js";
+import {
+  canBeField,
+  fieldsIn,
+  fieldsInText,
+  mergeDocument,
+  mergeParagraph,
+  type FieldHit,
+} from "../src/core/merge/text.js";
 import { A_NS, elements, parseXml, serializeXml } from "../src/core/pptx/xml.js";
 
 const A = `xmlns:a="${A_NS}"`;
@@ -216,5 +225,191 @@ describe("a column the pane may not offer as a field", () => {
     for (const column of ["Total|EUR", "a}}b", "{{x", "", "   ", "!!"]) {
       expect(canBeField(column), column).toBe(false);
     }
+  });
+});
+
+describe("the placeholder reader is a scan, not a pattern", () => {
+  /**
+   * The pattern that used to do this is kept HERE, in the test, because the
+   * claim being made is a comparison with it: the scanner reads the same
+   * placeholders out of the same text. It is the exact source that shipped —
+   * two lazy unbounded classes with a required character between them, which is
+   * both what made it correct and what made it quadratic.
+   */
+  const OLD = (): RegExp =>
+    new RegExp("\\{\\{\\s*([^{}|\\r\\n]*?[\\p{L}\\p{N}][^{}|\\r\\n]*?)\\s*(?:\\|\\s*([^{}\\r\\n]+?)\\s*)?\\}\\}", "gu");
+
+  const viaPattern = (s: string): FieldHit[] =>
+    [...s.matchAll(OLD())].map((h) => ({
+      name: h[1] ?? "",
+      // The one declared difference, applied to the OLD side so the comparison
+      // below can be an equality. A format of nothing but whitespace is now
+      // reported as no format; see `formatIsWhitespace` for the proof that
+      // neither the text pass nor the image pass can tell the two apart.
+      format: h[2] === undefined || h[2].trim() === "" ? undefined : h[2],
+      index: h.index,
+      length: h[0].length,
+    }));
+
+  /**
+   * Deliberately weighted at token SHAPES rather than at random characters. A
+   * uniform alphabet almost never spells a placeholder — the first version of
+   * this corpus put two million strings through and only 2,533 of them produced
+   * a hit at all, which is a measurement of the generator and not of the reader.
+   */
+  const corpus = (): string[] => {
+    // `Math.imul`, not `seed * A`: the textbook LCG written in plain JavaScript
+    // overflows 2^53 on its first step and loses the low bits, and the sequence
+    // then repeats — 40,000 draws produced 5,317 distinct strings where 20,000
+    // draws had produced 5,475. A generator that quietly stops generating is the
+    // vacuity this block's first assertion exists to catch, and it caught it.
+    let seed = 20260830;
+    const rnd = (): number => {
+      seed = (seed + 0x6d2b79f5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    const pick = (xs: string[]): string => xs[Math.floor(rnd() * xs.length)] ?? "";
+
+    const ws = ["", " ", "  ", "\t", "\n", "\r\n", " \n ", " ", " \t "];
+    const names = [
+      "a",
+      "Name",
+      "Row Labels",
+      "1",
+      "ø",
+      "𝔘",
+      "a b",
+      "a-b",
+      "Min. of cost",
+      "",
+      " ",
+      "-",
+      "!",
+      "a!b",
+      "0",
+      "..",
+      "a\nb",
+      "a\tb",
+    ];
+    const formats = ["", " ", "  ", "\n", " \n", "number:0", "image", "a|b", "date:d MMM", "!", "\t", " x "];
+    const junk = ["", "x", "{", "}", "{{", "}}", "|", "\n", " ", "{{a}}", "}}{{", "{{{"];
+
+    const out = new Set<string>();
+    // Every atom in every position, so the corners are covered by construction
+    // rather than by luck.
+    for (const a of [...names, ...ws, ...junk]) {
+      for (const b of [...names, ...formats]) {
+        out.add(`{{${a}${b}}}`);
+        out.add(`{{${a}|${b}}}`);
+        out.add(`{{${a}}}${b}{{${a}}}`);
+        out.add(`x${a}{{b|${b}}}y`);
+        out.add(`{{${a}`);
+        out.add(`{{{${a}|${b}}}}`);
+      }
+    }
+    // And random tokens with random junk between them.
+    for (let n = 0; n < 40000; n++) {
+      let s = "";
+      for (let i = 0; i <= Math.floor(rnd() * 3); i++) {
+        const body =
+          rnd() < 0.5
+            ? `${pick(ws)}${pick(names)}${pick(ws)}`
+            : `${pick(ws)}${pick(names)}${pick(ws)}|${pick(ws)}${pick(formats)}${pick(ws)}`;
+        s += `${pick(junk)}{{${body}}}`;
+      }
+      out.add(s + pick(junk));
+    }
+    return [...out];
+  };
+
+  it("reads a corpus that actually holds placeholders", () => {
+    // The vacuity guard. Every assertion below is satisfied forever by a corpus
+    // of strings that are not placeholders, and this suite has shipped exactly
+    // that mistake before.
+    const withHits = corpus().filter((s) => viaPattern(s).length > 0);
+    expect(corpus().length).toBeGreaterThan(25000);
+    expect(withHits.length).toBeGreaterThan(15000);
+  });
+
+  it("finds the same placeholders the pattern did, in the same places", () => {
+    const differ: string[] = [];
+    for (const s of corpus()) {
+      if (JSON.stringify(fieldsInText(s)) !== JSON.stringify(viaPattern(s))) differ.push(s);
+    }
+    expect(differ.slice(0, 5)).toEqual([]);
+  });
+
+  it("does not walk past a placeholder that opens inside a broken one", () => {
+    // `{{a{{b}}` has no field called `a` — the brace ends it — and does have one
+    // called `b`. A scan that skipped to the end of the failed span would miss
+    // it, which is the one thing a regular expression got right for free.
+    expect(fieldsInText("{{a{{b}}").map((f) => f.name)).toEqual(["b"]);
+    // Three braces, not four: `{{{Name}}` is the case that separates "try the
+    // next `{{`" from "resume after the span we gave up on", because the only
+    // `{{` left starts one character in.
+    expect(fieldsInText("{{{Name}}").map((f) => f.name)).toEqual(["Name"]);
+  });
+
+  it("refuses a lone closing brace inside the braces", () => {
+    expect(fieldsInText("{{a}b}}")).toEqual([]);
+    expect(fieldsInText("{{a}}}").map((f) => f.length)).toEqual([5]);
+  });
+
+  it("reports where each placeholder is, so a merge can edit around it", () => {
+    const hits = fieldsInText("Hi {{ First }}, of {{City|upper}}.");
+    expect(hits).toEqual([
+      { name: "First", format: undefined, index: 3, length: 11 },
+      { name: "City", format: "upper", index: 19, length: 14 },
+    ]);
+  });
+
+  it("still refuses a pipe with nothing after it", () => {
+    // Inherited exactly, and the reason it is worth a test rather than a
+    // shrug: `{{Name|}}` prints its own braces on every merged slide, and a
+    // reader of the scanner would otherwise assume it had been tidied away.
+    expect(fieldsInText("{{Name|}}")).toEqual([]);
+    expect(fieldsInText("{{Name|\n}}")).toEqual([]);
+  });
+
+  it("treats a whitespace-only format as no format", () => {
+    // The one declared difference from the pattern, which reported `" "` here.
+    expect(fieldsInText("{{Total|  }}")).toEqual([{ name: "Total", format: undefined, index: 0, length: 12 }]);
+  });
+
+  it("cannot be seen by either pass that reads a format", () => {
+    // What makes the difference above declarable rather than a behaviour
+    // change: both consumers of `format` answer a whitespace one exactly as
+    // they answer none.
+    for (const spec of [" ", "  ", "\t", " \t "]) {
+      expect(applyFormat("Ada", spec), spec).toBe(applyFormat("Ada", undefined));
+      expect(imageMode(spec), spec).toBe(imageMode(undefined));
+    }
+  });
+
+  it("reads an unclosed placeholder in linear time", () => {
+    // The defect this replaced: `{{` and forty thousand letters took 4.4
+    // seconds of synchronous backtracking, inside a deck somebody was sent, on
+    // a call the pane's own timeouts cannot interrupt. The budget is two orders
+    // of magnitude under the old measurement and two above the new one, so it
+    // fails on the pattern and passes on the scan without being a stopwatch.
+    for (const bad of [
+      "{{" + "a".repeat(40000),
+      "{{" + " ".repeat(40000),
+      "{{a|" + " ".repeat(4000),
+      "{{a".repeat(10000),
+    ]) {
+      const began = performance.now();
+      expect(fieldsInText(bad)).toEqual([]);
+      expect(performance.now() - began).toBeLessThan(200);
+    }
+  });
+
+  it("reads ordinary slide text as fast as the pattern did", () => {
+    const ordinary = "{{Name|upper}} lorem ipsum dolor sit amet {{City}} ".repeat(6000);
+    const began = performance.now();
+    expect(fieldsInText(ordinary)).toHaveLength(12000);
+    expect(performance.now() - began).toBeLessThan(500);
   });
 });

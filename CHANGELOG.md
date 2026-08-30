@@ -7,6 +7,40 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed — the placeholder reader is a scan, and `fieldPattern()` is gone
+
+A template that opens `{{` and never closes it made the pattern backtrack
+quadratically: `{{` and forty thousand letters took **4.5 seconds** of
+synchronous work, and `{{a|` and four thousand spaces took **thirty-three**.
+The tab freezes, and the pane's own call timeouts cannot interrupt a regular
+expression. Reachable from a deck somebody was sent — an `<a:t>` run that long
+is legal, and every paragraph of the template goes through this on the step-1
+read as well as during the merge. `SECURITY.md` carries the measurements.
+
+Three replacement patterns were written and each fixed one shape while making
+another worse. The ambiguity is not a slip in how the pattern was written — a
+capture that skips leading whitespace, may contain whitespace and must not end
+in whitespace is inherently ambiguous to a backtracking engine, and that
+ambiguity *is* the trimming behaviour. So the reader is no longer a pattern:
+`fieldsInText` scans for `{{`, scans for the closing `}}` and splits on the
+first `|`, in linear time whatever the paragraph holds. The same two inputs are
+now 0.3 ms; ordinary slide text costs about half as much again as before, which
+is the whole price.
+
+**`fieldPattern()` is removed from the public surface** and replaced by
+`fieldsInText(text): FieldHit[]`. It handed a `RegExp` to six call sites that
+iterated it themselves, so no change confined to the engine could have reached
+them. The placeholder syntax is now something the engine reads rather than
+something it publishes.
+
+Which spans are placeholders is unchanged, and that is asserted rather than
+claimed: the old pattern is kept in `test/text.test.ts` and both readers run
+over ~26,000 generated strings, compared on name, format, offset and length.
+One difference is declared — a format made of nothing but whitespace,
+`{{Total|  }}`, reported `" "` and now reports none — and it is invisible to
+the product, because `applyFormat` and `imageMode` answer a whitespace format
+the way they answer no format. That is a test too.
+
 ### Added — a semicolon-separated paste is read
 
 Excel writes `;` as its CSV separator on any machine whose locale uses the

@@ -31,10 +31,11 @@ export {
   parseXml,
   serializeXml,
 } from "./pptx/xml.js";
-// `fieldPattern()` rather than the pattern itself: a shared global regex hands
-// every caller the last one's `lastIndex`.
-export { editRuns, fieldPattern, fieldsIn, mergeDocument, mergeParagraph } from "./merge/text.js";
-export type { Edit } from "./merge/text.js";
+// `fieldsInText` rather than a pattern: the placeholder syntax is read by a
+// linear scan, and handing out a regular expression for callers to iterate is
+// what made an unclosed `{{` able to freeze the tab.
+export { editRuns, fieldsIn, fieldsInText, mergeDocument, mergeParagraph } from "./merge/text.js";
+export type { Edit, FieldHit } from "./merge/text.js";
 export { buildPlan, isTruthy, recordCount, slideCount } from "./merge/plan.js";
 export type { Block, BlockSlide, MergePlan, PlanOptions, PlanStep, SkippedSlide } from "./merge/plan.js";
 export { makeResolver } from "./merge/resolve.js";

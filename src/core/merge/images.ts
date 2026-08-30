@@ -18,7 +18,7 @@ import type { FillMode } from "../image/fill.js";
 import type { Pkg } from "../pptx/pkg.js";
 import { REL_TYPE } from "../pptx/parts.js";
 import { A_NS, elements } from "../pptx/xml.js";
-import { editRuns, fieldPattern, type Edit } from "./text.js";
+import { editRuns, fieldsInText, type Edit } from "./text.js";
 
 /**
  * The formats that mean "this is a picture", and which fill they ask for.
@@ -49,8 +49,8 @@ export function imageFieldsIn(doc: Document): string[] {
     const joined = elements(paragraph, A_NS, "t")
       .map((t) => t.textContent ?? "")
       .join("");
-    for (const hit of joined.matchAll(fieldPattern())) {
-      if (hit[1] && imageMode(hit[2])) seen.add(hit[1]);
+    for (const hit of fieldsInText(joined)) {
+      if (imageMode(hit.format)) seen.add(hit.name);
     }
   }
   return [...seen];
@@ -186,13 +186,13 @@ export async function placeImages(
     const texts = elements(paragraph, A_NS, "t");
     const joined = texts.map((t) => t.textContent ?? "").join("");
     // Materialised before the first `await`, because the loop edits the document.
-    const hits = [...joined.matchAll(fieldPattern())];
+    const hits = fieldsInText(joined);
     const edits: Edit[] = [];
 
     for (const hit of hits) {
-      const mode = imageMode(hit[2]);
-      const name = hit[1];
-      if (!mode || !name) continue;
+      const mode = imageMode(hit.format);
+      const name = hit.name;
+      if (!mode) continue;
 
       const bytes = resolve(name);
       if (!bytes) {
@@ -223,7 +223,7 @@ export async function placeImages(
       filled.add(target);
       // Only the placeholder's OWN characters. Blanking every text node in the
       // paragraph took the caption, and any neighbouring field, with it.
-      edits.push({ start: hit.index ?? 0, end: (hit.index ?? 0) + hit[0].length, value: "" });
+      edits.push({ start: hit.index, end: hit.index + hit.length, value: "" });
       out.placed++;
     }
 

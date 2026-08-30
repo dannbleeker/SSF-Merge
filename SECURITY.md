@@ -146,7 +146,117 @@ service — and at the parser surfaces it took on trust.
 | A picture's file extension | **Not from the file name.** It comes from a fixed table keyed by the kind `readImage` decides from the file's MAGIC BYTES, so a file called `x".png` cannot reach `[Content_Types].xml`. |
 | Dependencies | `npm audit` clean, with and without dev dependencies. |
 | Prototype reach through a data cell | **One finding, fixed below.** |
-| Backtracking on hostile template text | **One finding, measured and NOT fixed — see below.** |
+| Backtracking on hostile template text | **One finding, measured and fixed — see below.** |
+
+### One — a date cell could reach `Object.prototype`
+
+`monthFromName` looked a month word up in `MONTH_NAMES`, a frozen object,
+keyed by the cell's own text. `Object.freeze` does not remove the prototype
+chain, and `dateShape`'s `NAMED_DATE` accepts **any** word of three letters or
+more — so `1 constructor 2026` passes the gate, and the lookup answers the
+`Object` function. `__proto__` answers `Object.prototype` the same way.
+
+**The outcome was already correct, and only by luck.** A function reaches
+`Date.UTC` as a month, the arithmetic is NaN, the date is invalid, and the rule
+that an unreadable cell is printed as it stands catches it. Guarded with
+`hasOwnProperty` now, because this repo's rule is to guard any table keyed by a
+config or data string and the luck was one refactor deep.
+
+The tests beside it are **characterisation tests, not a proof**: with the guard
+reverted they still pass, which was checked rather than assumed. They pin the
+outcome for the day the luck runs out.
+
+### Two — quadratic backtracking in the placeholder pattern, fixed
+
+`FIELD` in `src/core/merge/text.ts` backtracked super-linearly on template text
+that opens a placeholder and never closes it. Measured, on a single paragraph:
+
+| input | the pattern | the scan that replaced it |
+| --- | --- | --- |
+| `{{` + 5,000 letters | 70 ms | 0.3 ms |
+| `{{` + 10,000 letters | 285 ms | 0.3 ms |
+| `{{` + 20,000 letters | 1,125 ms | 0.9 ms |
+| `{{` + 40,000 letters | 4,498 ms | 0.3 ms |
+| `{{` + 40,000 spaces | 2,742 ms | 0.5 ms |
+| `{{a\|` + 2,000 spaces | 4,185 ms | under 0.1 ms |
+| `{{a\|` + 4,000 spaces | 33,339 ms | 0.3 ms |
+| `{{a\|` + 40,000 spaces | over two minutes, not waited out | 0.3 ms |
+| 216,000 characters, 6,000 real placeholders | 3.4 ms | 5.1 ms |
+
+Four times the work for twice the input, and past the pipe rather worse than
+that. Ordinary slide text was never affected — the last row of that table is a
+paragraph nobody would write, and it matched in milliseconds — and neither was
+a paragraph with many unclosed `{{`, because the character class stops at the
+next brace. It needed one long unbroken run inside one paragraph.
+
+**Reachable** from a deck somebody was sent: an `<a:t>` run of forty thousand
+characters is legal, and the pattern ran over every paragraph of the template
+during the step-1 read as well as during the merge. **The impact was a frozen
+tab** — the match is synchronous, so the pane's own call timeouts could not save
+it. No data loss, no escalation, nothing that reached another user.
+
+**What the fix had to be.** Three replacement patterns were written and measured
+against a corpus for exact equivalence, and each fixed one shape and made
+another worse: a lookahead removing the letters case took `{{` + 40,000 spaces
+from 28 ms to 3,447 ms, and bounding the trim that fixes the pipe case left the
+leading one. The blowup is structural rather than a slip in how the pattern was
+written — a capture that skips leading whitespace, may contain whitespace and
+must not END in whitespace is inherently ambiguous to a backtracking engine, and
+that ambiguity IS the trimming behaviour. You cannot keep the trim and remove
+the ambiguity.
+
+So the reader is no longer a regular expression. `fieldsInText` scans for `{{`,
+scans for the closing `}}`, gives up at anything that cannot be inside a
+placeholder, and splits on the first `|` — linear by construction, and linear
+across a whole paragraph however many `{{` it holds, because every character
+that ends one search is the earliest possible start of the next. Ordinary text
+costs about half as much again as the pattern did — the last row of the table
+above — which is the whole price.
+
+**That is a change to the library's public surface**, taken deliberately rather
+than worked around: `fieldPattern()` handed a `RegExp` to six call sites that
+iterated it themselves, so no fix inside this file could have reached them. It
+is replaced by `fieldsInText(text): FieldHit[]`, and the placeholder syntax is
+now something the engine reads rather than something it publishes.
+
+**Equivalence is asserted, not claimed.** `test/text.test.ts` keeps the old
+pattern and runs both readers over ~26,000 generated strings — every atom in
+every position, plus randomly assembled tokens — comparing name, format, offset
+and length. One difference is declared: a format made of nothing but whitespace,
+`{{Total|  }}`, reported `" "` and now reports none. Which spans are
+placeholders is unchanged, corners included — `{{Name|}}` and `{{a{{b}}` still
+behave exactly as they did — and the deviation is invisible to the product,
+because `applyFormat` and `imageMode` both answer a whitespace format the way
+they answer no format. That last sentence is a test rather than a claim.
+
+### What this sweep did not cover
+
+- **The host.** Office.js, WebView2 and PowerPoint itself are outside it.
+- **Delivery.** How the pane is served and how the manifest reaches a tenant
+  were not examined.
+- **The two unbuilt network features** above. They have no code to read yet.
+- **Denial of service.** A deliberately enormous or deeply nested package was
+  not tried; the failure there is a slow or failed merge on the user's own
+  machine, which is why it ranked below the rest rather than being dismissed.
+  **Picked up by the sweep of 2026-08-30 below, which found one** — and the
+  entry ranked it right: a frozen tab on the user's own machine.
+
+## The sweep of 2026-08-30
+
+The second pass, aimed at what the first one listed as not covered — denial of
+service — and at the parser surfaces it took on trust.
+
+| Surface | Finding |
+| --- | --- |
+| XML external entities (XXE) | **Not possible, measured.** `@xmldom/xmldom` does not resolve them: `<!ENTITY x SYSTEM "file:///etc/passwd">` comes through as the literal text `&x;` with a parse error logged, and no file is read. |
+| Entity expansion (billion laughs) | **Not possible, measured.** Custom internal entities are not expanded at all — a four-level bomb answers `entity not found` and yields three characters. |
+| HTML injection in the pane | **Not possible.** No `innerHTML`, `outerHTML`, `insertAdjacentHTML`, `document.write`, `eval` or `new Function` anywhere in `src/`. |
+| Network egress | **None.** No `fetch`, `XMLHttpRequest`, `WebSocket` or `sendBeacon` in `src/`, which is what the top of this page claims. |
+| User data into an XML **attribute** | **Does not happen.** Every `setAttribute` value is engine-generated — a content type, a part path, a relationship id, a number. No cell value or column name reaches one. |
+| A picture's file extension | **Not from the file name.** It comes from a fixed table keyed by the kind `readImage` decides from the file's MAGIC BYTES, so a file called `x".png` cannot reach `[Content_Types].xml`. |
+| Dependencies | `npm audit` clean, with and without dev dependencies. |
+| Prototype reach through a data cell | **One finding, fixed below.** |
+| Backtracking on hostile template text | **One finding, measured and fixed — see below.** |
 
 ### One — a date cell could reach `Object.prototype`
 
