@@ -8,6 +8,7 @@
  */
 import {
   canReadSelection,
+  documentKey,
   hostEnvironment,
   insertTextAtCursor,
   ready as hostReady,
@@ -740,7 +741,7 @@ async function merge(): Promise<void> {
       // that dies during the insert leaves the deck holding the slides and the
       // pane unable to take them back. `added` is 0 until the deck answers; the
       // crumb is rewritten with the real number below.
-      dropCrumb({ deckAtStart: state.deckSize ?? 0, added: 0, runId: "pending" });
+      dropCrumb({ deckAtStart: state.deckSize ?? 0, added: 0, runId: "pending", doc: documentKey() });
       const outcome = await runMerge({
         from: block.from,
         to: block.to,
@@ -752,7 +753,7 @@ async function merge(): Promise<void> {
       });
       last = outcome;
       if (outcome.added > 0)
-        dropCrumb({ deckAtStart: outcome.deckAtStart, added: outcome.added, runId: outcome.runId });
+        dropCrumb({ deckAtStart: outcome.deckAtStart, added: outcome.added, runId: outcome.runId, doc: documentKey() });
       else clearCrumb();
       state = {
         ...state,
@@ -787,7 +788,7 @@ async function merge(): Promise<void> {
       const before = state.deckSize;
       const added = deckAfter !== undefined && before !== undefined ? Math.max(0, deckAfter - before) : 0;
       if (added > 0 && before !== undefined) {
-        dropCrumb({ deckAtStart: before, added, runId: "recovered" });
+        dropCrumb({ deckAtStart: before, added, runId: "recovered", doc: documentKey() });
         last = {
           ok: false,
           detail: readable(e),
@@ -931,7 +932,8 @@ async function undoRun(): Promise<void> {
       last = remaining > 0 ? { ...outcome, added: remaining } : undefined;
       // The slides are the crumb's whole reason. Gone, and it is noise that would
       // offer a stale recovery on the next open.
-      if (remaining > 0) dropCrumb({ deckAtStart: outcome.deckAtStart, added: remaining, runId: outcome.runId });
+      if (remaining > 0)
+        dropCrumb({ deckAtStart: outcome.deckAtStart, added: remaining, runId: outcome.runId, doc: documentKey() });
       else clearCrumb();
       state = {
         ...state,
@@ -1069,7 +1071,7 @@ void Office.onReady(() => {
       // button that then did nothing. `undoSummary` and `undoIsPossible` call
       // `sweepPlan` now, which is why `deckAtStart` is carried into the state
       // beside `added`: a positional offer needs both.
-      const crumb = readCrumb();
+      const crumb = readCrumb(documentKey());
       if (crumb && crumb.added > 0) {
         last = {
           ok: false,

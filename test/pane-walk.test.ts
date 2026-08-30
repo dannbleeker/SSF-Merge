@@ -35,6 +35,12 @@ const office = vi.hoisted(() => ({
     canSelect: true,
   })),
   insertTextAtCursor: vi.fn<(t: string) => Promise<unknown>>(),
+  // Which deck is open. The undo crumb is kept in `localStorage`, which belongs
+  // to the add-in's ORIGIN and is shared by every deck opened against it, so the
+  // pane asks who is open before it answers for a crumb. Missing here, the walk
+  // still reported all of its tests passing while nine unhandled errors came out
+  // of the mocker and took the run's exit code with them.
+  documentKey: vi.fn(() => "https://example-my.sharepoint.com/personal/x/Documents/deck.pptx"),
   inspectBlock: vi.fn<(r: { from: number; to: number }) => Promise<unknown>>(),
   runMerge: vi.fn<(r: unknown) => Promise<unknown>>(),
   undoMerge: vi.fn<(o: unknown) => Promise<unknown>>(),

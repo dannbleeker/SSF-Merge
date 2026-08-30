@@ -38,6 +38,12 @@ const office = vi.hoisted(() => ({
     canSelect: true,
   })),
   insertTextAtCursor: vi.fn<(t: string) => Promise<unknown>>(),
+  // Which deck is open. The undo crumb lives in `localStorage`, which belongs to
+  // the add-in's ORIGIN and is shared by every deck opened against it, so the
+  // crumb records the deck it was written on and is only answered for a match.
+  // One stable value here means every wiring test below speaks about the same
+  // document; the refusals themselves are pinned in `test/crumb.test.ts`.
+  documentKey: vi.fn(() => "https://example-my.sharepoint.com/personal/x/Documents/deck.pptx"),
   inspectBlock: vi.fn<(r: { from: number; to: number }) => Promise<unknown>>(),
   runMerge: vi.fn<(r: unknown) => Promise<unknown>>(),
   undoMerge: vi.fn<(o: unknown) => Promise<unknown>>(),
@@ -50,6 +56,7 @@ vi.mock("../src/office/powerpoint.js", () => ({
   canReadSelection: office.canReadSelection,
   hostEnvironment: office.hostEnvironment,
   insertTextAtCursor: office.insertTextAtCursor,
+  documentKey: office.documentKey,
 }));
 vi.mock("../src/office/merge.js", () => ({
   inspectBlock: office.inspectBlock,
@@ -1580,6 +1587,10 @@ describe("a run the pane never came back from", () => {
    * TOLD, with both numbers and where to look, and never offered a delete.
    */
   const KEY = "ssf-merge.run.v1";
+  // The deck these crumbs belong to. The store is shared by every deck on the
+  // add-in's origin, so a crumb names the one it was written on and the pane
+  // only answers for a match — this is what the mocked `documentKey` returns.
+  const DECK = "https://example-my.sharepoint.com/personal/x/Documents/deck.pptx";
 
   // The store survives `vi.resetModules`, and earlier tests in this file run
   // real merges that drop crumbs of their own.
@@ -1594,6 +1605,7 @@ describe("a run the pane never came back from", () => {
         added: 0,
         runId: "pending",
         startedAt: "2026-08-27T10:00:00.000Z",
+        doc: DECK,
       }),
     );
     office.slideCount.mockReset().mockResolvedValue(16);
@@ -1615,7 +1627,14 @@ describe("a run the pane never came back from", () => {
   it("says it once, because there is no action attached to it", async () => {
     localStorage.setItem(
       KEY,
-      JSON.stringify({ kind: "ssf-merge-run", deckAtStart: 4, added: 0, runId: "pending", startedAt: "2026-08-27" }),
+      JSON.stringify({
+        kind: "ssf-merge-run",
+        deckAtStart: 4,
+        added: 0,
+        runId: "pending",
+        startedAt: "2026-08-27",
+        doc: DECK,
+      }),
     );
     office.slideCount.mockReset().mockResolvedValue(16);
     await openPane();
@@ -1640,7 +1659,14 @@ describe("a run the pane never came back from", () => {
     // to do with taking last night's slides back out.
     localStorage.setItem(
       KEY,
-      JSON.stringify({ kind: "ssf-merge-run", deckAtStart: 12, added: 6, runId: "r1", startedAt: "2026-08-27" }),
+      JSON.stringify({
+        kind: "ssf-merge-run",
+        deckAtStart: 12,
+        added: 6,
+        runId: "r1",
+        startedAt: "2026-08-27",
+        doc: DECK,
+      }),
     );
     office.slideCount.mockReset().mockResolvedValue(18);
     await openPane();
@@ -1665,7 +1691,14 @@ describe("a run the pane never came back from", () => {
     // caret restore exists for, one level up.
     localStorage.setItem(
       KEY,
-      JSON.stringify({ kind: "ssf-merge-run", deckAtStart: 12, added: 6, runId: "r1", startedAt: "2026-08-27" }),
+      JSON.stringify({
+        kind: "ssf-merge-run",
+        deckAtStart: 12,
+        added: 6,
+        runId: "r1",
+        startedAt: "2026-08-27",
+        doc: DECK,
+      }),
     );
     const count = deferred<number>();
     office.slideCount.mockReset().mockReturnValue(count.promise);
