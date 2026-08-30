@@ -151,6 +151,66 @@ describe("what it leaves alone", () => {
   });
 });
 
+describe("a value cell that is not ONLY a placeholder", () => {
+  /**
+   * The cell is rebuilt around its placeholders rather than handed to
+   * `String.replace`, since the reader stopped being a regular expression. That
+   * is index arithmetic, and index arithmetic that nothing checks is how a
+   * merge writes a number nobody asked for — so the characters before the first
+   * placeholder, between two, and after the last are each pinned by a case that
+   * fails without them.
+   *
+   * None of these is a template anybody would write. They are the shapes the
+   * rebuild can get wrong.
+   */
+  it("keeps what comes after the placeholder", async () => {
+    const { zip } = await merge({
+      workbook: ["{{Name}}"],
+      values: ["{{Revenue}}00", "42"],
+      categories: ["{{Name}}", "Everyone else"],
+    });
+    expect((await sheetCells(zip))["B2"]).toEqual({ type: "n", value: "125000000" });
+  });
+
+  it("keeps what comes before it", async () => {
+    const { zip } = await merge({
+      workbook: ["{{Name}}"],
+      values: ["-{{Revenue}}", "42"],
+      categories: ["{{Name}}", "Everyone else"],
+    });
+    expect((await sheetCells(zip))["B2"]).toEqual({ type: "n", value: "-1250000" });
+  });
+
+  it("keeps what sits between two of them", async () => {
+    const { zip } = await merge(
+      {
+        workbook: ["{{Name}}"],
+        values: ["{{A}}.{{B}}", "42"],
+        categories: ["{{Name}}", "Everyone else"],
+      },
+      [
+        ["Name", "A", "B"],
+        ["Ada", "3", "5"],
+      ],
+    );
+    expect((await sheetCells(zip))["B2"]).toEqual({ type: "n", value: "3.5" });
+  });
+
+  it("leaves a placeholder no column answers standing, braces and all", async () => {
+    // The cell then fails to parse and is REFUSED, which is the point: blanking
+    // an unresolved placeholder would leave `42` behind and plot it as though
+    // the data had said so.
+    const { out, zip } = await merge({
+      workbook: ["{{Name}}"],
+      values: ["{{Nope}}42", "42"],
+      categories: ["{{Name}}", "Everyone else"],
+    });
+    expect(out.graphics.numbers.refused).toBe(1);
+    expect(out.graphics.numbers.filled).toBe(0);
+    expect((await sheetCells(zip))["B2"]!.type, "a refused cell was rewritten anyway").toBe("s");
+  });
+});
+
 describe("the number that reaches the chart", () => {
   it("is the raw value, not the formatted one", async () => {
     // `{{Revenue|number:0}}` in a LABEL should read "1 250 000". In a value cell

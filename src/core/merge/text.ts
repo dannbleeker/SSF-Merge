@@ -15,87 +15,163 @@
 import { A_NS, C_NS, CX_NS, SSML_NS, children, elements } from "../pptx/xml.js";
 
 /**
- * `{{Field}}` or `{{Field|format}}`.
+ * One `{{Field}}` or `{{Field|format}}`, found in a piece of text.
  *
- * A field name is any letter, mark, digit, underscore or dot — Unicode, not
- * ASCII. `[\w.]` matched none of `ø`, `å`, `é`, `ü`, Greek or Cyrillic, so
- * `{{Beløb}}` and `{{Måned}}` were INVISIBLE to the engine: `fieldsIn` never
- * reported them, so the pane could not flag them as unmatched either, and the
- * literal braces were printed on every merged slide. On a product whose first
- * users write Danish, that is most of a template.
- *
- * `\p{L}\p{M}\p{N}` rather than `\w` with the `u` flag, because `\w` stays
- * ASCII-only under `u`; the flag alone would have changed nothing. A column
- * name arrives verbatim from the header and the resolver already answers for
- * it, so the pattern was the only thing in the way.
- *
- * **A name may contain SPACES, and refusing them refused most real data.** The
- * class above was a list of allowed characters and a space was not on it, so
- * `{{Row Labels}}`, `{{Min. of cost}}` and `{{Sum of quantity monthly}}` — the
- * literal default headers of an Excel pivot table, which is the commonest thing
- * anybody pastes into this add-in — were invisible to the engine. Reported from
- * a real run, on a deck whose slides plainly carried them, where the pane
- * answered "these slides carry no fields yet" about fields it had itself put
- * there.
- *
- * The rule is now stated the other way round, which is what it always meant: a
- * name is anything that is not a brace, a pipe or a line break, and it has to
- * contain **at least one letter or digit**. That keeps the refusals the
- * previous widening was written for — `{{ }}` and `{{!!}}` are not fields —
- * while `{{a b}}`, which was swept in with them, is one. Leading and trailing
- * whitespace is eaten by the `\s*` either side, so `{{ Name }}` and `{{Name}}`
- * are the same field and match a header the parse has already trimmed.
- *
- * NOT exported. Every caller goes through `fieldPattern` below, so nobody can
- * borrow the shared `lastIndex` — the compiler enforces what four separate
- * hand-written precautions used to.
- *
- * Excluding `{`, `}` and `|` is what keeps it from running away: a match cannot
- * cross into the next placeholder, and the format pipe still splits. The one
- * thing it costs is a paragraph writing ABOUT the syntax — "use {{ and }} to
- * mark a field" now reads as a field called "and". That is a template author
- * documenting the tool inside the tool, and it is worth the pivot headers.
+ * `index` and `length` are offsets into the text that was scanned, which is the
+ * paragraph's JOINED text rather than any one run — see the note at the top of
+ * this file for why the two are never the same thing.
  */
-const FIELD = /\{\{\s*([^{}|\r\n]*?[\p{L}\p{N}][^{}|\r\n]*?)\s*(?:\|\s*([^{}\r\n]+?)\s*)?\}\}/gu;
+export interface FieldHit {
+  /** The field name, trimmed. Matches a column header as the parse trimmed it. */
+  name: string;
+  /** What follows the `|`, trimmed. Absent when the placeholder carries no format. */
+  format?: string;
+  /** Offset of the opening `{{`. */
+  index: number;
+  /** Length of the whole placeholder, braces included. */
+  length: number;
+}
+
+/** A field name must carry at least one of these, or `{{ }}` and `{{!!}}` would be fields. */
+const ALNUM = /[\p{L}\p{N}]/u;
+
+/** Neither a name nor a format may contain one: a placeholder lives on one line. */
+const BREAK = /[\r\n]/;
 
 /**
- * A FRESH matcher for the same pattern, every call.
+ * Every placeholder in a piece of text, in order.
  *
- * `FIELD` is global, so it carries `lastIndex` between calls. `matchAll` copies
- * that index onto the matcher it builds, and `test` leaves it wherever the
- * match ended — so one caller's leftover state decides where another caller
- * starts reading, and the second one silently misses every field before that
- * offset.
+ * **A name is anything that is not a brace, a pipe or a line break, and it has
+ * to contain at least one letter or digit.** Unicode, not ASCII: `[\w.]` matched
+ * none of `ø`, `å`, `é`, `ü`, Greek or Cyrillic, so `{{Beløb}}` and `{{Måned}}`
+ * were INVISIBLE to the engine — never reported to the pane, so never flagged as
+ * unmatched either, and the literal braces printed on every merged slide. On a
+ * product whose first users write Danish, that is most of a template.
  *
- * Three call sites had already worked around this by hand with
- * `new RegExp(FIELD.source, FIELD.flags)`, and a fourth reset `lastIndex`
- * around each use instead. Four spellings of one precaution is how the one that
- * forgets gets written. Ask for a matcher; do not borrow the shared one.
+ * **Spaces are part of a name**, which the rule refused for a while by listing
+ * the characters it allowed. `{{Row Labels}}`, `{{Min. of cost}}` and
+ * `{{Sum of quantity monthly}}` — the literal default headers of an Excel pivot
+ * table, which is the commonest thing anybody pastes into this add-in — were
+ * invisible for the same reason, reported from a real run on a deck whose slides
+ * plainly carried them, where the pane answered "these slides carry no fields
+ * yet" about fields it had itself put there. Stating the rule as a refusal keeps
+ * `{{ }}` and `{{!!}}` out while letting `{{a b}}` in.
+ *
+ * Whitespace at either end belongs to nobody: `{{ Name }}` and `{{Name}}` are
+ * the same field, and both match a header the parse has already trimmed.
+ *
+ * Excluding braces and the pipe is what keeps a placeholder from running away: a
+ * hit cannot cross into the next one, and the format pipe still splits. The one
+ * thing it costs is a paragraph writing ABOUT the syntax — "use {{ and }} to
+ * mark a field" reads as a field called "and". That is a template author
+ * documenting the tool inside the tool, and it is worth the pivot headers.
+ *
+ * **A SCAN rather than a regular expression, and that is the point.** The
+ * pattern this replaces was
+ *
+ *     /\{\{\s*([^{}|\r\n]*?[\p{L}\p{N}][^{}|\r\n]*?)\s*(?:\|\s*([^{}\r\n]+?)\s*)?\}\}/gu
+ *
+ * — two lazy unbounded classes with a required character between them, which is
+ * the classic shape for catastrophic backtracking. On a placeholder that opens
+ * and never closes, the engine tries every split of the run between the two:
+ * `{{` and forty thousand letters took 4.4 seconds, and `{{a|` and four thousand
+ * spaces took THIRTY-THREE, synchronously, on text that arrives inside a deck
+ * somebody was sent. Three replacement patterns were written and measured for
+ * exact equivalence against a corpus, and each fixed one shape and made another
+ * worse; the ambiguity is not an accident of how the pattern was written, it IS
+ * the trimming behaviour, and a backtracking engine cannot have one without the
+ * other. Scanning is O(n) by construction — the same two inputs are 0.4 ms and
+ * 0.3 ms — and it is shorter to read than the pattern was.
+ *
+ * The one deliberate difference in what it ANSWERS is a format made of nothing
+ * but whitespace: `{{Total|  }}` reported a format of `" "` and now reports
+ * none. Which spans are fields is unchanged, including the corners nobody would
+ * design — `{{a|}}` and `{{a|\n}}` are still not placeholders — and
+ * `test/text.test.ts` holds both halves against the old pattern over a corpus.
+ * The product cannot see the difference: `applyFormat` and `imageMode` both
+ * answer a whitespace format exactly as they answer no format, which is asserted
+ * rather than assumed.
  */
-export function fieldPattern(): RegExp {
-  return new RegExp(FIELD.source, FIELD.flags);
+export function fieldsInText(text: string): FieldHit[] {
+  const out: FieldHit[] = [];
+  let at = 0;
+  for (;;) {
+    const open = text.indexOf("{{", at);
+    if (open < 0) return out;
+    const hit = readField(text, open);
+    // Not `open + 2`: the text that defeated this placeholder may itself open
+    // one. `{{a{{b}}` has no field called `a` and does have one called `b`.
+    if (!hit) {
+      at = open + 1;
+      continue;
+    }
+    out.push(hit);
+    at = hit.index + hit.length;
+  }
+}
+
+/**
+ * The placeholder opening at `open`, or nothing if that `{{` does not start one.
+ *
+ * Linear in the distance to the first character that cannot be inside a
+ * placeholder, and every one of those characters is either the end of this
+ * search or the start of the next one — so the whole scan is linear in the text
+ * however many `{{` it holds.
+ */
+function readField(text: string, open: number): FieldHit | undefined {
+  let close = -1;
+  for (let i = open + 2; i < text.length; i++) {
+    const c = text[i];
+    // A brace inside a placeholder ends it, and a lone `}` is not an end:
+    // `{{a}b}}` is not a field, which is what the excluded characters said.
+    if (c === "{") return undefined;
+    if (c === "}") {
+      if (text[i + 1] !== "}") return undefined;
+      close = i;
+      break;
+    }
+  }
+  if (close < 0) return undefined;
+
+  const body = text.slice(open + 2, close);
+  const bar = body.indexOf("|");
+  const name = (bar < 0 ? body : body.slice(0, bar)).trim();
+  if (!ALNUM.test(name) || BREAK.test(name)) return undefined;
+
+  let format: string | undefined;
+  if (bar >= 0) {
+    const rest = body.slice(bar + 1);
+    // A pipe with nothing usable after it is not a placeholder at all — the
+    // format is required once the pipe is written. Inherited exactly: it is why
+    // `{{Name|}}` prints its own braces instead of merging.
+    if (!/[^\r\n]/.test(rest)) return undefined;
+    const trimmed = rest.trim();
+    if (BREAK.test(trimmed)) return undefined;
+    if (trimmed !== "") format = trimmed;
+  }
+  return { name, format, index: open, length: close + 2 - open };
 }
 
 /**
  * Whether a column name can be written as a field at all.
  *
  * The pane offers a button per column that puts `{{Column}}` on the slide, and
- * the engine reads it back with `FIELD`. Those two must agree, and for an hour
- * they did not: the button happily produced a token the reader could not see.
- * A shared function is the only version of "these two agree" that cannot rot —
- * a second predicate in the pane would drift the first time this pattern moved.
+ * the engine reads it back with the scanner above. Those two must agree, and for
+ * an hour they did not: the button happily produced a token the reader could not
+ * see. A shared function is the only version of "these two agree" that cannot
+ * rot — a second predicate in the pane would drift the first time this moved.
  *
  * Answers by ASKING the reader rather than by restating it: the token is built
- * and matched, and the name that comes back has to be the column that went in.
- * That catches the interesting case as well as the obvious one — a header
- * carrying a pipe or a brace does not merely fail to match, it matches a
- * DIFFERENT, shorter name, which would put a field on the slide that silently
- * binds to nothing.
+ * and scanned, and the name that comes back has to be the column that went in,
+ * having taken the whole token. That catches the interesting case as well as the
+ * obvious one — a header carrying a pipe or a brace does not merely fail to
+ * match, it matches a DIFFERENT, shorter name, which would put a field on the
+ * slide that silently binds to nothing.
  */
 export function canBeField(column: string): boolean {
   const token = `{{${column}}}`;
-  const hits = [...token.matchAll(fieldPattern())];
-  return hits.length === 1 && hits[0]?.[0] === token && hits[0]?.[1] === column;
+  const hits = fieldsInText(token);
+  return hits.length === 1 && hits[0]?.index === 0 && hits[0]?.length === token.length && hits[0]?.name === column;
 }
 
 /** Answers the value for a field, or null to leave the placeholder visible. */
@@ -156,13 +232,12 @@ export function mergeRuns(nodes: Element[], resolve: Resolve): boolean {
   if (!spans.length) return false;
 
   const edits: Edit[] = [];
-  for (const hit of joined.matchAll(fieldPattern())) {
-    const value = resolve(hit[1] ?? "", hit[2]);
+  for (const hit of fieldsInText(joined)) {
+    const value = resolve(hit.name, hit.format);
     // A field nobody can resolve stays visible. Blanking it hides the author's
     // typo behind 240 slides that look finished and are not.
     if (value === null) continue;
-    const start = hit.index ?? 0;
-    edits.push({ start, end: start + hit[0].length, value });
+    edits.push({ start: hit.index, end: hit.index + hit.length, value });
   }
   return editRuns(nodes, edits);
 }
@@ -291,7 +366,7 @@ export function fieldsIn(doc: Document): string[] {
   const seen = new Set<string>();
   for (const nodes of textGroups(doc)) {
     const { joined } = spansOf(nodes);
-    for (const hit of joined.matchAll(fieldPattern())) if (hit[1]) seen.add(hit[1]);
+    for (const hit of fieldsInText(joined)) seen.add(hit.name);
   }
   return [...seen];
 }

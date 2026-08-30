@@ -38,7 +38,7 @@ import type { Block, PaneState, StepId } from "../src/pane/steps.js";
 import { toRecordSet, type RecordSet } from "../src/core/data/recordset.js";
 import { buildPlan, slideCount } from "../src/core/merge/plan.js";
 import { blockMoved } from "../src/pane/transitions.js";
-import { fieldPattern } from "../src/core/merge/text.js";
+import { fieldsInText } from "../src/core/merge/text.js";
 import { imageMode } from "../src/core/merge/images.js";
 
 const ready: PaneState = {
@@ -719,10 +719,10 @@ describe("the token an image column is written as", () => {
   });
 
   it("is a token the engine's own reader accepts, name and format both", () => {
-    const hits = [...fieldToken("Photo", "image").matchAll(fieldPattern())];
+    const hits = fieldsInText(fieldToken("Photo", "image"));
     expect(hits).toHaveLength(1);
-    expect(hits[0]?.[1]).toBe("Photo");
-    expect(imageMode(hits[0]?.[2])).toBe("cover");
+    expect(hits[0]?.name).toBe("Photo");
+    expect(imageMode(hits[0]?.format)).toBe("cover");
   });
 });
 

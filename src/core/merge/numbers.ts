@@ -30,7 +30,7 @@ import JSZip from "jszip";
 import { Pkg, resolveTarget } from "../pptx/pkg.js";
 import { C_NS, CX_NS, PKG_REL_NS, R_NS, SSML_NS, children, elements, parseXml, serializeXml } from "../pptx/xml.js";
 import { numericValue } from "../data/format.js";
-import { fieldPattern, type Resolve } from "./text.js";
+import { fieldsInText, type Resolve } from "./text.js";
 
 export interface NumberOutcome {
   /** Chart values filled from a row. */
@@ -397,12 +397,24 @@ export async function mergeChartNumbers(
 
       const text = stringOfCell(cell, shared);
       if (text === undefined) continue; // already a number: not ours to touch
-      if (!fieldPattern().test(text)) continue; // a label somebody typed, left alone
+      const hits = fieldsInText(text);
+      if (!hits.length) continue; // a label somebody typed, left alone
 
       // Resolved WITHOUT a format on purpose. A number written into a chart is
       // formatted by the chart, and `{{Revenue|number:0}}` would hand back
       // "1 250 000" — which is the right string and an unplottable cell.
-      const filled = text.replace(fieldPattern(), (whole, name: string) => resolve(name) ?? whole);
+      //
+      // A field nobody can resolve keeps its braces, exactly as the text pass
+      // leaves one visible: the cell then fails `numericValue` and is counted as
+      // refused rather than written as a zero.
+      let filled = "";
+      let read = 0;
+      for (const hit of hits) {
+        const whole = text.slice(hit.index, hit.index + hit.length);
+        filled += text.slice(read, hit.index) + (resolve(hit.name) ?? whole);
+        read = hit.index + hit.length;
+      }
+      filled += text.slice(read);
       const value = numericValue(filled);
       if (value === undefined) {
         out.refused++;
