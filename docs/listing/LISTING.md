@@ -44,14 +44,37 @@ in the ribbon after install. It is the owner's call, not a formatting fix.
 
 ## Summary
 
-Maximum 100, recommended 70. This one is 70.
+Maximum 100, recommended 70. Partner Center asks for "a single sentence", plain
+text, no line breaks, and says it appears in search results and summary views.
 
 ```
-One set of slides per row of your table, with fonts and layout intact.
+Paste a table and get one set of slides per row, formatting intact.
 ```
 
-It leads with the outcome rather than the name, which is what the guidance asks
-for — the name is already on the tile beside it.
+67 characters. The verb phrase is the description's own — "Mark the slides that
+repeat, paste a table, and get one set of slides per row" — so the two fields
+say the same thing in the same words rather than drifting into synonyms. It
+leads with the outcome rather than the name, which is what the guidance asks
+for: the name is already on the tile beside it, and the first 30 characters read
+"Paste a table and get one set".
+
+The previous draft, "One set of slides per row of your table, with fonts and
+layout intact.", was a noun phrase rather than a sentence, and "fonts and
+layout" was a stand-in for the word the rest of the product uses, which is
+"formatting".
+
+**This depends on the name.** It works when the offer name carries the words
+somebody searches for. If the name becomes `Slide Mail Merge`, "mail merge" is
+on the tile and the summary is free to be the outcome. If it stays `SSF Merge`,
+the summary is the only place those words appear, and this is the one to use
+instead:
+
+```
+Mail merge for slides: paste a table and get one set of slides per row, formatting intact.
+```
+
+90 characters, inside the limit, at the cost of spending the first 22 on the
+category rather than on what the thing does.
 
 ## Description
 
