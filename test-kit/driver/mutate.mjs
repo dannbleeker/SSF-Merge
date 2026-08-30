@@ -103,11 +103,31 @@ function failedChecks(out) {
     : [];
 }
 
+/**
+ * A check already FAILING on the reference deck cannot prove anything.
+ *
+ * `fired` asks whether the expected check is red after the mutation. If it was
+ * red BEFORE it, the answer is yes no matter what the mutation did — the
+ * assertion passes without the guard being exercised at all.
+ *
+ * The round of 2026-08-30 ran this on a deck that kept its template slides, so
+ * eight checks were red at baseline and FOUR of the six mutants asserted
+ * against one of them. The harness printed "Every mutation was caught by its
+ * own guard" and exited 0, which is the same shape of lie it exists to catch
+ * one level down: a verifier nobody has tested. So a mutant whose check is
+ * already red is INCONCLUSIVE, and inconclusive is not success.
+ */
 const baseline = failedChecks(runVerifier(SRC));
-console.log(`baseline failures (expected: SmartArt only, the template has none yet):`);
-for (const f of baseline) console.log(`  - ${f}`);
+if (baseline.length) {
+  console.log(`baseline failures on ${SRC} — ${baseline.length} check(s) already red BEFORE any mutation:`);
+  for (const f of baseline) console.log(`  - ${f}`);
+  console.log(`  Any mutant expecting one of these cannot be proven by this run.`);
+} else {
+  console.log(`baseline: every check passes on ${SRC}, so each mutant below is a real test.`);
+}
 console.log();
 
+let proven = 0;
 let allGood = true;
 for (const m of MUTANTS) {
   const zip = await JSZip.loadAsync(readFileSync(SRC));
@@ -116,20 +136,26 @@ for (const m of MUTANTS) {
   writeFileSync(out, await zip.generateAsync({ type: "nodebuffer" }));
 
   const failures = failedChecks(runVerifier(out));
+  const alreadyRed = baseline.some((f) => f.includes(m.expect));
   const fired = failures.some((f) => f.includes(m.expect));
   const collateral = failures.filter((f) => !f.includes(m.expect) && !baseline.includes(f));
 
-  const verdict = fired ? "GUARD FIRED" : "GUARD SILENT";
-  if (!fired) allGood = false;
-  console.log(`${fired ? "OK  " : "BAD "} ${m.name.padEnd(36)} ${verdict}`);
+  const verdict = alreadyRed ? "CANNOT PROVE - check already red" : fired ? "GUARD FIRED" : "GUARD SILENT";
+  const tag = alreadyRed ? "??? " : fired ? "OK  " : "BAD ";
+  if (alreadyRed || !fired) allGood = false;
+  if (!alreadyRed && fired) proven++;
+  console.log(`${tag} ${m.name.padEnd(36)} ${verdict}`);
   console.log(`     expected check: "${m.expect}"`);
   if (collateral.length) console.log(`     also tripped (not necessarily wrong): ${collateral.join(" ; ")}`);
   console.log();
 }
 
+console.log(`${proven}/${MUTANTS.length} mutation(s) actually proved their guard.`);
 console.log(
   allGood
     ? "Every mutation was caught by its own guard."
-    : "AT LEAST ONE MUTATION WENT UNNOTICED - the verifier cannot be trusted.",
+    : proven + baseline.length === 0
+      ? "AT LEAST ONE MUTATION WENT UNNOTICED - the verifier cannot be trusted."
+      : "THIS RUN DID NOT CERTIFY THE VERIFIER - fix the baseline, or a silent guard, and run it again.",
 );
 process.exit(allGood ? 0 : 1);
