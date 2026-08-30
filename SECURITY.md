@@ -128,3 +128,85 @@ the kind that comes back the day somebody widens one.
 - **Denial of service.** A deliberately enormous or deeply nested package was
   not tried; the failure there is a slow or failed merge on the user's own
   machine, which is why it ranked below the rest rather than being dismissed.
+  **Picked up by the sweep of 2026-08-30 below, which found one** — and the
+  entry ranked it right: a frozen tab on the user's own machine.
+
+## The sweep of 2026-08-30
+
+The second pass, aimed at what the first one listed as not covered — denial of
+service — and at the parser surfaces it took on trust.
+
+| Surface | Finding |
+| --- | --- |
+| XML external entities (XXE) | **Not possible, measured.** `@xmldom/xmldom` does not resolve them: `<!ENTITY x SYSTEM "file:///etc/passwd">` comes through as the literal text `&x;` with a parse error logged, and no file is read. |
+| Entity expansion (billion laughs) | **Not possible, measured.** Custom internal entities are not expanded at all — a four-level bomb answers `entity not found` and yields three characters. |
+| HTML injection in the pane | **Not possible.** No `innerHTML`, `outerHTML`, `insertAdjacentHTML`, `document.write`, `eval` or `new Function` anywhere in `src/`. |
+| Network egress | **None.** No `fetch`, `XMLHttpRequest`, `WebSocket` or `sendBeacon` in `src/`, which is what the top of this page claims. |
+| User data into an XML **attribute** | **Does not happen.** Every `setAttribute` value is engine-generated — a content type, a part path, a relationship id, a number. No cell value or column name reaches one. |
+| A picture's file extension | **Not from the file name.** It comes from a fixed table keyed by the kind `readImage` decides from the file's MAGIC BYTES, so a file called `x".png` cannot reach `[Content_Types].xml`. |
+| Dependencies | `npm audit` clean, with and without dev dependencies. |
+| Prototype reach through a data cell | **One finding, fixed below.** |
+| Backtracking on hostile template text | **One finding, measured and NOT fixed — see below.** |
+
+### One — a date cell could reach `Object.prototype`
+
+`monthFromName` looked a month word up in `MONTH_NAMES`, a frozen object,
+keyed by the cell's own text. `Object.freeze` does not remove the prototype
+chain, and `dateShape`'s `NAMED_DATE` accepts **any** word of three letters or
+more — so `1 constructor 2026` passes the gate, and the lookup answers the
+`Object` function. `__proto__` answers `Object.prototype` the same way.
+
+**The outcome was already correct, and only by luck.** A function reaches
+`Date.UTC` as a month, the arithmetic is NaN, the date is invalid, and the rule
+that an unreadable cell is printed as it stands catches it. Guarded with
+`hasOwnProperty` now, because this repo's rule is to guard any table keyed by a
+config or data string and the luck was one refactor deep.
+
+The tests beside it are **characterisation tests, not a proof**: with the guard
+reverted they still pass, which was checked rather than assumed. They pin the
+outcome for the day the luck runs out.
+
+### Two — quadratic backtracking in the placeholder pattern, NOT fixed
+
+`FIELD` in `src/core/merge/text.ts` backtracks super-linearly on template text
+that opens a placeholder and never closes it. Measured, on a single paragraph:
+
+| input | time |
+| --- | --- |
+| `{{` + 5,000 letters | 74 ms |
+| `{{` + 10,000 letters | 292 ms |
+| `{{` + 20,000 letters | 1,128 ms |
+| `{{` + 40,000 letters | 4,447 ms |
+| `{{a\|` + 2,000 spaces | 4,232 ms |
+
+Four times the work for twice the input: quadratic. Ordinary slide text is
+unaffected — 116,000 characters carrying 6,000 real placeholders match in 3 ms —
+and so is a paragraph with many unclosed `{{`, because the character class stops
+at the next brace. It needs one long unbroken run inside one paragraph.
+
+**Reachable** from a deck somebody was sent: a `<a:t>` run of forty thousand
+characters is legal, and the pattern runs over every paragraph of the template
+during the step-1 read as well as during the merge. **The impact is a frozen
+tab** — the match is synchronous, so the pane's own call timeouts cannot save
+it. No data loss, no escalation, nothing that reaches another user.
+
+**Left unfixed deliberately.** Three candidate patterns were written and
+measured against a 30,000-string corpus for exact equivalence, and each one
+fixed one shape and made another worse: a lookahead that removes the letters
+case takes `{{` + 40,000 spaces from 28 ms to 3,447 ms, and bounding the trim
+that fixes the pipe case leaves it. `fieldPattern()` is a public export
+returning a `RegExp`, so the linear answer — scan for `{{`, scan for `}}`, split
+on the first `|` — is a change to the library's contract and to six call sites,
+which is not a thing to do inside a sweep.
+
+What it needs is a decision on that contract. Until then it is written down
+here rather than half-fixed, which is the state the three candidates were in.
+
+### What this sweep did not cover
+
+- **A decompression bomb in an embedded workbook.** A chart's `.xlsx` is
+  inflated by `jszip` with no size guard. The deck reaching that code was
+  exported by PowerPoint from a presentation the user already had open, so the
+  bytes are host-produced; the residual case is a hostile chart in a deck
+  somebody was sent, and the impact is the same frozen tab as above.
+- **The host, delivery, and the two unbuilt network features**, all as before.

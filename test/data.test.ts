@@ -678,3 +678,44 @@ describe("a number too large for a double", () => {
     expect(detectType(["9".repeat(15)])).toBe("number");
   });
 });
+
+describe("a data cell cannot reach Object's prototype", () => {
+  /**
+   * From the security sweep of 2026-08-30. `monthFromName` looks a month word
+   * up in a table keyed by the cell's own text, and `dateShape`'s `NAMED_DATE`
+   * takes ANY word of three letters or more — so `1 constructor 2026` passes
+   * the gate and reaches the lookup.
+   *
+   * `Object.freeze` does not remove the prototype chain. Unguarded, the table
+   * answers the `Object` function for `constructor` and `Object.prototype` for
+   * `__proto__`, and `known !== undefined` accepts either as a month.
+   *
+   * The OUTCOME was already correct and only by luck — a function reaches
+   * `Date.UTC`, the arithmetic is NaN, the date is invalid, and the rule that
+   * an unreadable cell is printed as it stands catches it.
+   *
+   * **So these are CHARACTERISATION tests and not a proof of the fix, and that
+   * was checked rather than assumed: with the guard reverted they still pass,
+   * all 92 of them.** This repo's rule is that a test which passes against the
+   * unfixed file is decoration, and calling these a guard would be exactly
+   * that. What they are for is the day the luck runs out — a `dateFrom` that
+   * tolerates a non-number, or a table whose prototype carries a numeric
+   * property — at which point they go red and the guard beside them is why
+   * they do not need to.
+   */
+  for (const word of ["constructor", "__proto__", "hasownproperty", "tostring", "valueof"]) {
+    it(`leaves "1 ${word} 2026" alone`, () => {
+      expect(applyFormat(`1 ${word} 2026`, "date")).toBe(`1 ${word} 2026`);
+      expect(applyFormat(`1 ${word} 2026`, "date:d MMM yyyy")).toBe(`1 ${word} 2026`);
+    });
+  }
+
+  it("still reads the months it is supposed to", () => {
+    // The other half: a guard that refused everything would pass the tests
+    // above and break the feature.
+    expect(applyFormat("1 january 2026", "date:d MMM yyyy")).toBe("1 Jan 2026");
+    expect(applyFormat("1 januar 2026", "date:d MMM yyyy")).toBe("1 Jan 2026");
+    // And the `new Date` fallback, which is the branch the guard now feeds.
+    expect(applyFormat("1 Mar 2026", "date:d MMM yyyy")).toBe("1 Mar 2026");
+  });
+});
