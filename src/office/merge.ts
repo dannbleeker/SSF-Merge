@@ -18,7 +18,7 @@
  * 5. read the DELTA to find out what happened, never the absence of an error.
  */
 import { runPlan } from "../core/merge/run.js";
-import { buildPlan } from "../core/merge/plan.js";
+import { buildPlan, slidesByRecord } from "../core/merge/plan.js";
 import { prepareBlock } from "../core/merge/prepare.js";
 import { Pkg } from "../core/pptx/pkg.js";
 import type { ImageOutcome } from "../core/merge/images.js";
@@ -342,18 +342,8 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
   const added = Math.max(0, Math.min(insert.landed, sending.length));
 
   // How many slides each ROW produced, in plan order — the unit a torn insert
-  // has to be read in. Grouped from the steps rather than assumed uniform: a
-  // condition leaves a row shorter than its neighbours.
-  const perRecord: number[] = [];
-  let lastRecord = -1;
-  for (const step of plan.steps) {
-    if (step.recordIndex !== lastRecord) {
-      perRecord.push(0);
-      lastRecord = step.recordIndex;
-    }
-    perRecord[perRecord.length - 1] = (perRecord[perRecord.length - 1] ?? 0) + 1;
-  }
-  const rows = tornInsert(perRecord, added);
+  // has to be read in.
+  const rows = tornInsert(slidesByRecord(plan.steps), added);
 
   /**
    * What the run PRODUCED, shared by the two outcomes below.

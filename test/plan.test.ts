@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { toRecordSet } from "../src/core/data/recordset.js";
-import { buildPlan, isTruthy, recordCount, slideCount, type Block } from "../src/core/merge/plan.js";
+import { buildPlan, isTruthy, recordCount, slideCount, type Block, slidesByRecord } from "../src/core/merge/plan.js";
 import { TAG_BLOCK, TAG_RECORD, TAG_RUN, TAG_SEQ } from "../src/core/pptx/tags.js";
 
 const records = toRecordSet([
@@ -243,5 +243,44 @@ describe("only a field that is actually on a slide, and actually a column", () =
       ],
     };
     expect(buildPlan(misspelled, records, { runId: "r", onEmpty: "skip" }).skippedRecords).toEqual([]);
+  });
+});
+
+describe("how many slides each record produced", () => {
+  /**
+   * The unit a torn insert is read in. `tornInsert` walks these and stops where
+   * the slides ran out, so it needs one number per record — "719 of 720 slides
+   * landed" is true and tells the user nothing, because every row after the
+   * torn one still looks correct.
+   *
+   * This was nine lines inside `runMerge` until 2026-08-30, reachable only by
+   * running a whole merge against a fake host. The case worth checking is the
+   * one that arithmetic over the block's size cannot produce.
+   */
+  const step = (recordIndex: number) => ({ recordIndex });
+
+  it("groups a plan where every record gets the same slides", () => {
+    expect(slidesByRecord([0, 0, 1, 1, 2, 2].map(step))).toEqual([2, 2, 2]);
+  });
+
+  it("reports a record left short by a condition", () => {
+    // The whole reason this is grouped from the STEPS rather than derived from
+    // the block. A uniform `to - from + 1` would say [2, 2, 2] here and put the
+    // tear on the wrong row.
+    expect(slidesByRecord([0, 0, 1, 2, 2].map(step))).toEqual([2, 1, 2]);
+  });
+
+  it("answers nothing for a plan with no steps", () => {
+    // Reachable: every row skipped leaves an empty plan, and `runMerge` returns
+    // before the insert. The function still has to answer.
+    expect(slidesByRecord([])).toEqual([]);
+  });
+
+  it("counts a record that appears twice as two records", () => {
+    // `buildPlan` only ever emits contiguous records, so this is a statement
+    // about what the function does rather than about a plan anyone can build.
+    // Indexing by `recordIndex` would fold these into one row of 3; the host
+    // would have inserted them as two.
+    expect(slidesByRecord([0, 0, 1, 0].map(step))).toEqual([2, 1, 1]);
   });
 });

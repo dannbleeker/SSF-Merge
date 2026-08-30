@@ -273,3 +273,39 @@ export function slideCount(plan: MergePlan): number {
 export function recordCount(plan: MergePlan): number {
   return new Set(plan.steps.map((s) => s.recordIndex)).size;
 }
+
+/**
+ * How many slides each record's steps produced, in plan order.
+ *
+ * The unit a TORN insert has to be read in. `tornInsert` grades a short insert
+ * by walking these and stopping where the slides ran out, so what it needs is
+ * one number per record and not a total — "719 of 720 slides landed" is true
+ * and useless, because every row after the torn one still looks correct.
+ *
+ * Grouped from the steps rather than derived from the block's size, and that is
+ * the whole reason this exists as a function. The pane has a `slidesPerRecord`
+ * that answers `to - from + 1`, which is right for a forecast and wrong here: a
+ * condition leaves a row shorter than its neighbours, and a uniform count would
+ * then report the tear at the wrong row.
+ *
+ * Lifted out of `runMerge` on 2026-08-30. It is pure arithmetic over the plan
+ * and was reachable only by running a whole merge against a fake host, so the
+ * one case worth checking — a record whose condition dropped a slide — could
+ * not be checked at all.
+ */
+export function slidesByRecord(steps: Pick<PlanStep, "recordIndex">[]): number[] {
+  const out: number[] = [];
+  let lastRecord = -1;
+  for (const step of steps) {
+    // A NEW GROUP on every change, rather than indexing by `recordIndex`. A
+    // plan whose records are contiguous is the only plan `buildPlan` makes, and
+    // indexing would silently merge two runs of the same index into one row
+    // where this reports them as the two the host would have inserted.
+    if (step.recordIndex !== lastRecord) {
+      out.push(0);
+      lastRecord = step.recordIndex;
+    }
+    out[out.length - 1] = (out[out.length - 1] ?? 0) + 1;
+  }
+  return out;
+}
