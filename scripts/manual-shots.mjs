@@ -49,6 +49,42 @@ const PORT = process.env.PANE_PORT ?? "5199";
 const OUT = process.env.MANUAL_SHOTS ?? "docs/images";
 const EXECUTABLE = process.env.PLAYWRIGHT_CHROMIUM;
 
+/**
+ * ONE browser, named, because the pictures depend on which one draws them.
+ *
+ * A refresh on 2026-08-30 produced a `step-4-preview.png` twenty pixels shorter
+ * than the committed one — same commit, same script, same words, the card's
+ * sentence wrapping onto two lines instead of three. Every other shot in the
+ * set matched to the pixel. Two local browsers, Edge and Chrome, agreed with
+ * each other and disagreed with what was in the repository, so it was not this
+ * machine's fonts and not the code: it was the binary. Which binary drew the
+ * committed set had never been recorded, so the cause could not be established
+ * afterwards — only the effect.
+ *
+ * That is worth removing rather than explaining. These images are committed and
+ * read as diffs: a set that reflows depending on who ran it makes every future
+ * refresh look like a change, and lets a real change hide in the noise. So the
+ * channel is named here rather than being whatever Playwright happens to have
+ * installed.
+ *
+ * `msedge` rather than the bundled Chromium for a second reason: AppLocker on
+ * the machine this is developed on refuses binaries outside Program Files, and
+ * Playwright's own Chromium lives under %LOCALAPPDATA%. It fails there with
+ * `spawn UNKNOWN`, which reads like a broken script rather than a policy.
+ *
+ * `PLAYWRIGHT_CHROMIUM` still overrides, for a machine with no Edge. Expect the
+ * wrapping to move if you use it, and do not commit the result as though
+ * nothing had changed.
+ *
+ * **The committed pictures predate this pin**, so the first refresh under it
+ * rewrites all eight: same size, same words, lighter text, and the headline
+ * wrapping a word later. That is the binary changing, not the pane. It was left
+ * for the owner to accept deliberately rather than arriving inside an unrelated
+ * commit — a manual whose pictures all changed is a thing somebody should have
+ * chosen. Once that refresh lands, a diff here means the pane moved.
+ */
+const CHANNEL = "msedge";
+
 const WIDTH = 380;
 
 /**
@@ -154,7 +190,10 @@ const STATES = [
 ];
 
 mkdirSync(OUT, { recursive: true });
-const browser = await chromium.launch(EXECUTABLE ? { executablePath: EXECUTABLE } : {});
+const browser = await chromium.launch(EXECUTABLE ? { executablePath: EXECUTABLE } : { channel: CHANNEL });
+// Said out loud, and recorded in the run, because the last time these pictures
+// disagreed nobody could say what had drawn the ones already committed.
+console.log(`browser : ${EXECUTABLE ? `${EXECUTABLE} (PLAYWRIGHT_CHROMIUM)` : CHANNEL} — ${browser.version()}`);
 for (const { name, step, state } of STATES) {
   const page = await browser.newPage({ viewport: { width: WIDTH, height: 640 } });
   // Office.js is fetched from Microsoft by `taskpane.html` and is not what is
