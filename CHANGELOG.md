@@ -7,6 +7,20 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — the notice for older PowerPoint sits in the middle of its box
+
+The chart types PowerPoint added in 2016 cannot be drawn by PowerPoint 2013 and
+earlier, so the file carries something for those to show instead. SSF Merge puts
+a short notice there rather than the picture PowerPoint left behind, because
+that picture is the TEMPLATE's chart — another recipient's figures under this
+recipient's name.
+
+The notice inherits the chart's whole frame, and the sentence had been sitting
+along the top edge of it with the rest empty, which reads as something that
+failed to load rather than something telling you why. It is centred now. Nothing
+on a current PowerPoint ever sees this branch, which is why it took until
+somebody went and looked.
+
 ### Fixed — the merge step said the slides were already added
 
 The sentence above the button read _"6 slides added after slide 3, leaving 9

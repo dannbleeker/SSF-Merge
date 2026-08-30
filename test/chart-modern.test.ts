@@ -259,6 +259,23 @@ describe("the fallback branch a merged copy carries", () => {
     expect(said.length).toBeGreaterThan(20);
   });
 
+  it("centres the notice in the frame it inherited", async () => {
+    // The shape is the size of the CHART, so an un-anchored sentence sits along
+    // the top edge with a chart's worth of empty box under it — which reads as
+    // something that failed to load rather than something saying why. Seen on
+    // 2026-08-30 by forcing the branch with `test-kit/driver/force-fallback.mjs`,
+    // because a host that takes it unaided is hard to come by.
+    const { zip } = await mergeDeck({ paragraphs: [["Cover"]], modernChart: FUNNEL });
+    const fallback = (await fallbackOf(zip, MERGED_SLIDES[0] ?? "")) as Element;
+
+    const bodyPr = elements(fallback, A_NS, "bodyPr");
+    expect(bodyPr, "no text body to anchor").toHaveLength(1);
+    expect(bodyPr[0]?.getAttribute("anchor"), "the notice is not centred vertically").toBe("ctr");
+
+    const centred = elements(fallback, A_NS, "pPr").some((n) => n.getAttribute("algn") === "ctr");
+    expect(centred, "the notice is not centred horizontally").toBe(true);
+  });
+
   it("locks the notice against editing", async () => {
     // Somebody on a host too old to draw the chart must not be able to type
     // into the notice and save over a chart they cannot see.

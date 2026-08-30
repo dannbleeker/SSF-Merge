@@ -421,7 +421,21 @@ function notice(doc: Document, off: Element | undefined, ext: Element | undefine
   bodyPr.setAttribute("vertOverflow", "clip");
   bodyPr.setAttribute("horzOverflow", "clip");
   bodyPr.setAttribute("wrap", "square");
+  // CENTRED, both ways, because this shape inherits the CHART's whole frame.
+  //
+  // Without it the sentence sits along the top edge of a box the size of a
+  // chart with the rest of it empty, which reads as something that failed to
+  // load rather than something telling you why. That was seen for the first
+  // time on 2026-08-30 — a host old enough to take this branch on its own is
+  // hard to come by, so it was forced: see `test-kit/driver/force-fallback.mjs`.
+  //
+  // Centred prose is usually the wrong choice. A short notice alone in a large
+  // frame is the case where it is the right one.
+  bodyPr.setAttribute("anchor", "ctr");
   const para = a("p");
+  const pPr = a("pPr");
+  pPr.setAttribute("algn", "ctr");
+  para.appendChild(pPr);
   const run = a("r");
   const rPr = a("rPr");
   rPr.setAttribute("lang", "en-US");
