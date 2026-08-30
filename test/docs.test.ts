@@ -185,13 +185,64 @@ describe("the documentation set is whole", () => {
     // Same vacuity guard on the other side: a manual with no tables would pass
     // this forever.
     expect(cells.length, "no table cells found in the manual").toBeGreaterThan(10);
-    const promises = cells.filter((c) => c.replace(/\*/g, "").toLowerCase() === "planned");
+    // Table cells AND prose. The first version of this looked at cells alone
+    // and shipped while two bullets under "What happens to the template" still
+    // read "*Planned.*" with an empty backlog behind them — the same defect the
+    // test was written for, in a different shape, three sections further down.
+    const bullets = [...manual.matchAll(/^\s*-\s+.*?\*Planned\.\*/gm)].map(() => "planned");
+    const promises = [...cells.filter((c) => c.replace(/\*/g, "").toLowerCase() === "planned"), ...bullets];
 
     if (openEntries === 0) {
       expect(
         promises,
         `the manual marks ${promises.length} row(s) "planned" while the backlog's open section is empty`,
       ).toEqual([]);
+    }
+  });
+
+  it("shows every picture it links to, and links to every picture it ships", () => {
+    /**
+     * The manual's screenshots are rendered by `scripts/manual-shots.mjs` and
+     * COMMITTED, because GitHub renders a document from the repository and
+     * cannot run a script. Two ways that rots, and this catches both: a picture
+     * referenced and never committed draws a broken image on the page somebody
+     * reads first, and a picture committed and never referenced is a file
+     * nobody will know to delete or to re-render.
+     *
+     * What it deliberately does NOT check is whether a picture still LOOKS like
+     * the pane. A byte comparison against a fresh render would go red on every
+     * Chromium version bump, which is a gate that teaches people to ignore it.
+     * Re-run the script when the pane changes; that is a habit, not a test.
+     */
+    const linked = [...manual.matchAll(/\]\(images\/([^)]+)\)/g)].map((m) => m[1] ?? "");
+    expect(linked.length, "the manual links to no pictures at all").toBeGreaterThan(4);
+    const shipped = readdirSync("docs/images");
+    for (const name of linked) {
+      expect(shipped, `the manual links to docs/images/${name}, which is not committed`).toContain(name);
+    }
+    for (const name of shipped) {
+      expect(linked, `docs/images/${name} is committed and nothing links to it`).toContain(name);
+    }
+  });
+
+  it("has a heading behind every link inside the manual", () => {
+    // The contents list is hand-written over twenty-odd headings, and a renamed
+    // section leaves a link that scrolls nowhere — silently, because Markdown
+    // renders a dead anchor as an ordinary link. Found by writing the contents
+    // list out in full; kept so the next rename cannot quietly break it.
+    const anchors = new Set(
+      [...manual.matchAll(/^#{1,4}\s+(.*)$/gm)].map((m) =>
+        (m[1] ?? "")
+          .trim()
+          .toLowerCase()
+          .replace(/[^\w\s-]/g, "")
+          .replace(/\s+/g, "-"),
+      ),
+    );
+    const links = [...manual.matchAll(/\]\(#([^)]+)\)/g)].map((m) => m[1] ?? "");
+    expect(links.length, "the manual has no internal links").toBeGreaterThan(10);
+    for (const link of links) {
+      expect(anchors, `the manual links to #${link}, which is not a heading in it`).toContain(link);
     }
   });
 });

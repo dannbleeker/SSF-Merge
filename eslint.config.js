@@ -81,9 +81,9 @@ export default tseslint.config(
     },
   },
   {
-    // ...except this one, which is a Node script whose page.evaluate callbacks
+    // ...except these two, which are Node scripts whose page.evaluate callbacks
     // are serialised and run inside the browser. `document` there is real.
-    files: ["scripts/pane-shots.mjs"],
+    files: ["scripts/pane-shots.mjs", "scripts/manual-shots.mjs"],
     languageOptions: { globals: { ...globals.node, ...globals.browser } },
   },
   {

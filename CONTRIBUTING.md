@@ -39,7 +39,23 @@ reads the format kinds and tag keys out of the source and fails when the manual
 has not caught up.
 
 **Backlog items are removed when they ship, not ticked.** Anything still listed
-is genuinely open.
+is genuinely open. The manual may not mark anything *planned* while the backlog
+has nothing open — a guard reads both.
+
+**The manual's screenshots are generated, and nothing re-renders them for you.**
+They live in `docs/images`, committed, because GitHub renders a document from
+the repository and cannot run a script. If you change the pane's layout or its
+wording, re-run them:
+
+```bash
+npx vite --port 5199 --strictPort &
+node scripts/manual-shots.mjs
+```
+
+A test checks that every picture the manual links to is committed and that
+every committed picture is linked. Nothing checks whether a picture still
+*looks* like the pane — a byte comparison would go red on every Chromium
+version bump, which is a gate people learn to ignore.
 
 **Test files are named by topic, never by increment.** No `batch-3.test.ts`.
 
