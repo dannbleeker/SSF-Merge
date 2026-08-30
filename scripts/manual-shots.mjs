@@ -76,12 +76,8 @@ const EXECUTABLE = process.env.PLAYWRIGHT_CHROMIUM;
  * wrapping to move if you use it, and do not commit the result as though
  * nothing had changed.
  *
- * **The committed pictures predate this pin**, so the first refresh under it
- * rewrites all eight: same size, same words, lighter text, and the headline
- * wrapping a word later. That is the binary changing, not the pane. It was left
- * for the owner to accept deliberately rather than arriving inside an unrelated
- * commit — a manual whose pictures all changed is a thing somebody should have
- * chosen. Once that refresh lands, a diff here means the pane moved.
+ * The pictures in `docs/images` were taken under this pin. A diff there now
+ * means the PANE moved, which is the whole reason for naming a browser.
  */
 const CHANNEL = "msedge";
 
