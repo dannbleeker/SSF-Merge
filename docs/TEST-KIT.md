@@ -151,6 +151,49 @@ right and only Edit Data is stale. Tell me the number.
 **10. Undo.** Press it. Exactly the 6 merged slides should go, and the template
 and slide 1 should stay.
 
+## What no round has covered yet
+
+The list above has been run before, and everything on it has passed at least
+once. This section is the other half: the things that have shipped since the
+last real round on 2026-08-28 and have therefore only ever been checked against
+fixtures. They need no extra files — the same `data.txt` and the same template
+do all four — and they take about three minutes between them.
+
+**1. The blank-cell control.** This is the one shipped control that has never
+run in a real host. Paste `data.txt` as usual, then **clear one cell in the
+paste box** — Grace's `Region` is a good one, since a chart, a SmartArt and the
+slide text all name it. On the merge step, under the row list, a line reads *A
+blank cell leaves a blank — change what happens*. Open it and try all three:
+
+| Choice | What the merged deck should show |
+| --- | --- |
+| **Leave the space empty** | Grace's slides have a gap where the region was — chart title, axis label, SmartArt box and body text |
+| **Show the field, like `{{Region}}`** | those same four read `{{Region}}` |
+| **Leave the whole row out** | Grace produces no slides at all: **4 slides added, not 6**, and the line above the button says why |
+
+The third is the interesting one, because the number on the button has to
+change the moment you choose it — the forecast and the plan are two different
+pieces of code and they have disagreed before.
+
+**2. A semicolon-separated paste.** Take the same three rows, replace every tab
+with `;`, and paste that instead. It should read **3 rows** and name the same
+five columns. This is what Excel writes on any machine whose locale uses the
+comma as a decimal point — Danish, German, French — so it is what a colleague's
+export actually looks like, and until this week it produced one column named
+`Name;Region;Revenue;Renewal;Photo` and a dead merge button. A paste with a
+decimal comma in it, `1250000` → `1,25`, is the case that made the first rule
+wrong; if you have a moment, try one.
+
+**3. What the pane says it did.** The summary line now reports the pictures and
+the chart values as well as the slides, and those sentences have only ever been
+read in a browser. Send the whole line back whatever it says.
+
+**4. Undo names its range.** Before pressing it, the card should name the slides
+it is about to remove, and that range should match what step 5 said it added.
+
+Nothing here needs a re-install: the add-in is served from GitHub Pages and only
+a change to the manifest itself would.
+
 ## The second deck: the modern chart
 
 `modern-chart.pptx` is a separate thirty-second round, and it is worth doing
