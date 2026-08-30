@@ -210,6 +210,117 @@ describe("a merge that raises", () => {
   });
 });
 
+describe("what a screen reader hears while the pane works", () => {
+  /**
+   * The pure decision is in `pane-steps.test.ts`. This is the wiring: that a
+   * live region exists at all, that it is made ONCE rather than rebuilt — a
+   * region created with its content already in it does not announce — and that
+   * the real `draw()` writes into it.
+   *
+   * The pane's markup here is the same two elements `taskpane.html` has, and
+   * deliberately does NOT include the region: it is created by `main.ts`, so a
+   * page that never got one still announces.
+   */
+  const announcer = () => document.getElementById("announcer");
+
+  it("makes one live region, correctly marked, and keeps it", async () => {
+    await reachMerge();
+    const first = announcer();
+    expect(first, "no live region was made").not.toBeNull();
+    expect(first?.getAttribute("aria-live")).toBe("polite");
+    expect(first?.getAttribute("role")).toBe("status");
+    // Outside the pane, because `render` empties the pane on every draw.
+    expect(pane().contains(first)).toBe(false);
+
+    office.runMerge.mockResolvedValueOnce(OUTCOME);
+    primary().click();
+    await settle();
+    // The SAME node across many draws. A fresh one per draw is a region that
+    // announces nothing.
+    expect(announcer()).toBe(first);
+    expect(document.querySelectorAll("#announcer")).toHaveLength(1);
+  });
+
+  it("says what happened when the merge is over", async () => {
+    await reachMerge();
+    expect(announcer()?.textContent).toBe("");
+    office.runMerge.mockResolvedValueOnce(OUTCOME);
+    primary().click();
+    await settle();
+    expect(announcer()?.textContent).toContain("6 slides added after slide 12.");
+  });
+
+  it("says what is out while a call is out, then what it did", async () => {
+    // The window this whole thing exists for: a merge is legitimately silent
+    // for minutes, and the difference between slow and stuck is the only
+    // question anybody has.
+    //
+    // The mock stands in for the engine, so it has to emit the host trace the
+    // real `runMerge` emits — that trace is what sets `inFlight`, through the
+    // subscription `merge()` opens. Without it this would assert against a
+    // field nothing in the test ever sets.
+    await reachMerge();
+    // AFTER the pane is open. `openPane` calls `vi.resetModules()` and then
+    // imports `main.ts`, so a `trace` imported before that is a different
+    // module instance from the one the pane subscribed to — the subscription
+    // is module state, and this asserted against an empty region for exactly
+    // that reason before the import moved.
+    const { trace } = await import("../src/core/trace.js");
+    const held = deferred<unknown>();
+    office.runMerge.mockImplementationOnce(() => {
+      trace("host", "issued", { call: "inserting the merged deck" });
+      return held.promise;
+    });
+    primary().click();
+    await settle();
+    expect(announcer()?.textContent).toBe("Waiting on PowerPoint: inserting the merged deck");
+
+    held.resolve(OUTCOME);
+    await settle();
+    expect(announcer()?.textContent).toContain("6 slides added after slide 12.");
+  });
+
+  it("goes quiet when the sentence it was reading is gone", async () => {
+    // Walking back clears the notice, so there is nothing to say any more. A
+    // live region left holding the last run's outcome is a pane telling a
+    // screen reader user about a screen they are no longer on.
+    await reachMerge();
+    office.runMerge.mockResolvedValueOnce(OUTCOME);
+    primary().click();
+    await settle();
+    expect(announcer()?.textContent).not.toBe("");
+    (pane().querySelector("[data-back]") as HTMLElement).click();
+    await settle();
+    expect(announcer()?.textContent).toBe("");
+  });
+
+  it("does not re-announce the same sentence on a redraw", async () => {
+    // The pane redraws on every keystroke. Writing the same string back into a
+    // live region makes some screen readers say it again, so the write is gated
+    // on a change — watched here on the node itself.
+    //
+    // A DISCLOSURE toggle is the redraw to use: it changes the screen and
+    // deliberately leaves `notice` alone. Walking back was the first attempt
+    // and is the wrong control — it clears the notice, so the region correctly
+    // changes, which the test above now asserts instead.
+    await reachMerge();
+    office.runMerge.mockResolvedValueOnce(OUTCOME);
+    primary().click();
+    await settle();
+    const node = announcer() as HTMLElement;
+    const said = node.textContent;
+    let writes = 0;
+    const observer = new MutationObserver(() => writes++);
+    observer.observe(node, { childList: true, characterData: true, subtree: true });
+    (pane().querySelector('[data-action="rows"]') as HTMLElement).click();
+    (pane().querySelector('[data-action="rows"]') as HTMLElement).click();
+    await settle();
+    observer.disconnect();
+    expect(writes, "the live region was written again with the same text").toBe(0);
+    expect(node.textContent, "and it still holds what it said").toBe(said);
+  });
+});
+
 describe("a merge that is still running", () => {
   it("cannot be started twice by going back and forward", async () => {
     // The only thing stopping a re-press was `button.disabled = true` on a DOM

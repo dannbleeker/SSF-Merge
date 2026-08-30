@@ -555,3 +555,19 @@ button.rows-toggle {
   border-radius: 4px;
   padding: 8px;
 }
+
+/* Off-screen but in the accessibility tree.
+   `display: none` and `visibility: hidden` both remove a node from that tree,
+   which would silence the live region this class exists for. The clip-path
+   pair is the form that survives a screen reader's own layout pass. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}

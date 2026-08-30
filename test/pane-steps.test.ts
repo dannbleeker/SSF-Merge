@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  announcement,
   blockSlides,
   conditionFor,
   danglingConditions,
@@ -1174,5 +1175,55 @@ describe("what the slide-number boxes accept", () => {
     expect(readBlockDraft({ from: "-1", to: "9" }).why).toContain("numbered from 1");
     expect(readBlockDraft({ from: "9", to: "4" }).why).toContain("ends before it starts");
     expect(readBlockDraft({ from: "", to: "9" }).why, "red on the first keystroke").toBeNull();
+  });
+});
+
+describe("what a screen reader is told", () => {
+  /**
+   * The pane is silent for up to two and a half minutes on an ordinary merge,
+   * and until 2026-08-30 it was silent to assistive technology permanently:
+   * one `aria` attribute in the whole renderer and no live region at all.
+   *
+   * Two sentences, and the restraint is the design. The pane redraws on every
+   * KEYSTROKE, so anything that moves as the user types interrupts them on
+   * every character.
+   */
+  const idle: PaneState = { fields: [], previewing: false };
+
+  it("says what is out while a host call is out", () => {
+    expect(announcement({ ...idle, running: "merge", inFlight: "inserting the merged deck" })).toBe(
+      "Waiting on PowerPoint: inserting the merged deck",
+    );
+  });
+
+  it("says what happened once it is over", () => {
+    expect(announcement({ ...idle, notice: "720 slides added after slide 12." })).toBe(
+      "720 slides added after slide 12.",
+    );
+  });
+
+  it("prefers the call in flight to the last run's outcome", () => {
+    // Both are set for the whole of a second run: `notice` is what the LAST run
+    // said and is still on screen. Announcing it while a new call is out would
+    // report a finished run as the current state.
+    expect(
+      announcement({ ...idle, running: "merge", inFlight: "exporting the template slides", notice: "3 slides added." }),
+    ).toBe("Waiting on PowerPoint: exporting the template slides");
+  });
+
+  it("says nothing when there is nothing to say", () => {
+    // The empty string rather than a word: a live region written with any text
+    // announces it, so "idle" has to be silence and not a sentence.
+    expect(announcement(idle)).toBe("");
+    // Running, but the host has not named a call yet — the window between the
+    // press and the first traced call.
+    expect(announcement({ ...idle, running: "merge" })).toBe("");
+  });
+
+  it("does not announce the headline, which moves on every keystroke", () => {
+    // The guard for the restraint above. A draft being typed changes the
+    // headline and must not change what is announced.
+    const typing: PaneState = { ...idle, draft: { from: "4", to: "" } };
+    expect(announcement(typing)).toBe(announcement({ ...typing, draft: { from: "4", to: "6" } }));
   });
 });

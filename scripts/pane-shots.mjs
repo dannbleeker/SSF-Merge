@@ -33,8 +33,25 @@
  * which is what WCAG 1.4.3 says and not a convenience: a greyed-out button is
  * meant to read as unavailable.
  */
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { chromium } from "playwright";
+
+/**
+ * axe-core, read off disk and injected per page.
+ *
+ * The fourth thing measured here, added 2026-08-30 after a sweep found the
+ * renderer carrying exactly ONE `aria` attribute. It answers the half of
+ * accessibility a person cannot eyeball — names, roles, labels, duplicate ids,
+ * a control with nothing to call it — over the same state list, both widths and
+ * both themes, which is 72 more renders than anybody was going to check by
+ * hand.
+ *
+ * What it does NOT answer is the half that found the real defect: whether the
+ * pane SAYS anything when it changes. Nothing static can see a missing live
+ * region, and axe was green on the pane before the region existed. It is a
+ * floor, not a verdict.
+ */
+const AXE = readFileSync("node_modules/axe-core/axe.min.js", "utf8");
 
 const PORT = process.env.PANE_PORT ?? "5199";
 const OUT = process.env.PANE_SHOTS ?? "/tmp/pane-shots";
@@ -632,6 +649,22 @@ for (const width of [320, 512]) {
         { state, step, paste, files, theme },
       );
       await page.screenshot({ path: `${OUT}/${width}-${theme}-${name}.png` });
+      // BEFORE the Tab below: a focus ring in the accessibility tree is not
+      // what axe is being asked about, and the shot above is the clean state.
+      await page.addScriptTag({ content: AXE });
+      // The strings are built INSIDE the page and only strings come back —
+      // axe's result object is a large `any` across the boundary, and mapping
+      // it here rather than there is how this file would start carrying an
+      // untyped shape it never uses.
+      /** @type {string[]} */
+      const violations = await page.evaluate(async () => {
+        /** @type {{ violations: { impact: string; id: string; help: string }[] }} */
+        const run = await globalThis.axe.run(document, { resultTypes: ["violations"] });
+        return run.violations.map((x) => `${x.impact}: ${x.id} — ${x.help}`);
+      });
+      for (const v of violations) {
+        if (!found.has(v)) found.set(v, `${width} ${theme} ${name}`);
+      }
       // AFTER the shot, and before the audit. It tells Chrome the last
       // interaction was a keyboard one, which is what makes `:focus-visible`
       // match the programmatic `focus()` the focus sweep uses — and it would
@@ -649,7 +682,8 @@ await browser.close();
 console.log(`${taken} shots in ${OUT}`);
 if (found.size === 0) {
   console.log(
-    "audit: nothing overflows, every live label clears its contrast floor, and every control shows where the keyboard is",
+    "audit: nothing overflows, every live label clears its contrast floor, every control shows where the keyboard is, " +
+      "and axe finds no violation",
   );
 } else {
   console.log(`audit: ${found.size} finding(s)`);

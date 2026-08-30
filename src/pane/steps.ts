@@ -1234,3 +1234,30 @@ export type DisclosureKind = keyof typeof DISCLOSURES;
 export function disclosureKey(action: string): (typeof DISCLOSURES)[DisclosureKind] | undefined {
   return Object.prototype.hasOwnProperty.call(DISCLOSURES, action) ? DISCLOSURES[action as DisclosureKind] : undefined;
 }
+
+/**
+ * What a screen reader should be told, and nothing else.
+ *
+ * The pane's whole shape is "press a button, wait up to two and a half
+ * minutes, read what happened", and until 2026-08-30 none of that reached
+ * anybody not looking at the screen: `src/pane` carried exactly one `aria`
+ * attribute in the entire renderer, and no live region at all. A user who
+ * pressed Merge heard nothing while it ran and nothing when it finished.
+ *
+ * Two sentences and deliberately no more:
+ *
+ * - **What is out**, while a host call is out. This is the one the pane exists
+ *   to say — a merge is legitimately silent for minutes, and the difference
+ *   between slow and stuck is the only question anybody has.
+ * - **What happened**, once it is over.
+ *
+ * NOT the headline, and not the blocked reason. The pane redraws on every
+ * KEYSTROKE, so anything that moves as the user types would interrupt their own
+ * typing on every character — and a blocked reason is already read in document
+ * order, immediately above the button it is about. An announcement that fires
+ * constantly is one people turn off.
+ */
+export function announcement(state: PaneState): string {
+  if (state.running && state.inFlight) return `Waiting on PowerPoint: ${state.inFlight}`;
+  return state.notice ?? "";
+}
