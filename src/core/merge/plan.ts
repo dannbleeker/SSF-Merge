@@ -151,7 +151,7 @@ export function recordIsSkipped(
 ): boolean {
   if (onEmpty !== "skip") return false;
   const wanted = slides.filter((slide) => slideApplies(slide, row, columns));
-  return hasEmptyField(wanted, row);
+  return hasEmptyField(wanted, row, columns);
 }
 
 /**
@@ -236,10 +236,28 @@ export function buildPlan(block: Block, records: RecordSet, opts: PlanOptions = 
   return { runId, blockId: block.id, steps, skippedRecords, skippedSlides, unknownConditions: [...unknown] };
 }
 
-/** Whether any field the block refers to is blank for this record. */
-function hasEmptyField(slides: Pick<BlockSlide, "fields">[], row: Record<string, string>): boolean {
+/**
+ * Whether any field the block refers to is blank for this record.
+ *
+ * Only a field the data has a COLUMN for. `row[field] ?? ""` cannot tell a
+ * blank cell from a column that is not there, and they are different things:
+ * a blank cell is data, and a field with no column is an author's typo, which
+ * `unknownConditions`' sibling `unmatchedFields` already reports and which
+ * `docs/MANUAL.md` promises "always stays on the slide, whatever this control
+ * says".
+ *
+ * Without the check one misspelled placeholder drops EVERY row — the merge
+ * deleted by a typo — under a sentence saying in the same breath that the
+ * placeholder will stay on the slides, about slides no row would produce.
+ */
+function hasEmptyField(
+  slides: Pick<BlockSlide, "fields">[],
+  row: Record<string, string>,
+  columns: Set<string>,
+): boolean {
   for (const slide of slides) {
     for (const field of slide.fields ?? []) {
+      if (!columns.has(field)) continue;
       if ((row[field] ?? "").trim() === "") return true;
     }
   }

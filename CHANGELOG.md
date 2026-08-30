@@ -7,6 +7,17 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a misspelled field no longer deletes the merge
+
+Under **leave the whole row out**, a placeholder with no column behind it —
+`{{Regoin}}` — counted as a blank cell on every row, so every row was left out
+and there was nothing to merge. The pane said both things at once: that the
+placeholder would stay on the slides, and that all 240 rows were going.
+
+A field with no column is an author's typo, not data. It is reported as an
+unmatched field, it stays on the slides exactly as the manual says, and it no
+longer drops anything. A column the data has and no slide uses never did.
+
 ### Added — choose what a blank cell does
 
 A cell with nothing in it left a gap on the slide and there was no way to ask

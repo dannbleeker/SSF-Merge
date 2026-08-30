@@ -130,9 +130,10 @@ describe("a condition decides before an empty cell does", () => {
    * vanished from the deck over a blank cell on the renewal slide they were
    * never going to get.
    *
-   * Latent rather than shipped: the policy reaches `buildPlan` through the
-   * office request, and the pane does not set it today. It is a trap laid for
-   * whoever wires it up, and the failure is a record silently absent.
+   * No longer latent: the pane sets the policy now, through the blank-cell
+   * control on the merge step, and `plannedSlides` asks the same rule so the
+   * number on the button follows. The failure this guards is a record silently
+   * absent.
    */
   const block: Block = {
     id: "b",
@@ -183,5 +184,64 @@ describe("a condition decides before an empty cell does", () => {
     const plan = buildPlan(block, dropped, { runId: "r", onEmpty: "skip" });
     expect(plan.skippedRecords).toEqual([0]);
     expect(plan.skippedSlides).toEqual([]);
+  });
+});
+
+describe("only a field that is actually on a slide, and actually a column", () => {
+  /**
+   * Two ways `onEmpty: "skip"` could drop a record over something that is not
+   * a blank cell in a field the merge uses. Both matter to the number on the
+   * merge button, and both would be silent: a record simply absent.
+   *
+   * A spreadsheet routinely carries columns a template does not use, and half
+   * of them are empty — an unfilled "Comment", a column somebody stopped
+   * maintaining. Dropping a row for one of those would make the control
+   * useless on real data.
+   */
+  const block: Block = {
+    id: "b",
+    slides: [
+      { path: "s1.xml", seq: 1, fields: ["Name"] },
+      { path: "s2.xml", seq: 2, fields: ["Notes"] },
+    ],
+  };
+  const records = toRecordSet([
+    ["Name", "Notes", "Comment"],
+    ["Ada", "kept", ""],
+    ["Bo", "kept", ""],
+    ["Cy", "kept", "said something"],
+  ]);
+
+  it("ignores a blank column no slide refers to", () => {
+    const plan = buildPlan(block, records, { runId: "r", onEmpty: "skip" });
+    expect(plan.skippedRecords).toEqual([]);
+    expect(plan.steps).toHaveLength(6);
+  });
+
+  it("drops those same rows once that column IS a field, so this is not vacuous", () => {
+    const usingComment: Block = {
+      id: "b",
+      slides: [
+        { path: "s1.xml", seq: 1, fields: ["Name"] },
+        { path: "s2.xml", seq: 2, fields: ["Comment"] },
+      ],
+    };
+    expect(buildPlan(usingComment, records, { runId: "r", onEmpty: "skip" }).skippedRecords).toEqual([0, 1]);
+  });
+
+  it("ignores a field the data has no column for at all", () => {
+    // `row[field] ?? ""` cannot tell a blank cell from a column that is not
+    // there, and one misspelled placeholder would otherwise drop EVERY row —
+    // the merge deleted by a typo, under a caution saying in the same breath
+    // that the placeholder will stay on the slides, about slides no row would
+    // produce. An unmatched field is reported as one; it is not data.
+    const misspelled: Block = {
+      id: "b",
+      slides: [
+        { path: "s1.xml", seq: 1, fields: ["Name"] },
+        { path: "s2.xml", seq: 2, fields: ["Regoin"] },
+      ],
+    };
+    expect(buildPlan(misspelled, records, { runId: "r", onEmpty: "skip" }).skippedRecords).toEqual([]);
   });
 });
