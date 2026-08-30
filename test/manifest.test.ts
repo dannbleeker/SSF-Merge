@@ -222,6 +222,33 @@ describe("every icon a manifest names is a file this repo builds", () => {
   });
 });
 
+describe("the store icons are the sizes AppSource asks for", () => {
+  /** A PNG's width and height, out of its IHDR. */
+  function pngSize(path: string): [number, number] {
+    const head = readFileSync(path).subarray(16, 24);
+    return [head.readUInt32BE(0), head.readUInt32BE(4)];
+  }
+
+  it("is 32 for the store icon and 64 for its high-resolution partner", () => {
+    // For a TASK PANE add-in AppSource wants 32x32 and 64x64. 128 is the
+    // Outlook size, and 80 is the RIBBON size — a different image, in a
+    // different element, a few lines away in the same generated file.
+    //
+    // `HighResolutionIconUrl` pointed at the 80 and nothing here noticed: every
+    // icon it named existed, every URL resolved, and the ribbon's correct use
+    // of 80 beside it made the wrong number look like the right one. Only
+    // AppSource validation would have said otherwise, which is a slow way to be
+    // told.
+    const xml = readFileSync("manifest-prod.xml", "utf8");
+    const named = (tag: string): string =>
+      new RegExp(`<${tag} DefaultValue="([^"]*)"`).exec(xml)?.[1]?.split("/assets/")[1] ?? "";
+
+    expect(named("IconUrl"), "no IconUrl to size").not.toBe("");
+    expect(pngSize(`public/assets/${named("IconUrl")}`)).toEqual([32, 32]);
+    expect(pngSize(`public/assets/${named("HighResolutionIconUrl")}`)).toEqual([64, 64]);
+  });
+});
+
 describe("the manifest version is not the package version", () => {
   it("is four parts and at least 1.0", () => {
     // Office wants a.b.c.d and rejects below 1.0; npm wants semver and this

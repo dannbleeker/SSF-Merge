@@ -128,7 +128,13 @@ export function xmlManifest(origin) {
   <DisplayName DefaultValue="${esc(d.displayName)}" />
   <Description DefaultValue="${esc(d.description)}" />
   <IconUrl DefaultValue="${esc(u.icon32)}" />
-  <HighResolutionIconUrl DefaultValue="${esc(u.icon80)}" />
+  <!-- 64, not 80. For a TASK PANE add-in the store's icon must be 32x32 and its
+       high-resolution partner 64x64; 128 is the Outlook size and 80 is the
+       RIBBON size, which is a different image in a different element below.
+       This said 80 and would have been caught by AppSource validation rather
+       than by anyone here — the ribbon uses 80 correctly a few lines down, so
+       the wrong number looked like the right one. -->
+  <HighResolutionIconUrl DefaultValue="${esc(u.icon64)}" />
   <SupportUrl DefaultValue="${esc(d.support)}" />
 
   <Hosts>
