@@ -7,6 +7,55 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — the merge step said the slides were already added
+
+The sentence above the button read _"6 slides added after slide 3, leaving 9
+slides in the deck"_ while nothing had been added yet — and those are the same
+words the pane uses afterwards to report what it did, so the only thing telling
+the two apart was which screen you were on. It now reads **"6 slides will be
+added after slide 3"** before the press, and keeps the past tense for the report.
+
+### Changed — the preview step carries you on to the merge
+
+Pressing **Preview the first row** used to leave the pane offering "Back to
+fields" and "Remove the preview" and nothing else. The word _merge_ was not on
+the screen at all, so the way onward was to work out that clearing the preview
+was the way onward: four presses to reach a step you were already heading for.
+
+The preview's slides are now taken back out by **Remove the preview** on the
+card that names them, beside the sentence saying they will be deleted, and the
+button underneath reads **On to the merge** — one press, and it removes them on
+the way. If the removal cannot take all of them back you stay where you are and
+the pane says so, rather than being moved on to a step that would refuse.
+
+The step's own instruction changed with it. It said "look at them, then remove
+them", which named the old dead end; it now says to carry on to the merge.
+
+### Changed — an unfinished merge is announced above the step, not inside it
+
+When a merge lands and the pane closes before you can take the slides back, the
+pane says so the next time you open it. That notice and its **Remove these
+slides** button used to appear between the first step's two boxes and the button
+that submits them — an interruption inside a form, and the loudest thing on the
+first screen anyone meets. It now sits above the step as a banner: deal with it
+or read past it, then start. The card for a merge you have just done has not
+moved.
+
+### Fixed — an unfinished merge could be offered on a deck it had nothing to do with
+
+The pane remembers an interrupted merge in the browser's own storage, which
+belongs to the add-in rather than to the presentation. So one deck's unfinished
+run was read while a different deck was open, and a brand new file could be told
+"a merge from today added 6 slide(s)". The record now names the deck it was
+written on, and is only answered for that deck.
+
+Nothing was ever deleted wrongly: the offer is clamped to slides the run can
+prove it created, and on an unrelated deck those clamps refused. But they compare
+sizes and never identity, so a deck that happened to be the right size would have
+satisfied all of them. On a host that will not name the open document the
+take-back is no longer offered at all — the same direction the rest of the undo
+takes when it cannot prove a slide is its own.
+
 ### Changed — the placeholder reader is a scan, and `fieldPattern()` is gone
 
 A template that opens `{{` and never closes it made the pattern backtrack

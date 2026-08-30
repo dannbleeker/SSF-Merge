@@ -290,19 +290,31 @@ weekly on its own and files one issue, reopened rather than duplicated.
   already proved. A task pane also has no devtools a user can open, so anything
   a maintainer needs has to survive being copied out by hand.
 
-## The lockstep rule (CI-enforced)
+## The lockstep rule (only item 1 is CI-enforced)
 
 Any feature change updates, in the same PR:
 
-1. **`docs/MANUAL.md`** — `test/docs.test.ts` fails on a format or tag key the
-   manual does not mention, and on a manual that stops marking unbuilt sections
-   as planned.
+1. **`docs/MANUAL.md`** — CI-enforced. `test/docs.test.ts` fails on a format or
+   tag key the manual does not mention, on a button label the manual quotes that
+   no longer exists in the pane, and on a manual that stops marking unbuilt
+   sections as planned.
 2. **`CHANGELOG.md`** — under `## [Unreleased]`, in the language a user would
    use, not the language of the diff.
 3. **`docs/BACKLOG.md`** — an item that shipped is REMOVED, not ticked. Anything
    still listed is genuinely not done. A rejected idea moves to the rejected
    list with the reason, so nobody re-proposes it.
 4. **`README.md`** feature table.
+
+**Items 2 to 4 are on you, and this heading used to imply otherwise.** It read
+"CI-enforced" over all four, and the only test touching `CHANGELOG.md` asserts
+that the README links to it — nothing checks that a change added an entry. Six
+pull requests went green on 2026-08-30 carrying four user-visible changes and no
+changelog at all, and the green is precisely why nobody looked: a rule that
+claims a machine is keeping it stops being a habit anybody keeps.
+
+No test is proposed for it. Nothing in a diff distinguishes a feature change
+from a refactor, and a check that guessed would be either noise or a rule people
+learn to satisfy without meaning it. The honest fix is the heading.
 
 ## Conventions
 
