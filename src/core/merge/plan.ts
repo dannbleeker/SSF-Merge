@@ -8,6 +8,7 @@
  * own to get wrong.
  */
 import type { RecordSet } from "../data/recordset.js";
+import type { EmptyPolicy } from "./resolve.js";
 import { TAG_BLOCK, TAG_RECORD, TAG_RUN, TAG_SEQ } from "../pptx/tags.js";
 
 /** One slide of a template block. */
@@ -66,8 +67,14 @@ export interface MergePlan {
 export interface PlanOptions {
   /** Which rows to merge. Defaults to all of them, in order. */
   recordIndexes?: number[];
-  /** What an empty cell means. `"skip"` drops the whole record. */
-  onEmpty?: "blank" | "keep" | "skip";
+  /**
+   * What an empty cell means. `"skip"` drops the whole record.
+   *
+   * `EmptyPolicy`, not a second spelling of it. This union was written out
+   * here and in `office/merge.ts`, and three copies of a closed set is how the
+   * one that gains a member is missed.
+   */
+  onEmpty?: EmptyPolicy;
   /** Injectable so a test can assert on the tags. */
   runId?: string;
 }
@@ -113,6 +120,38 @@ export function slideApplies(
   if (slide.condition === undefined) return true;
   if (!columns.has(slide.condition)) return true;
   return isTruthy(row[slide.condition]);
+}
+
+/**
+ * Whether a record produces no slides at all.
+ *
+ * `onEmpty: "skip"` drops a record when a field on one of its slides has no
+ * value — and only the slides this record's own conditions leave IN, which is
+ * the whole reason this is a function rather than a line. It was one, and the
+ * bug it fixed is recorded at the call site: reading every slide in the block
+ * made a customer with no renewal note vanish over a blank cell on a renewal
+ * slide their own condition had already removed.
+ *
+ * Exported because the PANE has to answer the same question before there is a
+ * plan. It states the number above the merge button, and a pane that counted
+ * this differently would put the wrong number on the thing being pressed —
+ * which has happened here once already, with conditions, and is what
+ * `plannedSlides` exists to stop happening twice.
+ *
+ * Takes only what it reads: a slide's `fields` and its `condition`. The pane
+ * has both — `slideFields` off the template read, and the conditions the user
+ * chose — and no package paths, so the narrow type is what makes it callable
+ * there at all.
+ */
+export function recordIsSkipped(
+  slides: Pick<BlockSlide, "fields" | "condition">[],
+  row: Record<string, string>,
+  columns: Set<string>,
+  onEmpty: EmptyPolicy,
+): boolean {
+  if (onEmpty !== "skip") return false;
+  const wanted = slides.filter((slide) => slideApplies(slide, row, columns));
+  return hasEmptyField(wanted, row);
 }
 
 /**
@@ -164,7 +203,11 @@ export function buildPlan(block: Block, records: RecordSet, opts: PlanOptions = 
       wanted.push(slide);
     }
 
-    if (onEmpty === "skip" && hasEmptyField(wanted, row)) {
+    // The RULE, asked rather than restated — `plannedSlides` asks the same
+    // function, so the button's number and the plan cannot come apart. It
+    // splits by condition again, which costs a filter per record and is the
+    // price of there being one answer.
+    if (recordIsSkipped(order, row, columns, onEmpty)) {
       skippedRecords.push(recordIndex);
       continue;
     }
@@ -194,7 +237,7 @@ export function buildPlan(block: Block, records: RecordSet, opts: PlanOptions = 
 }
 
 /** Whether any field the block refers to is blank for this record. */
-function hasEmptyField(slides: BlockSlide[], row: Record<string, string>): boolean {
+function hasEmptyField(slides: Pick<BlockSlide, "fields">[], row: Record<string, string>): boolean {
   for (const slide of slides) {
     for (const field of slide.fields ?? []) {
       if ((row[field] ?? "").trim() === "") return true;

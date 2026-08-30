@@ -7,6 +7,21 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added — choose what a blank cell does
+
+A cell with nothing in it left a gap on the slide and there was no way to ask
+for anything else. A third control on the merge step, beside the row picker and
+the conditions, offers three answers: **leave the space empty** (the default,
+and what every merge did before this), **show the field** so `{{Notes}}` stays
+on the slide and the gap is visible, or **leave the whole row out**.
+
+Leaving the row out counts the slides that row actually gets — a blank in a
+field that only appears on a conditional slide does not drop a row whose own
+condition already leaves that slide out. The heading, the forecast card and the
+merge button all move together the moment you choose it, the line above the
+button says how many rows are going, and the summary after the run says how many
+went.
+
 ### Fixed — you can see where the keyboard is, in both themes
 
 The pane's focus outline was written for the text boxes and the dropdowns and

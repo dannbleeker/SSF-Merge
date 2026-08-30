@@ -1137,6 +1137,92 @@ describe("the conditional slide control", () => {
   });
 });
 
+describe("what a blank cell does, driven", () => {
+  /** To the merge step with data that has a blank in it. */
+  async function toMergeWithBlanks(): Promise<void> {
+    await openPane();
+    await settle();
+    type("from", "4");
+    type("to", "6");
+    office.inspectBlock.mockResolvedValueOnce({ ...REPORT, slideFields: [["First"], ["Last"]] });
+    primary().click();
+    await settle();
+    type("paste", "First\tLast\nAda\t\nGrace\tHopper");
+    primary().click(); // data -> fields
+    office.inspectBlock.mockResolvedValueOnce({ ...REPORT, slideFields: [["First"], ["Last"]] });
+    primary().click(); // fields -> preview
+    await settle();
+    (pane().querySelector("[data-forward]") as HTMLElement).click();
+  }
+
+  function choose(value: string): void {
+    const node = pane().querySelector("[data-empty]") as HTMLSelectElement;
+    node.value = value;
+    node.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  it("carries the answer into the merge the user pressed", async () => {
+    await toMergeWithBlanks();
+    (pane().querySelector('[data-action="empties"]') as HTMLElement).click();
+    choose("skip");
+    await settle();
+
+    office.runMerge.mockResolvedValueOnce({ ...OUTCOME, added: 3 });
+    primary().click();
+    await settle();
+    expect(office.runMerge.mock.calls[0]?.[0]).toMatchObject({ onEmpty: "skip" });
+  });
+
+  it("sends nothing when the user never touched it, so an old state merges as it did", async () => {
+    await toMergeWithBlanks();
+    office.runMerge.mockResolvedValueOnce(OUTCOME);
+    primary().click();
+    await settle();
+    expect(office.runMerge.mock.calls[0]?.[0]).not.toHaveProperty("onEmpty");
+  });
+
+  it("re-arms the button, because a different answer is a different merge", async () => {
+    await toMergeWithBlanks();
+    office.runMerge.mockResolvedValueOnce(OUTCOME);
+    primary().click();
+    await settle();
+    expect(primary().disabled).toBe(true);
+
+    (pane().querySelector('[data-action="empties"]') as HTMLElement).click();
+    choose("keep");
+    await settle();
+    expect(primary().disabled, "a different merge is pressable again").toBe(false);
+    expect(
+      document.querySelector('.card.undo button[data-action="undo"]'),
+      "and the slides that landed are still offered back",
+    ).not.toBeNull();
+  });
+
+  it("keeps the keyboard on the control that was just used", async () => {
+    await toMergeWithBlanks();
+    (pane().querySelector('[data-action="empties"]') as HTMLElement).click();
+    const node = pane().querySelector("[data-empty]") as HTMLSelectElement;
+    node.focus();
+    node.value = "skip";
+    node.dispatchEvent(new Event("input", { bubbles: true }));
+    await settle();
+    expect(document.activeElement).toBe(pane().querySelector("[data-empty]"));
+  });
+
+  it("does not take a change while a merge is out", async () => {
+    await toMergeWithBlanks();
+    (pane().querySelector('[data-action="empties"]') as HTMLElement).click();
+    const held = deferred<unknown>();
+    office.runMerge.mockReturnValueOnce(held.promise);
+    primary().click();
+    await settle();
+    choose("skip");
+    held.resolve(OUTCOME);
+    await settle();
+    expect((pane().querySelector("[data-empty]") as HTMLSelectElement).value).toBe("blank");
+  });
+});
+
 describe("the run record while the host has not answered", () => {
   /**
    * The case the record exists for, driven through the real `main.ts`.
