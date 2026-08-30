@@ -163,28 +163,71 @@ slide", and any stemmer treats those as the same word.
 
 Required: at least one, at **1366×768**, under 1024 KB, PNG/JPEG/GIF, up to five.
 
-| File | Size | Shows |
-| --- | --- | --- |
-| `01-attach-your-rows.png` | 1366×768, 93 KB | The pane with three rows attached and pictures matched, beside a merged slide |
-| `02-see-what-it-will-add.png` | 1366×768, 90 KB | The merge step: what it will add and where, above the button that does it |
+**The two committed here are still the old placeholders.** `01-attach-your-rows.png`
+and `02-see-what-it-will-add.png` are real captures of the real product and they
+should not be uploaded, for five reasons:
 
-**These are placeholders, and should be replaced before submitting.** They are
-captured from `test-kit/`'s deck, which exists to TEST the engine rather than to
-show it off: the photograph in them is the crop fixture — a blue rectangle with
-four yellow dots, positioned to prove a cover-crop keeps the right axis — and
-the chart's numbers are `18` and `42` for the same reason. A prospective
-customer reads that as a broken image.
+1. The photograph is the kit's crop fixture, a blue rectangle with four yellow
+   dots positioned to prove a cover-crop keeps the right axis. A customer reads
+   it as a broken image.
+2. The chart values are 18 and 42, which are two numbers chosen to tell a swap
+   from a fill.
+3. The title bar reads `SSF-Merge-test-template`.
+4. Slide 1 is a wall of instructions addressed to whoever runs the test round.
+5. **There is a profile photo of a real person in the top right corner.**
+   Microsoft: "Be sure to remove any personal information from your images that
+   you don't want customers to see."
 
-Microsoft's guidance is explicit that images should "show real content rather
-than an empty document" and that captions describing the value are worth adding.
-What the listing wants is a small, honest demo deck — a two-slide template that
-looks like something somebody would actually send — merged for three plausible
-recipients. That is half an hour of deck-building, and it is the difference
-between a listing that demonstrates the product and one that demonstrates the
-test suite.
+### The deck to shoot instead
 
-Capture at exactly 1366×768 rather than scaling a larger shot: emulate the size
-in the browser first, or the pane's text softens.
+`demo/` holds one, built rather than improvised so the numbers in the pictures
+agree with each other:
+
+| File | What it is |
+| --- | --- |
+| `demo/build-demo.py` | writes the two below; run by hand, like `test-kit/build-template.py` |
+| `demo/Quarterly-business-review.pptx` | a cover slide and a two-slide template block |
+| `demo/rows.txt` | three accounts, four columns |
+
+Three rows and a two-slide block, so the merge adds **six slides** and the deck
+goes from three to nine. `test/listing-demo.test.ts` merges it on every run and
+fails if any placeholder has no column behind it, because an unmatched field is
+deliberately left on the slide by the engine — right in the product, and a
+screenshot with `{{Account}}` printed on it here.
+
+It has no picture placeholder, and that is a decision rather than an oversight.
+Merging pictures is real and it is in the description, but a screenshot of it
+needs a photograph that looks like one, and anything generated would be a
+coloured rectangle: the placeholder problem again in a different colour.
+
+### The five shots
+
+One per step of the story, in the order the pane walks:
+
+1. **Step 1, the template block marked** — the rail showing slides 2 and 3
+   selected, the pane naming them.
+2. **Step 2, the rows attached** — the paste box holding the four columns, "3
+   rows attached", the field chips.
+3. **Step 4, one row previewed** — the merged slide for Nordwind Retail on
+   screen beside the card that offers to take it back out.
+4. **Step 5, before the press** — "6 slides will be added after slide 3, leaving
+   9 slides in the deck", above the button that does it.
+5. **After the merge** — the rail showing three sets of two, and the card naming
+   the slides it will remove.
+
+### Capturing them
+
+- **1366×768 exactly.** Emulate the size in the browser first rather than
+  scaling a larger shot, or the pane's text softens.
+- **No avatar.** The account picture sits in the top right of PowerPoint for the
+  web and is in every shot. Use a profile without a personal photo.
+- **No Script Lab** or any other developer add-in in the ribbon.
+- **Open the demo deck from a folder with a plain name.** The file name is in
+  the title bar of every shot.
+
+Microsoft's guidance is worth reading before the session rather than after:
+images should "show real content rather than an empty document", stay legible,
+and carry captions that describe the value.
 
 ## Logo
 

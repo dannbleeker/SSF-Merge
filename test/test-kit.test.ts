@@ -30,6 +30,7 @@ import { prepareBlock } from "../src/core/merge/prepare.js";
 import { buildPlan } from "../src/core/merge/plan.js";
 import { runPlan } from "../src/core/merge/run.js";
 import { parseDelimited, toRecordSet } from "../src/core/data/recordset.js";
+import { danglingRels } from "./fixtures/dangling.js";
 import { A_NS, C_NS, CX_NS, MC_NS, PKG_REL_NS, SSML_NS, elements, parseXml } from "../src/core/pptx/xml.js";
 
 const KIT = "test-kit";
@@ -70,39 +71,6 @@ async function related(zip: JSZip, part: string, endsWith: string): Promise<stri
       }
       return segments.join("/");
     });
-}
-
-/**
- * Every relationship in the package that names a part which is not there.
- *
- * Shared by both decks in this file, because it is the one check that stands
- * for the whole round: PowerPoint reports a package it cannot resolve as
- * damaged, repairs it silently, and drops whatever it chose to drop.
- */
-async function danglingRels(zip: JSZip): Promise<string[]> {
-  const names = new Set(Object.keys(zip.files));
-  const dangling: string[] = [];
-  for (const name of names) {
-    if (!name.endsWith(".rels")) continue;
-    // The package's own `_rels/.rels` has no directory in front of it, and a
-    // bare `indexOf` answers -1 there — which silently produces a base of
-    // "_rels/.rel" and reports every root relationship as dangling. `Pkg`
-    // carries the same warning about the same off-by-one.
-    const cut = name.indexOf("/_rels/");
-    const base = cut < 0 ? "" : name.slice(0, cut);
-    for (const rel of elements(parseXml((await zip.file(name)?.async("string")) ?? ""), PKG_REL_NS, "Relationship")) {
-      if ((rel.getAttribute("TargetMode") ?? "") === "External") continue;
-      const target = rel.getAttribute("Target") ?? "";
-      if (/^[a-z]+:/.test(target)) continue;
-      const segments = base.split("/").filter(Boolean);
-      for (const seg of target.split("/")) {
-        if (seg === "..") segments.pop();
-        else if (seg !== ".") segments.push(seg);
-      }
-      if (!names.has(segments.join("/"))) dangling.push(`${name} -> ${target}`);
-    }
-  }
-  return dangling;
 }
 
 const kit = await runTheKit();
