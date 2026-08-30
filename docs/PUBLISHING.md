@@ -9,17 +9,23 @@ nobody re-does work that is done, and every gap says what was looked at.
 **Read the first question before doing any of it.** If the answer is "colleagues
 inside one tenant", none of this list applies.
 
-## The question that decides whether this list matters
+## The route, and the one worth knowing about
 
-**A public listing, or getting it to people inside one organisation?**
+This list is the cost of a **public AppSource listing**, and that is the route
+being taken: the publisher account exists, it is verified, and it is enrolled in
+the Microsoft 365 and Copilot program.
 
-Central deployment through the Microsoft 365 admin centre puts an add-in on
-colleagues' ribbons with no marketplace review at all: no privacy policy, no
-EULA, no seller verification, no multi-week validation cycle. It is a different
-route to the same desk.
+The alternative is worth knowing anyway, because it stays true. **Central
+deployment through the Microsoft 365 admin centre** puts an add-in on
+colleagues' ribbons inside a single tenant with no marketplace review at all —
+no listing assets, no EULA, no validation cycle. If the audience were ever one
+organisation rather than the world, most of what is left below stops being
+necessary.
 
-Everything below is the cost of the PUBLIC route. Settle this first, because
-most of the list is only worth paying for once.
+This section opened by calling seller verification the long pole and telling
+whoever read it to settle the route first. Both are now moot: verification is
+done, and it cost nothing to have. What is left is small enough that the
+question no longer gates anything.
 
 ## Already met
 
@@ -39,15 +45,21 @@ Checked, so it is not re-litigated later.
 
 ## Blocking — a submission fails without these
 
-- [ ] **A privacy policy, at an HTTPS URL.** None exists; the landing page links
-      only to GitHub. It must name **SSF Merge** specifically rather than the
-      site in general, say how personal information is handled, and not 404.
-      Microsoft states plainly that a Terms of Use **does not count as one** —
-      they are two documents. Missing or invalid links here are one of the top
-      five reasons submissions fail.
+- [x] **A privacy policy, at an HTTPS URL.** Done —
+      `https://ssf-merge.struktureretsundfornuft.dk/privacy.html`, shipping from
+      `public/privacy.html` and linked from the landing page so it is reachable
+      without a store listing to send people through.
 
-      The easy part: the honest answer is "nothing is collected, because nothing
-      is sent anywhere", and the table above is the evidence for it.
+      It names SSF Merge specifically rather than the site in general, names the
+      controller — **DBP Invest ApS**, publishing as StruktureretSundFornuft —
+      and is separate from any terms, which Microsoft requires: a Terms of Use
+      does not count as a privacy policy. Missing or invalid links here are one
+      of the top five reasons submissions fail.
+
+      The honest answer was short because the product makes no network calls at
+      all. The page says which single item is written to local storage, names
+      the key and lists its fields, which is what makes "we collect nothing"
+      checkable rather than a slogan.
 
 - [ ] **An End User Licence Agreement, at an HTTPS URL.** Also required.
       Microsoft publishes a standard EULA that may be used if your own counsel
@@ -59,18 +71,20 @@ Checked, so it is not re-litigated later.
       on every update, and today there is no single source of truth for what it
       is. This is worth fixing whichever route is taken.
 
-- [ ] **`ProviderName` must match the Partner Center publisher name**, exactly
-      or very nearly. The manifest says `StruktureretSundFornuft`.
+- [x] **`ProviderName` must match the Partner Center publisher name.** Done, and
+      it needed no change: the manifest says `StruktureretSundFornuft` and so
+      does the Publisher Name on the account.
 
 - [ ] **Listing assets.** At least one screenshot is required, plus a short
       description and a long one with HTML formatting. The pictures in
       `docs/images` are 380px pane captures — right for the manual, too small
       for a store listing.
 
-- [ ] **A Partner Center account, enrolled in the Microsoft 365 and Copilot
-      program, with seller verification completed.** This is lead time rather
-      than work, and it is the long pole: verification wants legal-entity
-      details. Start it before the rest.
+- [x] **A Partner Center account, enrolled in the Microsoft 365 and Copilot
+      program, with seller verification completed.** Done — the legal business
+      profile reads **Authorized** for DBP Invest ApS, with *Microsoft 365 and
+      Copilot* as an active program. This was called the long pole and it is
+      already behind us.
 
 ## Likely to fail review, or to cost a round trip
 
