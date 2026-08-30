@@ -956,6 +956,23 @@ export function statusOf(state: PaneState, step: StepId, current: StepId): Statu
 export interface Primary {
   label: string;
   enabled: boolean;
+  /**
+   * Which step pressing this LANDS ON, when pressing it moves the wizard.
+   *
+   * Deliberately separate from `enabled`: this says where the door goes, not
+   * whether it is open yet. Step 1's button reads "Choose the slides that
+   * repeat" and is disabled until there are two numbers, and it is still the
+   * way to step 2 — a rule that conflated the two would call that screen a dead
+   * end, which is the false positive `pane-walk.test.ts` explicitly refused to
+   * write a check over.
+   *
+   * Absent on a primary that ACTS rather than advances: "Preview the first row"
+   * shows a row, and "Add 6 slides" is the end of the wizard. Where it is
+   * absent on a step that is not the last, something else on screen has to
+   * carry the user onward — the forward link in `render.ts` — and the walk
+   * holds that one of the two is always there.
+   */
+  advances?: StepId;
 }
 
 /**
@@ -991,16 +1008,16 @@ export function primary(state: PaneState, step: StepId): Primary {
   switch (step) {
     case "template":
       return block
-        ? { label: `Use slides ${block.from} to ${block.to}`, enabled: true }
-        : { label: "Choose the slides that repeat", enabled: false };
+        ? { label: `Use slides ${block.from} to ${block.to}`, enabled: true, advances: "data" }
+        : { label: "Choose the slides that repeat", enabled: false, advances: "data" };
     case "data":
       // "Attach data" is what the step is FOR, so it stays the label until
       // there is data; once there is, the button states what it will carry
       // forward. A button that says "Attach data" after the data is attached
       // reads as a step that did not take.
       return state.rows
-        ? { label: `Use ${state.rows} row${state.rows === 1 ? "" : "s"}`, enabled: reachable }
-        : { label: "Attach data", enabled: false };
+        ? { label: `Use ${state.rows} row${state.rows === 1 ? "" : "s"}`, enabled: reachable, advances: "fields" }
+        : { label: "Attach data", enabled: false, advances: "fields" };
     case "fields":
       // One press, one job: read the slides again and go on. The user has just
       // been putting `{{Column}}` onto them in PowerPoint, and nothing tells
@@ -1014,15 +1031,28 @@ export function primary(state: PaneState, step: StepId): Primary {
         ? {
             label: `Use ${state.fields.length} field${state.fields.length === 1 ? "" : "s"}`,
             enabled: reachable,
+            advances: "preview",
           }
-        : { label: "Check the slides for fields", enabled: reachable };
+        : { label: "Check the slides for fields", enabled: reachable, advances: "preview" };
     case "preview":
       // "Remove", not "Put the template back". The template is never touched:
       // a preview is one row merged through the ORDINARY path and inserted, so
       // ending it deletes slides rather than restoring anything. The old label
       // described a design this project's own rejected list forbids.
+      //
+      // While a preview is up, the primary CARRIES ON rather than merely
+      // clearing up, and says both halves of what it does. It used to read
+      // "Remove the preview" and stop there, which left the pane with no
+      // control naming the merge at all — the word did not appear on the screen
+      // — and the only route onward was to work out that clearing the preview
+      // was it. Four presses to reach a step the wizard was already on its way
+      // to.
+      //
+      // The plain "Remove the preview" is still offered, on the card beside the
+      // slides it names. That is where an undo belongs, and it is exactly where
+      // the merge step already keeps "Remove these slides".
       return state.previewing
-        ? { label: "Remove the preview", enabled: true }
+        ? { label: "Remove the preview and merge", enabled: true, advances: "merge" }
         : { label: "Preview the first row", enabled: reachable };
     case "merge": {
       // A run that already landed. Re-arming this button beside a notice

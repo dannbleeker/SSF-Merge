@@ -129,6 +129,21 @@ export function render(root: HTMLElement, state: PaneState, current: StepId): vo
           : "A preview is in your deck. Your template is untouched — removing the preview deletes it.",
       }),
     );
+    // The plain way back, on the card that names the slides it will delete.
+    //
+    // The same shape as the merge step's "Remove these slides" below, and for
+    // the same reason: an undo belongs beside the thing it undoes, which leaves
+    // the primary free to be the way ONWARD. While this lived on the primary
+    // instead, the pane offered "Back to fields" and "Remove the preview" and
+    // nothing else — the word "merge" appeared nowhere on the screen, and the
+    // only route to it was to work out that clearing the preview was the route.
+    card.append(
+      el(doc, "button", {
+        class: "secondary",
+        text: state.running === "preview" ? "Removing…" : "Remove the preview",
+        attrs: { "data-action": "end-preview", ...(state.running ? { disabled: "" } : {}) },
+      }),
+    );
     main.append(card);
   }
 
@@ -276,7 +291,16 @@ export function render(root: HTMLElement, state: PaneState, current: StepId): vo
   }
 
   const action = primary(state, current);
-  const button = el(doc, "button", { class: "primary", text: action.label, attrs: { "data-action": current } });
+  const button = el(doc, "button", {
+    class: "primary",
+    text: action.label,
+    // `data-advances` states where this press LANDS, when it moves the wizard
+    // at all. It is what lets a rule over the DOM tell "the way onward is this
+    // button" from "the way onward is the link below it" — and therefore tell
+    // either from a screen that has neither, which is what step 4 became the
+    // moment a preview was on it.
+    attrs: { "data-action": current, ...(action.advances ? { "data-advances": action.advances } : {}) },
+  });
   button.disabled = !action.enabled;
   main.append(button);
 

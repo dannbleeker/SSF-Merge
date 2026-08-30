@@ -284,8 +284,16 @@ function onClick(event: Event): void {
     void useSelection();
     return;
   }
+  // The card's plain way back: take the preview out and STAY on this step.
+  if (action === "end-preview") {
+    void endPreview();
+    return;
+  }
   if (action === "preview") {
-    void (state.previewing ? endPreview() : preview());
+    // While a preview is up the primary carries ON to the merge, taking the
+    // preview out on the way. The merge step refuses while one is showing, so
+    // removing it is part of going there rather than a chore to do first.
+    void (state.previewing ? endPreviewAndAdvance() : preview());
     return;
   }
   if (action === "undo") {
@@ -981,6 +989,20 @@ async function endPreview(): Promise<void> {
       notice: undefined,
     };
   });
+}
+
+/**
+ * Take the preview out, and go on to the merge if it actually went.
+ *
+ * Guarded on the state rather than on the call returning, because `endPreview`
+ * swallows a partial sweep into a notice: a removal that left some of the
+ * preview behind leaves `previewing` true and says so. Advancing anyway would
+ * put the user on a merge step refusing with "End the preview before merging."
+ * while the sentence explaining what actually happened sat one screen back.
+ */
+async function endPreviewAndAdvance(): Promise<void> {
+  await endPreview();
+  if (!state.previewing) advance("preview");
 }
 
 /** The preview currently on the slides, so it can be taken back exactly. */

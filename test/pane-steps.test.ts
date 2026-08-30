@@ -181,8 +181,33 @@ describe("the one primary button", () => {
     // template through an API that re-authors text. Nothing is taken from the
     // template now, so nothing is put back — slides are deleted.
     const label = primary({ ...ready, previewing: true }, "preview").label;
-    expect(label).toBe("Remove the preview");
+    expect(label).toContain("Remove the preview");
     expect(label).not.toContain("template");
+  });
+
+  it("carries ON to the merge while previewing, rather than only clearing up", () => {
+    // The primary used to read "Remove the preview" and stop there, which left
+    // step 4 holding "Back to fields" and that button and nothing else — the
+    // word "merge" appeared nowhere on the screen, and the route on was to work
+    // out that clearing the preview was the route. Removing is still offered,
+    // on the card beside the slides it names; the primary is the way onward,
+    // as it is on every other step.
+    const action = primary({ ...ready, previewing: true }, "preview");
+    expect(action.label).toBe("Remove the preview and merge");
+    expect(action.advances, "the primary has to be the door here, or the step has none").toBe("merge");
+  });
+
+  it("says where every primary that moves the wizard lands, pressable or not", () => {
+    // `advances` is where the door GOES; `enabled` is whether it is open yet.
+    // Step 1 opens disabled and is still the way to step 2 — conflating the two
+    // is exactly what would make a walk call that opening screen a dead end.
+    expect(primary(EMPTY, "template")).toMatchObject({ enabled: false, advances: "data" });
+    expect(primary(ready, "template")).toMatchObject({ enabled: true, advances: "data" });
+    // A primary that ACTS rather than advances says nothing, and the forward
+    // link beside it is the door instead.
+    expect(primary(ready, "preview").advances).toBeUndefined();
+    // The last step has nowhere to advance to.
+    expect(primary(ready, "merge").advances).toBeUndefined();
   });
 
   it("gives every step exactly one label, and never an empty one", () => {
@@ -383,7 +408,7 @@ describe("what the primary says once there is data", () => {
 
   it("cannot be pressed with nothing pasted", () => {
     const noData: PaneState = { block: { from: 4, to: 6 }, fields: [], previewing: false };
-    expect(primary(noData, "data")).toEqual({ label: "Attach data", enabled: false });
+    expect(primary(noData, "data")).toMatchObject({ label: "Attach data", enabled: false });
   });
 
   it("names what the fields step will do, and what it already knows", () => {
@@ -391,7 +416,7 @@ describe("what the primary says once there is data", () => {
     // been putting `{{Column}}` onto them and nothing tells the pane that
     // happened — there is no document-changed event for slide text.
     const nothingYet: PaneState = { block: { from: 4, to: 6 }, fields: [], previewing: false, rows: 3 };
-    expect(primary(nothingYet, "fields")).toEqual({ label: "Check the slides for fields", enabled: true });
+    expect(primary(nothingYet, "fields")).toMatchObject({ label: "Check the slides for fields", enabled: true });
     expect(primary(ready, "fields").label).toBe("Use 2 fields");
     expect(primary({ ...ready, fields: ["First"] }, "fields").label).toBe("Use 1 field");
   });
@@ -780,7 +805,7 @@ describe("a blocked step never offers a pressable button", () => {
     // The block goes, the preview stays. Step 4 has one thing to say now.
     const previewing: PaneState = { fields: ["Name"], rows: 2, columns: ["Name"], previewing: true };
     expect(blockedReason(previewing, "preview")).toBeNull();
-    expect(primary(previewing, "preview")).toEqual({ label: "Remove the preview", enabled: true });
+    expect(primary(previewing, "preview")).toMatchObject({ label: "Remove the preview and merge", enabled: true });
   });
 
   it("without making the step reachable when no preview is on the slides", () => {

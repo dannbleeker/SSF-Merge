@@ -162,6 +162,26 @@ function faults(): string[] {
 
   // A step is always drawn.
   if (!pane().querySelector(".step-of")) out.push("no step line");
+
+  // EVERY step that is not the last shows a way onward.
+  //
+  // The one defect a per-frame shape check nearly could not see. Pressing
+  // "Preview the first row" left step 4 with "Back to fields" and "Remove the
+  // preview" and nothing else — the word "merge" appeared nowhere on the screen
+  // — and the route on was to work out that clearing the preview was the route.
+  // Every rule above passed on it: there was one primary, it was last, it was
+  // enabled, and it said something true.
+  //
+  // Deliberately NOT gated on the control being enabled, which is the trap the
+  // note above about disabled buttons describes. Step 1 opens with "Choose the
+  // slides that repeat", disabled, and that IS the way to step 2 — the door is
+  // there and is not open yet. So this asks whether the door EXISTS:
+  // `data-advances` on the primary, or a `data-forward` link beside it.
+  const stepLine = /^Step (\d+) of (\d+)/.exec(pane().querySelector(".step-of")?.textContent ?? "");
+  if (stepLine && stepLine[1] !== stepLine[2]) {
+    const onward = pane().querySelector("[data-advances], [data-forward]");
+    if (!onward) out.push(`step ${stepLine[1]} of ${stepLine[2]} offers no way onward`);
+  }
   return out;
 }
 
