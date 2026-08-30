@@ -59,6 +59,20 @@ export type Prepared =
        * FIELD's format. See `imagesWanted`.
        */
       imageFields: string[];
+      /**
+       * The fields on each slide of the block, in `seq` order.
+       *
+       * `fields` above is the block's whole set, flattened, and that is the
+       * right answer for the pane's chip list. It is the WRONG answer for
+       * `onEmpty: "skip"`, which drops a record when a field on one of the
+       * slides this record actually gets is blank — so a pane holding only the
+       * flat list would skip a row over a blank field on a slide that row's own
+       * condition had already removed, and put a number on the merge button
+       * the plan does not produce.
+       *
+       * Already computed per slide (`own`); it was thrown away at the join.
+       */
+      slideFields: string[][];
     }
   | { ok: false; why: string };
 
@@ -152,5 +166,11 @@ export async function prepareBlock(pkg: Pkg, req: BlockRequest, runId: string): 
     };
   }
 
-  return { ok: true, block: { id: runId, slides }, fields, imageFields };
+  return {
+    ok: true,
+    block: { id: runId, slides },
+    fields,
+    imageFields,
+    slideFields: slides.map((s) => s.fields ?? []),
+  };
 }

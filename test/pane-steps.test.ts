@@ -29,6 +29,7 @@ import {
   slidesPerRecord,
   statusOf,
   caution,
+  skippedRows,
   unmatchedFields,
   visibleRows,
 } from "../src/pane/steps.js";
@@ -899,6 +900,102 @@ describe("the number above the merge button", () => {
     // And it is not the product that used to be shown, or the test would pass
     // against the bug.
     expect(plannedSlides(state)).not.toBe(slidesPerRecord(state.block as Block) * includedCount(state));
+  });
+
+  /**
+   * The same agreement under `onEmpty: "skip"`, and the case that decides the
+   * whole design.
+   *
+   * `buildPlan` drops a record when a field on one of the slides THAT RECORD
+   * ACTUALLY GETS is blank — the slides its own conditions leave in. A pane
+   * counting from the flat field list would drop a row over a blank field on a
+   * slide the row's condition had already removed, and put a number on the
+   * button the plan does not produce. That is why `slideFields` is carried out
+   * of the template read at all.
+   */
+  describe("under 'leave the whole row out'", () => {
+    const blanks = toRecordSet([
+      ["Name", "Renewal", "Note"],
+      // Gets slide 4 (Renewal yes) and its Note is blank: dropped.
+      ["Ada", "yes", ""],
+      // Its Note is blank too, but Renewal is no, so slide 4 — the only slide
+      // carrying {{Note}} — is not one of Bo's. NOT dropped.
+      ["Bo", "no", ""],
+      ["Cy", "yes", "kept"],
+    ]);
+
+    /** Slide 4 is the conditional one, and the only one holding {{Note}}. */
+    const perSlide = [["Name"], ["Name", "Note"], ["Name"]];
+
+    const skipping: PaneState = {
+      block: { from: 3, to: 5 },
+      fields: ["Name", "Note"],
+      slideFields: perSlide,
+      previewing: false,
+      records: blanks,
+      columns: ["Name", "Renewal", "Note"],
+      rows: blanks.rows.length,
+      deckSize: 10,
+      conditions: { 4: "Renewal" },
+      onEmpty: "skip",
+    };
+
+    const engineSkipping = {
+      id: "b",
+      slides: [
+        { path: "s3.xml", seq: 1, fields: perSlide[0] },
+        { path: "s4.xml", seq: 2, condition: "Renewal", fields: perSlide[1] },
+        { path: "s5.xml", seq: 3, fields: perSlide[2] },
+      ],
+    };
+
+    it("drops the rows the plan drops, and no others", () => {
+      const plan = buildPlan(engineSkipping, blanks, { runId: "r", onEmpty: "skip" });
+      expect(plan.skippedRecords, "only Ada, whose own slides carry the blank").toEqual([0]);
+      expect(skippedRows(skipping)).toEqual(plan.skippedRecords);
+    });
+
+    it("counts what the plan will actually build", () => {
+      const plan = buildPlan(engineSkipping, blanks, { runId: "r", onEmpty: "skip" });
+      expect(plannedSlides(skipping)).toBe(slideCount(plan));
+      // Not the product, or this passes against a pane that ignores the policy.
+      expect(plannedSlides(skipping)).not.toBe(slidesPerRecord(skipping.block as Block) * includedCount(skipping));
+    });
+
+    it("counts nothing dropped under the other two answers", () => {
+      expect(skippedRows({ ...skipping, onEmpty: "blank" })).toEqual([]);
+      expect(skippedRows({ ...skipping, onEmpty: "keep" })).toEqual([]);
+      expect(skippedRows({ ...skipping, onEmpty: undefined })).toEqual([]);
+    });
+
+    it("counts nothing before the slides have been read", () => {
+      // `slideFields` arrives with the template read. Guessing from the flat
+      // list in the meantime would be the second rule this avoids.
+      expect(skippedRows({ ...skipping, slideFields: undefined })).toEqual([]);
+    });
+
+    it("names the count above the button, before the press", () => {
+      expect(caution(skipping, "merge") ?? "").toContain("1 of 3 rows will be left out");
+    });
+
+    it("previews a row that will actually merge", () => {
+      // The rule `firstIncludedRow` already followed for an unticked row: a
+      // preview of a row nobody gets is a preview of nothing. Ada is dropped,
+      // so the preview is Bo.
+      expect(firstIncludedRow(skipping)?.rows[0]?.Name).toBe("Bo");
+    });
+
+    it("says so when the answer leaves nothing to merge", () => {
+      const everyRowBlank = toRecordSet([
+        ["Name", "Renewal", "Note"],
+        ["Ada", "yes", ""],
+        ["Cy", "yes", ""],
+      ]);
+      const nothing = { ...skipping, records: everyRowBlank, rows: everyRowBlank.rows.length };
+      expect(blockedReason(nothing, "merge")).toContain("leave the whole row out");
+      // Not the unticked sentence, which is a different thing the user did.
+      expect(blockedReason(nothing, "merge")).not.toContain("unticked");
+    });
   });
 
   it("warns when the attached pictures have nowhere to go", () => {

@@ -935,6 +935,60 @@ describe("every control the pane draws can be named", () => {
  * to 545px; a spaceless host error took it to 3751px, with the primary button
  * off the side of a pane the user cannot scroll usefully.
  */
+describe("what a blank cell does", () => {
+  const paste = "First\tLast\tNote\nAda\tLovelace\t\nBo\tX\tkept";
+  const parsed = readPastedTable(paste);
+  const base: PaneState = {
+    ...ready,
+    paste,
+    records: parsed.records ?? undefined,
+    columns: parsed.columns,
+    rows: parsed.rows,
+    fields: ["First", "Note"],
+    slideFields: [["First"], ["Note"], []],
+  };
+  const shut = (state: PaneState) =>
+    paneFor(state, "merge").querySelector('[data-action="empties"]')?.textContent ?? "";
+
+  it("costs one line when shut, and the line states the answer", () => {
+    // The convention the row picker and the conditions follow: a summary that
+    // names the feature is a control nobody finds, and one that states the
+    // current answer is discoverable without being in the way.
+    expect(shut(base)).toContain("A blank cell leaves a blank");
+    expect(shut({ ...base, onEmpty: "keep" })).toContain("shows its {{field}}");
+    expect(shut({ ...base, onEmpty: "skip" })).toContain("drops the whole row");
+  });
+
+  it("offers the three answers the engine has, and no more", () => {
+    const pane = paneFor({ ...base, emptiesOpen: true }, "merge");
+    const select = pane.querySelector("[data-empty]") as HTMLSelectElement;
+    expect(Array.from(select.options).map((o) => o.value)).toEqual(["blank", "keep", "skip"]);
+    expect(select.value, "opens on the answer that is true").toBe("blank");
+  });
+
+  it("opens on the answer already chosen, rather than proposing the first", () => {
+    const pane = paneFor({ ...base, onEmpty: "skip", emptiesOpen: true }, "merge");
+    expect((pane.querySelector("[data-empty]") as HTMLSelectElement).value).toBe("skip");
+  });
+
+  it("is not offered before there is data to have blanks in", () => {
+    expect(paneFor(ready, "merge").querySelector('[data-action="empties"]')).toBeNull();
+  });
+
+  it("says both numbers in the heading once rows will be dropped", () => {
+    // The heading multiplied rows by slides-per-record and knew nothing about
+    // this, so it read "2 rows × 3 slides" — six — over a card and a button
+    // saying three. Found by rendering the screen, not by an assertion.
+    const text = paneFor({ ...base, onEmpty: "skip", emptiesOpen: false }, "merge").textContent ?? "";
+    expect(text).toContain("1 of 2 rows ×");
+    expect(text, "and the count is named above the button").toContain("1 of 2 rows will be left out");
+  });
+
+  it("says one number when nothing is being dropped", () => {
+    expect(paneFor(base, "merge").textContent).toContain("2 rows ×");
+  });
+});
+
 describe("nothing a user supplies may push the pane sideways", () => {
   const css = readFileSync("src/pane/taskpane.css", "utf8");
 

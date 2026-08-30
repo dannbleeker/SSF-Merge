@@ -42,9 +42,24 @@ export function blockSummary(block: Block, rows?: number): string {
   return block.from === block.to ? `${name} repeats ${times}.` : `${name} repeat together, ${times}.`;
 }
 
-/** "240 rows × 3 slides" — the arithmetic shown above the merge button. */
-export function mergeArithmetic(block: Block, rows: number): string {
-  return `${plural(rows, "row")} × ${plural(slidesPerRecord(block), "slide")}`;
+/**
+ * "240 rows × 3 slides" — the arithmetic shown above the merge button.
+ *
+ * `dropped` is the rows `onEmpty: "skip"` will leave out, and when there are
+ * any the heading says BOTH numbers: "228 of 240 rows × 3 slides". Without it
+ * the heading multiplies to 720 while the card two lines under it says 684 and
+ * the button says 684 — two numbers on one screen, disagreeing, with the
+ * smaller one on the thing being pressed. That is exactly the defect the
+ * button's own number was fixed for, one element up, and it was found by
+ * rendering the screen rather than by any assertion.
+ *
+ * Both numbers rather than just the survivors: "228 rows" alone is a true
+ * sentence that loses how many were pasted, and the gap is the thing a user
+ * has to notice.
+ */
+export function mergeArithmetic(block: Block, rows: number, dropped = 0): string {
+  const count = dropped > 0 ? `${rows - dropped} of ${plural(rows, "row")}` : plural(rows, "row");
+  return `${count} × ${plural(slidesPerRecord(block), "slide")}`;
 }
 
 /**

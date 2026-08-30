@@ -13,7 +13,9 @@
  */
 
 import { canBeField } from "../core/merge/text.js";
-import { slideApplies } from "../core/merge/plan.js";
+import type { EmptyPolicy } from "../core/merge/resolve.js";
+import { plural } from "./summary.js";
+import { recordIsSkipped, slideApplies } from "../core/merge/plan.js";
 import { baseName } from "../core/merge/images.js";
 import { imageNamesIn, parseDelimited, toRecordSet } from "../core/data/recordset.js";
 import type { RecordSet } from "../core/data/recordset.js";
@@ -86,6 +88,30 @@ export interface PaneState {
   excluded?: number[];
   /** What is typed in the row search box. */
   rowSearch?: string;
+  /**
+   * What a blank cell does, when the user has said.
+   *
+   * Undefined and `"blank"` mean the same thing and both are the default: the
+   * value is written into the state only once a user chooses one, so a state
+   * that has never seen the control merges exactly as it always did.
+   */
+  onEmpty?: EmptyPolicy;
+  /**
+   * Whether the blank-cell control is open. Shut by default, like the row
+   * picker and the conditions beside it: most merges want the default.
+   */
+  emptiesOpen?: boolean;
+  /**
+   * The fields on each slide of the block, in order, off the template read.
+   *
+   * `fields` is the block's whole set and is the right answer for the chip
+   * list. It is the wrong one for `onEmpty: "skip"`, which drops a record when
+   * a field on a slide THAT RECORD ACTUALLY GETS is blank — so counting from
+   * the flat list would drop a row over a blank field on a slide that row's
+   * own condition had already removed, and put a number on the merge button
+   * the plan does not produce.
+   */
+  slideFields?: string[][];
   /**
    * The picture files the user picked, by the name they were picked under.
    *
@@ -400,14 +426,61 @@ export function plannedSlides(state: PaneState): number {
   const records = includedRecords(state);
   if (!records) return 0;
   const columns = new Set(records.columns.map((c) => c.name));
+  const dropped = new Set(skippedRows(state));
   let n = 0;
-  for (const row of records.rows) {
+  records.rows.forEach((row, i) => {
+    if (dropped.has(i)) return;
     for (const slide of blockSlides(state)) {
       const condition = conditionFor(state, slide);
       if (slideApplies(condition === "" ? {} : { condition }, row, columns)) n++;
     }
-  }
+  });
   return n;
+}
+
+/**
+ * The rows `onEmpty: "skip"` will leave out, as indices into the INCLUDED rows.
+ *
+ * Asked of `recordIsSkipped`, which is the rule `buildPlan` itself applies, so
+ * the number above the button and the plan cannot answer differently. The pane
+ * has everything that rule reads: the fields per slide from the template read,
+ * and the conditions the user chose.
+ *
+ * Empty when the slides have not been read yet. `slideFields` arrives with the
+ * template read, and guessing from the flat list in the meantime would be a
+ * second rule — the one this function exists to avoid.
+ */
+export function skippedRows(state: PaneState): number[] {
+  if ((state.onEmpty ?? "blank") !== "skip") return [];
+  const records = includedRecords(state);
+  const perSlide = state.slideFields;
+  if (!records || !perSlide) return [];
+  const columns = new Set(records.columns.map((c) => c.name));
+  // The shape `recordIsSkipped` reads: a slide's fields and its condition. The
+  // pane numbers slides from the block's first, which is what `blockSlides`
+  // answers and what the conditions are keyed by.
+  const numbers = blockSlides(state);
+  const slides = perSlide.map((fields, i) => {
+    const condition = conditionFor(state, numbers[i] ?? -1);
+    return { fields, ...(condition === "" ? {} : { condition }) };
+  });
+  const out: number[] = [];
+  records.rows.forEach((row, i) => {
+    if (recordIsSkipped(slides, row, columns, "skip")) out.push(i);
+  });
+  return out;
+}
+
+/** What the blank-cell control says when it is shut. */
+export function emptyCellSummary(state: PaneState): string {
+  switch (state.onEmpty ?? "blank") {
+    case "keep":
+      return "A blank cell shows its {{field}} — change";
+    case "skip":
+      return "A blank cell drops the whole row — change";
+    default:
+      return "A blank cell leaves a blank — change what happens";
+  }
 }
 
 /**
@@ -779,6 +852,12 @@ export function blockedReason(state: PaneState, step: StepId): string | null {
       // Not the same as having no data. A user who unticked every row has
       // done something deliberate and needs telling what, not "attach data".
       if (includedCount(state) === 0) return "Every row is unticked, so there is nothing to merge.";
+      // Not the same as having no rows, and not the same as unticking them.
+      // The user chose "leave the whole row out" and every row qualifies, so
+      // the sentence names the control that did it rather than the data.
+      if (state.slideFields && includedCount(state) > 0 && skippedRows(state).length === includedCount(state)) {
+        return 'Every row has a blank field, and "leave the whole row out" leaves nothing to merge.';
+      }
       // A placeholder with no column used to be refused here. It is a CAUTION
       // now — see `caution` below for why, and for where the sentence went.
       if (state.previewing) return "End the preview before merging.";
@@ -826,7 +905,12 @@ export function caution(state: PaneState, step: StepId): string | null {
   // A third, and it stacks with the other two for the same reason they stack
   // with each other: each is a different thing about to happen.
   const clash = clashingPicturesNote(state);
-  const tail = [pictures, clash].filter((s) => s !== null).join(" ") || null;
+  const dropped = skippedRows(state).length;
+  const skipped =
+    dropped > 0
+      ? `${dropped} of ${plural(includedCount(state), "row")} will be left out — a field on their slides is blank.`
+      : null;
+  const tail = [pictures, clash, skipped].filter((s) => s !== null).join(" ") || null;
   if (missing.length === 0) return tail;
   // NAMED, not counted — a count alone sends the user back through every slide
   // looking for it. And it says what will HAPPEN rather than what to fix: the
@@ -1030,7 +1114,15 @@ export function firstRowOnly(records: RecordSet): RecordSet {
  */
 export function firstIncludedRow(state: PaneState): RecordSet | undefined {
   const records = includedRecords(state);
-  return records && records.rows.length > 0 ? firstRowOnly(records) : undefined;
+  if (!records) return undefined;
+  // And the first that `onEmpty: "skip"` will not drop, for the same reason it
+  // is not the first row PASTED: a preview of a row nobody is going to get is
+  // a preview of nothing. Under "skip" that row would have produced no slides
+  // at all, so the preview would have reported an empty run and said nothing
+  // about the merge.
+  const dropped = new Set(skippedRows(state));
+  const rows = records.rows.filter((_, i) => !dropped.has(i));
+  return rows.length > 0 ? firstRowOnly({ columns: records.columns, rows }) : undefined;
 }
 
 /**

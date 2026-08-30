@@ -94,6 +94,15 @@ const MANY_ROWS = ["First", ...Array.from({ length: 200 }, (_, i) => `Person num
  */
 const CLASH_PASTE = "First\tPhoto\nAda\tregions/eu/logo.png\nBo\tregions/us/logo.png";
 
+/** Rows with a blank, which is what the blank-cell control is about. */
+const BLANK_PASTE = [
+  "First\tLast\tNotes",
+  ...Array.from({ length: 24 }, (_, i) => `Person ${i + 1}\tSurname ${i + 1}\t${i % 4 === 0 ? "" : `note ${i + 1}`}`),
+].join("\n");
+
+/** The fields per slide of the three-slide block, as a template read answers. */
+const BLANK_SLIDE_FIELDS = [["First"], ["Last"], ["Notes"]];
+
 const STATES = [
   { name: "1-template-empty", step: "template", state: { fields: [], previewing: false } },
   {
@@ -401,6 +410,41 @@ const STATES = [
     state: { ...full, paste: CLASH_PASTE },
     paste: CLASH_PASTE,
     files: ["logo.png"],
+  },
+  /**
+   * What a blank cell does, all three answers, plus the shape it exists for:
+   * a blank in a field that only appears on a CONDITIONAL slide.
+   */
+  {
+    name: "5-empties-shut",
+    step: "merge",
+    state: { ...full, paste: BLANK_PASTE, slideFields: BLANK_SLIDE_FIELDS },
+    paste: BLANK_PASTE,
+  },
+  {
+    name: "5-empties-open",
+    step: "merge",
+    state: { ...full, paste: BLANK_PASTE, slideFields: BLANK_SLIDE_FIELDS, emptiesOpen: true },
+    paste: BLANK_PASTE,
+  },
+  {
+    name: "5-empties-skip",
+    step: "merge",
+    state: {
+      ...full,
+      paste: BLANK_PASTE,
+      slideFields: BLANK_SLIDE_FIELDS,
+      onEmpty: "skip",
+      emptiesOpen: true,
+    },
+    paste: BLANK_PASTE,
+  },
+  {
+    // Shut, with the count above the button and both figures in the heading.
+    name: "5-empties-skip-shut",
+    step: "merge",
+    state: { ...full, paste: BLANK_PASTE, slideFields: BLANK_SLIDE_FIELDS, onEmpty: "skip" },
+    paste: BLANK_PASTE,
   },
   {
     name: "5-merge-spaceless-notice",

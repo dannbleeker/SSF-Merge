@@ -18,6 +18,7 @@ import { inspectBlock, runMerge, undoMerge, type MergeOutcome } from "../office/
 import { readable } from "../host/errors.js";
 import { clearCrumb, dropCrumb, readCrumb } from "./crumb.js";
 import { blockMoved, dataChanged } from "./transitions.js";
+import type { EmptyPolicy } from "../core/merge/resolve.js";
 import { beginRun, onTrace, trace, traceText } from "../core/trace.js";
 import { render } from "./render.js";
 import { describeMerge, plural } from "./summary.js";
@@ -75,7 +76,7 @@ function root(): HTMLElement {
  * the press did not advance — "Preview the first row" becoming "Remove the
  * preview" — and matches nothing when it did, which is the honest answer.
  */
-const FOCUS_KEYS = ["data-field", "data-condition", "data-row", "data-insert", "data-action"] as const;
+const FOCUS_KEYS = ["data-field", "data-condition", "data-empty", "data-row", "data-insert", "data-action"] as const;
 
 /** A selector for the element focused now, or null if it has no stable name. */
 function focusedSelector(active: Element | null): string | null {
@@ -235,6 +236,11 @@ function onClick(event: Event): void {
     draw();
     return;
   }
+  if (action === "empties") {
+    state = { ...state, emptiesOpen: !state.emptiesOpen };
+    draw();
+    return;
+  }
   if (action === "selection") {
     void useSelection();
     return;
@@ -266,6 +272,23 @@ function onInput(event: Event): void {
   // guard is what decides, and it excluded selects until the condition control
   // needed one.
   if (target instanceof HTMLSelectElement) {
+    // What a blank cell does. Its own branch rather than a shared one: it
+    // carries no slide number and changes a single field, where a condition is
+    // keyed by the slide it is about.
+    if (target.hasAttribute("data-empty")) {
+      if (state.running) return;
+      state = {
+        ...state,
+        onEmpty: target.value as EmptyPolicy,
+        // A different answer here is a different merge — under "skip" it is a
+        // different number of slides — so the finished run's disarmed button
+        // goes with it, the rule every other edit on this screen follows.
+        changedSinceMerge: true,
+        notice: undefined,
+      };
+      draw();
+      return;
+    }
     const slide = target.getAttribute("data-condition");
     if (slide === null || state.running) return;
     state = {
@@ -393,6 +416,8 @@ async function useBlock(from: StepId): Promise<void> {
           block,
           fields: report.fields,
           imageFields: report.imageFields,
+          // Per slide, because `skippedRows` cannot answer from the flat list.
+          slideFields: report.slideFields,
           notice: undefined,
           // The note said "press Check the slides", and this is that press.
           // The list of fields below is the answer now.
@@ -642,6 +667,7 @@ async function merge(): Promise<void> {
       to: block.to,
       records,
       ...(conditions ? { conditions } : {}),
+      ...(state.onEmpty ? { onEmpty: state.onEmpty } : {}),
       // The pictures too, so a preview and a merge produce the same slides.
       ...(state.images ? { images: state.images } : {}),
     });
@@ -653,7 +679,9 @@ async function merge(): Promise<void> {
       deckSize: outcome.deckAtStart + outcome.added,
       // The fields the RUN found, which is the authority: `inspectBlock` read
       // them before the merge and this is the same read after it.
-      ...(outcome.fields.length > 0 ? { fields: outcome.fields, imageFields: outcome.imageFields } : {}),
+      ...(outcome.fields.length > 0
+        ? { fields: outcome.fields, imageFields: outcome.imageFields, slideFields: outcome.slideFields }
+        : {}),
       // Only a run that ADDED something disarms the button. A refusal that
       // added nothing should leave the user able to press again.
       // `deckAtStart` travels with `added` everywhere, because the undo card
@@ -688,6 +716,7 @@ async function merge(): Promise<void> {
         runId: "recovered",
         fields: [],
         imageFields: [],
+        slideFields: [],
         unknownConditions: [],
       };
     }
@@ -752,6 +781,10 @@ async function preview(): Promise<void> {
       to: block.to,
       records: preview,
       ...(state.conditions ? { conditions: state.conditions } : {}),
+      // The blank-cell answer too. A preview run under a different policy from
+      // the merge is a preview of something nobody is going to get, which is
+      // the rule `firstIncludedRow` already follows for an unticked row.
+      ...(state.onEmpty ? { onEmpty: state.onEmpty } : {}),
       // A preview is the ORDINARY merge over one row, so it gets the pictures
       // too. Without them the preview shows a placeholder where the real merge
       // shows a photo, which is a preview of something nobody is going to get.
@@ -770,7 +803,9 @@ async function preview(): Promise<void> {
       previewing: true,
       previewSlides: { from, to: outcome.deckAtStart + outcome.added },
       deckSize: outcome.deckAtStart + outcome.added,
-      ...(outcome.fields.length > 0 ? { fields: outcome.fields, imageFields: outcome.imageFields } : {}),
+      ...(outcome.fields.length > 0
+        ? { fields: outcome.fields, imageFields: outcome.imageFields, slideFields: outcome.slideFields }
+        : {}),
       notice: undefined,
     };
   } catch (e) {
@@ -973,6 +1008,7 @@ void Office.onReady(() => {
           runId: crumb.runId,
           fields: [],
           imageFields: [],
+          slideFields: [],
           unknownConditions: [],
         };
         state = {

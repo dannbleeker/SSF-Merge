@@ -23,6 +23,8 @@ import {
   fieldToken,
   pictureColumns,
   clashingPicturesNote,
+  emptyCellSummary,
+  skippedRows,
   imageTally,
   slidesToAdd,
   imagesWanted,
@@ -294,7 +296,9 @@ function headline(state: PaneState, current: StepId): string {
       return state.previewing ? "The first row is in your deck" : "See one row before you commit";
     case "merge": {
       const block = chosenBlock(state);
-      return block && state.rows ? mergeArithmetic(block, includedCount(state)) : "Nothing to merge yet";
+      return block && state.rows
+        ? mergeArithmetic(block, includedCount(state), skippedRows(state).length)
+        : "Nothing to merge yet";
     }
   }
 }
@@ -444,6 +448,7 @@ function body(doc: Document, state: PaneState, current: StepId, orange: OrangeHo
     // is how this was noticed.
     if (state.records && state.rows) out.push(rowPicker(doc, state));
     if (state.columns && state.columns.length > 0) out.push(conditionPicker(doc, state));
+    if (state.records && state.fields.length > 0) out.push(emptyCellPicker(doc, state));
   }
   return out;
 }
@@ -724,6 +729,51 @@ function insertControl(doc: Document, state: PaneState): HTMLElement {
  * have them. That is what `danglingConditions` says before the merge and what
  * the engine reports after it.
  */
+/**
+ * What a blank cell does. PROTOTYPE.
+ *
+ * Shut by default and summarised shut, the same shape as the row picker and
+ * the conditions beside it: most merges want the default, and a user who never
+ * opens this pays one line for it. The line states the current ANSWER rather
+ * than naming the feature.
+ */
+function emptyCellPicker(doc: Document, state: PaneState): HTMLElement {
+  const wrap = el(doc, "div", { class: "conditions" });
+  wrap.append(
+    el(doc, "button", {
+      class: "back empties-toggle",
+      text: state.emptiesOpen ? "Hide what a blank cell does" : emptyCellSummary(state),
+      attrs: { "data-action": "empties" },
+    }),
+  );
+  if (!state.emptiesOpen) return wrap;
+
+  wrap.append(
+    el(doc, "p", {
+      class: "muted",
+      text: "A cell with nothing in it. Not the same as a field with no column at all — that one always stays on the slide, whatever this says.",
+    }),
+  );
+
+  const label = el(doc, "label", { class: "field" });
+  label.append(el(doc, "span", { class: "caption", text: "When a cell is blank" }));
+  const select = el(doc, "select", { attrs: { "data-empty": "onEmpty" } });
+  const choices: [string, string][] = [
+    ["blank", "Leave the space empty"],
+    ["keep", "Show the field, like {{Notes}}"],
+    ["skip", "Leave the whole row out"],
+  ];
+  for (const [value, text] of choices) {
+    const option = el(doc, "option", { text, attrs: { value } });
+    if ((state.onEmpty ?? "blank") === value) option.setAttribute("selected", "");
+    select.append(option);
+  }
+  select.value = state.onEmpty ?? "blank";
+  label.append(select);
+  wrap.append(label);
+  return wrap;
+}
+
 function conditionPicker(doc: Document, state: PaneState): HTMLElement {
   const slides = blockSlides(state);
   const wrap = el(doc, "div", { class: "conditions" });

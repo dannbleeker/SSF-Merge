@@ -358,6 +358,30 @@ than dropped, and two columns with the same header become `Name` and `Name 2`,
 because silently losing a column is worse than an ugly name. Rows that are
 entirely blank are skipped.
 
+### What a blank cell does
+
+One cell with nothing in it is not the same as a missing column, and you can
+choose what happens to it. The control is on the merge step, under the row
+picker and the conditions, and it costs one line: the line says what is
+currently true.
+
+| Answer | What you get |
+| --- | --- |
+| **Leave the space empty** | the field disappears and the slide has a gap in it. The default, and what every merge did before this |
+| **Show the field, like `{{Notes}}`** | the placeholder stays on the slide, so a reader can see the value is missing rather than guess |
+| **Leave the whole row out** | that row produces no slides at all |
+
+**Leave the whole row out counts the slides that row actually gets.** A blank
+in a field that only appears on a conditional slide does not drop the row when
+that row's condition already leaves the slide out — the merge and the number on
+the button agree about this, and the number changes as soon as you choose it.
+The heading then names both figures, "228 of 240 rows × 3 slides", and the line
+above the button says how many are going and why.
+
+**A field with no column at all is not affected by any of this.** That
+placeholder always stays on the slide, whatever this control says, so an
+author's typo is visible rather than hidden behind a gap — see "Placeholders".
+
 Each column's type is detected from its values: a column is a number only if
 every filled cell is one, and a date only if every filled cell is an
 unambiguous date. One "n/a" makes the column text, which is the safe answer.
