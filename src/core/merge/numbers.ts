@@ -199,11 +199,28 @@ function stringOfCell(cell: Element, shared: string[]): string | undefined {
     const v = elements(cell, SSML_NS, "v")[0]?.textContent ?? "";
     return shared[Number(v)];
   }
-  if (type === "inlineStr" || type === "str") {
+  if (type === "inlineStr") {
+    // `<is>` holds the same `<r><t>` runs a shared string does, so a placeholder
+    // split by formatting joins here exactly as it does there. Inline is what a
+    // generator that never built a shared-string table writes, which is the
+    // same population `mergeGraphics` reads worksheets for — a chart written by
+    // a tool rather than by Excel.
     return elements(cell, SSML_NS, "t")
       .map((t) => t.textContent ?? "")
       .join("");
   }
+  // `t="str"` is NOT read, deliberately, and this used to claim it was.
+  //
+  // A `str` cell is the cached result of a FORMULA, and it keeps that result in
+  // `<v>` rather than in `<t>` — so the line above returned "" for one and the
+  // cell was skipped anyway. The claim was false and the behaviour was right,
+  // which is the worst pairing: a reader fixing the element name would have
+  // made it merge, and `writeNumber` clears every child of the cell, so filling
+  // one would delete the `<f>` that produced it. A merge may take a user's
+  // placeholder; it may not take their formula.
+  //
+  // Behaviour is unchanged by saying so — both paths reach the same `continue`
+  // one level up — and `test/chart-numbers.test.ts` holds that.
   return undefined;
 }
 
