@@ -65,8 +65,26 @@ function chartTypeFor(prefix) {
   return prefix === "cx" ? "/chartEx" : "/chart";
 }
 
-/** Resolve a relationship target against the part that owns the relationship. */
+/**
+ * Resolve a relationship target against the part that owns the relationship.
+ *
+ * A leading slash means the target is already a part name, given from the
+ * package root — legal OOXML, and it is the spelling this checker got wrong.
+ * Resolved relatively it became `ppt/slides/ppt/media/image1.png`, a part no
+ * package holds, and a sound deck was reported as pointing at something that
+ * is not in it. Same shape as the empty `r:blip` of 2026-08-30: a false alarm
+ * from a reader, on markup this engine never wrote and a sender's deck may.
+ *
+ * `src/core/pptx/pkg.ts` has always handled it, and that divergence is the
+ * point — two implementations of one rule, one of them wrong for a year.
+ * `test/integrity.test.ts` now runs both over the same pairs.
+ *
+ * @param {string} ownerPart
+ * @param {string} target
+ * @returns {string}
+ */
 export function resolvePart(ownerPart, target) {
+  if (target.startsWith("/")) return target.slice(1);
   /** @type {string[]} */
   const segments = ownerPart.split("/").slice(0, -1);
   for (const seg of target.split("/")) {

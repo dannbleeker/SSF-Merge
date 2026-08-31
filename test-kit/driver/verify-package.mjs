@@ -16,7 +16,7 @@
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import JSZip from "jszip";
-import { packageProblems } from "../../scripts/package-integrity.mjs";
+import { packageProblems, relsPathFor, resolvePart } from "../../scripts/package-integrity.mjs";
 
 const deckPath = process.argv[2];
 if (!deckPath) {
@@ -59,27 +59,19 @@ const attr = (tag, name) => {
   return m ? m[1] : null;
 };
 
-/** Resolve a relationship Target against a package directory ("" = root). */
-function resolveFromDir(dir, target) {
-  if (target.startsWith("/")) return target.slice(1);
-  const segments = dir === "" ? [] : dir.split("/").filter(Boolean);
-  for (const seg of target.split("/")) {
-    if (seg === "..") segments.pop();
-    else if (seg !== "." && seg !== "") segments.push(seg);
-  }
-  return segments.join("/");
-}
-
-/** Resolve a relationship Target against the directory of the owning part. */
-function resolveTarget(ownerPart, target) {
-  const i = ownerPart.lastIndexOf("/");
-  return resolveFromDir(i === -1 ? "" : ownerPart.slice(0, i), target);
-}
-
-function relsPathFor(part) {
-  const i = part.lastIndexOf("/");
-  return `${part.slice(0, i)}/_rels/${part.slice(i + 1)}.rels`;
-}
+/**
+ * `resolveTarget` and `relsPathFor` come from `package-integrity.mjs`, which
+ * this file already imports `packageProblems` from.
+ *
+ * They were a third copy of the same two rules — the engine has one, the
+ * integrity checker has one, and this file had its own — and the copies had
+ * already come apart: only two of the three resolved a target given from the
+ * package root (`/ppt/media/image1.png`), and the checker's answer for one was
+ * a part no package holds. Three readers of one rule is two too many; the two
+ * that cannot be merged, because the engine is TypeScript under `src/` and
+ * nothing there may import a script, are held together by a test instead.
+ */
+const resolveTarget = resolvePart;
 
 async function readRels(zip, part) {
   const f = zip.file(relsPathFor(part));
