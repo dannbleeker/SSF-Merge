@@ -101,7 +101,7 @@ Checked, so it is not re-litigated later.
       does the Publisher Name on the account.
 
 - [~] **Listing assets.** Drafted in [listing/LISTING.md](listing/LISTING.md) —
-      summary at 67 characters, description at 378 words, both inside
+      summary at 90 characters, description at 378 words, both inside
       Microsoft's bands, a 300×300 marketplace icon, and five screenshots at
       exactly 1366×768, each around 110 KB against a 1024 KB cap.
 
@@ -119,13 +119,17 @@ Checked, so it is not re-litigated later.
       linked deck and the absence of network calls are each checked against the
       file they are claims about.
 
-      **The name is still a question, not a draft.** Microsoft's guidance says
-      avoid unfamiliar acronyms and do not rely on a brand to say what a thing
-      does, which is both halves of "SSF Merge" — while separately ruling out
-      the obvious fix, because a name may not contain the Microsoft product
-      name. `Slide Mail Merge` is suggested and not applied: the manifest's
-      `DisplayName` must match whatever is chosen, and that is what users see in
-      the ribbon after install. A rename is the owner's call.
+      **The name is decided: `SSF Merge` stays**, until Microsoft says
+      otherwise. Their guidance says avoid unfamiliar acronyms and do not rely
+      on a brand to say what a thing does, which is both halves of it — while
+      separately ruling out the obvious fix, because a name may not contain the
+      Microsoft product name. `Slide Mail Merge` was the suggestion that fitted
+      and it is not being applied: the guidance is guidance rather than a
+      submission rule, and if certification objects it will say which rule it
+      thinks is broken and can be answered then. The cost is paid in the
+      summary, which now leads with "Mail merge for slides" because the name
+      does not carry those words. `listing.test.ts` keeps the two in step:
+      while `DisplayName` does not say "mail merge", the summary must.
 
 - [x] **A Partner Center account, enrolled in the Microsoft 365 and Copilot
       program, with seller verification completed.** Done — the legal business

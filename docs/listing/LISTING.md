@@ -15,10 +15,12 @@ Lengths are Microsoft's, from
 That page states the description maximum as 10,000 in its table and 4,000 in its
 prose. The text below is well under 4,000, so the contradiction costs nothing.
 
-## Name — a decision, not a draft
+## Name — decided
 
-The manifest says **SSF Merge**, and the Partner Center name has to match it.
-Microsoft's own naming guidance argues against it on two counts:
+The manifest says **SSF Merge**, the Partner Center name has to match it, and it
+is staying that way until Microsoft asks for something else.
+
+Microsoft's naming guidance argues against it on two counts:
 
 > Avoid acronyms that might be unfamiliar to potential users.
 
@@ -32,15 +34,16 @@ exclusion that rules out the obvious answer:
 > Don't include the Microsoft product name because it already appears on your
 > landing page, and in Microsoft Marketplace and in-product Store search results.
 
-So "Mail Merge for PowerPoint" is out.
+So "Mail Merge for PowerPoint" is out, and `Slide Mail Merge` was the suggestion
+that fitted: 16 characters, no acronym, no Microsoft product name.
 
-**Suggested: `Slide Mail Merge`** — 16 characters, says what it does, no
-acronym, no Microsoft product name, and it carries the words somebody would
-actually search for.
+**It is not being applied.** The guidance is guidance rather than a submission
+rule, a rename would change the manifest's `DisplayName` and therefore the name
+users see in the ribbon after install, and if certification objects the objection
+will say which rule it thinks is broken and can be answered then.
 
-This is left as a suggestion rather than applied. It is a product rename: the
-manifest's `DisplayName` has to change with it, and that is the name users see
-in the ribbon after install. It is the owner's call, not a formatting fix.
+The decision is not free, and what it costs is paid in the summary below, which
+now spends its first 22 characters saying "mail merge" because the name does not.
 
 ## Summary
 
@@ -48,33 +51,33 @@ Maximum 100, recommended 70. Partner Center asks for "a single sentence", plain
 text, no line breaks, and says it appears in search results and summary views.
 
 ```
-Paste a table and get one set of slides per row, formatting intact.
-```
-
-67 characters. The verb phrase is the description's own — "Mark the slides that
-repeat, paste a table, and get one set of slides per row" — so the two fields
-say the same thing in the same words rather than drifting into synonyms. It
-leads with the outcome rather than the name, which is what the guidance asks
-for: the name is already on the tile beside it, and the first 30 characters read
-"Paste a table and get one set".
-
-The previous draft, "One set of slides per row of your table, with fonts and
-layout intact.", was a noun phrase rather than a sentence, and "fonts and
-layout" was a stand-in for the word the rest of the product uses, which is
-"formatting".
-
-**This depends on the name.** It works when the offer name carries the words
-somebody searches for. If the name becomes `Slide Mail Merge`, "mail merge" is
-on the tile and the summary is free to be the outcome. If it stays `SSF Merge`,
-the summary is the only place those words appear, and this is the one to use
-instead:
-
-```
 Mail merge for slides: paste a table and get one set of slides per row, formatting intact.
 ```
 
-90 characters, inside the limit, at the cost of spending the first 22 on the
-category rather than on what the thing does.
+90 characters. Leading with the category rather than the outcome is the
+deliberate consequence of the name decision above: "SSF" cannot be expanded by a
+stranger and "Merge" does not say merge what, so this line is the only place the
+words somebody actually searches for appear, and it has to carry both jobs.
+
+`listing.test.ts` holds the two together rather than leaving the link in prose:
+while the manifest's `DisplayName` does not contain "mail merge", the summary
+must. A future rename cannot quietly leave the summary paying for a cost that no
+longer exists.
+
+**If the name ever does change to one carrying those words**, the tile says them
+already and the summary is free to be pure outcome. That version is written, and
+at 67 characters it is the better sentence:
+
+```
+Paste a table and get one set of slides per row, formatting intact.
+```
+
+The verb phrase in both is the description's own — "Mark the slides that repeat,
+paste a table, and get one set of slides per row" — so the two fields say the
+same thing in the same words rather than drifting into synonyms. An earlier
+draft, "One set of slides per row of your table, with fonts and layout intact.",
+was a noun phrase rather than a sentence, and "fonts and layout" was a stand-in
+for the word the rest of the product uses, which is "formatting".
 
 ## Description
 

@@ -7,6 +7,29 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed — the name stays `SSF Merge`, and the summary pays for it
+
+The listing's name section had been a question since it was written: Microsoft's
+guidance argues against an unfamiliar acronym and against relying on a brand to
+say what a thing does, which is both halves of `SSF Merge`, while separately
+ruling out "Mail Merge for PowerPoint" because a name may not contain the
+Microsoft product name. `Slide Mail Merge` was the suggestion that fitted.
+
+It is not being applied. The guidance is guidance rather than a submission rule,
+a rename would change what users see in the ribbon after install, and an actual
+certification objection would name the rule it thinks is broken.
+
+The decision has a price and the summary pays it. It was the 67-character
+"Paste a table and get one set of slides per row, formatting intact."; it is now
+the 90-character version that leads with "Mail merge for slides", because with
+this name the summary is the only place the words somebody searches for appear.
+Both sentences were already drafted, and LISTING.md said in prose which one
+applied under which name. That conditional is now executable: while the
+manifest's `DisplayName` does not say "mail merge", the summary must — and if
+the name ever gains those words, the test fails the other way and says the
+shorter summary is now the better one, rather than leaving it paying for a cost
+that has gone away.
+
 ### Added — the Notes for certification field, and guards that cross-check it
 
 Partner Center requires it and says twice that leaving it out is an automatic

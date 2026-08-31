@@ -79,6 +79,32 @@ describe("the Summary field", () => {
     expect(summary).not.toContain("\n");
   });
 
+  it("says 'mail merge' for as long as the product name does not", () => {
+    // The name is staying `SSF Merge`, which a stranger cannot expand and which
+    // does not say merge what. That decision is only affordable because the
+    // summary spends its opening on the category instead of the outcome, so the
+    // two are checked together rather than left agreeing in prose.
+    //
+    // It runs both ways on purpose. A rename to something carrying the words
+    // would make this line redundant, and the shorter summary already drafted
+    // in LISTING.md becomes the better one — which is a thing to be told about
+    // rather than left paying for a cost that has gone away.
+    const manifest = readFileSync("manifest-prod.xml", "utf8");
+    const name = /<DisplayName DefaultValue="([^"]+)"/.exec(manifest)?.[1];
+    expect(name, "manifest-prod.xml has no DisplayName").toBeTruthy();
+
+    const nameCarriesIt = /mail\s*merge/i.test(name ?? "");
+    const summaryCarriesIt = /mail\s*merge/i.test(summary);
+    if (nameCarriesIt) {
+      expect(
+        summaryCarriesIt,
+        `"${name}" already says mail merge, so the summary need not spend its opening on it`,
+      ).toBe(false);
+    } else {
+      expect(summaryCarriesIt, `nothing says "mail merge": not "${name}", not the summary`).toBe(true);
+    }
+  });
+
   it(`is at most ${SUMMARY_MAX} characters`, () => {
     expect(summary.length).toBeLessThanOrEqual(SUMMARY_MAX);
   });
