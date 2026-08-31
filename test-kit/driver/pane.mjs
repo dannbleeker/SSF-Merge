@@ -93,6 +93,32 @@ export async function clickPoint(match, { x, y }, modifiers = 0) {
 }
 
 /**
+ * Send a real key press to a target, the way a keyboard would.
+ *
+ * `Input.dispatchKeyEvent` and not a synthesised `KeyboardEvent`: the editor
+ * ignores dispatched key events for the same reason the rail ignores dispatched
+ * clicks. `windowsVirtualKeyCode` is the part that is easy to leave out and
+ * makes the press do nothing while still reporting success.
+ */
+export async function pressKey(match, key, { code = key, vk } = {}) {
+  const c = socket(await find(match));
+  await c.ready;
+  try {
+    for (const type of ["rawKeyDown", "keyUp"]) {
+      await c.send("Input.dispatchKeyEvent", {
+        type,
+        key,
+        code,
+        windowsVirtualKeyCode: vk,
+        nativeVirtualKeyCode: vk,
+      });
+    }
+  } finally {
+    c.ws.close();
+  }
+}
+
+/**
  * Every thumbnail in the rail, keyed by the slide number it actually is.
  *
  * Keyed by `aria-posinset` and NOT by position in the returned array. The two
@@ -214,24 +240,46 @@ export async function selectSlides(numbers, { timeout = 10_000 } = {}) {
 }
 
 /**
- * What the status bar says the current slide is, as `{ slide, of }`.
+ * Which slide is showing and how many there are, as `{ slide, of }`.
  *
- * Polls until the two numbers make sense together. The status bar lags the
- * deck: straight after removing six slides it read "Slide 6 of 3", which parses
- * perfectly and is impossible. A caller checking `of === 9` against a stale
- * readout gets a confident wrong answer, so the impossible pair is caught here
- * rather than left for whoever reads the number next.
+ * Reconciled against the rail rather than read off the status bar alone. The
+ * status bar lags the document, and its two numbers lag TOGETHER, so they stay
+ * consistent with each other while both being wrong: after a preview added two
+ * slides it read "Slide 2 of 3" — a perfectly sensible pair describing the deck
+ * as it was before. An earlier version of this only rejected impossible pairs
+ * like "Slide 6 of 3" and let that one straight through, and the caller checked
+ * `slide !== 4` against it and stopped a capture run that had not gone wrong.
+ *
+ * The rail's `aria-setsize` is a genuinely separate source for the total, and
+ * the download in `fetch-deck.mjs` is the tiebreak when it matters: it was that
+ * download, reporting five slides, that settled which readout was lying.
  */
-export async function currentSlide({ timeout = 15_000 } = {}) {
+export async function currentSlide({ timeout = 20_000 } = {}) {
   const deadline = Date.now() + timeout;
-  let text = "";
+  let thumbs = new Map();
   while (Date.now() < deadline) {
-    text = await evalIn(EDITOR, `document.getElementById('GetSlideInformation')?.textContent ?? ''`);
-    const m = /Slide (\d+) of (\d+)/.exec(text);
-    if (m && +m[1] >= 1 && +m[1] <= +m[2]) return { slide: +m[1], of: +m[2] };
+    thumbs = await thumbnails();
+    const selected = [...thumbs.values()].filter((t) => t.selected).map((t) => t.n);
+    if (thumbs.size && selected.length) {
+      const answer = { slide: Math.min(...selected), of: thumbs.size };
+
+      // The status bar is kept only as a second opinion, never as the answer.
+      // It refreshes when the canvas is next touched rather than when the deck
+      // changes, so it can sit for minutes on a stale pair. Disagreement is
+      // reported and not fatal, because the download settled which one lies.
+      const text = await evalIn(EDITOR, `document.getElementById('GetSlideInformation')?.textContent ?? ''`);
+      const m = /Slide (\d+) of (\d+)/.exec(text);
+      if (m && (+m[1] !== answer.slide || +m[2] !== answer.of)) {
+        console.warn(`  note: status bar says ${JSON.stringify(text)}, the rail says ${answer.slide} of ${answer.of}`);
+      }
+      return answer;
+    }
     await sleep(500);
   }
-  throw new Error(`the status bar never settled; it reads ${JSON.stringify(text)}`);
+  throw new Error(
+    `the rail never reported a selected slide; it holds ${thumbs.size}. ` +
+      `\`node test-kit/driver/fetch-deck.mjs\` downloads the document and counts.`,
+  );
 }
 
 /** Run an expression in the first target matching `match` and return its value. */
@@ -247,9 +295,32 @@ export async function evalIn(match, expression) {
   }
 }
 
-/** What the pane currently says, collapsed to single spaces. */
-export async function says(match = PANE) {
-  return evalIn(match, `document.body.innerText.replace(/\\s+/g, ' ').trim()`);
+/**
+ * What the pane currently says, collapsed to single spaces.
+ *
+ * Waits for a document that has a body. A frame caught mid-reload has none, and
+ * reading `document.body.innerText` there throws "Cannot read properties of
+ * null" out of the middle of whatever was driving — which points at this line
+ * and not at the reload that caused it. The reload is legitimate and expected:
+ * `reset.mjs` performs one deliberately.
+ */
+export async function says(match = PANE, { timeout = 20_000 } = {}) {
+  const deadline = Date.now() + timeout;
+  let last = "no document";
+  while (Date.now() < deadline) {
+    const got = await evalIn(
+      match,
+      `document.body ? document.body.innerText.replace(/\\s+/g, ' ').trim() : null`,
+    ).catch((e) => {
+      // The context is torn down and rebuilt during a reload, so "Execution
+      // context was destroyed" here is the reload working, not a failure.
+      last = e.message.slice(0, 80);
+      return null;
+    });
+    if (got !== null) return got;
+    await sleep(500);
+  }
+  throw new Error(`the pane never produced a document within ${timeout}ms (last: ${last})`);
 }
 
 /**

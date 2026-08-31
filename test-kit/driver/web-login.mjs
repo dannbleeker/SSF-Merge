@@ -27,15 +27,28 @@ const PROFILE = process.env.SSF_PROFILE ?? "test-kit/out/browser-profile";
 const minutesIdx = process.argv.indexOf("--minutes");
 const MINUTES = minutesIdx === -1 ? 15 : Number(process.argv[minutesIdx + 1]);
 
+/**
+ * The debugging port every other script in here talks to.
+ *
+ * This was the one thing in the kit with no script behind it. `cdp-eval`,
+ * `drive`, `pane`, `shot` and the rest all default to `127.0.0.1:9333`, and
+ * nothing opened it: the browser had to be started by hand with the flag, and
+ * the next session had no way to know that. Opening it here costs nothing when
+ * it is unused and means the documented entry point is actually sufficient to
+ * run a round.
+ */
+const CDP_PORT = process.env.SSF_CDP_PORT ?? "9333";
+
 mkdirSync(PROFILE, { recursive: true });
 
 console.log(`browser : channel=${CHANNEL}`);
+console.log(`cdp     : http://127.0.0.1:${CDP_PORT}`);
 
 const ctx = await chromium.launchPersistentContext(PROFILE, {
   headless: false,
   viewport: null,
   channel: CHANNEL,
-  args: ["--start-maximized"],
+  args: ["--start-maximized", `--remote-debugging-port=${CDP_PORT}`],
 });
 
 const page = ctx.pages()[0] ?? (await ctx.newPage());
