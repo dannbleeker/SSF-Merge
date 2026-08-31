@@ -169,9 +169,46 @@ function readField(text: string, open: number): FieldHit | undefined {
  * slide that silently binds to nothing.
  */
 export function canBeField(column: string): boolean {
+  return whyNotAField(column) === null;
+}
+
+/**
+ * WHICH rule a column name breaks, as a clause the pane can show.
+ *
+ * `canBeField` answers yes or no, and the pane printed one sentence for every
+ * no: "a field name may not contain a brace or a pipe". Three of the six
+ * refusals this file's own tests list are nothing of the kind — `""`, `"   "`
+ * and `"!!"` are refused for having no letter or digit in them — and the
+ * commonest one in real data is neither.
+ *
+ * A header cell holding Alt+Enter is ordinary in a spreadsheet — `Revenue`
+ * over `(EUR)` — and the clipboard carries it quoted, so the paste parses
+ * perfectly and the column is called `Revenue\n(EUR)`. Every row of it is
+ * there; the pane refused to offer a chip for it and told the user to go and
+ * look for a brace or a pipe in a header that has neither. That is the failure
+ * `prepareBlock` states the standard against: every refusal has to be a thing
+ * the user can act on.
+ *
+ * The ASK comes first and decides — the token is built and scanned, so the rule
+ * is still the engine's own reader rather than a second opinion. What follows
+ * only explains an answer already given, which is why a clause it cannot
+ * account for says so instead of naming a rule it has not checked.
+ */
+export function whyNotAField(column: string): string | null {
   const token = `{{${column}}}`;
   const hits = fieldsInText(token);
-  return hits.length === 1 && hits[0]?.index === 0 && hits[0]?.length === token.length && hits[0]?.name === column;
+  const whole =
+    hits.length === 1 && hits[0]?.index === 0 && hits[0]?.length === token.length && hits[0]?.name === column;
+  if (whole) return null;
+  if (/[{}|]/.test(column)) return "a field name may not contain a brace or a pipe";
+  if (BREAK.test(column)) return "a field name lives on one line, and this header has a line break in it";
+  if (!ALNUM.test(column.trim())) return "a field name needs at least one letter or digit in it";
+  if (column.trim() !== column) return "a field name may not start or end with a space";
+  // Nothing reaches this today — the four rules above are the whole of what
+  // `readField` refuses, and `toRecordSet` has already trimmed every header.
+  // It says what it knows rather than naming a rule it has not checked, which
+  // is the mistake the single hardcoded sentence made.
+  return "the reader cannot take this name";
 }
 
 /** Answers the value for a field, or null to leave the placeholder visible. */

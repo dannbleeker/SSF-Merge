@@ -30,6 +30,7 @@ import {
   imagesWanted,
   includedCount,
   insertableColumns,
+  uninsertableGroups,
   noFieldsHere,
   unusedColumns,
   rowIncluded,
@@ -762,11 +763,17 @@ function insertControl(doc: Document, state: PaneState): HTMLElement {
   }
   // Named, not silently dropped. The fix is to rename the column, and a chip
   // that is simply absent says nothing about which one or why.
-  if (cannot.length > 0) {
+  //
+  // Grouped by the rule each one breaks, from `whyNotAField`. This was ONE
+  // sentence — "a field name may not contain a brace or a pipe" — printed for
+  // every refusal whatever the reason, and the commonest refusal in real data
+  // is a header cell holding Alt+Enter, which contains neither. The user was
+  // told to go and find a character that is not there.
+  for (const { why, columns } of uninsertableGroups(state)) {
     wrap.append(
       el(doc, "p", {
         class: "blocked",
-        text: `${cannot.join(", ")} ${cannot.length === 1 ? "cannot be a field" : "cannot be fields"}: a field name may not contain a brace or a pipe. Rename the ${cannot.length === 1 ? "column" : "columns"} and paste again.`,
+        text: `${columns.join(", ")} ${columns.length === 1 ? "cannot be a field" : "cannot be fields"}: ${why}. Rename the ${columns.length === 1 ? "column" : "columns"} and paste again.`,
       }),
     );
   }

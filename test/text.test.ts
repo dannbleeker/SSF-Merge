@@ -7,6 +7,7 @@ import {
   fieldsInText,
   mergeDocument,
   mergeParagraph,
+  whyNotAField,
   type FieldHit,
 } from "../src/core/merge/text.js";
 import { A_NS, elements, parseXml, serializeXml } from "../src/core/pptx/xml.js";
@@ -224,6 +225,34 @@ describe("a column the pane may not offer as a field", () => {
   it("refuses one that would read back as a different name, or as none", () => {
     for (const column of ["Total|EUR", "a}}b", "{{x", "", "   ", "!!"]) {
       expect(canBeField(column), column).toBe(false);
+    }
+  });
+
+  /**
+   * WHICH rule, because the pane printed one sentence for all of them.
+   *
+   * Three of the six refused above have no brace and no pipe in them, and the
+   * commonest refusal in real data has neither either: a header cell holding
+   * Alt+Enter arrives quoted on the clipboard, parses perfectly, and is a
+   * column whose name has a line break in it.
+   */
+  it("says which rule the name breaks", () => {
+    const why = (column: string): string => whyNotAField(column) ?? "";
+    expect(whyNotAField("First")).toBeNull();
+    expect(why("Total|EUR")).toContain("brace or a pipe");
+    expect(why("a}}b")).toContain("brace or a pipe");
+    expect(why("Revenue\n(EUR)"), "an Excel header with Alt+Enter in it").toContain("one line");
+    expect(why("!!")).toContain("letter or digit");
+    expect(why("   ")).toContain("letter or digit");
+    expect(why(" First ")).toContain("start or end with a space");
+  });
+
+  it("agrees with `canBeField` about every one of them", () => {
+    // Defined as each other, so the chip that is missing and the sentence
+    // explaining it cannot come apart. Asserted rather than trusted to the
+    // one-line definition, which a later reader is free to unpick.
+    for (const column of ["First", "Row Labels", "Total|EUR", "a}}b", "{{x", "", "   ", "!!", "a\nb", " x "]) {
+      expect(whyNotAField(column) === null, column).toBe(canBeField(column));
     }
   });
 });

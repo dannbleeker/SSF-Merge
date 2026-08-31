@@ -270,8 +270,16 @@ ignored, so `{{ Name }}` and `{{Name}}` are the same field.
 The two characters a name may **not** contain are a brace and a pipe: the pipe
 starts the format, and a brace would run into the next placeholder. A name made
 of nothing but spaces or punctuation is not a field either — `{{ }}` and
-`{{!!}}` are just text. The Fields step will not offer a button for a column it
-cannot write as a field, and says which one and why.
+`{{!!}}` are just text.
+
+**A field lives on one line**, which is worth knowing because a spreadsheet
+header does not have to. A header cell holding Alt+Enter — `Revenue` above
+`(EUR)` — pastes in perfectly and every row of it is there, but the name has a
+line break in the middle and no placeholder can be written for it. Retype that
+header on one line and paste again.
+
+The Fields step will not offer a button for a column it cannot write as a field,
+and says which one and which of these rules it breaks.
 
 ## Formats
 
