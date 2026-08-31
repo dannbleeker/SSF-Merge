@@ -125,6 +125,75 @@ describe("a value cell holding a placeholder", () => {
   });
 });
 
+/**
+ * A value cell that does not go through the shared-string table.
+ *
+ * Excel writes `t="s"` and an index; a generator that never built a
+ * shared-string table writes the text inline instead, and `mergeGraphics`
+ * already reads worksheets for exactly that reason — "a chart written by a tool
+ * rather than by Excel". The branch that reads one had never been exercised:
+ * every fixture here goes through the shared table, so coverage showed the
+ * inline arm at zero on the one pass whose output a user opens in Excel.
+ */
+describe("a value cell that holds its string inline", () => {
+  /** Rewrite the fixture's B2 value cell to the given raw XML. */
+  async function withValueCell(cellXml: string) {
+    const deck = await makeDeck([
+      { paragraphs: [["{{Name}}"]], chart: { categories: ["a"], workbook: ["x"], values: ["0"] } },
+    ]);
+    const zip = await JSZip.loadAsync(deck);
+    const emb = Object.keys(zip.files).find((n) => /embeddings\/.*\.xlsx$/.test(n))!;
+    const book = await JSZip.loadAsync(await zip.file(emb)!.async("nodebuffer"));
+    const sheet = await book.file("xl/worksheets/sheet1.xml")!.async("string");
+    const patched = sheet.replace('<c r="B2"><v>0</v></c>', cellXml);
+    expect(patched, "the fixture's value cell moved; this test patches it by hand").not.toBe(sheet);
+    book.file("xl/worksheets/sheet1.xml", patched);
+    zip.file(emb, await book.generateAsync({ type: "nodebuffer" }));
+
+    const pkg = await Pkg.open(await zip.generateAsync({ type: "uint8array" }));
+    const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "n");
+    if (!prepared.ok) throw new Error(`the fixture was refused: ${prepared.why}`);
+    const records = toRecordSet(ROWS);
+    const plan = buildPlan(prepared.block, records, { runId: "n" });
+    await runPlan(pkg, plan, records);
+    return JSZip.loadAsync(await pkg.toBytes());
+  }
+
+  it("fills it, and both halves move together", async () => {
+    const zip = await withValueCell('<c r="B2" t="inlineStr"><is><t>{{Revenue}}</t></is></c>');
+    expect(await cachedValues(zip)).toEqual(["1250000"]);
+    // The type goes with the text: a numeric cell still carrying `inlineStr`
+    // is one Excel reads as a string, and the chart would plot nothing.
+    expect((await sheetCells(zip))["B2"]).toEqual({ type: "n", value: "1250000" });
+  });
+
+  it("joins an inline string split across runs", async () => {
+    // The same split a slide's paragraph gets, one format down: `<is>` holds
+    // `<r><t>` runs whenever part of the cell is styled differently.
+    const zip = await withValueCell('<c r="B2" t="inlineStr"><is><r><t>{{Reve</t></r><r><t>nue}}</t></r></is></c>');
+    expect(await cachedValues(zip)).toEqual(["1250000"]);
+    expect((await sheetCells(zip))["B2"]).toEqual({ type: "n", value: "1250000" });
+  });
+
+  it("leaves a FORMULA cell and its formula alone", async () => {
+    // `t="str"` is a formula's cached string result, and it keeps that result
+    // in `<v>`. The reader used to name `str` alongside `inlineStr` and then
+    // look for `<t>`, so it found nothing and skipped the cell — right
+    // behaviour, false claim. Reading `<v>` instead would have made it merge,
+    // and `writeNumber` clears every child of the cell: the `<f>` would go with
+    // the placeholder. A merge may take a placeholder; it may not take a
+    // formula.
+    const zip = await withValueCell('<c r="B2" t="str"><f>A1</f><v>{{Revenue}}</v></c>');
+    expect(await cachedValues(zip)).toEqual(["0"]);
+    const rels = await zip.file("ppt/charts/_rels/chart2.xml.rels")!.async("string");
+    const target = /Target="([^"]*\.xlsx)"/.exec(rels)![1]!;
+    const book = await JSZip.loadAsync(await zip.file(`ppt/${target.replace(/^\.\.\//, "")}`)!.async("nodebuffer"));
+    const sheet = await book.file("xl/worksheets/sheet1.xml")!.async("string");
+    expect(sheet).toContain("<f>A1</f>");
+    expect(sheet).toContain("{{Revenue}}");
+  });
+});
+
 describe("what it leaves alone", () => {
   it("an ordinary number", async () => {
     const { zip } = await merge({
