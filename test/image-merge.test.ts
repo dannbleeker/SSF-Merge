@@ -106,6 +106,38 @@ describe("a picture where the placeholder was", () => {
     expect(elements(doc, A_NS, "prstGeom")[0], "no geometry, so no visible picture").toBeDefined();
   });
 
+  it("gives one to a shape that is POSITIONED but has no geometry, in schema order", async () => {
+    /**
+     * The test above uses a shape whose `<p:spPr>` is empty. A shape with an
+     * `<a:xfrm>` and no geometry is the commoner template — a text box somebody
+     * placed — and it reaches a different branch: the predicate asks whether any
+     * child is a geometry, and with a child present that answer can be wrong in
+     * a way an empty `spPr` cannot show. `scripts/mutate-core.mjs` is what found
+     * it: flipping that comparison left the suite green.
+     *
+     * The ORDER is asserted with it, and is the half no other test holds.
+     * `CT_ShapeProperties` requires `xfrm` before the geometry, and the code
+     * inserts after the `xfrm` precisely for that. Put the geometry first and
+     * the file is schema-invalid — which PowerPoint answers by repairing the
+     * deck and dropping what it chooses, the failure this whole suite exists to
+     * keep out.
+     */
+    // An `<a:xfrm>` with something AFTER it, so the geometry has to be inserted
+    // between them rather than appended. A fixture with only an xfrm reaches
+    // the append branch instead, where a geometry inserted at the front would
+    // still come out in the right order and the assertion would pass without
+    // holding anything.
+    const after = '<a:solidFill><a:srgbClr val="FF0000"/></a:solidFill>';
+    const pkg = await template("{{Photo|image}}", xfrm(200, 100) + after);
+    const out = await merge(pkg, [["Photo"], ["ada.png"]], new Map([["ada.png", WIDE]]));
+    const doc = await pkg.doc(out.slides[0] as string);
+
+    const geom = elements(doc, A_NS, "prstGeom")[0];
+    expect(geom, "a positioned shape with no geometry still shows no picture without one").toBeDefined();
+    const order = Array.from((geom!.parentNode as Element).childNodes).map((n) => (n as Element).localName);
+    expect(order.slice(0, 2)).toEqual(["xfrm", "prstGeom"]);
+  });
+
   it("STRETCHES and says so when the shape states no size", async () => {
     // Cover and contain need a ratio, and a shape that inherits its box from a
     // layout placeholder does not state one. Reported, because a stretched
