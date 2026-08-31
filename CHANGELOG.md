@@ -7,6 +7,47 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — seven things a merge could get wrong without saying so
+
+A bug hunt on 2026-08-31. Every one of these reported success.
+
+**A cell holding a control character produced a file PowerPoint refuses to
+open.** XML has no way to carry most of them — not as a character and not as an
+escape — so the merged slide was not a well-formed part and PowerPoint condemned
+the whole deck. It came from an ordinary paste: `CHAR(11)` is the soft line
+break Word and Excel keep inside a cell. Such a character is replaced with a
+space now, which is what it meant.
+
+**`1 marketing 2026` merged as 1 March 2026.** Month names come from a stated
+list, and behind that list was the browser's own date parser as a floor for
+languages the list did not name. That parser matches an English three-letter
+prefix, so it read `marketing` as March, `janitor` as January and `novel` as
+November. The floor is gone; German, Dutch, French, Spanish, Italian and
+Portuguese are on the list instead, which is more than the floor ever reached.
+
+**A chart's data could come out saying the template's values.** Two of these.
+A workbook that keeps a cell's text inline rather than in a shared table — what
+a chart written by a tool rather than by Excel produces — was never filled at
+all; and the sheets inside it were found by their file name, so a workbook that
+names its parts differently filled nothing. Both leave a deck that reads
+correctly until somebody presses Edit Data.
+
+**A picture or chart whose part name contains a space was shared by every
+merged slide.** The name is escaped in the file and was never unescaped when
+looked up, so the copy could not be made and every slide kept pointing at the
+template's — a whole deck showing the last row's chart.
+
+**Taking a merge back could remove slides it did not add.** The pane remembered
+how big the deck was when you chose your template slides. Add a slide in
+PowerPoint before pressing Merge — which is what the fields step sends you there
+to do — and that number was two behind, so a merge that raised part-way offered
+to remove two of your own slides along with its own. The deck is counted again
+immediately before the insert now.
+
+**The picture count included rows you had taken out.** A merge of one row in
+five reported "1 of 5 pictures matched" and named four files it was never going
+to open.
+
 ### Changed — the name stays `SSF Merge`, and the summary pays for it
 
 The listing's name section had been a question since it was written: Microsoft's

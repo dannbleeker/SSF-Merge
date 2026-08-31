@@ -649,6 +649,26 @@ describe("which columns name pictures", () => {
     const s = state("Name,Photo\nAda,ada.png\nGrace,ada.png\nAlan,alan.jpg");
     expect(imagesWanted(s).sort()).toEqual(["ada.png", "alan.jpg"]);
   });
+
+  it("asks only for the rows the user left TICKED", () => {
+    // Every number on this screen says what pressing the button will do, and
+    // the button runs on `includedRecords`. Read over every pasted row, a
+    // merge of one row out of three reported two pictures it was never going
+    // to open — and sent the author to find photos for rows they had just
+    // taken out.
+    const all = state("Name,Photo\nAda,ada.png\nGrace,grace.png\nAlan,alan.png");
+    expect(imagesWanted(all).sort()).toEqual(["ada.png", "alan.png", "grace.png"]);
+    expect(imagesWanted({ ...all, excluded: [1, 2] })).toEqual(["ada.png"]);
+  });
+
+  it("does not warn about a name clash in rows nobody is merging", () => {
+    // `imageNameClashes` reads the same list, so the reach is wider than the
+    // count: a clash between two unticked rows raised a warning whose only fix
+    // is to edit a spreadsheet that was fine.
+    const clashing = state("Name,Photo\nAda,eu/logo.png\nGrace,us/logo.png");
+    expect(clashingPicturesNote(clashing)).not.toBeNull();
+    expect(clashingPicturesNote({ ...clashing, excluded: [1] })).toBeNull();
+  });
 });
 
 describe("what the picked files cover", () => {

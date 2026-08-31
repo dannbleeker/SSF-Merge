@@ -27,7 +27,6 @@ import {
   skippedRows,
   imageTally,
   slidesToAdd,
-  imagesWanted,
   includedCount,
   insertableColumns,
   uninsertableGroups,
@@ -406,7 +405,14 @@ function body(doc: Document, state: PaneState, current: StepId, orange: OrangeHo
     // The pictures the data asks for. On the DATA step and not the fields step
     // because they are data: the cell names a file, and everything the merge
     // consumes is collected in one place.
-    if (imagesWanted(state).length > 0) out.push(imageControl(doc, state));
+    //
+    // Gated on the COLUMNS, not on the names. `imagesWanted` counts the rows
+    // the user left ticked, so gating on it would take the whole picker away —
+    // and the files already attached to it — the moment somebody unticked every
+    // row that happens to name a photo. The question this control answers is
+    // "does this merge involve pictures at all", and that is a fact about the
+    // data's shape rather than about which rows survived the picker.
+    if (pictureColumns(state).length > 0) out.push(imageControl(doc, state));
     return out;
   }
 

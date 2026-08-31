@@ -763,6 +763,18 @@ describe("the picture picker", () => {
     expect(paneFor(withPhotos, "data").textContent).toContain("2 pictures named in Photo");
   });
 
+  it("counts the rows left TICKED, and keeps the picker when none are", () => {
+    // The count says what pressing the button will do, so it follows the row
+    // picker like every other number on this screen. The CONTROL does not: it
+    // is gated on the columns, or unticking every photo row would take away
+    // the picker and the files already attached to it.
+    const one = paneFor({ ...withPhotos, excluded: [1] }, "data");
+    expect(one.textContent).toContain("1 picture named in Photo");
+    const none = paneFor({ ...withPhotos, excluded: [0, 1] }, "data");
+    expect(none.querySelector('[data-field="images"]'), "the picker went with the rows").not.toBeNull();
+    expect(none.textContent).toContain("0 pictures named in Photo");
+  });
+
   it("says what skipping costs, because skipping is allowed", () => {
     expect(paneFor(withPhotos, "data").textContent).toContain("keep the placeholder");
   });

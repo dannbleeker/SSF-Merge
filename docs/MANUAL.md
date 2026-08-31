@@ -397,6 +397,12 @@ pictures the data asks for it has in hand, and names the ones it has not — pic
 those too, or leave them: a row whose picture is missing keeps its placeholder,
 exactly as a text field with no column does.
 
+**It counts the rows you left ticked.** Take rows out in the row picker on the
+merge step and the picture count follows them, because it is a statement about
+what the merge will do rather than about what you pasted. The picker itself
+stays where it is: unticking every row that names a photo does not take away
+the files you have already chosen.
+
 **Two folders, one file name, and the pane says so.** Because matching ignores
 the folders, `regions/eu/logo.png` and `regions/us/logo.png` are one name by the
 time anything can act on them — and there is no way round it: a file picker
