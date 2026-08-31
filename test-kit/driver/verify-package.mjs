@@ -183,6 +183,8 @@ for (const sp of slidePaths) {
  * whole deck a template and skip everything.
  */
 const TEMPLATE_MARK = /\{\{(?!Nickname\}\})[A-Za-z]/;
+/** The same rule, reading back WHICH placeholders, for a report. */
+const TEMPLATE_MARKS = /\{\{(?!Nickname\}\})[A-Za-z][^}]*\}\}/g;
 for (const s of slideInfo) s.template = TEMPLATE_MARK.test(s.text);
 
 const short = (s) => s.path.replace("ppt/slides/", "");
@@ -204,6 +206,39 @@ record(
     : mergedInfo.length === 0
       ? "no merged slide found at all, so nothing below can be checked"
       : `merged ${mergedInfo.map((s) => `${short(s)}=${s.row.name}`).join(", ")}`,
+);
+
+/**
+ * A copy that KEPT a placeholder, which the rule above cannot see.
+ *
+ * `TEMPLATE_MARK` cannot tell "a template slide" from "a copy the merge did not
+ * finish" — both hold a placeholder for a field that has a column. So a slide
+ * the merge half-filled is filed as TEMPLATE and skipped by every per-row check
+ * below, which is the one defect this deck exists to catch being made invisible
+ * by the fix that stopped template slides being marked down.
+ *
+ * Measured rather than argued: putting `{{Region}}` back on one merged copy of a
+ * correct 13/13 round deck takes it to 8/13, and not one of the five failures
+ * says a placeholder survived. They are the part counts and the formats, because
+ * that slide left the merged population and took its chart, workbook and photo
+ * with it. The deck is reported as broken, with the wrong reason, and a reader
+ * goes looking for a missing chart part.
+ *
+ * The population that can answer is the slides that NAME A ROW: a template slide
+ * holds `{{Name}}`, not `Ada`, so it names none and is not caught by this. It is
+ * deliberately taken from `slideInfo` rather than `mergedInfo` — reading it off
+ * the filtered list is what would make the check vacuous, since the filter is
+ * what removed the slide.
+ */
+const halfFilled = slideInfo.filter((s) => s.row && s.template);
+record(
+  "no merged copy kept a placeholder the merge should have filled",
+  halfFilled.length === 0,
+  halfFilled.length
+    ? `${halfFilled.length} slide(s) name a row AND still hold a placeholder: ${halfFilled
+        .map((s) => `${short(s)}=${s.row.name} kept ${(s.text.match(TEMPLATE_MARKS) ?? []).join(" ")}`)
+        .join(", ")}`
+    : `${mergedInfo.length} merged slide(s), none holding a placeholder other than {{Nickname}}`,
 );
 
 // ------------------------------------------- which deck IS this

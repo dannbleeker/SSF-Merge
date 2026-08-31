@@ -187,11 +187,14 @@ deck with a stale crumb still starts you in a recovery state. One line:
 assertion is anchored to the slide's own title text, so a correctly-shaped deck
 with the rows shuffled fails.
 
-`mutate.mjs` is what makes it trustworthy. It breaks a reference deck six ways —
-dangle a relationship, swap a chart's region, revert a workbook to the
-placeholder, give two rows the same photo, blank the `{{Nickname}}` placeholder,
-put the wrong name in a notes page — and asserts each is caught by its own guard.
-Run it before believing a verdict.
+`mutate.mjs` is what makes it trustworthy. It breaks a reference deck one way per
+entry in its `MUTANTS` list — dangle a relationship, swap a chart's region,
+revert a workbook to the placeholder, revert a merged field on a slide, give two
+rows the same photo, blank the `{{Nickname}}` placeholder, put the wrong name in
+a notes page — and asserts each is caught by its own guard. Run it before
+believing a verdict. (The count is not written out here on purpose: a number in
+prose beside the list it counts drifts, which this repository has already had to
+correct once in `scripts/manual-shots.mjs`.)
 
 Three bugs were found **in the verifier itself** this way, before any could be
 reported as a defect in the product:
@@ -209,6 +212,17 @@ reported as a defect in the product:
    done exactly as the manual asks scored 5/13 while being entirely correct, and
    the report had to be re-derived from the XML by hand to get past it. It now
    splits merged from template once and reads 13/13 on that same deck.
+5. And the fix for (4) then HID the defect the deck exists to catch. A slide is
+   classified as template by holding a placeholder, which is also what a copy the
+   merge did not finish looks like — so a half-filled copy left the merged
+   population and was skipped by every per-row check. Measured on a correct round
+   deck: putting `{{Region}}` back on one merged copy took it from 13/13 to 8/13,
+   and not one of the five failures said a placeholder had survived. They were
+   the part counts and the formats, because that slide took its chart, workbook
+   and photo out of the population with it — so the deck was reported broken with
+   the wrong reason, and a reader would go hunting for a missing chart part. The
+   question is asked directly now, of the slides that NAME A ROW rather than of
+   the filtered list, since the filter is what removed the slide.
 
 A verifier that has only ever seen a good deck is an untested instrument.
 
