@@ -33,6 +33,63 @@ function randomCreationId(): number {
 }
 
 /**
+ * The creation ids already in a package, gathered once and kept.
+ *
+ * Once, because reading every slide's `extLst` per clone is O(N²) parses on a
+ * 240-row merge inside a task-pane WebView, and the only thing that adds a
+ * creation id during a merge is this file — so the set stays true if each new
+ * id is put into it as it is drawn.
+ */
+const usedCreationIds = new WeakMap<Pkg, Set<number>>();
+
+async function usedIds(pkg: Pkg): Promise<Set<number>> {
+  const held = usedCreationIds.get(pkg);
+  if (held) return held;
+  const used = new Set<number>();
+  for (const path of await pkg.slidePaths()) {
+    const id = await creationIdOf(pkg, path);
+    if (id !== undefined) used.add(id);
+  }
+  usedCreationIds.set(pkg, used);
+  return used;
+}
+
+/** How many times a candidate may be redrawn before it is taken as offered. */
+const DRAW_TRIES = 8;
+
+/**
+ * A creation id this deck is not already using.
+ *
+ * The draw was blind. `randomCreationId` picks from 2^32 and nothing compared
+ * the result against the deck, so a collision was possible with the template's
+ * own slides, with the user's other slides, and with an earlier copy in the
+ * same run — the exact state office-js#6105 reports as `InvalidArgument` on
+ * Windows desktop. The odds are small: a 240-row merge into a 60-slide deck is
+ * roughly one in a hundred thousand. The failure it produces is not small — a
+ * deck that will not take the insert, once, on one machine, from a value nobody
+ * can reproduce.
+ *
+ * The GUARD is what makes this checkable, and its absence is why the test that
+ * claimed to cover it could not be. `gives every copy its own creation id`
+ * injected a counter and asserted the counter's own uniqueness; the generator a
+ * real run uses was never in the assertion. So the option is a source of
+ * CANDIDATES now rather than a final answer, and the same freshness rule
+ * applies to an injected one — which is what lets a test hand over a value
+ * already in the deck and watch it be refused.
+ *
+ * Bounded rather than looped: a generator that keeps answering the same number
+ * is a caller being deliberate, and spinning forever on it would be worse than
+ * honouring it.
+ */
+async function freshCreationId(pkg: Pkg, draw: () => number): Promise<number> {
+  const used = await usedIds(pkg);
+  let id = draw();
+  for (let tries = 1; tries < DRAW_TRIES && used.has(id); tries++) id = draw();
+  used.add(id);
+  return id;
+}
+
+/**
  * Copy one slide and return the new part's path.
  *
  * The layout, the master, media and hyperlinks stay shared: they are read-only
@@ -71,7 +128,7 @@ export async function cloneSlide(pkg: Pkg, sourcePath: string, opts: CloneOption
 
   await cloneNotesSlide(pkg, target, n);
   await dropInheritedTags(pkg, target);
-  await setCreationId(pkg, target, (opts.creationId ?? randomCreationId)());
+  await setCreationId(pkg, target, await freshCreationId(pkg, opts.creationId ?? randomCreationId));
 
   return target;
 }
