@@ -2,10 +2,11 @@ import { describe, expect, it } from "vitest";
 import { toRecordSet } from "../src/core/data/recordset.js";
 import { buildPlan, type Block } from "../src/core/merge/plan.js";
 import { runPlan } from "../src/core/merge/run.js";
+import { mergeDocument } from "../src/core/merge/text.js";
 import { creationIdOf, notesPathFor } from "../src/core/pptx/clone.js";
 import { Pkg } from "../src/core/pptx/pkg.js";
 import { TAG_RECORD, TAG_RUN, readSlideTags } from "../src/core/pptx/tags.js";
-import { A_NS, P_NS, R_NS, element, elements } from "../src/core/pptx/xml.js";
+import { A_NS, P_NS, R_NS, element, elements, parseXml, serializeXml } from "../src/core/pptx/xml.js";
 import { makeDeck } from "./fixtures/deck.js";
 
 /** Every character the slide draws, in order. */
@@ -162,6 +163,79 @@ describe("runPlan", () => {
     const result = await runPlan(pkg, plan, records, { onEmpty: "blank" });
 
     expect(await textOf(pkg, result.slides[0]!)).toBe("Notes for Grace Hopper: ");
+  });
+});
+
+describe("a cell holding nothing but spaces", () => {
+  /**
+   * "Blank" means blank after trimming, and one `.trim()` in `makeResolver` is
+   * the whole of that rule. Nothing held it: removing that call left the suite
+   * green, which `scripts/mutate-core.mjs` is what found.
+   *
+   * It is not a corner. A spreadsheet cell someone cleared by pressing space,
+   * or an export that pads a column, arrives here as `"   "` — and under the
+   * policy the pane offers on the merge step, the difference is between a slide
+   * reading "Notes for Grace Hopper:" and one reading
+   * "Notes for Grace Hopper:    " with the placeholder silently satisfied.
+   */
+  const spacey = toRecordSet([
+    ["Name", "Notes"],
+    ["Grace Hopper", "   "],
+  ]);
+
+  it("is left visible under keep, exactly as an empty one is", async () => {
+    const pkg = await template();
+    const notesBlock: Block = { id: "b", slides: [{ path: "ppt/slides/slide2.xml", seq: 1 }] };
+    const plan = buildPlan(notesBlock, spacey, { runId: "run-1" });
+    const result = await runPlan(pkg, plan, spacey, { onEmpty: "keep" });
+
+    expect(await textOf(pkg, result.slides[0]!)).toBe("Notes for Grace Hopper: {{Notes}}");
+  });
+
+  it("writes nothing under blank — not the spaces", async () => {
+    const pkg = await template();
+    const notesBlock: Block = { id: "b", slides: [{ path: "ppt/slides/slide2.xml", seq: 1 }] };
+    const plan = buildPlan(notesBlock, spacey, { runId: "run-1" });
+    const result = await runPlan(pkg, plan, spacey, { onEmpty: "blank" });
+
+    expect(await textOf(pkg, result.slides[0]!)).toBe("Notes for Grace Hopper: ");
+  });
+});
+
+describe("an edit that lands exactly on a run boundary", () => {
+  /**
+   * A placeholder's value goes into the run that HELD the placeholder, which is
+   * what keeps a bold `{{Name}}` bold. `editRuns` decides that with
+   * `s.to <= edit.start || s.from >= edit.end`, and both boundaries could be
+   * moved by one without a single test noticing — again found by
+   * `scripts/mutate-core.mjs`.
+   *
+   * Every arrangement a paragraph can put a placeholder in, checked as the runs
+   * it leaves behind rather than as joined text: joined text is identical
+   * whichever run the value lands in, so an assertion on it would prove nothing
+   * about the formatting the user sees.
+   */
+  const merged = (xml: string): string[] => {
+    const doc = parseXml(xml);
+    mergeDocument(doc, (n) => (n === "Name" ? "Ada" : null));
+    return [...serializeXml(doc).matchAll(/<a:t[^>]*>([^<]*)<\/a:t>/g)].map((m) => m[1]!);
+  };
+  const A = 'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"';
+  const r = (t: string) => `<a:r><a:t>${t}</a:t></a:r>`;
+
+  it("keeps the value in the run the placeholder occupied", () => {
+    expect(merged(`<a:p ${A}>${r("A")}${r("{{Name}}")}${r("B")}</a:p>`)).toEqual(["A", "Ada", "B"]);
+    expect(merged(`<a:p ${A}>${r("x{{Name}}")}${r("B")}</a:p>`)).toEqual(["xAda", "B"]);
+    expect(merged(`<a:p ${A}>${r("A")}${r("{{Name}}y")}</a:p>`)).toEqual(["A", "Aday"]);
+  });
+
+  it("fills two placeholders that touch, in one run and across two", () => {
+    expect(merged(`<a:p ${A}>${r("{{Name}}{{Name}}")}</a:p>`)).toEqual(["AdaAda"]);
+    expect(merged(`<a:p ${A}>${r("{{Name}}")}${r("{{Name}}")}</a:p>`)).toEqual(["Ada", "Ada"]);
+  });
+
+  it("steps over an empty run at the seam", () => {
+    expect(merged(`<a:p ${A}>${r("{{Na")}${r("")}${r("me}}")}${r("Z")}</a:p>`)).toEqual(["Ada", "Z"]);
   });
 });
 

@@ -226,6 +226,17 @@ reported as a defect in the product:
 
 A verifier that has only ever seen a good deck is an untested instrument.
 
+**The same question, asked of the SUITE, lives in `scripts/mutate-core.mjs`.**
+This file's harness checks the verifier; nothing checked the tests, and that gap
+hid a live defect for the life of a file — `cloneSlide` drew its creation id at
+random with nothing comparing it against the deck, while the test named *gives
+every copy its own creation id* injected a counter and asserted the counter's
+own uniqueness (#197). That tool changes the engine one small way at a time and
+reports which changes no test notices. Read a survivor before believing it: many
+are equivalent mutants, where the two spellings cannot behave differently and so
+no test could tell them apart. It is not in CI, for the reason this section
+already gives about slow checks.
+
 **And a mutation harness that cannot fail is the same thing one level up.**
 `mutate.mjs` used to ask only whether the expected check was red AFTER the
 mutation. If it was red BEFORE, that is true no matter what the mutation did.
