@@ -20,6 +20,7 @@ import { toRecordSet } from "../src/core/data/recordset.js";
 import { Pkg } from "../src/core/pptx/pkg.js";
 import { REL_TYPE } from "../src/core/pptx/parts.js";
 import { A_NS, C_NS, PKG_REL_NS, SSML_NS, elements, parseXml } from "../src/core/pptx/xml.js";
+import { workbookParts } from "../src/core/merge/workbook.js";
 import { makeDeck, type SlideSpec } from "./fixtures/deck.js";
 
 const ROWS = "Name\tRegion\nAda\tNordics\nGrace\tBenelux";
@@ -205,6 +206,207 @@ describe("the workbook behind a chart", () => {
     const chart = (await related(zip, "ppt/slides/slide2.xml", "/chart"))[0] ?? "";
     const cache = elements(parseXml((await zip.file(chart)?.async("string")) ?? ""), C_NS, "strCache");
     expect(cache.flatMap((c) => elements(c, C_NS, "v").map((v) => v.textContent))).toEqual(["Nordics"]);
+  });
+});
+
+/**
+ * A workbook written by a TOOL rather than by Excel.
+ *
+ * Two things such a file does differently, and the merge had a defect for each.
+ * It puts a cell's string INLINE — `<c t="inlineStr"><is><t>` — instead of
+ * pointing at a shared-string table it never built; and it names its parts
+ * whatever it likes, because a part name in a package is arbitrary and only the
+ * workbook's own declarations say where its sheets are.
+ *
+ * Both cells are patched into one sheet on purpose. A chart's VALUE cell is
+ * read by the numeric pass and its LABEL cell by the text pass, so a file where
+ * one is filled and the other is not is the two passes disagreeing about the
+ * same workbook — which is what the shared reader in `workbook.ts` exists to
+ * make impossible.
+ */
+describe("a workbook a generator wrote", () => {
+  /** The fixture's workbook with both cells inline, and its sheet at `sheetPath`. */
+  async function mergedSheet(sheetPath: string): Promise<string> {
+    const deck = await makeDeck([
+      { paragraphs: [["{{Name}}"]], chart: { categories: ["a"], workbook: ["x"], values: ["0"] } },
+    ]);
+    const zip = await JSZip.loadAsync(deck);
+    const embedding = Object.keys(zip.files).find((n) => /embeddings\/.*\.xlsx$/.test(n)) ?? "";
+    const book = await JSZip.loadAsync(await (zip.file(embedding) as JSZip.JSZipObject).async("nodebuffer"));
+
+    const original = "xl/worksheets/sheet1.xml";
+    let sheet = await (book.file(original) as JSZip.JSZipObject).async("string");
+    const before = sheet;
+    sheet = sheet.replace('<c r="B2"><v>0</v></c>', '<c r="B2" t="inlineStr"><is><t>{{Revenue}}</t></is></c>');
+    sheet = sheet.replace(/<c r="A2"[^>]*>[\s\S]*?<\/c>/, '<c r="A2" t="inlineStr"><is><t>{{Name}}</t></is></c>');
+    expect(sheet, "the fixture's cells moved; this test patches them by hand").not.toBe(before);
+
+    if (sheetPath !== original) {
+      book.remove(original);
+      const rels = await (book.file("xl/_rels/workbook.xml.rels") as JSZip.JSZipObject).async("string");
+      const moved = rels.replace('Target="worksheets/sheet1.xml"', `Target="${sheetPath.slice("xl/".length)}"`);
+      expect(moved, "the fixture stopped naming its sheet by relationship").not.toBe(rels);
+      book.file("xl/_rels/workbook.xml.rels", moved);
+      const types = await (book.file("[Content_Types].xml") as JSZip.JSZipObject).async("string");
+      book.file("[Content_Types].xml", types.replace(`/${original}`, `/${sheetPath}`));
+    }
+    book.file(sheetPath, sheet);
+    zip.file(embedding, await book.generateAsync({ type: "nodebuffer" }));
+
+    const pkg = await Pkg.open(await zip.generateAsync({ type: "uint8array" }));
+    const records = toRecordSet([
+      ["Name", "Revenue"],
+      ["Ada", "1250000"],
+    ]);
+    const block = { id: "w", slides: [{ path: "ppt/slides/slide1.xml", seq: 1, fields: [] }] };
+    await runPlan(pkg, buildPlan(block, records, { runId: "w" }), records);
+
+    const out = await JSZip.loadAsync(await pkg.toBytes());
+    const chart = (await related(out, "ppt/slides/slide2.xml", "/chart"))[0] ?? "";
+    const workbook = (await related(out, chart, "/package"))[0] ?? "";
+    const merged = await JSZip.loadAsync(await (out.file(workbook) as JSZip.JSZipObject).async("nodebuffer"));
+    return (merged.file(sheetPath) as JSZip.JSZipObject).async("string");
+  }
+
+  it("fills a cell that holds its string inline", async () => {
+    // `<is>` was not a text group, so `mergeWorkbook` opened every worksheet of
+    // every embedded workbook and could never find anything in one. Its own
+    // comment said the worksheets were read for exactly this case.
+    const sheet = await mergedSheet("xl/worksheets/sheet1.xml");
+    expect(sheet, "the value cell").not.toContain("{{Revenue}}");
+    expect(sheet, "the label cell").not.toContain("{{Name}}");
+    expect(sheet).toContain("Ada");
+  });
+
+  it("finds the sheet by what the workbook declares, not by its part name", async () => {
+    // The numeric pass reads the declarations and the text pass matched
+    // `xl/worksheets/sheetN.xml`, so this same file came back with its value
+    // cell filled and the label cell beside it still reading `{{Name}}`.
+    const sheet = await mergedSheet("xl/sheets/data.xml");
+    expect(sheet, "the value cell").not.toContain("{{Revenue}}");
+    expect(sheet, "the label cell").not.toContain("{{Name}}");
+    expect(sheet).toContain("Ada");
+  });
+});
+
+/**
+ * A part whose NAME needs a percent escape.
+ *
+ * A relationship `Target` is a URI reference, so a part called `my chart.xml`
+ * is written `../charts/my%20chart.xml`; a zip entry name is the literal name.
+ * The two only meet if the resolver decodes, and it did not — so `pkg.has`
+ * answered no for a part that is right there, and every pass that asks it
+ * stepped over the chart in silence.
+ *
+ * `cloneSlideGraphics` is where that costs the deck. It skips what it cannot
+ * find, so every merged copy keeps the TEMPLATE's chart relationship, and all
+ * of them show the last record's labels — the shared-part defect this project
+ * has now found for notes pages, comments, charts and diagrams.
+ */
+/**
+ * Reading a workbook the way it describes itself.
+ *
+ * Driven directly rather than through a merge, because two of its rules cannot
+ * be reached from a package this project can author: a workbook whose main part
+ * is not `xl/workbook.xml`, and one that declares two sheets under one title.
+ * A rule no test can drive is a rule nobody can check — and a mutation sweep
+ * proved both were exactly that.
+ */
+describe("workbookParts", () => {
+  const REL = 'xmlns="http://schemas.openxmlformats.org/package/2006/relationships"';
+  const S = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"';
+  const R = 'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
+  const TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+
+  /** A workbook whose main part is `main`, declaring the given sheets. */
+  function book(main: string, sheets: [string, string][]): JSZip {
+    const zip = new JSZip();
+    zip.file(
+      "_rels/.rels",
+      `<Relationships ${REL}>` +
+        `<Relationship Id="rIdX" Type="${TYPE}/extended-properties" Target="docProps/app.xml"/>` +
+        `<Relationship Id="rIdM" Type="${TYPE}/officeDocument" Target="${main}"/>` +
+        `</Relationships>`,
+    );
+    zip.file("docProps/app.xml", "<Properties/>");
+    zip.file(
+      main,
+      `<workbook ${S} ${R}><sheets>` +
+        sheets.map(([name], i) => `<sheet name="${name}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join("") +
+        `</sheets></workbook>`,
+    );
+    const dir = main.slice(0, main.lastIndexOf("/"));
+    zip.file(
+      `${dir}/_rels/${main.slice(main.lastIndexOf("/") + 1)}.rels`,
+      `<Relationships ${REL}>` +
+        sheets
+          .map(([, part], i) => `<Relationship Id="rId${i + 1}" Type="${TYPE}/worksheet" Target="${part}"/>`)
+          .join("") +
+        `<Relationship Id="rIdS" Type="${TYPE}/sharedStrings" Target="strings.xml"/>` +
+        `</Relationships>`,
+    );
+    for (const [, part] of sheets) zip.file(`${dir}/${part}`, `<worksheet ${S}/>`);
+    zip.file(`${dir}/strings.xml`, `<sst ${S}/>`);
+    return zip;
+  }
+
+  it("follows the officeDocument relationship rather than a fixed name", async () => {
+    const parts = await workbookParts(book("book/main.xml", [["Data", "sheets/one.xml"]]));
+    expect(parts.sheets).toEqual(["book/sheets/one.xml"]);
+    expect(parts.byTitle.get("Data")).toBe("book/sheets/one.xml");
+    expect(parts.sharedStrings).toBe("book/strings.xml");
+  });
+
+  it("keeps the FIRST sheet declared under a title, never the last", async () => {
+    // Two sheets cannot share a title in a workbook Excel will open. If a
+    // generator writes one anyway, a chart's `Sheet1!$B$2` has to reach the
+    // sheet the workbook names first — taking the later one would fill a
+    // different cell and the chart would plot the one that was left.
+    const parts = await workbookParts(
+      book("xl/workbook.xml", [
+        ["Sheet1", "worksheets/first.xml"],
+        ["Sheet1", "worksheets/second.xml"],
+      ]),
+    );
+    expect(parts.byTitle.get("Sheet1")).toBe("xl/worksheets/first.xml");
+    // Both are still sheets — only the TITLE is claimed once.
+    expect(parts.sheets).toEqual(["xl/worksheets/first.xml", "xl/worksheets/second.xml"]);
+  });
+
+  it("answers empty for an embedding that is not a workbook at all", async () => {
+    // An OLE object under the same `package` relationship. Reported as nothing
+    // to fill rather than thrown on: a merge does not lose 240 slides over one.
+    const parts = await workbookParts(new JSZip());
+    expect(parts.sheets).toEqual([]);
+    expect(parts.sharedStrings).toBeUndefined();
+  });
+});
+
+describe("a chart part whose name needs a percent escape", () => {
+  it("still gets its own copy per merged slide", async () => {
+    const deck = await makeDeck([{ paragraphs: [["{{Region}}"]], chart: { title: "{{Region}}" } }]);
+    const zip = await JSZip.loadAsync(deck);
+    const body = await (zip.file("ppt/charts/chart1.xml") as JSZip.JSZipObject).async("string");
+    zip.remove("ppt/charts/chart1.xml");
+    zip.file("ppt/charts/my chart.xml", body);
+    const rels = await (zip.file("ppt/slides/_rels/slide1.xml.rels") as JSZip.JSZipObject).async("string");
+    const escaped = rels.replace('Target="../charts/chart1.xml"', 'Target="../charts/my%20chart.xml"');
+    expect(escaped, "the fixture stopped naming its chart the way this patches it").not.toBe(rels);
+    zip.file("ppt/slides/_rels/slide1.xml.rels", escaped);
+    const types = await (zip.file("[Content_Types].xml") as JSZip.JSZipObject).async("string");
+    zip.file("[Content_Types].xml", types.replace("/ppt/charts/chart1.xml", "/ppt/charts/my%20chart.xml"));
+
+    const pkg = await Pkg.open(await zip.generateAsync({ type: "uint8array" }));
+    const records = toRecordSet(ROWS.split("\n").map((line) => line.split("\t")));
+    const block = { id: "e", slides: [{ path: "ppt/slides/slide1.xml", seq: 1, fields: [] }] };
+    const result = await runPlan(pkg, buildPlan(block, records, { runId: "e" }), records);
+    const out = await JSZip.loadAsync(await pkg.toBytes());
+
+    const charts = await Promise.all(result.slides.map((slide) => related(out, slide, "/chart")));
+    expect(charts[0], "the copy kept the template's chart").not.toEqual(charts[1]);
+    // And each one says its own row, which is what sharing a part destroys.
+    const said = await Promise.all(charts.map(async (c) => (await textOf(out, c[0] ?? "", A_NS, "t")).join("")));
+    expect(said).toEqual(["Nordics", "Benelux"]);
   });
 });
 

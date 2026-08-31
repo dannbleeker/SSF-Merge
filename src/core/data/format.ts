@@ -218,9 +218,15 @@ export function parseDate(raw: string): Date | undefined {
  * of whichever parser the host ships.
  *
  * Full names and the three-letter abbreviations, listed rather than matched by
- * prefix: an open prefix rule reads `1 marketing 2026` as March. No word here
- * means a different month in a different one of these languages, and
- * `test/data.test.ts` asserts that rather than trusting it.
+ * prefix: an open prefix rule reads `1 marketing 2026` as March. That was not a
+ * hypothetical — the `new Date` fallback this table sat in front of was exactly
+ * such a rule and did exactly that, for a year, and `monthFromName` records
+ * what it cost and why it is gone.
+ *
+ * No word here means a different month in a different one of these languages,
+ * and `test/data.test.ts` asserts that over the whole table rather than
+ * trusting it. That property is what lets one table serve eleven languages, and
+ * it is the thing to re-check before adding a twelfth.
  *
  * This is NOT the Danish locale the backlog rejected. That was a string table
  * for the pane's own text, and it is still rejected. This is reading the user's
@@ -272,21 +278,93 @@ const MONTH_NAMES: Readonly<Record<string, number>> = Object.freeze({
   dec: 12,
   okt: 10,
   des: 12,
+  // German — januar, februar, april, mai, juni, juli, august, september,
+  // oktober and november are spellings already above.
+  dezember: 12,
+  // Dutch — april, juni, juli, september, oktober, november and december are
+  // already above, and januari and februari came in with Swedish.
+  maart: 3,
+  mei: 5,
+  augustus: 8,
+  // French. `mars` and `mai` are already above, under Norwegian.
+  janvier: 1,
+  avril: 4,
+  juin: 6,
+  juillet: 7,
+  septembre: 9,
+  octobre: 10,
+  novembre: 11,
+  // Spanish
+  enero: 1,
+  febrero: 2,
+  marzo: 3,
+  abril: 4,
+  mayo: 5,
+  junio: 6,
+  julio: 7,
+  agosto: 8,
+  septiembre: 9,
+  octubre: 10,
+  noviembre: 11,
+  diciembre: 12,
+  // Italian — marzo, aprile's cousin `abril` and agosto are shared with Spanish.
+  gennaio: 1,
+  febbraio: 2,
+  aprile: 4,
+  maggio: 5,
+  giugno: 6,
+  luglio: 7,
+  settembre: 9,
+  ottobre: 10,
+  dicembre: 12,
+  // Portuguese
+  janeiro: 1,
+  fevereiro: 2,
+  maio: 5,
+  junho: 6,
+  julho: 7,
+  setembro: 9,
+  outubro: 10,
+  novembro: 11,
+  dezembro: 12,
 });
 
 /**
  * A month name's number, or nothing if the word is not one we claim.
  *
- * The table first, then `new Date` as a last resort. The fallback is kept
- * deliberately: it is what makes `1 mars 2026` and `1 janvier 2026` work today
- * for languages this table does not list, and removing it would turn a partial
- * answer into no answer for those users. Its inconsistency is exactly why the
- * table exists — it is a floor, not the mechanism.
+ * The TABLE, and nothing else. There was a `new Date` fallback behind it, kept
+ * on purpose so that languages the table did not list still worked; measured on
+ * 2026-08-31, it does the one thing the table was written to prevent.
  *
- * The fallback resolves by parsing the FIRST of that month, which exists in
- * every month of every year, so the answer is the name's month and never a
- * rollover. Asking `new Date` about the whole cell is what let `31 Feb 2026`
- * through as 3 March: the parser had moved the month before anything looked.
+ * `new Date("1 <word> 2001 00:00:00Z")` matches an English three-letter PREFIX,
+ * so it answers **March for `marketing`**, January for `janitor`, November for
+ * `novel` and December for `decision`. The table's own docstring names that
+ * case as the reason its names are listed rather than matched by prefix — and
+ * the branch underneath it was an open prefix rule the whole time. A cell
+ * reading `1 marketing 2026` was typed `date` and printed as `01-03-2026`, on
+ * every merged slide, with nothing anywhere saying a month had been invented.
+ *
+ * This engine's governing rule decides it: a merged deck that draws perfectly
+ * and is two months wrong is worse than one that shows the cell untouched. So
+ * the fallback is gone and the answer is a decision rather than a side effect
+ * of whichever parser the host ships — which is what the table was for, and it
+ * also means the pane and the CLI cannot answer differently.
+ *
+ * Nothing is lost by it. What the fallback really covered was French and
+ * Spanish and Italian, and those are listed above now — more of them than the
+ * prefix rule ever reached, since it read `janvier` and `marzo` by luck and
+ * answered nothing at all for `enero`, `maart`, `mei` or `gennaio`.
+ *
+ * The one stated limit is the SHAPE gate rather than this table: `NAMED_DATE`
+ * admits `[A-Za-zÆØÅæøå]`, so an accented spelling — `février`, `août`, `märz`,
+ * `décembre` — never reaches here at all. French, German and Portuguese are
+ * therefore PARTIAL: nine of twelve months read and three do not, which in one
+ * column is the half-formatted-half-raw rendering this file exists to prevent.
+ * Unchanged by this — the prefix rule covered exactly the same nine — and the
+ * fix is to widen that character class, which is a change to what `dateShape`
+ * claims and is its own decision. The transliterations are deliberately NOT
+ * listed: `fevrier` is not how French spells it, and a table of guesses at how
+ * somebody's exporter mangles a name is the open rule this file just removed.
  */
 function monthFromName(word: string): number | undefined {
   // `hasOwnProperty`, because `word` is a cell out of the user's data and the
@@ -301,14 +379,9 @@ function monthFromName(word: string): number | undefined {
   // cell is printed as it stands — which is the right answer arrived at by
   // accident. This repo's own rule is to guard any table keyed by a config or
   // data string, and the guard is one line where the luck is one refactor deep.
-  const known = Object.prototype.hasOwnProperty.call(MONTH_NAMES, word.toLowerCase())
+  return Object.prototype.hasOwnProperty.call(MONTH_NAMES, word.toLowerCase())
     ? MONTH_NAMES[word.toLowerCase()]
     : undefined;
-  if (known !== undefined) return known;
-  const probe = new Date(`1 ${word} 2001 00:00:00Z`);
-  if (Number.isNaN(probe.getTime())) return undefined;
-  // The probe is anchored to UTC, so these are the components it was given.
-  return probe.getUTCFullYear() === 2001 && probe.getUTCDate() === 1 ? probe.getUTCMonth() + 1 : undefined;
 }
 
 /**

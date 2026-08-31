@@ -25,6 +25,7 @@ import { parseXml, serializeXml } from "../pptx/xml.js";
 import { mergeDocument, type Resolve } from "./text.js";
 import { emptyNumberOutcome, mergeChartNumbers, tallyNumbers, type NumberOutcome } from "./numbers.js";
 import { graphicsOf, workbooksOf, type FieldSite } from "./sites.js";
+import { workbookParts } from "./workbook.js";
 
 export interface GraphicOutcome {
   /** Text groups filled in chart and SmartArt parts. */
@@ -40,21 +41,6 @@ export interface GraphicOutcome {
 export function emptyGraphicOutcome(): GraphicOutcome {
   return { merged: 0, workbooks: 0, unreadable: [], numbers: emptyNumberOutcome() };
 }
-
-/**
- * The parts of a workbook that hold text a merge can fill.
- *
- * `sharedStrings.xml` is where Excel keeps every string a cell shows, and it is
- * where a chart's own labels come from in practice. A worksheet is read too
- * because a cell may hold its string INLINE (`<is><t>`), which is what a
- * generator that never built a shared-string table produces — and a chart
- * written by a tool rather than by Excel is exactly the case that does that.
- *
- * Nothing else is touched. A workbook holds styles, a calc chain and a
- * definition of the range the chart reads; rewriting any of those would change
- * what the chart plots, where this pass only changes what it says.
- */
-const WORKBOOK_TEXT = /^xl\/(sharedStrings\.xml|worksheets\/sheet\d+\.xml)$/;
 
 /**
  * Merge every chart and SmartArt part this slide owns, and the workbooks behind
@@ -131,9 +117,29 @@ async function mergeWorkbook(pkg: Pkg, path: string, resolve: Resolve): Promise<
     return false;
   }
 
+  // The parts that hold text a merge can fill, taken from what the workbook
+  // DECLARES rather than from their names.
+  //
+  // `sharedStrings.xml` is where Excel keeps every string a cell shows, and it
+  // is where a chart's own labels come from in practice. A worksheet is read
+  // too because a cell may hold its string INLINE (`<is><t>`), which is what a
+  // generator that never built a shared-string table produces.
+  //
+  // That second half is why the names cannot be matched by pattern, and this
+  // used to match `xl/worksheets/sheetN.xml`: a tool that writes its cells
+  // differently writes its part names differently, so the population the
+  // worksheet read exists for was the population excluded from it. The numeric
+  // pass had already learned this and reads the declarations; `workbookParts`
+  // is the one reader they now share, so the two cannot disagree about which
+  // sheets a workbook has. They did — one filled a value cell while the other
+  // left the label cell beside it reading `{{Name}}`.
+  //
+  // Nothing else is touched. A workbook holds styles, a calc chain and a
+  // definition of the range the chart reads; rewriting any of those would
+  // change what the chart plots, where this pass only changes what it says.
+  const parts = await workbookParts(zip);
   let changed = false;
-  for (const name of Object.keys(zip.files)) {
-    if (!WORKBOOK_TEXT.test(name)) continue;
+  for (const name of [...(parts.sharedStrings ? [parts.sharedStrings] : []), ...parts.sheets]) {
     const file = zip.file(name);
     if (!file) continue;
     let doc: Document;

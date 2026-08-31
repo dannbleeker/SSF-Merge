@@ -31,6 +31,10 @@
  *   catches an id reused after a delete, which the two checks above both pass.
  * - **undeclared part** — a part no content type covers, and an Override naming
  *   a part that is not there. PowerPoint refuses a package with either.
+ * - **a character XML cannot carry** — a C0 control, an unpaired surrogate or
+ *   `FFFE`/`FFFF` in the markup. The one problem that makes every check above
+ *   moot, because a conforming parser refuses the part before it can disagree
+ *   about anything in it.
  *
  * Deliberately NOT checked: whether a part is reachable from the presentation.
  * A stranded part is weight rather than damage, `orphanedParts` is where that
@@ -103,6 +107,24 @@ export function holds(names, part) {
 }
 
 /**
+ * A part-name segment as the package holds it, mirroring `resolveTarget` in
+ * `src/core/pptx/pkg.ts`. A `Target` is percent-encoded and a part name is not,
+ * and the two have to agree — that pair is the subject of a corpus in
+ * `test/integrity.test.ts`.
+ *
+ * @param {string} segment
+ * @returns {string}
+ */
+function decodeSegment(segment) {
+  if (!segment.includes("%")) return segment;
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+}
+
+/**
  * Resolve a relationship target against the part that owns the relationship.
  *
  * A leading slash means the target is already a part name, given from the
@@ -121,14 +143,16 @@ export function holds(names, part) {
  * @returns {string}
  */
 export function resolvePart(ownerPart, target) {
-  if (target.startsWith("/")) return target.slice(1);
+  if (target.startsWith("/")) return target.slice(1).split("/").map(decodeSegment).join("/");
   /** @type {string[]} */
   const segments = ownerPart.split("/").slice(0, -1);
   for (const seg of target.split("/")) {
     if (seg === "..") segments.pop();
     else if (seg !== "." && seg !== "") segments.push(seg);
   }
-  return segments.join("/");
+  // Decoded AFTER the walk, so `%2E%2E` stays a segment named two dots rather
+  // than becoming a step upward. Same reasoning as the engine's copy.
+  return segments.map(decodeSegment).join("/");
 }
 
 /** `ppt/slides/slide1.xml` → `ppt/slides/_rels/slide1.xml.rels`. */
@@ -269,6 +293,33 @@ export function expectedTypeOf(ref) {
  * that is wrong with it. An empty list is a package whose internal references
  * all agree.
  */
+/**
+ * The XML 1.0 `Char` production, as a refusal.
+ *
+ * Most of the C0 controls, an unpaired surrogate and `FFFE`/`FFFF` may not
+ * appear in an XML document at all — not raw, and not as a numeric entity
+ * either: `&#11;` is exactly as ill-formed as the character. A part carrying
+ * one is a part a conforming parser rejects, and PowerPoint condemns the whole
+ * file for it.
+ *
+ * Worth a package-level check rather than only a guard at the writer, because
+ * this repository parses and serialises with `@xmldom/xmldom` at BOTH ends:
+ * it writes such a character straight through and reads it straight back, so a
+ * round trip proves nothing and every other gate here stays green. The one
+ * question that separates the two is whether the bytes themselves are legal,
+ * and that is asked of the markup rather than of a document.
+ *
+ * A well-formed surrogate PAIR is one code point above `FFFF` and is perfectly
+ * legal. Under the `u` flag the pattern walks code points, so a pair is never
+ * one of these and only an unpaired half matches — which is what a check that
+ * fired on every emoji in the deck would have got wrong.
+ */
+// The rule is aimed at a control character reaching a pattern by accident. Here
+// they ARE the subject: this is the set XML refuses, and it cannot be written
+// without naming them.
+// eslint-disable-next-line no-control-regex
+const XML_FORBIDDEN = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]|\p{Surrogate}/u;
+
 export function packageProblems(parts) {
   const problems = [];
   const names = new Set(parts.keys());
@@ -321,6 +372,18 @@ export function packageProblems(parts) {
     if (name === "[Content_Types].xml" || overrides.has(name)) continue;
     const ext = (name.split(".").pop() ?? "").toLowerCase();
     if (!defaults.has(ext)) problems.push(`${name}: no content type covers it`);
+  }
+  // A part whose BYTES XML cannot carry. Last, because it is the one problem
+  // that makes every check above meaningless: a parser refuses the part before
+  // it can disagree about a relationship.
+  for (const name of names) {
+    if (!name.endsWith(".xml") && !name.endsWith(".rels")) continue;
+    const body = text(name);
+    if (body === undefined) continue;
+    const at = body.search(XML_FORBIDDEN);
+    if (at < 0) continue;
+    const code = body.charCodeAt(at).toString(16).padStart(4, "0");
+    problems.push(`${name}: holds U+${code.toUpperCase()} at offset ${at}, which XML cannot carry`);
   }
   return problems;
 }

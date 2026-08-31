@@ -12,7 +12,7 @@
  * cheap to render. That was settled with the owner when the layout was.
  */
 
-import { canBeField } from "../core/merge/text.js";
+import { canBeField, whyNotAField } from "../core/merge/text.js";
 import type { EmptyPolicy } from "../core/merge/resolve.js";
 import { plural } from "./summary.js";
 import { recordIsSkipped, slideApplies } from "../core/merge/plan.js";
@@ -737,6 +737,33 @@ export function insertableColumns(state: PaneState): { can: string[]; cannot: st
   const cannot: string[] = [];
   for (const column of state.columns ?? []) (canBeField(column) ? can : cannot).push(column);
   return { can, cannot };
+}
+
+/**
+ * Those columns again, grouped by the rule each one breaks.
+ *
+ * The pane printed ONE sentence for every refusal — "a field name may not
+ * contain a brace or a pipe" — and most refusals are not that. A header cell
+ * holding Alt+Enter is ordinary in a spreadsheet, the clipboard carries it
+ * quoted, so `Revenue` over `(EUR)` parses perfectly and arrives as a column
+ * whose name has a line break in it. The pane refused to offer a chip for it
+ * and sent the user looking for a character that is not there.
+ *
+ * Derived from `whyNotAField`, which is `canBeField`'s own answer rather than a
+ * second reading of the rule, so the chip that is missing and the sentence
+ * explaining it cannot come apart.
+ *
+ * First-seen order, so the columns stay in the order they were pasted.
+ */
+export function uninsertableGroups(state: PaneState): { why: string; columns: string[] }[] {
+  const out: { why: string; columns: string[] }[] = [];
+  for (const column of insertableColumns(state).cannot) {
+    const why = whyNotAField(column) ?? "";
+    const group = out.find((g) => g.why === why);
+    if (group) group.columns.push(column);
+    else out.push({ why, columns: [column] });
+  }
+  return out;
 }
 
 /**

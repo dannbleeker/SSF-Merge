@@ -169,9 +169,46 @@ function readField(text: string, open: number): FieldHit | undefined {
  * slide that silently binds to nothing.
  */
 export function canBeField(column: string): boolean {
+  return whyNotAField(column) === null;
+}
+
+/**
+ * WHICH rule a column name breaks, as a clause the pane can show.
+ *
+ * `canBeField` answers yes or no, and the pane printed one sentence for every
+ * no: "a field name may not contain a brace or a pipe". Three of the six
+ * refusals this file's own tests list are nothing of the kind — `""`, `"   "`
+ * and `"!!"` are refused for having no letter or digit in them — and the
+ * commonest one in real data is neither.
+ *
+ * A header cell holding Alt+Enter is ordinary in a spreadsheet — `Revenue`
+ * over `(EUR)` — and the clipboard carries it quoted, so the paste parses
+ * perfectly and the column is called `Revenue\n(EUR)`. Every row of it is
+ * there; the pane refused to offer a chip for it and told the user to go and
+ * look for a brace or a pipe in a header that has neither. That is the failure
+ * `prepareBlock` states the standard against: every refusal has to be a thing
+ * the user can act on.
+ *
+ * The ASK comes first and decides — the token is built and scanned, so the rule
+ * is still the engine's own reader rather than a second opinion. What follows
+ * only explains an answer already given, which is why a clause it cannot
+ * account for says so instead of naming a rule it has not checked.
+ */
+export function whyNotAField(column: string): string | null {
   const token = `{{${column}}}`;
   const hits = fieldsInText(token);
-  return hits.length === 1 && hits[0]?.index === 0 && hits[0]?.length === token.length && hits[0]?.name === column;
+  const whole =
+    hits.length === 1 && hits[0]?.index === 0 && hits[0]?.length === token.length && hits[0]?.name === column;
+  if (whole) return null;
+  if (/[{}|]/.test(column)) return "a field name may not contain a brace or a pipe";
+  if (BREAK.test(column)) return "a field name lives on one line, and this header has a line break in it";
+  if (!ALNUM.test(column.trim())) return "a field name needs at least one letter or digit in it";
+  if (column.trim() !== column) return "a field name may not start or end with a space";
+  // Nothing reaches this today — the four rules above are the whole of what
+  // `readField` refuses, and `toRecordSet` has already trimmed every header.
+  // It says what it knows rather than naming a rule it has not checked, which
+  // is the mistake the single hardcoded sentence made.
+  return "the reader cannot take this name";
 }
 
 /** Answers the value for a field, or null to leave the placeholder visible. */
@@ -289,13 +326,54 @@ export function editRuns(nodes: Element[], edits: Edit[]): boolean {
   }
 
   spans.forEach((s, i) => {
-    const text = (bufs[i] ?? []).join("");
+    const text = xmlSafe((bufs[i] ?? []).join(""));
     s.node.textContent = text;
     // Without this PowerPoint eats a leading or trailing space, and
     // "Dear Ada ," is a support ticket.
     if (/^\s|\s$/.test(text)) s.node.setAttribute("xml:space", "preserve");
   });
   return true;
+}
+
+/**
+ * Characters no XML document may contain, in any spelling.
+ *
+ * XML 1.0's `Char` production excludes most of the C0 controls, the lone
+ * surrogates and `FFFE`/`FFFF`, and there is no escape for them either —
+ * `&#11;` is exactly as ill-formed as the raw character. So a cell carrying one
+ * cannot reach a slide by any route, and nothing upstream stops it:
+ * `@xmldom/xmldom` writes such a character straight through and reads it back
+ * again, so the part serialises, the suite sees a perfectly good document, and
+ * every gate in this repo is green. PowerPoint parses conformingly, refuses the
+ * part, and calls the whole file damaged — a finished merge lost entirely, with
+ * no message naming the cell that did it.
+ *
+ * Reachable from an ordinary paste rather than from anything exotic.
+ * `CHAR(11)` is the soft line break Word and Excel keep INSIDE a cell, and a
+ * NUL is what a mis-decoded UTF-16 export leaves behind.
+ *
+ * Replaced with a SPACE rather than dropped, because the likeliest one is a
+ * line break: dropping it joins two words that were separate — "AdaLovelace" —
+ * and a space cannot make that mistake in the other direction.
+ *
+ * This is the one place the engine changes a cell without being asked, and the
+ * usual answer — show what the user typed and let them see it — is not
+ * available: the character has no representation in the output format at all,
+ * so every option alters it and only this one leaves a file that opens.
+ *
+ * Astral characters are NOT touched. A well-formed surrogate pair is one code
+ * point above `FFFF`, which `\p{Surrogate}` under the `u` flag does not match;
+ * only an unpaired half does, and an unpaired half is already broken text.
+ */
+// The rule is aimed at a control character reaching a pattern by accident. Here
+// they ARE the subject: this is the set XML refuses, and it cannot be written
+// without naming them.
+// eslint-disable-next-line no-control-regex
+const XML_FORBIDDEN = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]|\p{Surrogate}/gu;
+
+/** Text a conforming XML parser will accept. See `XML_FORBIDDEN`. */
+function xmlSafe(text: string): string {
+  return text.replace(XML_FORBIDDEN, " ");
 }
 
 /**
@@ -340,6 +418,16 @@ function textGroups(doc: Document): Element[][] {
   // A series name written literally rather than referenced: `<c:tx><c:v>`.
   for (const tx of elements(doc, C_NS, "tx")) for (const v of children(tx, C_NS, "v")) out.push([v]);
   for (const si of elements(doc, SSML_NS, "si")) out.push(elements(si, SSML_NS, "t"));
+  // A cell that holds its string INLINE instead of pointing at that table:
+  // `<c t="inlineStr"><is><t>`. Same `<r><t>` runs, one letter apart, and it
+  // was missing — so `mergeWorkbook` opened every worksheet of every embedded
+  // workbook, walked it, and could never find anything. Its own comment said
+  // the worksheets were read "because a cell may hold its string INLINE", which
+  // is the population a generator that never built a shared-string table
+  // produces, and that is exactly what nothing here could reach: a label cell
+  // written inline came out of the merge still reading `{{Name}}`, in the
+  // workbook Excel opens on Edit Data, with the deck itself looking finished.
+  for (const is of elements(doc, SSML_NS, "is")) out.push(elements(is, SSML_NS, "t"));
   // A MODERN chart, which keeps its text in two more places of its own.
   //
   // `<cx:pt>` inside a `<cx:strDim>` is a category label. Scoped by the DIM and

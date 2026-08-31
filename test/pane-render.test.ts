@@ -643,6 +643,28 @@ describe("the Insert buttons", () => {
     expect(text).toContain("Rename the column");
   });
 
+  it("says which rule a column breaks, not one sentence for all of them", () => {
+    // A header cell holding Alt+Enter is ordinary in a spreadsheet, and the
+    // clipboard carries it quoted — so `Revenue` over `(EUR)` parses perfectly
+    // and arrives as a column with a line break in its name. The pane refused
+    // to offer a chip for it and told the user to go and look for a brace or a
+    // pipe in a header that has neither.
+    const columns = ["First", "Total|EUR", "Revenue\n(EUR)"];
+    const text = paneFor({ ...withData, columns }, "fields").textContent ?? "";
+    // First, because it is the assertion the defect fails on: the old sentence
+    // named a brace and a pipe for a header that has neither.
+    expect(text, "the line-break header was told to look for a brace").toContain("lives on one line");
+    expect(text).toContain("Revenue\n(EUR) cannot be a field");
+    expect(text).toContain("Total|EUR cannot be a field: a field name may not contain a brace or a pipe");
+  });
+
+  it("groups the columns that break the SAME rule into one sentence", () => {
+    const columns = ["A|1", "B|2", "!!"];
+    const text = paneFor({ ...withData, columns }, "fields").textContent ?? "";
+    expect(text).toContain("A|1, B|2 cannot be fields: a field name may not contain a brace or a pipe");
+    expect(text).toContain("!! cannot be a field: a field name needs at least one letter or digit");
+  });
+
   it("offers the headers an Excel pivot table produces", () => {
     // Reported from a real run. `Row Labels` and `Min. of cost` are the literal
     // defaults, and the reader's character class had no space on it, so the

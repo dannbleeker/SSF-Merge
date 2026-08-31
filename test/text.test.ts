@@ -7,6 +7,7 @@ import {
   fieldsInText,
   mergeDocument,
   mergeParagraph,
+  whyNotAField,
   type FieldHit,
 } from "../src/core/merge/text.js";
 import { A_NS, elements, parseXml, serializeXml } from "../src/core/pptx/xml.js";
@@ -226,6 +227,34 @@ describe("a column the pane may not offer as a field", () => {
       expect(canBeField(column), column).toBe(false);
     }
   });
+
+  /**
+   * WHICH rule, because the pane printed one sentence for all of them.
+   *
+   * Three of the six refused above have no brace and no pipe in them, and the
+   * commonest refusal in real data has neither either: a header cell holding
+   * Alt+Enter arrives quoted on the clipboard, parses perfectly, and is a
+   * column whose name has a line break in it.
+   */
+  it("says which rule the name breaks", () => {
+    const why = (column: string): string => whyNotAField(column) ?? "";
+    expect(whyNotAField("First")).toBeNull();
+    expect(why("Total|EUR")).toContain("brace or a pipe");
+    expect(why("a}}b")).toContain("brace or a pipe");
+    expect(why("Revenue\n(EUR)"), "an Excel header with Alt+Enter in it").toContain("one line");
+    expect(why("!!")).toContain("letter or digit");
+    expect(why("   ")).toContain("letter or digit");
+    expect(why(" First ")).toContain("start or end with a space");
+  });
+
+  it("agrees with `canBeField` about every one of them", () => {
+    // Defined as each other, so the chip that is missing and the sentence
+    // explaining it cannot come apart. Asserted rather than trusted to the
+    // one-line definition, which a later reader is free to unpick.
+    for (const column of ["First", "Row Labels", "Total|EUR", "a}}b", "{{x", "", "   ", "!!", "a\nb", " x "]) {
+      expect(whyNotAField(column) === null, column).toBe(canBeField(column));
+    }
+  });
 });
 
 describe("the placeholder reader is a scan, not a pattern", () => {
@@ -411,5 +440,67 @@ describe("the placeholder reader is a scan, not a pattern", () => {
     const began = performance.now();
     expect(fieldsInText(ordinary)).toHaveLength(12000);
     expect(performance.now() - began).toBeLessThan(500);
+  });
+});
+
+/**
+ * A merge that produces a file PowerPoint will not open at all.
+ *
+ * XML 1.0 has no representation for most of the C0 controls, for a lone
+ * surrogate, or for `FFFE`/`FFFF` — not as a character and not as an entity.
+ * `@xmldom/xmldom` writes them straight through and parses them straight back,
+ * so every check in this repo passes on a part a conforming parser refuses;
+ * PowerPoint is a conforming parser, and it condemns the whole deck.
+ *
+ * The measurement is made on the SERIALISED part rather than on `textContent`,
+ * because textContent is exactly where the round trip hides it. Python's expat
+ * is the second opinion: `serializeXml` -> `parseXml` cannot show the defect,
+ * since both ends are the lenient parser that caused it.
+ */
+describe("a cell holding a character XML cannot carry", () => {
+  const VERTICAL_TAB = String.fromCharCode(0x0b);
+  const NUL = String.fromCharCode(0x00);
+  const LONE_SURROGATE = String.fromCharCode(0xd800);
+
+  /** Every code unit in the markup that XML 1.0's `Char` production forbids. */
+  function illegal(xml: string): number[] {
+    const out: number[] = [];
+    for (let i = 0; i < xml.length; i++) {
+      const c = xml.charCodeAt(i);
+      const control = c < 0x20 && c !== 0x09 && c !== 0x0a && c !== 0x0d;
+      const surrogate = c >= 0xd800 && c <= 0xdfff;
+      const paired = surrogate && c < 0xdc00 && xml.charCodeAt(i + 1) >= 0xdc00 && xml.charCodeAt(i + 1) <= 0xdfff;
+      const noncharacter = c === 0xfffe || c === 0xffff;
+      if ((control || (surrogate && !paired) || noncharacter) && !paired) out.push(c);
+      if (paired) i++;
+    }
+    return out;
+  }
+
+  it("cannot put one on a slide, whichever character it is", () => {
+    for (const bad of [VERTICAL_TAB, NUL, LONE_SURROGATE, String.fromCharCode(0x1f)]) {
+      const { doc, p } = paragraph("Hello {{Na", "me}}");
+      mergeParagraph(p, () => "Ada" + bad + "Lovelace");
+      expect(illegal(serializeXml(doc))).toEqual([]);
+    }
+  });
+
+  it("substitutes a space, so the words either side stay apart", () => {
+    const { p } = paragraph("Hello {{Name}}");
+    mergeParagraph(p, () => "Ada" + VERTICAL_TAB + "Lovelace");
+    expect(text(p)).toBe("Hello Ada Lovelace");
+  });
+
+  it("leaves an astral character alone — a surrogate PAIR is one legal code point", () => {
+    const { doc, p } = paragraph("Hello {{Name}}");
+    mergeParagraph(p, () => "Ada \u{1F600}");
+    expect(text(p)).toBe("Hello Ada \u{1F600}");
+    expect(illegal(serializeXml(doc))).toEqual([]);
+  });
+
+  it("leaves tab, newline and carriage return alone — XML carries all three", () => {
+    const { p } = paragraph("Hello {{Name}}");
+    mergeParagraph(p, () => "a\tb\nc");
+    expect(text(p)).toBe("Hello a\tb\nc");
   });
 });

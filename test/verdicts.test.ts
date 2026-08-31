@@ -235,6 +235,25 @@ describe("whether the export drops parts the file route keeps", () => {
     expect(v.detail).toMatch(/deck with comments/i);
   });
 
+  it("measures a deck that has ONE of the two — comments and no authors part", () => {
+    // The control is "nothing to drop", and nothing means BOTH. A deck with
+    // comments and no `ppt/authors.xml` has something to lose, so it is a real
+    // measurement — read as NOT ASKED it would throw away the only round that
+    // could show the defect. Found by a mutation sweep: the whole suite stayed
+    // green with that `&&` flipped to `||`, because every case here had both
+    // or neither.
+    const v = exportPartsVerdict({
+      ...kept,
+      sourceHasAuthors: false,
+      exportHasAuthors: false,
+      exportComments: 0,
+      exportParts: 64,
+    });
+    expect(v.verdict).toBe("yes");
+    expect(v.detail).toContain("2 comment part(s)");
+    expect(v.detail).not.toContain("ppt/authors.xml");
+  });
+
   it("says NOT ASKED when the host has no such call, and says WHY", () => {
     // Below 1.10 the template is read through getFileAsync and the question
     // does not arise. A "no" here would claim a behaviour nobody exercised.
@@ -296,6 +315,11 @@ describe("a partial insert read in ROWS", () => {
 
   it("says every row is whole when everything landed", () => {
     expect(tornInsert(uniform(240), 720)).toMatchObject({ complete: 240, torn: 0, absent: 0 });
+    // The SENTENCE too, because the early return exists only to produce it: the
+    // walk below reaches the same three numbers and says "240 of 240 row(s)
+    // landed complete; 0 row(s) got nothing" about a merge that lost nothing.
+    // Nothing held that, and a mutation sweep walked straight through it.
+    expect(tornInsert(uniform(240), 720).detail).toBe("all 240 row(s) landed complete");
   });
 
   it("turns 719 of 720 into one incomplete ROW", () => {

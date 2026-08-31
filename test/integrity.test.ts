@@ -324,6 +324,27 @@ describe("the checker itself", () => {
     parts.set("ppt/embeddings/oleObject1.bin", new Uint8Array([1, 2, 3]));
     expect(problems(parts).join("\n")).toContain("no content type covers it");
   });
+
+  it("names a part holding a character XML cannot carry", async () => {
+    // The one defect a round trip through this repo's own parser cannot show:
+    // `@xmldom/xmldom` writes such a character out and reads it back, so the
+    // document is fine at both ends and the FILE is not.
+    for (const code of [0x00, 0x0b, 0x1f, 0xd800]) {
+      const parts = await goodParts();
+      const slide = slideOf(parts);
+      parts.set(slide, (parts.get(slide) as string).replace("</a:t>", String.fromCharCode(code) + "</a:t>"));
+      expect(problems(parts).join("\n")).toContain("which XML cannot carry");
+    }
+  });
+
+  it("says nothing about an emoji, which is a legal surrogate PAIR", async () => {
+    // The false alarm the `u` flag exists to avoid: matched code UNIT by code
+    // unit, every astral character in every deck is two "surrogates".
+    const parts = await goodParts();
+    const slide = slideOf(parts);
+    parts.set(slide, (parts.get(slide) as string).replace("</a:t>", "\u{1F600}</a:t>"));
+    expect(problems(parts)).toEqual([]);
+  });
 });
 
 /**
@@ -359,10 +380,36 @@ describe("the engine and the checker resolve a relationship the same way", () =>
     // The one they disagreed on.
     ["ppt/slides/slide1.xml", "/ppt/media/image1.png"],
     ["ppt/charts/chart1.xml", "/ppt/embeddings/wb.xlsx"],
+    // A Target is a URI reference and a part name is not, so a part called
+    // `my chart.xml` is written escaped. Both branches decode.
+    ["ppt/slides/slide1.xml", "../charts/my%20chart.xml"],
+    ["ppt/slides/slide1.xml", "/ppt/embeddings/Sales%20Data.xlsx"],
+    ["ppt/slides/slide1.xml", "../media/100%.png"],
+    ["ppt/slides/slide1.xml", "../charts/%2E%2E"],
   ];
 
   it.each(pairs)("agrees on %s + %s", (owner, target) => {
     expect(resolvePart(owner, target)).toBe(resolveTarget(owner, target));
+  });
+
+  it("resolves a percent escape to the name the package holds", () => {
+    // Stated as a VALUE, not only as an agreement: a zip entry name is the
+    // literal name, so an escaped answer matches nothing. `pkg.has` then says
+    // no and `cloneSlideGraphics` skips a chart it cannot find — every merged
+    // copy keeps pointing at the template's, and the whole deck shows the last
+    // record's data with nothing said.
+    for (const resolve of [resolveTarget, resolvePart]) {
+      expect(resolve("ppt/slides/slide1.xml", "../charts/my%20chart.xml")).toBe("ppt/charts/my chart.xml");
+      expect(resolve("ppt/slides/slide1.xml", "/ppt/embeddings/Sales%20Data.xlsx")).toBe(
+        "ppt/embeddings/Sales Data.xlsx",
+      );
+      // Not valid encoding: kept exactly as it stands, because a part really
+      // called `100%.png` is a better answer than a throw out of a merge.
+      expect(resolve("ppt/slides/slide1.xml", "../media/100%.png")).toBe("ppt/media/100%.png");
+      // Decoded AFTER the walk, so this is a segment named two dots and not a
+      // step upward — the package's own sweep deletes what it is pointed at.
+      expect(resolve("ppt/slides/slide1.xml", "../charts/%2E%2E")).toBe("ppt/charts/..");
+    }
   });
 
   it("resolves a root-relative target to the part it names", () => {

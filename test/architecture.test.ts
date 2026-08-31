@@ -405,8 +405,14 @@ describe("one resolver for relationship targets", () => {
    * `""` so a guard cannot match prose, which quietly destroyed the first
    * version of this anchor and left it matching nothing at all. A guard that
    * finds zero offenders looks exactly like a guard that is satisfied.
+   *
+   * Moved on 2026-08-31, when the root-relative branch learned to
+   * percent-decode and the old anchor — `return target.slice(1);` — stopped
+   * existing. It went RED rather than quiet, which is the whole design: it
+   * reported zero carriers where it names the one it expects, so the anchor
+   * moving is a failure and not a silence.
    */
-  const SIGNATURE = "return target.slice(1);";
+  const SIGNATURE = "ownerPart.slice(0, slash)";
 
   it("lives in exactly one file", () => {
     const carriers = filesUnder("src")
