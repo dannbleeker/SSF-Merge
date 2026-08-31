@@ -606,9 +606,43 @@ export class Pkg {
   }
 }
 
+/**
+ * A part-name segment as the ZIP holds it.
+ *
+ * A relationship `Target` is a URI reference and its segments are
+ * percent-encoded, so a part called `my chart.xml` is written
+ * `../charts/my%20chart.xml`. A zip entry name is not encoded — it is the
+ * literal name — so the escaped form matches nothing, and every caller here
+ * asks `pkg.has(...)` about the answer.
+ *
+ * What that cost is not a missed lookup, it is a silent one.
+ * `cloneSlideGraphics` skips a chart it cannot find, so every merged copy keeps
+ * pointing at the TEMPLATE's chart part and the whole deck shows the last
+ * record's data — no refusal, no count, nothing in the outcome. Notes pages go
+ * the same way, which is the shared-part defect this project has now found
+ * four times.
+ *
+ * Decoded AFTER the `..`/`.` walk, never before. `%2E%2E` is a segment whose
+ * name happens to be two dots; treating it as a step upward would let a crafted
+ * target reach a part the walk refused it, and this package's own sweep deletes
+ * what it is pointed at.
+ *
+ * A segment that is not valid encoding is kept exactly as it is —
+ * `decodeURIComponent` throws on `100%.png`, and a part really called that is a
+ * better answer than a throw from a merge.
+ */
+function decodeSegment(segment: string): string {
+  if (!segment.includes("%")) return segment;
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+}
+
 /** Resolve a relationship target, which may be relative, against the part that holds it. */
 export function resolveTarget(ownerPart: string, target: string): string {
-  if (target.startsWith("/")) return target.slice(1);
+  if (target.startsWith("/")) return target.slice(1).split("/").map(decodeSegment).join("/");
   const slash = ownerPart.lastIndexOf("/");
   // The same root-part trap `relsPathFor` documents, and here it had a
   // consequence. `lastIndexOf` answers -1 for a part at the package root, and
@@ -623,7 +657,7 @@ export function resolveTarget(ownerPart: string, target: string): string {
     if (seg === "..") parts.pop();
     else if (seg !== ".") parts.push(seg);
   }
-  return parts.join("/");
+  return parts.map(decodeSegment).join("/");
 }
 
 function escapeRegExp(s: string): string {

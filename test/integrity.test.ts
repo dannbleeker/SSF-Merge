@@ -380,10 +380,36 @@ describe("the engine and the checker resolve a relationship the same way", () =>
     // The one they disagreed on.
     ["ppt/slides/slide1.xml", "/ppt/media/image1.png"],
     ["ppt/charts/chart1.xml", "/ppt/embeddings/wb.xlsx"],
+    // A Target is a URI reference and a part name is not, so a part called
+    // `my chart.xml` is written escaped. Both branches decode.
+    ["ppt/slides/slide1.xml", "../charts/my%20chart.xml"],
+    ["ppt/slides/slide1.xml", "/ppt/embeddings/Sales%20Data.xlsx"],
+    ["ppt/slides/slide1.xml", "../media/100%.png"],
+    ["ppt/slides/slide1.xml", "../charts/%2E%2E"],
   ];
 
   it.each(pairs)("agrees on %s + %s", (owner, target) => {
     expect(resolvePart(owner, target)).toBe(resolveTarget(owner, target));
+  });
+
+  it("resolves a percent escape to the name the package holds", () => {
+    // Stated as a VALUE, not only as an agreement: a zip entry name is the
+    // literal name, so an escaped answer matches nothing. `pkg.has` then says
+    // no and `cloneSlideGraphics` skips a chart it cannot find — every merged
+    // copy keeps pointing at the template's, and the whole deck shows the last
+    // record's data with nothing said.
+    for (const resolve of [resolveTarget, resolvePart]) {
+      expect(resolve("ppt/slides/slide1.xml", "../charts/my%20chart.xml")).toBe("ppt/charts/my chart.xml");
+      expect(resolve("ppt/slides/slide1.xml", "/ppt/embeddings/Sales%20Data.xlsx")).toBe(
+        "ppt/embeddings/Sales Data.xlsx",
+      );
+      // Not valid encoding: kept exactly as it stands, because a part really
+      // called `100%.png` is a better answer than a throw out of a merge.
+      expect(resolve("ppt/slides/slide1.xml", "../media/100%.png")).toBe("ppt/media/100%.png");
+      // Decoded AFTER the walk, so this is a segment named two dots and not a
+      // step upward — the package's own sweep deletes what it is pointed at.
+      expect(resolve("ppt/slides/slide1.xml", "../charts/%2E%2E")).toBe("ppt/charts/..");
+    }
   });
 
   it("resolves a root-relative target to the part it names", () => {

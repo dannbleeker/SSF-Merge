@@ -288,6 +288,48 @@ describe("a workbook a generator wrote", () => {
   });
 });
 
+/**
+ * A part whose NAME needs a percent escape.
+ *
+ * A relationship `Target` is a URI reference, so a part called `my chart.xml`
+ * is written `../charts/my%20chart.xml`; a zip entry name is the literal name.
+ * The two only meet if the resolver decodes, and it did not — so `pkg.has`
+ * answered no for a part that is right there, and every pass that asks it
+ * stepped over the chart in silence.
+ *
+ * `cloneSlideGraphics` is where that costs the deck. It skips what it cannot
+ * find, so every merged copy keeps the TEMPLATE's chart relationship, and all
+ * of them show the last record's labels — the shared-part defect this project
+ * has now found for notes pages, comments, charts and diagrams.
+ */
+describe("a chart part whose name needs a percent escape", () => {
+  it("still gets its own copy per merged slide", async () => {
+    const deck = await makeDeck([{ paragraphs: [["{{Region}}"]], chart: { title: "{{Region}}" } }]);
+    const zip = await JSZip.loadAsync(deck);
+    const body = await (zip.file("ppt/charts/chart1.xml") as JSZip.JSZipObject).async("string");
+    zip.remove("ppt/charts/chart1.xml");
+    zip.file("ppt/charts/my chart.xml", body);
+    const rels = await (zip.file("ppt/slides/_rels/slide1.xml.rels") as JSZip.JSZipObject).async("string");
+    const escaped = rels.replace('Target="../charts/chart1.xml"', 'Target="../charts/my%20chart.xml"');
+    expect(escaped, "the fixture stopped naming its chart the way this patches it").not.toBe(rels);
+    zip.file("ppt/slides/_rels/slide1.xml.rels", escaped);
+    const types = await (zip.file("[Content_Types].xml") as JSZip.JSZipObject).async("string");
+    zip.file("[Content_Types].xml", types.replace("/ppt/charts/chart1.xml", "/ppt/charts/my%20chart.xml"));
+
+    const pkg = await Pkg.open(await zip.generateAsync({ type: "uint8array" }));
+    const records = toRecordSet(ROWS.split("\n").map((line) => line.split("\t")));
+    const block = { id: "e", slides: [{ path: "ppt/slides/slide1.xml", seq: 1, fields: [] }] };
+    const result = await runPlan(pkg, buildPlan(block, records, { runId: "e" }), records);
+    const out = await JSZip.loadAsync(await pkg.toBytes());
+
+    const charts = await Promise.all(result.slides.map((slide) => related(out, slide, "/chart")));
+    expect(charts[0], "the copy kept the template's chart").not.toEqual(charts[1]);
+    // And each one says its own row, which is what sharing a part destroys.
+    const said = await Promise.all(charts.map(async (c) => (await textOf(out, c[0] ?? "", A_NS, "t")).join("")));
+    expect(said).toEqual(["Nordics", "Benelux"]);
+  });
+});
+
 describe("SmartArt the way PowerPoint actually writes it", () => {
   /**
    * The same diagram, with the `diagramDrawing` relationship on the SLIDE and

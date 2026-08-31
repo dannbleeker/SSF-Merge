@@ -107,6 +107,24 @@ export function holds(names, part) {
 }
 
 /**
+ * A part-name segment as the package holds it, mirroring `resolveTarget` in
+ * `src/core/pptx/pkg.ts`. A `Target` is percent-encoded and a part name is not,
+ * and the two have to agree — that pair is the subject of a corpus in
+ * `test/integrity.test.ts`.
+ *
+ * @param {string} segment
+ * @returns {string}
+ */
+function decodeSegment(segment) {
+  if (!segment.includes("%")) return segment;
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+}
+
+/**
  * Resolve a relationship target against the part that owns the relationship.
  *
  * A leading slash means the target is already a part name, given from the
@@ -125,14 +143,16 @@ export function holds(names, part) {
  * @returns {string}
  */
 export function resolvePart(ownerPart, target) {
-  if (target.startsWith("/")) return target.slice(1);
+  if (target.startsWith("/")) return target.slice(1).split("/").map(decodeSegment).join("/");
   /** @type {string[]} */
   const segments = ownerPart.split("/").slice(0, -1);
   for (const seg of target.split("/")) {
     if (seg === "..") segments.pop();
     else if (seg !== "." && seg !== "") segments.push(seg);
   }
-  return segments.join("/");
+  // Decoded AFTER the walk, so `%2E%2E` stays a segment named two dots rather
+  // than becoming a step upward. Same reasoning as the engine's copy.
+  return segments.map(decodeSegment).join("/");
 }
 
 /** `ppt/slides/slide1.xml` → `ppt/slides/_rels/slide1.xml.rels`. */
