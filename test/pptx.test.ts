@@ -70,6 +70,35 @@ describe("cloneSlide", () => {
     expect(new Set(ids).size).toBe(3);
   });
 
+  it("refuses a creation id the deck is ALREADY using, and draws again", async () => {
+    // The test above injects a counter and then asserts the counter is unique,
+    // so the generator a real run uses was never in the assertion — and that
+    // generator picked from 2^32 with nothing comparing the result against the
+    // deck. A collision with the template's own slide, with the user's other
+    // slides, or with an earlier copy in the same run is the state
+    // office-js#6105 reports as InvalidArgument on Windows desktop.
+    //
+    // Handing over a value the deck already holds is the only way to reach that
+    // branch deliberately: the odds of drawing one are about one in a hundred
+    // thousand, which is exactly why it must not be left to the draw.
+    const pkg = await deck(ONE); // slide1 carries creation id 111
+    const offered = [111, 111, 777];
+    const copy = await cloneSlide(pkg, "ppt/slides/slide1.xml", { creationId: () => offered.shift() ?? 0 });
+
+    expect(await creationIdOf(pkg, copy)).toBe(777);
+    expect(await creationIdOf(pkg, "ppt/slides/slide1.xml")).toBe(111);
+  });
+
+  it("honours a generator that keeps answering the same number", async () => {
+    // Bounded rather than looped. A caller that answers 111 forever is being
+    // deliberate, and spinning on it would be worse than taking the value —
+    // the redraw exists for a random draw that got unlucky, not to overrule an
+    // injected one.
+    const pkg = await deck(ONE);
+    const copy = await cloneSlide(pkg, "ppt/slides/slide1.xml", { creationId: () => 111 });
+    expect(await creationIdOf(pkg, copy)).toBe(111);
+  });
+
   it("writes a creation id into a template that has none", async () => {
     const pkg = await deck([{ paragraphs: [["x"]] }]);
     expect(await creationIdOf(pkg, "ppt/slides/slide1.xml")).toBeUndefined();
