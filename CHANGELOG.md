@@ -7,6 +7,30 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — two take-backs the round kit reported without performing
+
+Found by running an in-browser round against the current build, and both are
+the same shape: a script that said it had done something it had not.
+
+- **`reset.mjs` waited on the wrong thing.** After pressing "Remove these
+  slides" it waited for the pane to say "Back to" — a needle already satisfied,
+  because "Back to template" sits on the earlier steps. The click reported
+  success instantly, `clearCrumb` then discarded the only record of which slides
+  the merge had added, and the pane reopened offering no take-back at all for a
+  deck still holding nine. The log read `used "Remove these slides"` throughout.
+  It now waits for the rail to actually shrink, reports the counts it saw, and
+  refuses to let the crumb be cleared when it has not.
+- **`fetch-deck.mjs` took a flag's value as a filename.** Its positional-argument
+  filter dropped anything starting with `--` and kept everything else, so
+  `--expect-slides 3` left `3` looking like the output path: the script waited
+  correctly and then wrote the deck to a file named `3` in the repository root,
+  reporting `WROTE: 3` as though that were intended.
+
+The round itself passed. Three rows merged into six slides on PowerPoint for
+the web, and the downloaded package holds nine slides, every filtered number and
+date present, no relationship left dangling, and placeholders remaining on
+exactly the two template slides a merge is supposed to copy rather than consume.
+
 ### Changed — the listing screenshots, retaken on the current build
 
 They were shot against `dca234c`. Fourteen pull requests of pane work landed

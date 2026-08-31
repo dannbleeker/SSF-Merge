@@ -27,7 +27,17 @@ import { writeFileSync } from "node:fs";
 import JSZip from "jszip";
 
 const BASE = process.env.SSF_CDP ?? "http://127.0.0.1:9333";
-const args = process.argv.slice(2).filter((a) => !a.startsWith("--"));
+/**
+ * Positional arguments, with flag VALUES excluded as well as the flags.
+ *
+ * This filtered out anything starting with `--` and kept everything else, so
+ * `--expect-slides 3` left `3` looking like the output path: the script waited
+ * correctly, then wrote the deck to a file named `3` in the repository root and
+ * reported `WROTE: 3` as though that were intended.
+ */
+const TAKES_A_VALUE = new Set(["--expect-slides"]);
+const argv = process.argv.slice(2);
+const args = argv.filter((a, i) => !a.startsWith("--") && !(i > 0 && TAKES_A_VALUE.has(argv[i - 1])));
 const out = args[0] ?? "test-kit/out/host-deck.pptx";
 const expectIdx = process.argv.indexOf("--expect-slides");
 const expectSlides = expectIdx === -1 ? null : Number(process.argv[expectIdx + 1]);

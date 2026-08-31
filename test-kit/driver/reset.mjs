@@ -12,7 +12,7 @@
  * pane's own "Remove these slides" is what knows which slides the merge added,
  * and reloading the pane throws that knowledge away.
  */
-import { PANE, click, controls, currentSlide, evalIn, says, sleep, until } from "./pane.mjs";
+import { PANE, click, controls, currentSlide, evalIn, says, sleep, thumbnails } from "./pane.mjs";
 
 const targets = async () =>
   (await (await fetch(process.env.SSF_CDP ?? "http://127.0.0.1:9333/json/list")).json()).filter(
@@ -44,10 +44,32 @@ async function unmerge() {
     console.log("  nothing to take back (the pane is not offering it)");
     return;
   }
+  // Wait on the DECK shrinking, not on anything the pane says.
+  //
+  // This waited for the pane to say "Back to", which is a needle that was
+  // already true: "Back to template" sits on the earlier steps. So the click
+  // reported success instantly, `clearCrumb` then threw away the only record of
+  // which slides to remove, and the pane came back offering no take-back at all
+  // for a deck still holding nine slides. The log said `used "Remove these
+  // slides"` the whole time.
+  const before = (await thumbnails()).size;
   await click(found);
-  await until("Back to", { timeout: 120_000 });
-  await sleep(2500);
-  console.log(`  used "${found}"`);
+
+  const deadline = Date.now() + 120_000;
+  let now = before;
+  while (Date.now() < deadline) {
+    await sleep(1000);
+    now = (await thumbnails()).size;
+    if (now < before) {
+      await sleep(2500);
+      console.log(`  used "${found}" — ${before} slides down to ${now}`);
+      return;
+    }
+  }
+  throw new Error(
+    `"${found}" was pressed and the deck still holds ${now} slides. ` +
+      `Do NOT clear the crumb: it is what knows which slides to remove.`,
+  );
 }
 
 /**
