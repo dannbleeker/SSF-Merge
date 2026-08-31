@@ -324,6 +324,27 @@ describe("the checker itself", () => {
     parts.set("ppt/embeddings/oleObject1.bin", new Uint8Array([1, 2, 3]));
     expect(problems(parts).join("\n")).toContain("no content type covers it");
   });
+
+  it("names a part holding a character XML cannot carry", async () => {
+    // The one defect a round trip through this repo's own parser cannot show:
+    // `@xmldom/xmldom` writes such a character out and reads it back, so the
+    // document is fine at both ends and the FILE is not.
+    for (const code of [0x00, 0x0b, 0x1f, 0xd800]) {
+      const parts = await goodParts();
+      const slide = slideOf(parts);
+      parts.set(slide, (parts.get(slide) as string).replace("</a:t>", String.fromCharCode(code) + "</a:t>"));
+      expect(problems(parts).join("\n")).toContain("which XML cannot carry");
+    }
+  });
+
+  it("says nothing about an emoji, which is a legal surrogate PAIR", async () => {
+    // The false alarm the `u` flag exists to avoid: matched code UNIT by code
+    // unit, every astral character in every deck is two "surrogates".
+    const parts = await goodParts();
+    const slide = slideOf(parts);
+    parts.set(slide, (parts.get(slide) as string).replace("</a:t>", "\u{1F600}</a:t>"));
+    expect(problems(parts)).toEqual([]);
+  });
 });
 
 /**

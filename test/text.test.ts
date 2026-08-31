@@ -413,3 +413,65 @@ describe("the placeholder reader is a scan, not a pattern", () => {
     expect(performance.now() - began).toBeLessThan(500);
   });
 });
+
+/**
+ * A merge that produces a file PowerPoint will not open at all.
+ *
+ * XML 1.0 has no representation for most of the C0 controls, for a lone
+ * surrogate, or for `FFFE`/`FFFF` — not as a character and not as an entity.
+ * `@xmldom/xmldom` writes them straight through and parses them straight back,
+ * so every check in this repo passes on a part a conforming parser refuses;
+ * PowerPoint is a conforming parser, and it condemns the whole deck.
+ *
+ * The measurement is made on the SERIALISED part rather than on `textContent`,
+ * because textContent is exactly where the round trip hides it. Python's expat
+ * is the second opinion: `serializeXml` -> `parseXml` cannot show the defect,
+ * since both ends are the lenient parser that caused it.
+ */
+describe("a cell holding a character XML cannot carry", () => {
+  const VERTICAL_TAB = String.fromCharCode(0x0b);
+  const NUL = String.fromCharCode(0x00);
+  const LONE_SURROGATE = String.fromCharCode(0xd800);
+
+  /** Every code unit in the markup that XML 1.0's `Char` production forbids. */
+  function illegal(xml: string): number[] {
+    const out: number[] = [];
+    for (let i = 0; i < xml.length; i++) {
+      const c = xml.charCodeAt(i);
+      const control = c < 0x20 && c !== 0x09 && c !== 0x0a && c !== 0x0d;
+      const surrogate = c >= 0xd800 && c <= 0xdfff;
+      const paired = surrogate && c < 0xdc00 && xml.charCodeAt(i + 1) >= 0xdc00 && xml.charCodeAt(i + 1) <= 0xdfff;
+      const noncharacter = c === 0xfffe || c === 0xffff;
+      if ((control || (surrogate && !paired) || noncharacter) && !paired) out.push(c);
+      if (paired) i++;
+    }
+    return out;
+  }
+
+  it("cannot put one on a slide, whichever character it is", () => {
+    for (const bad of [VERTICAL_TAB, NUL, LONE_SURROGATE, String.fromCharCode(0x1f)]) {
+      const { doc, p } = paragraph("Hello {{Na", "me}}");
+      mergeParagraph(p, () => "Ada" + bad + "Lovelace");
+      expect(illegal(serializeXml(doc))).toEqual([]);
+    }
+  });
+
+  it("substitutes a space, so the words either side stay apart", () => {
+    const { p } = paragraph("Hello {{Name}}");
+    mergeParagraph(p, () => "Ada" + VERTICAL_TAB + "Lovelace");
+    expect(text(p)).toBe("Hello Ada Lovelace");
+  });
+
+  it("leaves an astral character alone — a surrogate PAIR is one legal code point", () => {
+    const { doc, p } = paragraph("Hello {{Name}}");
+    mergeParagraph(p, () => "Ada \u{1F600}");
+    expect(text(p)).toBe("Hello Ada \u{1F600}");
+    expect(illegal(serializeXml(doc))).toEqual([]);
+  });
+
+  it("leaves tab, newline and carriage return alone — XML carries all three", () => {
+    const { p } = paragraph("Hello {{Name}}");
+    mergeParagraph(p, () => "a\tb\nc");
+    expect(text(p)).toBe("Hello a\tb\nc");
+  });
+});

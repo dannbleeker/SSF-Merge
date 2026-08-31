@@ -289,13 +289,54 @@ export function editRuns(nodes: Element[], edits: Edit[]): boolean {
   }
 
   spans.forEach((s, i) => {
-    const text = (bufs[i] ?? []).join("");
+    const text = xmlSafe((bufs[i] ?? []).join(""));
     s.node.textContent = text;
     // Without this PowerPoint eats a leading or trailing space, and
     // "Dear Ada ," is a support ticket.
     if (/^\s|\s$/.test(text)) s.node.setAttribute("xml:space", "preserve");
   });
   return true;
+}
+
+/**
+ * Characters no XML document may contain, in any spelling.
+ *
+ * XML 1.0's `Char` production excludes most of the C0 controls, the lone
+ * surrogates and `FFFE`/`FFFF`, and there is no escape for them either —
+ * `&#11;` is exactly as ill-formed as the raw character. So a cell carrying one
+ * cannot reach a slide by any route, and nothing upstream stops it:
+ * `@xmldom/xmldom` writes such a character straight through and reads it back
+ * again, so the part serialises, the suite sees a perfectly good document, and
+ * every gate in this repo is green. PowerPoint parses conformingly, refuses the
+ * part, and calls the whole file damaged — a finished merge lost entirely, with
+ * no message naming the cell that did it.
+ *
+ * Reachable from an ordinary paste rather than from anything exotic.
+ * `CHAR(11)` is the soft line break Word and Excel keep INSIDE a cell, and a
+ * NUL is what a mis-decoded UTF-16 export leaves behind.
+ *
+ * Replaced with a SPACE rather than dropped, because the likeliest one is a
+ * line break: dropping it joins two words that were separate — "AdaLovelace" —
+ * and a space cannot make that mistake in the other direction.
+ *
+ * This is the one place the engine changes a cell without being asked, and the
+ * usual answer — show what the user typed and let them see it — is not
+ * available: the character has no representation in the output format at all,
+ * so every option alters it and only this one leaves a file that opens.
+ *
+ * Astral characters are NOT touched. A well-formed surrogate pair is one code
+ * point above `FFFF`, which `\p{Surrogate}` under the `u` flag does not match;
+ * only an unpaired half does, and an unpaired half is already broken text.
+ */
+// The rule is aimed at a control character reaching a pattern by accident. Here
+// they ARE the subject: this is the set XML refuses, and it cannot be written
+// without naming them.
+// eslint-disable-next-line no-control-regex
+const XML_FORBIDDEN = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]|\p{Surrogate}/gu;
+
+/** Text a conforming XML parser will accept. See `XML_FORBIDDEN`. */
+function xmlSafe(text: string): string {
+  return text.replace(XML_FORBIDDEN, " ");
 }
 
 /**
