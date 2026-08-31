@@ -381,6 +381,37 @@ describe("which delimiter a paste uses", () => {
     ]);
   });
 
+  it("is not thrown off by a BLANK LINE in the middle of the paste", () => {
+    // A spacer row is ordinary in a copied Excel range, and it cost the whole
+    // table. An empty line splits to one empty cell on every candidate, so it
+    // could never match a header of two, step 2 rejected the tab, and the comma
+    // fallback returned ONE column whose NAME held the tabs —
+    // `Name\tRegion\tRev` — with a merge button that does nothing. The same
+    // shape #162 fixed for the semicolon, reached a different way.
+    expect(parseDelimited("Name\tRegion\n\nAda\tNorth\nGrace\tSouth")).toEqual([
+      ["Name", "Region"],
+      [""],
+      ["Ada", "North"],
+      ["Grace", "South"],
+    ]);
+    const rs = toRecordSet(parseDelimited("Name\tRegion\n\nAda\tNorth\nGrace\tSouth"));
+    expect(rs.columns.map((c) => c.name)).toEqual(["Name", "Region"]);
+    // The blank line is not a record either — it is a line, not a row.
+    expect(rs.rows).toEqual([
+      { Name: "Ada", Region: "North" },
+      { Name: "Grace", Region: "South" },
+    ]);
+  });
+
+  it("still refuses a separator that only splits the header, blank line or not", () => {
+    // The guard the fix above must not weaken: `Notes; extra` over rows with no
+    // semicolon is ONE column, and skipping blank lines does not make the
+    // semicolon consistent.
+    expect(toRecordSet(parseDelimited("Notes; extra\n\none\ntwo")).columns.map((c) => c.name)).toEqual([
+      "Notes; extra",
+    ]);
+  });
+
   it("still lets the caller name the delimiter outright", () => {
     // The pane passes "\t" explicitly for a pasted Excel range; the sniff is
     // only for when nobody said.
