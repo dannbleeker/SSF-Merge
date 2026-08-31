@@ -306,7 +306,14 @@ describe("the round's browser driver", () => {
   });
 
   it("names every script in its README", () => {
-    const missing = scripts.filter((f) => !driverReadme.includes(f));
+    // Matched as a backticked name, not as a bare substring. `includes(
+    // "browser.mjs")` is satisfied by the line about `close-browser.mjs`, so a
+    // newly added `browser.mjs` passed this check while being entirely
+    // undocumented: the guard went quiet exactly when a new script arrived
+    // whose name ends like an older one. The reverse check below already
+    // anchored on the backticks; this one did not.
+    const named = new Set([...driverReadme.matchAll(/`([a-z0-9-]+\.mjs)`/g)].map((m) => m[1]));
+    const missing = scripts.filter((f) => !named.has(f));
     expect(missing, `undocumented driver scripts: ${missing.join(", ")}`).toEqual([]);
   });
 

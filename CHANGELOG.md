@@ -7,6 +7,46 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed — the listing screenshots, retaken on the current build
+
+They were shot against `dca234c`. Fourteen pull requests of pane work landed
+after that, so they were retaken against `0cf94d1`; the build id is visible in
+the pane header of every shot, which is how a stale one gets noticed.
+
+Five defects in the capture kit had to be fixed to do it, all of them things
+that reported success or said nothing:
+
+- **Nothing opened the debugging port.** Every script here defaults to
+  `127.0.0.1:9333` and none of them opened it, so the browser had to be started
+  by hand with flags nobody had written down. `browser.mjs` does it now.
+  `web-login.mjs` could not: Playwright owns the browser it launches, so it dies
+  the moment that script returns, including the moment it detects a sign-in.
+- **`currentSlide` trusted one source.** The status bar lags the document and
+  its two numbers lag together, so it read "Slide 2 of 3" after a preview had
+  made the deck five slides — internally consistent and wrong. It reads the rail
+  now and keeps the status bar as a second opinion it warns about. A download of
+  the live document settled which one was lying.
+- **A screenshot of an occluded window never arrives.** Chrome stops producing
+  frames for a window that is behind another, and `page.screenshot` waits for
+  one, reporting "fonts loaded" and then timing out. It fronts the tab first.
+- **`says()` threw on a booting frame**, out of the middle of whatever called
+  it, because a frame mid-reload has no `document.body` — and `reset.mjs`
+  reloads deliberately.
+- **`reset.mjs` knew one take-back, not two.** A run stopped at step 3 leaves
+  "Remove the preview" rather than "Remove these slides", and the reset reported
+  nothing to undo about a five-slide deck. It also clears the crumb under
+  `ssf-merge.run.v1`, which otherwise greets the next capture with "A merge from
+  2026-08-30 added 6 slide(s)" above step 1.
+
+### Fixed — the driver README guard passed over an undocumented script
+
+`test/docs.test.ts` asked whether the README `includes` each script's filename.
+`close-browser.mjs` contains `browser.mjs`, so adding `browser.mjs` satisfied
+the check while being entirely undocumented: the guard went quiet exactly when a
+new script arrived whose name ends like an older one. It matches backticked
+names now, which is what the opposite-direction check in the same file already
+did.
+
 ### Fixed — seven things a merge could get wrong without saying so
 
 A bug hunt on 2026-08-31. Every one of these reported success.

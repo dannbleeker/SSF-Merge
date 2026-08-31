@@ -29,17 +29,52 @@ const targets = async () =>
  * and the knowledge of which slides this merge added goes with it. That is not
  * hypothetical — it happened between a capture run and the next reset, and the
  * only visible symptom was the pane's build id changing.
+ *
+ * There are also TWO take-backs, not one. "Remove these slides" clears the six
+ * that step 5 adds; "Remove the preview" clears the two that step 4 adds. A
+ * capture run that stops at step 3 leaves the second kind, and a version of
+ * this that only knew the first reported "no merge to undo" about a deck
+ * holding five slides.
  */
 async function unmerge() {
+  const takeBacks = ["Remove these slides", "Remove the preview"];
   const offered = await controls();
-  if (!offered.some((c) => c.includes("Remove these slides"))) {
-    console.log("  no merge to undo (the pane is not offering one)");
+  const found = takeBacks.find((label) => offered.some((c) => c.includes(label)));
+  if (!found) {
+    console.log("  nothing to take back (the pane is not offering it)");
     return;
   }
-  await click("Remove these slides");
-  await until("Back to preview", { timeout: 120_000 });
+  await click(found);
+  await until("Back to", { timeout: 120_000 });
   await sleep(2500);
-  console.log("  removed the merged slides");
+  console.log(`  used "${found}"`);
+}
+
+/**
+ * Drop the crumb the pane leaves in `localStorage` under `ssf-merge.run.v1`.
+ *
+ * Separate from the step the pane is on, and it survives the reload that clears
+ * that. When a merge happens and the pane goes away before the take-back is
+ * used, the next open greets you with "A merge from <date> added 6 slide(s) and
+ * the pane closed before you could take them back."
+ *
+ * Which is the right thing for the product to say, and wrong in a photograph
+ * for a store listing: it is a state a new customer cannot be in, and it dates
+ * the screenshot. It appeared in a retake, above step 1, having been left by a
+ * merge two days earlier — so the deck was clean, the step was right, and the
+ * shot would still have been wrong.
+ */
+async function clearCrumb() {
+  const had = await evalIn(
+    PANE,
+    `(() => {
+       const key = 'ssf-merge.run.v1';
+       const found = localStorage.getItem(key) !== null;
+       localStorage.removeItem(key);
+       return found;
+     })()`,
+  );
+  console.log(had ? "  cleared the take-back crumb" : "  no take-back crumb to clear");
 }
 
 /**
@@ -77,6 +112,9 @@ async function reloadPane() {
 }
 
 await unmerge();
+// Before the reload, not after: the crumb is read as the pane boots, so
+// clearing it afterwards leaves the notice on screen until the next reload.
+await clearCrumb();
 await reloadPane();
 
 // Say what was actually achieved rather than "done". A reset that half-worked
