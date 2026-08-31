@@ -113,6 +113,12 @@ Checked, so it is not re-litigated later.
       `listing/demo/`, and `test/listing.test.ts` fails if the old pair ever
       returns. Retaking them is two commands, described in LISTING.md.
 
+      **Notes for certification are drafted too**, in the same file. Partner
+      Center marks the field required and says twice that omitting it is an
+      automatic rejection, and its claims about the button, the test rows, the
+      linked deck and the absence of network calls are each checked against the
+      file they are claims about.
+
       **The name is still a question, not a draft.** Microsoft's guidance says
       avoid unfamiliar acronyms and do not rely on a brand to say what a thing
       does, which is both halves of "SSF Merge" — while separately ruling out
