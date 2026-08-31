@@ -22,8 +22,8 @@ import { readFileSync } from "node:fs";
 import JSZip from "jszip";
 // @ts-expect-error — a plain .mjs tool with no types. The rules live THERE so
 // the suite and `test-kit/driver/verify-package.mjs` share one copy.
-import { packageProblems } from "../scripts/package-integrity.mjs";
-import { Pkg } from "../src/core/pptx/pkg.js";
+import { packageProblems, resolvePart } from "../scripts/package-integrity.mjs";
+import { Pkg, resolveTarget } from "../src/core/pptx/pkg.js";
 import { prepareBlock } from "../src/core/merge/prepare.js";
 import { buildPlan } from "../src/core/merge/plan.js";
 import { runPlan } from "../src/core/merge/run.js";
@@ -218,6 +218,25 @@ describe("the checker itself", () => {
     expect(problems(parts).join("\n")).not.toContain("names a relationship the part does not have");
   });
 
+  it("says nothing about a target given from the package ROOT", async () => {
+    // Legal OOXML and the second false alarm of this kind: a `Target` that
+    // begins with `/` is already a part name. Resolved relatively it became
+    // `ppt/slides/ppt/media/image1.png`, a part no package holds, and the
+    // checker reported a sound deck as pointing at something not in it —
+    // `rId2 points at /ppt/slides/slide1.xml, which is not in the package`, on
+    // a deck plainly holding that slide.
+    //
+    // Nothing this engine writes uses the spelling; a deck somebody is sent
+    // may, which is exactly the population this checker exists for.
+    const parts = await goodParts();
+    const rels = "ppt/_rels/presentation.xml.rels";
+    const body = parts.get(rels) as string;
+    const absolute = body.replace(/Target="slides\/([^"]*)"/, 'Target="/ppt/slides/$1"');
+    expect(absolute, "the fixture had no relative slide target to make absolute").not.toBe(body);
+    parts.set(rels, absolute);
+    expect(problems(parts)).toEqual([]);
+  });
+
   it("names a reference that leads to the wrong KIND of part", async () => {
     // #126: the id freed by a delete and taken by the next thing that needed
     // one, so the reference still resolves — to somebody else's data. Both
@@ -246,5 +265,52 @@ describe("the checker itself", () => {
     const parts = await goodParts();
     parts.set("ppt/embeddings/oleObject1.bin", new Uint8Array([1, 2, 3]));
     expect(problems(parts).join("\n")).toContain("no content type covers it");
+  });
+});
+
+/**
+ * Two implementations of one rule, held together because they cannot be merged.
+ *
+ * `resolveTarget` lives in `src/core/pptx/pkg.ts` and is what the engine
+ * resolves relationships with; `resolvePart` lives in
+ * `scripts/package-integrity.mjs` and is what the checker and the human round's
+ * verifier use. Neither can import the other: `src/` may not depend on a
+ * script, and a script that imported `dist-lib/` would answer differently
+ * depending on whether anyone had built it — a verdict about the checkout
+ * rather than about the code, which `eslint.config.js` records the cost of.
+ *
+ * The verifier's own third copy is gone; these two are what is left, and they
+ * had already come apart. Only the engine resolved a target given from the
+ * package root, and it had been that way since the checker was written. A
+ * corpus is the cheapest thing that cannot rot: a spelling added for one is
+ * answered by both.
+ */
+describe("the engine and the checker resolve a relationship the same way", () => {
+  // Owner PART and target, never a `.rels` path: both functions are given the
+  // part that OWNS the relationship, and a rels path would be a misuse that
+  // says nothing about either.
+  const pairs: [string, string][] = [
+    ["ppt/slides/slide1.xml", "../charts/chart1.xml"],
+    ["ppt/slides/slide1.xml", "../media/image1.png"],
+    ["ppt/slides/slide1.xml", "chart1.xml"],
+    ["ppt/slides/slide1.xml", "./chart1.xml"],
+    ["ppt/charts/chart1.xml", "../embeddings/Microsoft_Excel_Worksheet.xlsx"],
+    ["ppt/presentation.xml", "slides/slide1.xml"],
+    ["ppt/presentation.xml", "../ppt/slides/slide1.xml"],
+    ["[Content_Types].xml", "ppt/presentation.xml"],
+    // The one they disagreed on.
+    ["ppt/slides/slide1.xml", "/ppt/media/image1.png"],
+    ["ppt/charts/chart1.xml", "/ppt/embeddings/wb.xlsx"],
+  ];
+
+  it.each(pairs)("agrees on %s + %s", (owner, target) => {
+    expect(resolvePart(owner, target)).toBe(resolveTarget(owner, target));
+  });
+
+  it("resolves a root-relative target to the part it names", () => {
+    // The case that was wrong, stated as a value rather than as an agreement:
+    // two functions can agree and both be wrong, and this is what the answer is.
+    expect(resolveTarget("ppt/slides/slide1.xml", "/ppt/media/image1.png")).toBe("ppt/media/image1.png");
+    expect(resolvePart("ppt/slides/slide1.xml", "/ppt/media/image1.png")).toBe("ppt/media/image1.png");
   });
 });
