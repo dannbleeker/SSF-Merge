@@ -156,6 +156,17 @@ const SNIFF_ROWS = 10;
  * ambiguous slash date this project refuses to guess at — except that here
  * there is no option to refuse, so the tie is broken rather than dodged.
  *
+ * **A RAGGED paste is the other limit, and it is left alone deliberately.** A
+ * header of three cells over a data row of two is inconsistent on the tab, so
+ * the tab is rejected and the whole table reads as one column — the same
+ * visible failure the blank-line case had. It is not fixed the same way,
+ * because a blank line says nothing about the delimiter while a short row says
+ * something ambiguous: the paste may be tab-separated and ragged, or it may
+ * genuinely be one column whose text contains tabs. Scoring on a majority
+ * instead of on consistency picks a winner where the data does not, which is
+ * the rule this file already refuses to break for `Navn;Beløb, EUR`. It comes
+ * back if somebody meets it on a real paste, with that paste as the evidence.
+ *
  * Scoring with the real splitter is also what retired the header sampler this
  * replaced. That function existed to read the first row with the parser's own
  * quote rule, and it cost two bugs to get right — a quoted newline inside a
@@ -166,7 +177,18 @@ const SNIFF_ROWS = 10;
 function chooseDelimiter(src: string): string {
   let best: { d: string; cells: number } | undefined;
   for (const d of DELIMITERS) {
-    const rows = splitOn(src, d, SNIFF_ROWS);
+    // A BLANK LINE is not evidence about the delimiter, and counting it as a
+    // row is how a tab-separated paste with a spacer row in it lost its tabs.
+    // An empty line splits to one empty cell on every candidate, so it can
+    // never match a header of two or more, and step 2 then rejected the real
+    // separator — leaving the comma fallback and ONE column whose NAME held the
+    // tabs: `Name\tRegion\tRev`, and a merge button that does nothing. The same
+    // shape #162 fixed for the semicolon, from a different trigger.
+    //
+    // Skipped rather than scored around, because it says nothing either way: a
+    // row that is a single empty cell is a line with no characters in it, which
+    // no delimiter could have split differently.
+    const rows = splitOn(src, d, SNIFF_ROWS).filter((r) => !(r.length === 1 && r[0] === ""));
     const cells = rows[0]?.length ?? 0;
     if (cells < 2 || !rows.every((r) => r.length === cells)) continue;
     if (!best || cells > best.cells) best = { d, cells };
