@@ -22,7 +22,7 @@ import { readFileSync } from "node:fs";
 import JSZip from "jszip";
 // @ts-expect-error — a plain .mjs tool with no types. The rules live THERE so
 // the suite and `test-kit/driver/verify-package.mjs` share one copy.
-import { packageProblems, resolvePart } from "../scripts/package-integrity.mjs";
+import { packageProblems, relPrefixesIn, resolvePart } from "../scripts/package-integrity.mjs";
 import { Pkg, resolveTarget } from "../src/core/pptx/pkg.js";
 import { prepareBlock } from "../src/core/merge/prepare.js";
 import { buildPlan } from "../src/core/merge/plan.js";
@@ -235,6 +235,64 @@ describe("the checker itself", () => {
     expect(absolute, "the fixture had no relative slide target to make absolute").not.toBe(body);
     parts.set(rels, absolute);
     expect(problems(parts)).toEqual([]);
+  });
+
+  it("says nothing about a part name written with a percent escape", async () => {
+    // A relationship Target is a URI reference, so a part name holding a space
+    // is written `my%20photo.png` while the zip entry is `my photo.png`.
+    // Compared raw it was "not in the package" on a package that holds it —
+    // `rId4 points at ../media/my%20photo.png` — which is the third invented
+    // problem of this family and the same population as the other two: a deck
+    // written by something other than PowerPoint.
+    const parts = await goodParts();
+    const media = [...parts.keys()].find((n) => /^ppt\/media\/.+/.test(n));
+    expect(media, "the fixture drew no media part, so this proves nothing").toBeTruthy();
+    const base = (media as string).split("/").pop() as string;
+    parts.set(`ppt/media/my photo.png`, parts.get(media as string) as Uint8Array);
+    parts.delete(media as string);
+    let rewritten = 0;
+    for (const [name, body] of [...parts]) {
+      if (!name.endsWith(".rels") || typeof body !== "string" || !body.includes(base)) continue;
+      parts.set(name, body.split(base).join("my%20photo.png"));
+      rewritten++;
+    }
+    expect(rewritten, "no relationship named the media part, so this proves nothing").toBeGreaterThan(0);
+    expect(problems(parts)).toEqual([]);
+  });
+
+  it("reads a reference through the prefix the part BINDS, not through `r`", async () => {
+    // `r` is only a name. A part may bind the relationships namespace to any
+    // prefix, and binding `r` to something else is equally legal — in which
+    // case `r:embed` is a different attribute that happens to share a spelling.
+    //
+    // Both directions were wrong, and this file's own docstring claimed the
+    // second could not happen: a part using `rel:` had every reference skipped,
+    // so a genuinely dangling one went unreported, and a part binding `r:`
+    // elsewhere was reported as naming relationships it does not have.
+    const REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+    expect(relPrefixesIn(`<p:sld xmlns:rel="${REL}"/>`)).toEqual(["rel"]);
+    expect(relPrefixesIn(`<p:sld xmlns:r="${REL}"/>`)).toEqual(["r"]);
+    // Declares nothing: a fragment, or a part shown without the parent it
+    // inherits the binding from.
+    expect(relPrefixesIn(`<a:blip r:embed="rId9"/>`)).toEqual(["r"]);
+    // Binds `r` to something else, so `r:` names no relationship here.
+    expect(relPrefixesIn(`<p:sld xmlns:r="urn:something-else"/>`)).toEqual([]);
+
+    // And behaviourally, in the direction a unit assertion cannot reach: a
+    // slide that names a relationship through `rel:` is checked like any other.
+    // Under the prefix-literal reader this reference was invisible, so a
+    // dangling one was reported as nothing at all — the check was not failing,
+    // it was not running.
+    const parts = await goodParts();
+    const slide = slideOf(parts);
+    const body = parts.get(slide) as string;
+    parts.set(
+      slide,
+      body
+        .replace("<p:sld ", `<p:sld xmlns:rel="${REL}" `)
+        .replace("<p:cSld>", `<p:cSld><p:custom rel:embed="rIdNope"/>`),
+    );
+    expect(problems(parts).join("\n")).toContain("names a relationship the part does not have");
   });
 
   it("names a reference that leads to the wrong KIND of part", async () => {
