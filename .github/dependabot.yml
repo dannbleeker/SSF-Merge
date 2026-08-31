@@ -28,6 +28,26 @@ updates:
       # newer Node.
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
+
+      # TypeScript 7 is the native Go port and it ships NO stable programmatic
+      # compiler API. typescript-eslint reads that API to walk the AST and pull
+      # type information, so every published version of it — 8.69.0 included —
+      # caps its peer at "<6.1.0". Dependabot #190 proposed 5.9.3 -> 7.0.2 and
+      # could not even install: npm ci died with ERESOLVE before a single type
+      # was checked.
+      #
+      # This is not a thing this repository can fix. typescript-eslint#12518 was
+      # closed as "not planned" because the fix belongs to TypeScript 7.1, which
+      # is targeted at autumn 2026 and restores the programmatic API.
+      #
+      # So the repo took the intermediate step instead and is on TypeScript 6,
+      # which is Microsoft's own recommended path: 6 deprecates, 7 removes.
+      #
+      # UN-IGNORE THIS when typescript-eslint publishes a version whose peer
+      # range admits 7.x. That is the single condition; nothing else here needs
+      # to change first.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: "deps"
   - package-ecosystem: github-actions

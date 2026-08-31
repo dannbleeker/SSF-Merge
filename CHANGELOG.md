@@ -7,6 +7,39 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed — TypeScript 5.9.3 to 6.0.3, which is the road to 7
+
+Dependabot #190 proposed 5.9.3 straight to 7.0.2 and it cannot be taken.
+TypeScript 7 is the native Go port and ships no stable programmatic compiler
+API; `typescript-eslint` reads that API, so every published version caps its
+peer at `<6.1.0` and `npm ci` fails with ERESOLVE before a single type is
+checked. That is upstream, not ours: `typescript-eslint#12518` was closed as
+"not planned" because the fix belongs to TypeScript 7.1, targeted autumn 2026.
+
+6.0.3 is the step that had to happen regardless. Microsoft's own path is
+5 to 6 to 7, because 6 deprecates what 7 removes, so taking it now buys the
+deprecation warnings early instead of meeting them stacked on top of a compiler
+rewrite. It installs clean against the existing toolchain and the whole gate
+passes: typecheck, lint, 1201 tests.
+
+One real break, worth knowing before the next tool upgrade: TypeScript 6 made
+naming files on the command line while a `tsconfig.json` exists an **error**
+(TS5112) rather than the silent precedence it used to be. That broke
+`test/probe.test.ts`, which shells out to `tsc` to typecheck the generated
+probe snippet against the real Office.js types. `--ignoreConfig`, the flag the
+error itself recommends, resolves it.
+
+The same test was also swallowing its own evidence. It asserted `.not.toThrow()`
+around `execFileSync`, so the failure read `Command failed: <the whole command>`
+and said nothing about the compiler's complaint — the TS6 break was invisible
+until the command was run by hand. It now reports what `tsc` actually said, and
+that was proved by putting a type error back into the snippet and reading
+`error TS2322` in the failure message.
+
+The 7.x major is ignored in `dependabot.yml`, with the single un-ignore
+condition recorded beside it: a `typescript-eslint` release whose peer range
+admits 7.x.
+
 ### Fixed — two take-backs the round kit reported without performing
 
 Found by running an in-browser round against the current build, and both are

@@ -116,12 +116,20 @@ describe("the generated snippet", () => {
     // that will run it before anyone reads it, so nothing else here would catch
     // a misspelled option key or a call that does not exist. Proven non-vacuous
     // by adding an unknown key to InsertSlideOptions: tsc names it.
-    expect(() =>
+    //
+    // `--ignoreConfig` is required from TypeScript 6. Naming files on the
+    // command line while a tsconfig.json exists became an error, TS5112, rather
+    // than the silent precedence it used to be. The flag is what that error
+    // itself recommends.
+    let output = "";
+    let failed = false;
+    try {
       execFileSync(
         process.execPath,
         [
           "./node_modules/typescript/bin/tsc",
           "--noEmit",
+          "--ignoreConfig",
           "--lib",
           "es2020,dom",
           "--types",
@@ -130,8 +138,17 @@ describe("the generated snippet", () => {
           "probe/probe-snippet.ts",
         ],
         { encoding: "utf8", stdio: "pipe" },
-      ),
-    ).not.toThrow();
+      );
+    } catch (e) {
+      // tsc writes its diagnostics to stdout, and `.not.toThrow()` used to
+      // discard them: the failure read "Command failed: <the whole command>"
+      // and said nothing about why. A TS6 upgrade failed here and the message
+      // named the compiler rather than the compiler's complaint.
+      failed = true;
+      const err = e as { stdout?: string; stderr?: string };
+      output = `${err.stdout ?? ""}${err.stderr ?? ""}`.trim();
+    }
+    expect(failed, `tsc rejected the snippet:\n${output}`).toBe(false);
   }, 60000);
 
   it("asks its control arm BEFORE it adds anything of its own", () => {
