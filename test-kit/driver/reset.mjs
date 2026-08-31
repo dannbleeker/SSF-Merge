@@ -19,11 +19,21 @@ const targets = async () =>
     (t) => t.type === "page" || t.type === "iframe",
   );
 
-/** Undo the merge, if this pane is showing one it can undo. */
+/**
+ * Undo the merge, if this pane is still showing one it can undo.
+ *
+ * "No merge to undo" is not the same as "the deck is clean", and the caller
+ * checks the slide count afterwards for exactly that reason. The pane can lose
+ * the offer while the extra slides stay: the add-in is served from GitHub
+ * Pages, so merging a pull request redeploys it, the open pane reloads itself,
+ * and the knowledge of which slides this merge added goes with it. That is not
+ * hypothetical — it happened between a capture run and the next reset, and the
+ * only visible symptom was the pane's build id changing.
+ */
 async function unmerge() {
   const offered = await controls();
   if (!offered.some((c) => c.includes("Remove these slides"))) {
-    console.log("  no merge to undo");
+    console.log("  no merge to undo (the pane is not offering one)");
     return;
   }
   await click("Remove these slides");
@@ -75,7 +85,18 @@ const deck = await currentSlide();
 const pane = await says();
 console.log(`  deck holds ${deck.of} slides`);
 console.log(`  pane says: ${pane.slice(0, 120)}`);
-if (deck.of !== 3) throw new Error(`the demo deck should be back to 3 slides, it holds ${deck.of}`);
+if (deck.of !== 3) {
+  // Name the remedy, not just the condition. Undoing a merge the pane has
+  // forgotten would mean deleting slides through the rail on a guess about
+  // which ones, and guessing wrong here quietly rewrites the demo deck. Opening
+  // a fresh copy costs a minute and cannot be wrong.
+  throw new Error(
+    `the demo deck should be back to 3 slides and it holds ${deck.of}. ` +
+      `The pane can only undo a merge it still remembers, and it forgets on reload — ` +
+      `a Pages redeploy does that. Upload a fresh copy of ` +
+      `docs/listing/demo/Quarterly-business-review.pptx and open that instead.`,
+  );
+}
 if (!pane.includes("STEP 1")) throw new Error(`the pane should be on step 1; it says ${pane.slice(0, 160)}`);
 if (/\d+ times|What this run did/.test(pane)) {
   throw new Error(`the pane is still remembering a previous run: ${pane.slice(0, 160)}`);
