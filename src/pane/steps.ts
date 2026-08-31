@@ -609,9 +609,26 @@ export function pictureColumns(state: PaneState): string[] {
   return [...out];
 }
 
-/** Every picture file name the attached data refers to, across every picture column. */
+/**
+ * Every picture file name the merge will actually ask for.
+ *
+ * The rows the user left TICKED, never everything they pasted. This read all of
+ * them, so a merge of one row out of five reported "1 of 5 pictures matched"
+ * and named four files it was never going to open — sending the author to find
+ * photos for rows they had just taken out, above a button that says how many
+ * rows will merge.
+ *
+ * The same rule `plannedSlides` follows one control over, and for the same
+ * reason: every number on this screen is a statement about what pressing the
+ * button will do, and the button runs on `includedRecords`. A count taken over
+ * a different set of rows is a second answer to one question.
+ *
+ * It reaches further than the count. `imageNameClashes` reads this, so a clash
+ * between two names in rows nobody is merging raised a warning whose only fix
+ * is to edit a spreadsheet that was fine.
+ */
 export function imagesWanted(state: PaneState): string[] {
-  const rows = state.records?.rows ?? [];
+  const rows = includedRecords(state)?.rows ?? [];
   const seen = new Set<string>();
   for (const column of pictureColumns(state)) for (const name of imageNamesIn(rows, column)) seen.add(name);
   return [...seen];
