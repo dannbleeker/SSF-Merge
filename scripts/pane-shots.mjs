@@ -610,6 +610,63 @@ function audit() {
       findings.push(`focus ring ${ratio.toFixed(2)}:1 (needs 3) on ${el.tagName.toLowerCase()}.${el.className || "-"}`);
     }
   }
+
+  /*
+   * The fifth thing: whether a FINGER can hit what a mouse can.
+   *
+   * A task pane runs on touch-only devices, which AppSource asks about, and
+   * nothing here had ever measured a hit area. When this was first run, sixteen
+   * controls were under 24 CSS px on the short side — every "Back to…", every
+   * option link, and both run-log disclosures, each at the line box of its own
+   * text with `padding: 0`.
+   *
+   * **24px BY SIZE, and the spacing exception is deliberately not taken.**
+   * WCAG 2.5.8 lets an undersized target pass when a 24px circle centred on it
+   * clears its neighbours, and by that reading this pane was already compliant:
+   * a 19px link with 14px of air around it has 33px between centres. The first
+   * version of this check said exactly that, and it was worthless — reverting
+   * the padding left it green, because the criterion it quoted had never been
+   * the thing being broken.
+   *
+   * So this is a house floor rather than the standard, and it is written down
+   * as one. The pane is dragged to 320px, where controls stack tightly and the
+   * spacing that excuses a small target is one layout change from being false;
+   * a rule that depends on the gaps is a rule that stops holding the day
+   * somebody tightens them.
+   *
+   * 24 and not the 44 the platforms recommend: 44 is guidance, and on a 320px
+   * pane it costs the vertical space the overflow half of this audit exists to
+   * protect. A gate that fires on a preference is a gate somebody switches off.
+   */
+  const targets = [
+    ...document.querySelectorAll(
+      "#pane button:not([disabled]), #pane a[href], #pane input:not([disabled]), #pane select:not([disabled]), #pane summary",
+    ),
+  ].filter((el) => {
+    const r = el.getBoundingClientRect();
+    const style = getComputedStyle(el);
+    return Boolean(r.width || r.height) && style.display !== "none" && style.visibility !== "hidden";
+  });
+  const smallSeen = new Set();
+  for (const el of targets) {
+    const r = el.getBoundingClientRect();
+    let short = Math.min(r.width, r.height);
+    // A control inside a LABEL is hit by tapping the label, so the box a finger
+    // meets is the label's. The row checkboxes are 13px and their label is
+    // 290x30; calling those a failure would be measuring the wrong element.
+    const label = el.closest("label");
+    if (label) {
+      const lr = label.getBoundingClientRect();
+      short = Math.max(short, Math.min(lr.width, lr.height));
+    }
+    if (short >= 24) continue;
+    const key = `${el.tagName}.${el.className}`;
+    if (smallSeen.has(key)) continue;
+    smallSeen.add(key);
+    findings.push(
+      `hit area ${Math.round(r.width)}x${Math.round(r.height)} on ${el.tagName.toLowerCase()}.${el.className || "-"} — a finger wants 24 on the short side`,
+    );
+  }
   return findings;
 }
 
@@ -683,7 +740,7 @@ console.log(`${taken} shots in ${OUT}`);
 if (found.size === 0) {
   console.log(
     "audit: nothing overflows, every live label clears its contrast floor, every control shows where the keyboard is, " +
-      "and axe finds no violation",
+      "every hit area is at least 24px on its short side, and axe finds no violation",
   );
 } else {
   console.log(`audit: ${found.size} finding(s)`);

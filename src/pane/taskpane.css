@@ -429,7 +429,26 @@ button.back {
   align-self: flex-start;
   border: none;
   background: none;
-  padding: 0;
+  /*
+   * Padded for a FINGER, and the negative margin gives the space back.
+   *
+   * At `padding: 0` this was 19px tall — the line box of 12.5px text and
+   * nothing else — and it is the most-pressed class on the pane: every
+   * "Back to…", "Skip to the merge", and each of the three option links that
+   * open the row picker, the conditions and the blank-cell control. A 320px
+   * task pane on a touch-only device is one of the surfaces AppSource asks
+   * about, and 19px is under every platform's guidance.
+   *
+   * The margin is what makes it free. Padding grows the border box to 31px
+   * while the margin box stays where it was, so the hit area gains 12px and no
+   * neighbour moves — measured, not assumed: the audit reports the same
+   * geometry for every other control before and after.
+   *
+   * Vertical only. These sit in a flex column and are `flex-start`, so
+   * horizontal padding would widen the underline into the gutter beside it.
+   */
+  padding: 6px 0;
+  margin: -6px 0;
   color: var(--link);
   text-decoration: underline;
   font-size: 12.5px;
@@ -539,6 +558,9 @@ button.rows-toggle {
   cursor: pointer;
   color: var(--muted, #605e5c);
   font-size: 12px;
+  /* The same trade as `button.back`: 18px is the text and nothing else. */
+  padding: 6px 0;
+  margin: -6px 0;
 }
 
 .runlog pre {
