@@ -66,6 +66,43 @@ function chartTypeFor(prefix) {
 }
 
 /**
+ * Whether the package holds this part, under either spelling of its name.
+ *
+ * A relationship `Target` is a URI reference, so a part name containing a space
+ * is written `my%20photo.png` while the zip entry is `my photo.png`. Compared
+ * raw, that part is "not in the package" on a package that holds it — the third
+ * invented problem of this family, after the empty `r:blip` and the
+ * root-relative target, and the same population each time.
+ *
+ * Decoded AND raw, rather than decoded only. A producer that escaped nothing
+ * can leave a literal `%` in a part name, and decoding that one turns a name the
+ * package really has into one it does not — trading this false alarm for its
+ * mirror image. Accepting either spelling is the only direction that invents
+ * nothing.
+ *
+ * `decodeURIComponent` throws on a lone `%`, which is what an unescaped name
+ * looks like, so the throw is the ordinary case here rather than the odd one.
+ *
+ * The decoding is deliberately NOT in `resolvePart`: that function is pure and
+ * is held against the engine's own resolver by a corpus, and whether the ENGINE
+ * should decode is a question about every deck a merge touches. It is not
+ * answered here.
+ *
+ * @param {Set<string>} names
+ * @param {string} part
+ * @returns {boolean}
+ */
+export function holds(names, part) {
+  if (names.has(part)) return true;
+  if (!part.includes("%")) return false;
+  try {
+    return names.has(decodeURIComponent(part));
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Resolve a relationship target against the part that owns the relationship.
  *
  * A leading slash means the target is already a part name, given from the
@@ -124,19 +161,70 @@ export function relationshipsOf(relsXml) {
   return out;
 }
 
+/** The relationships namespace, as a part's markup binds it to a prefix. */
+const REL_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+
+/**
+ * Which prefixes THIS part binds to the relationships namespace.
+ *
+ * Falls back to `r` when the part declares none, which is every fragment and
+ * every part that inherits the binding from a parent it is not shown with.
+ *
+ * @param {string} xml
+ * @returns {string[]}
+ */
+export function relPrefixesIn(xml) {
+  const found = [];
+  let rBoundElsewhere = false;
+  for (const m of xml.matchAll(/xmlns:([A-Za-z0-9_-]+)="([^"]*)"/g)) {
+    if (m[2] === REL_NS) {
+      if (!found.includes(m[1])) found.push(m[1]);
+    } else if (m[1] === "r") rBoundElsewhere = true;
+  }
+  if (found.length) return found;
+  // The fallback is for a part that declares nothing — a fragment, or one that
+  // inherits the binding from a parent it is not shown with. It must NOT apply
+  // to a part that binds `r` to some other namespace: there `r:embed` is a
+  // different attribute that happens to share a name, and reading it as a
+  // relationship is how a sound part gets reported as naming one it lacks.
+  return rBoundElsewhere ? [] : ["r"];
+}
+
 /**
  * Every relationship id a part's markup names, with the element that named it.
  *
- * Matched on the `r:` prefix rather than on a resolved namespace so this can
- * read raw text. Every producer writes the relationship namespace as `r:`; a
- * part that bound it to another prefix would be missed, which costs a check and
- * never invents one.
+ * Read as raw text rather than through a DOM, for the reason `relationshipsIn`
+ * gives — but the PREFIX is resolved from the part's own `xmlns` declarations
+ * rather than assumed to be `r`.
+ *
+ * This docstring used to say the prefix was matched literally, that a part
+ * binding the namespace to another prefix "would be missed, which costs a check
+ * and never invents one". The first half was true and the second was not, in
+ * both directions. A part declaring `xmlns:rel="…/relationships"` had every one
+ * of its references skipped, so a genuinely dangling one went unreported. And a
+ * part binding `r:` to something else entirely — legal XML, and the prefix is
+ * only a name — had its attributes read as relationship references and was
+ * reported as naming relationships it does not have. That is an invented
+ * problem on sound markup, which is the failure this checker can least afford:
+ * it is the third of this shape after the empty `r:blip` and the root-relative
+ * target, and the same population every time, a deck written by something other
+ * than PowerPoint.
+ *
+ * @param {string} xml
  */
 export function referencesIn(xml) {
+  /** @type {{ element: string, prefix: string, attr: string, id: string }[]} */
   const out = [];
+  const prefixes = relPrefixesIn(xml).map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  // No prefix is bound to the namespace, so the part names no relationship.
+  // Building the alternation from an empty list would produce `(?:):(...)`,
+  // which matches ANY prefixed attribute — the invented-problem direction,
+  // reintroduced by the fix for it.
+  if (prefixes.length === 0) return out;
+  const attrPattern = new RegExp(`\\b(?:${prefixes.join("|")}):([A-Za-z]+)="([^"]*)"`, "g");
   for (const m of xml.matchAll(/<([A-Za-z0-9]+:)?([A-Za-z0-9]+)\b([^>]*)>/g)) {
     const [, prefix = "", element = "", attrs = ""] = m;
-    for (const a of attrs.matchAll(/\br:([A-Za-z]+)="([^"]*)"/g)) {
+    for (const a of attrs.matchAll(attrPattern)) {
       const id = a[2] ?? "";
       // An EMPTY id names no relationship, so it is not a reference to resolve.
       //
@@ -197,7 +285,7 @@ export function packageProblems(parts) {
     for (const [id, rel] of relationshipsOf(text(name) ?? "")) {
       if (rel.external || /^[a-z][a-z0-9+.-]*:/i.test(rel.target)) continue;
       const target = resolvePart(owner, rel.target);
-      if (!names.has(target)) problems.push(`${name}: ${id} points at ${rel.target}, which is not in the package`);
+      if (!holds(names, target)) problems.push(`${name}: ${id} points at ${rel.target}, which is not in the package`);
     }
   }
 
