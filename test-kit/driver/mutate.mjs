@@ -74,6 +74,19 @@ const MUTANTS = [
     },
   },
   {
+    // The case the merged/template split made invisible. `TEMPLATE_MARK` cannot
+    // tell a template slide from a copy the merge did not finish, so this slide
+    // leaves the merged population entirely — and the failures that follow are
+    // the part counts, which blame a missing chart.
+    name: "revert-a-merged-field-to-its-placeholder",
+    expect: "no merged copy kept a placeholder",
+    async apply(zip) {
+      const p = "ppt/slides/slide4.xml";
+      const x = await zip.file(p).async("string");
+      zip.file(p, x.replace("Nordics", "{{Region}}"));
+    },
+  },
+  {
     name: "wrong-name-in-a-notes-page",
     expect: "notes pages read",
     async apply(zip) {

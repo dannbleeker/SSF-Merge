@@ -39,7 +39,11 @@ export default tseslint.config(
         // performance the cap protects is not at stake.
         projectService: {
           allowDefaultProject: ["*.js", "*.ts", "scripts/*.mjs", "test-kit/driver/*.mjs"],
-          maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 40,
+          // Raise this when a script is added and the linter starts reporting
+          // its own limit as a parsing error. It was 40 and one new tool in
+          // `scripts/` went past it, which fails `vitest.config.ts` — a file the
+          // change never touched.
+          maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 60,
         },
         tsconfigRootDir: import.meta.dirname,
       },
