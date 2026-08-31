@@ -95,3 +95,46 @@ describe("error text that reaches a user is bounded", () => {
     expect(short(exact)).toBe(exact);
   });
 });
+
+/**
+ * A host error object whose `message` is not a string.
+ *
+ * Office.js failures are routinely plain objects rather than `Error`s, and the
+ * message in one is the whole point — so `readable` reaches for `e.message`,
+ * guarded by `typeof e.message === "string"`. Loosening that guard to accept
+ * any object that merely HAS a `message` left the suite green, which
+ * `scripts/mutate-core.mjs` found.
+ *
+ * It is the one function in this file that must never throw. It runs when
+ * something has already gone wrong, and what it returns is the only sentence
+ * the user gets: a `TypeError` from `short(5010)` replaces the pane's report of
+ * the failure with a second failure nobody can read.
+ */
+describe("a host error whose message is not a string", () => {
+  const odd: [string, unknown][] = [
+    ["a number, which is what a bare error code looks like", { name: "GeneralException", message: 5010, code: 5010 }],
+    ["a nested object", { message: { text: "inner" }, code: 1 }],
+    ["null", { message: null, name: "X" }],
+    ["an array", { message: ["a", "b"] }],
+  ];
+
+  it.each(odd)("describes it instead of throwing: %s", (_label, e) => {
+    let out: string;
+    expect(() => {
+      out = readable(e);
+    }, "the sentence the user gets must not itself fail").not.toThrow();
+    out = readable(e);
+    expect(out).not.toContain("[object Object]");
+    expect(out.length).toBeGreaterThan(0);
+    // The shape is named, which is a fact, where a stringification is not.
+    expect(out).toContain("message");
+  });
+
+  it("still prefers a real message when there is one", () => {
+    // The other direction: tightening the guard must not lose the case it
+    // exists for, which is every ordinary Office.js failure.
+    expect(readable({ name: "GeneralException", message: "InvalidParam passed to GetItem(id)" })).toBe(
+      "InvalidParam passed to GetItem(id)",
+    );
+  });
+});
