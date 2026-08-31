@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { sep } from "node:path";
 import { describe, expect, it } from "vitest";
 
 /**
@@ -288,5 +289,73 @@ describe("the Search keywords field", () => {
     );
     const repeated = keywords.filter((k) => spent.has(k.toLowerCase()));
     expect(repeated).toEqual([]);
+  });
+});
+
+describe("the Notes for certification field", () => {
+  const notes = block("Notes for certification");
+
+  it("says up front that nothing has to be bought or signed into", () => {
+    // The field's own warning is about exactly this, and it threatens "an
+    // automatic rejection" for leaving it out. The assertion is on the first
+    // sentence rather than anywhere in the text: a reviewer who has to hunt
+    // for it has already been given a reason to doubt the rest.
+    const first = notes.split("\n\n")[0];
+    expect(first).toMatch(/no test account, license key, or purchase is required/i);
+  });
+
+  it("tells the reviewer to press the button the manifest actually creates", () => {
+    // The label and the tab live in manifest-prod.xml. A rename there would
+    // leave this note directing a reviewer to a control that is not there,
+    // which is a failed certification rather than a failed test.
+    const manifest = readFileSync("manifest-prod.xml", "utf8");
+    const label = /<bt:String id="OpenPane\.Label" DefaultValue="([^"]+)"/.exec(manifest)?.[1];
+    expect(label, "manifest-prod.xml has no OpenPane.Label").toBeTruthy();
+    expect(notes).toContain(`"${label}"`);
+    expect(manifest).toContain('<OfficeTab id="TabHome">');
+    expect(notes).toMatch(/on the Home tab/i);
+  });
+
+  it("hands the reviewer the same data the demo deck expects", () => {
+    // The one that matters. `demo/rows.txt` is tab-separated, because that is
+    // what a spreadsheet paste produces; these rows are comma-separated,
+    // because a cert note is retyped out of a web form where a tab is as
+    // likely to move the focus as to reach the clipboard. Two copies of the
+    // same table in two formats is exactly the shape that drifts, and the
+    // symptom would be a reviewer pasting rows the deck no longer matches.
+    const rows = readFileSync("docs/listing/demo/rows.txt", "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => line.split("\t").map((c) => c.trim()));
+
+    for (const row of rows) {
+      expect(notes, `the note must offer the demo deck's row ${JSON.stringify(row[0])}`).toContain(row.join(","));
+    }
+  });
+
+  it("names a test deck that is actually in the repository", () => {
+    // A download link is only as good as the file behind it. The URL is built
+    // from a repository path, so this checks the path rather than the network:
+    // a moved or renamed deck breaks here instead of under a reviewer.
+    const url = /https:\/\/github\.com\/\S+\/raw\/main\/(\S+\.pptx)/.exec(notes)?.[1];
+    expect(url, "the note offers no downloadable test deck").toBeTruthy();
+    expect(existsSync(url ?? ""), `${url} is linked from the note and not in the repository`).toBe(true);
+  });
+
+  it("does not claim a network silence the source contradicts", () => {
+    // The note tells a reviewer the add-in makes no network requests while it
+    // runs. That is a claim about src/, so it is checked against src/ — and a
+    // reviewer with the network tab open would catch it faster than a rewrite.
+    expect(notes).toMatch(/makes no network requests/i);
+    const sources = readdirSync("src", { recursive: true, encoding: "utf8" })
+      .filter((f) => /\.tsx?$/.test(f))
+      // readdirSync's recursive mode returns Windows separators here.
+      .map((f) => ["src", ...String(f).split(sep)].join("/"));
+    expect(sources.length, "found no sources to check the claim against").toBeGreaterThan(0);
+
+    const callers = sources.filter((f) =>
+      /\b(fetch|XMLHttpRequest|WebSocket|sendBeacon|EventSource)\s*\(/.test(readFileSync(f, "utf8")),
+    );
+    expect(callers, "these make network calls, so the note's claim is false").toEqual([]);
   });
 });

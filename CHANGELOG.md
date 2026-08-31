@@ -7,6 +7,30 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added — the Notes for certification field, and guards that cross-check it
+
+Partner Center requires it and says twice that leaving it out is an automatic
+rejection. It is drafted in `docs/listing/LISTING.md`: no account, no key, no
+purchase, where the button is, a deck a reviewer can build in four steps, rows
+to paste, and what should come out.
+
+Four of its claims are about other files, so `test/listing.test.ts` checks them
+against those files rather than against itself:
+
+- The rows it hands the reviewer must carry the same values as
+  `demo/rows.txt`. The note is comma-separated because it is retyped out of a
+  web form; the demo file is tab-separated because that is what a spreadsheet
+  paste produces. Two copies of one table in two formats is the shape that
+  drifts, and the symptom would be a reviewer pasting rows the deck no longer
+  matches.
+- The button label and the Home tab come out of `manifest-prod.xml`, so a
+  rename there fails here rather than under a reviewer.
+- The test deck it links must still be in the repository at that path.
+- Its claim that the add-in makes no network requests is checked by scanning
+  every source in `src/` for `fetch`, `XMLHttpRequest`, `WebSocket`,
+  `sendBeacon` and `EventSource`. There are none today, and the note is only
+  allowed to say so for as long as that holds.
+
 ### Added — the Marketplace screenshots, and a driver that can retake them
 
 `docs/listing/shots/` holds the five 1366x768 captures the listing needs, taken

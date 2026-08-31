@@ -283,3 +283,87 @@ page as a grey fringe around the icon.
 `listing.test.ts` pins all of it: 300×300, a whole PNG rather than a truncated
 one, under 512 KB, byte-identical to what the build draws, and the same mark at
 300 as at 32.
+
+## Notes for certification
+
+Required, and the field says so twice: "Failure to do so results in an automatic
+rejection." It is read by a person who has never seen this add-in and has to
+make it do something within a few minutes.
+
+```
+No test account, license key, or purchase is required. SSF Merge is free. It has
+no paid tier, no in-app purchase, no sign-in, and no user accounts. There is
+nothing to activate.
+
+After installation the add-in appears on the Home tab, in a group called
+SSF Merge. Click "Mail merge" to open the task pane. The pane walks five steps
+and states what it will do before it does it.
+
+To test in about two minutes:
+
+1. Create a presentation. Put a title on slide 1. Add slide 2 with the title
+   {{Account}} - {{Region}} and a text box reading:
+       Renewal {{Renewal|date:d MMM yyyy}}
+       Annual value {{Revenue|number:0}} EUR
+   Add slide 3 with the title: Next steps for {{Account}}
+2. Open Home > Mail merge.
+3. Step 1 asks which slides repeat. Enter First slide 2, Last slide 3, continue.
+4. Step 2 asks for data. Paste the rows below into the box.
+5. Step 3 lists the placeholders found; continue. Step 4 merges one row as a
+   preview. Step 5 states how many slides will be added; press the button.
+
+Test data for step 2:
+
+Account,Region,Revenue,Renewal
+Nordwind Retail,Nordics,1250000,2026-03-01
+Brightline Group,Benelux,880000,2026-04-15
+Alpenhof AG,DACH,1640000,2026-05-30
+
+Expected result: six slides are added after slide 3, one pair per row, each
+placeholder replaced with that row's value and the original formatting kept.
+The pane then offers to remove the slides it just added, which undoes the merge.
+
+A ready-made test deck, the one in the screenshots, can be downloaded from:
+https://github.com/dannbleeker/SSF-Merge/raw/main/docs/listing/demo/Quarterly-business-review.pptx
+Its template block is slides 2 to 3 and it expects the rows above.
+
+For review: the add-in makes no network requests while it runs. It has no
+backend, no telemetry, and no analytics. It reads the open presentation and the
+pasted text through the Office JavaScript API, and writes the merged slides back
+into the same presentation. The only network traffic is the initial load of the
+task pane's own static files from https://ssf-merge.struktureretsundfornuft.dk,
+which is served from GitHub Pages.
+
+The add-in requires PowerPointApi 1.2. This is checked at runtime rather than
+declared in the manifest, so on a host that lacks it the pane opens and says so
+instead of the button silently disappearing.
+```
+
+### Why it says what it says
+
+**The credentials sentence goes first** because that is the sentence the field's
+own warning is about, and a reviewer who has to hunt for it has already been
+given a reason to doubt the rest.
+
+**The rows are comma-separated, not tab-separated.** The pane sniffs the
+delimiter and takes tabs, commas or semicolons, so the deck's own `demo/rows.txt`
+uses tabs, which is what a spreadsheet paste produces. A cert note is retyped out
+of a web form, where a tab is as likely to move the focus as to reach the
+clipboard. `test/listing.test.ts` asserts these rows carry the same values as
+`demo/rows.txt`, because the failure being guarded against is somebody editing
+the demo data and leaving the reviewer pasting rows the deck no longer expects.
+
+**It builds a deck rather than only linking one.** The download is offered second
+and as a shortcut. A reviewer who does not want to fetch a binary from GitHub can
+still complete the test, and one who takes the link gets the deck the screenshots
+were shot from.
+
+**The privacy paragraph is a claim about the source, not marketing.** There is no
+`fetch`, `XMLHttpRequest`, `WebSocket` or `sendBeacon` anywhere in `src/`. The
+one piece of network traffic that does exist is named rather than glossed over,
+because a reviewer watching the network tab will see the task pane's own assets
+load and a note claiming "no network requests" flatly would look false.
+
+**Nothing is claimed about which platforms have been tested.** Cross-platform
+testing is still open. Saying "tested on PowerPoint for the web" would invite the
+question, and saying more than that would not be true.
