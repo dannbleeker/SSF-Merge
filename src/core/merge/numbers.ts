@@ -27,8 +27,9 @@
  * are the same fact written twice.
  */
 import JSZip from "jszip";
-import { Pkg, resolveTarget } from "../pptx/pkg.js";
-import { C_NS, CX_NS, PKG_REL_NS, R_NS, SSML_NS, children, elements, parseXml, serializeXml } from "../pptx/xml.js";
+import type { Pkg } from "../pptx/pkg.js";
+import { C_NS, CX_NS, SSML_NS, children, elements, parseXml, serializeXml } from "../pptx/xml.js";
+import { workbookParts } from "./workbook.js";
 import { numericValue } from "../data/format.js";
 import { fieldsInText, type Resolve } from "./text.js";
 
@@ -123,62 +124,6 @@ export function sheetOfFormula(formula: string): string | null {
   if (name === "") return null;
   // Excel doubles an apostrophe inside a quoted name.
   return name.startsWith("'") && name.endsWith("'") ? name.slice(1, -1).replace(/''/g, "'") : name;
-}
-
-/**
- * The worksheets a workbook DECLARES, by title and in order.
- *
- * `xl/workbook.xml` names each sheet beside an `r:id`, and that id is a
- * relationship pointing at the part. Two hops, and the title is the only thing
- * tying a chart's formula to a cell.
- *
- * Read from the declaration rather than from the part NAMES, which is what this
- * did first: it collected `xl/worksheets/sheetN.xml` by pattern. Excel writes
- * that name and other generators do not, and a workbook whose sheet is called
- * anything else filled NOTHING — not a refusal, not a count, no mention. The
- * chart kept its cached numbers, the deck looked finished, and only Edit Data
- * showed the placeholder still sitting in the cell.
- *
- * Resolved once per workbook. It used to be resolved once per series, which
- * reparsed both of these parts for every `<c:numRef>` of every chart of every
- * record.
- */
-async function worksheetsOf(book: JSZip): Promise<{ byTitle: Map<string, string>; paths: string[] }> {
-  const byTitle = new Map<string, string>();
-  const paths: string[] = [];
-  const bookFile = book.file("xl/workbook.xml");
-  const relsFile = book.file("xl/_rels/workbook.xml.rels");
-  if (!bookFile || !relsFile) return { byTitle, paths };
-
-  let sheets: Element[];
-  let rels: Element[];
-  try {
-    sheets = elements(parseXml(await bookFile.async("string")), SSML_NS, "sheet");
-    rels = elements(parseXml(await relsFile.async("string")), PKG_REL_NS, "Relationship");
-  } catch {
-    return { byTitle, paths };
-  }
-
-  const targets = new Map<string, string>();
-  for (const rel of rels) {
-    if ((rel.getAttribute("TargetMode") ?? "") === "External") continue;
-    targets.set(rel.getAttribute("Id") ?? "", rel.getAttribute("Target") ?? "");
-  }
-
-  for (const sheet of sheets) {
-    const rId = sheet.getAttributeNS(R_NS, "id") ?? sheet.getAttribute("r:id") ?? "";
-    const target = targets.get(rId);
-    if (!target) continue;
-    // The package's own resolver, rather than a second reading of what a
-    // relationship target means. This had `xl/` glued on by hand, which is
-    // right for the target Excel writes and wrong for the two other shapes one
-    // is allowed to take.
-    const path = resolveTarget("xl/workbook.xml", target);
-    const title = sheet.getAttribute("name");
-    if (title !== null && !byTitle.has(title)) byTitle.set(title, path);
-    paths.push(path);
-  }
-  return { byTitle, paths };
 }
 
 /** The `<c>` element for one address, or undefined. */
@@ -362,14 +307,17 @@ export async function mergeChartNumbers(
     return out;
   }
 
-  const worksheets = await worksheetsOf(book);
-  if (worksheets.paths.length === 0) return out;
-  const sstFile = book.file("xl/sharedStrings.xml");
+  // The workbook's OWN declarations, shared with the text pass — see
+  // `workbook.ts`. Reading them by part name is what let one generator's
+  // workbook fill nothing at all, silently.
+  const workbook = await workbookParts(book);
+  if (workbook.sheets.length === 0) return out;
+  const sstFile = workbook.sharedStrings ? book.file(workbook.sharedStrings) : undefined;
   let shared: string[];
   const sheets = new Map<string, Document>();
   try {
     shared = sharedStrings(sstFile ? parseXml(await sstFile.async("string")) : undefined);
-    for (const name of worksheets.paths) {
+    for (const name of workbook.sheets) {
       const file = book.file(name);
       if (file) sheets.set(name, parseXml(await file.async("string")));
     }
@@ -393,8 +341,8 @@ export async function mergeChartNumbers(
     // `cellsOfFormula` makes for a range it cannot read, and for the same
     // reason: there is no safe guess between two sheets.
     const title = sheetOfFormula(formula);
-    const named = title === null ? undefined : worksheets.byTitle.get(title);
-    const sheetPath = named ?? (worksheets.paths.length === 1 ? worksheets.paths[0] : undefined);
+    const named = title === null ? undefined : workbook.byTitle.get(title);
+    const sheetPath = named ?? (workbook.sheets.length === 1 ? workbook.sheets[0] : undefined);
 
     for (const point of series.points) {
       const address = cells[point.idx];

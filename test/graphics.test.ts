@@ -208,6 +208,86 @@ describe("the workbook behind a chart", () => {
   });
 });
 
+/**
+ * A workbook written by a TOOL rather than by Excel.
+ *
+ * Two things such a file does differently, and the merge had a defect for each.
+ * It puts a cell's string INLINE — `<c t="inlineStr"><is><t>` — instead of
+ * pointing at a shared-string table it never built; and it names its parts
+ * whatever it likes, because a part name in a package is arbitrary and only the
+ * workbook's own declarations say where its sheets are.
+ *
+ * Both cells are patched into one sheet on purpose. A chart's VALUE cell is
+ * read by the numeric pass and its LABEL cell by the text pass, so a file where
+ * one is filled and the other is not is the two passes disagreeing about the
+ * same workbook — which is what the shared reader in `workbook.ts` exists to
+ * make impossible.
+ */
+describe("a workbook a generator wrote", () => {
+  /** The fixture's workbook with both cells inline, and its sheet at `sheetPath`. */
+  async function mergedSheet(sheetPath: string): Promise<string> {
+    const deck = await makeDeck([
+      { paragraphs: [["{{Name}}"]], chart: { categories: ["a"], workbook: ["x"], values: ["0"] } },
+    ]);
+    const zip = await JSZip.loadAsync(deck);
+    const embedding = Object.keys(zip.files).find((n) => /embeddings\/.*\.xlsx$/.test(n)) ?? "";
+    const book = await JSZip.loadAsync(await (zip.file(embedding) as JSZip.JSZipObject).async("nodebuffer"));
+
+    const original = "xl/worksheets/sheet1.xml";
+    let sheet = await (book.file(original) as JSZip.JSZipObject).async("string");
+    const before = sheet;
+    sheet = sheet.replace('<c r="B2"><v>0</v></c>', '<c r="B2" t="inlineStr"><is><t>{{Revenue}}</t></is></c>');
+    sheet = sheet.replace(/<c r="A2"[^>]*>[\s\S]*?<\/c>/, '<c r="A2" t="inlineStr"><is><t>{{Name}}</t></is></c>');
+    expect(sheet, "the fixture's cells moved; this test patches them by hand").not.toBe(before);
+
+    if (sheetPath !== original) {
+      book.remove(original);
+      const rels = await (book.file("xl/_rels/workbook.xml.rels") as JSZip.JSZipObject).async("string");
+      const moved = rels.replace('Target="worksheets/sheet1.xml"', `Target="${sheetPath.slice("xl/".length)}"`);
+      expect(moved, "the fixture stopped naming its sheet by relationship").not.toBe(rels);
+      book.file("xl/_rels/workbook.xml.rels", moved);
+      const types = await (book.file("[Content_Types].xml") as JSZip.JSZipObject).async("string");
+      book.file("[Content_Types].xml", types.replace(`/${original}`, `/${sheetPath}`));
+    }
+    book.file(sheetPath, sheet);
+    zip.file(embedding, await book.generateAsync({ type: "nodebuffer" }));
+
+    const pkg = await Pkg.open(await zip.generateAsync({ type: "uint8array" }));
+    const records = toRecordSet([
+      ["Name", "Revenue"],
+      ["Ada", "1250000"],
+    ]);
+    const block = { id: "w", slides: [{ path: "ppt/slides/slide1.xml", seq: 1, fields: [] }] };
+    await runPlan(pkg, buildPlan(block, records, { runId: "w" }), records);
+
+    const out = await JSZip.loadAsync(await pkg.toBytes());
+    const chart = (await related(out, "ppt/slides/slide2.xml", "/chart"))[0] ?? "";
+    const workbook = (await related(out, chart, "/package"))[0] ?? "";
+    const merged = await JSZip.loadAsync(await (out.file(workbook) as JSZip.JSZipObject).async("nodebuffer"));
+    return (merged.file(sheetPath) as JSZip.JSZipObject).async("string");
+  }
+
+  it("fills a cell that holds its string inline", async () => {
+    // `<is>` was not a text group, so `mergeWorkbook` opened every worksheet of
+    // every embedded workbook and could never find anything in one. Its own
+    // comment said the worksheets were read for exactly this case.
+    const sheet = await mergedSheet("xl/worksheets/sheet1.xml");
+    expect(sheet, "the value cell").not.toContain("{{Revenue}}");
+    expect(sheet, "the label cell").not.toContain("{{Name}}");
+    expect(sheet).toContain("Ada");
+  });
+
+  it("finds the sheet by what the workbook declares, not by its part name", async () => {
+    // The numeric pass reads the declarations and the text pass matched
+    // `xl/worksheets/sheetN.xml`, so this same file came back with its value
+    // cell filled and the label cell beside it still reading `{{Name}}`.
+    const sheet = await mergedSheet("xl/sheets/data.xml");
+    expect(sheet, "the value cell").not.toContain("{{Revenue}}");
+    expect(sheet, "the label cell").not.toContain("{{Name}}");
+    expect(sheet).toContain("Ada");
+  });
+});
+
 describe("SmartArt the way PowerPoint actually writes it", () => {
   /**
    * The same diagram, with the `diagramDrawing` relationship on the SLIDE and

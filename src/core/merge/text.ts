@@ -381,6 +381,16 @@ function textGroups(doc: Document): Element[][] {
   // A series name written literally rather than referenced: `<c:tx><c:v>`.
   for (const tx of elements(doc, C_NS, "tx")) for (const v of children(tx, C_NS, "v")) out.push([v]);
   for (const si of elements(doc, SSML_NS, "si")) out.push(elements(si, SSML_NS, "t"));
+  // A cell that holds its string INLINE instead of pointing at that table:
+  // `<c t="inlineStr"><is><t>`. Same `<r><t>` runs, one letter apart, and it
+  // was missing — so `mergeWorkbook` opened every worksheet of every embedded
+  // workbook, walked it, and could never find anything. Its own comment said
+  // the worksheets were read "because a cell may hold its string INLINE", which
+  // is the population a generator that never built a shared-string table
+  // produces, and that is exactly what nothing here could reach: a label cell
+  // written inline came out of the merge still reading `{{Name}}`, in the
+  // workbook Excel opens on Edit Data, with the deck itself looking finished.
+  for (const is of elements(doc, SSML_NS, "is")) out.push(elements(is, SSML_NS, "t"));
   // A MODERN chart, which keeps its text in two more places of its own.
   //
   // `<cx:pt>` inside a `<cx:strDim>` is a category label. Scoped by the DIM and
