@@ -20,6 +20,7 @@ import { toRecordSet } from "../src/core/data/recordset.js";
 import { Pkg } from "../src/core/pptx/pkg.js";
 import { REL_TYPE } from "../src/core/pptx/parts.js";
 import { A_NS, C_NS, PKG_REL_NS, SSML_NS, elements, parseXml } from "../src/core/pptx/xml.js";
+import { workbookParts } from "../src/core/merge/workbook.js";
 import { makeDeck, type SlideSpec } from "./fixtures/deck.js";
 
 const ROWS = "Name\tRegion\nAda\tNordics\nGrace\tBenelux";
@@ -302,6 +303,85 @@ describe("a workbook a generator wrote", () => {
  * of them show the last record's labels — the shared-part defect this project
  * has now found for notes pages, comments, charts and diagrams.
  */
+/**
+ * Reading a workbook the way it describes itself.
+ *
+ * Driven directly rather than through a merge, because two of its rules cannot
+ * be reached from a package this project can author: a workbook whose main part
+ * is not `xl/workbook.xml`, and one that declares two sheets under one title.
+ * A rule no test can drive is a rule nobody can check — and a mutation sweep
+ * proved both were exactly that.
+ */
+describe("workbookParts", () => {
+  const REL = 'xmlns="http://schemas.openxmlformats.org/package/2006/relationships"';
+  const S = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"';
+  const R = 'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
+  const TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+
+  /** A workbook whose main part is `main`, declaring the given sheets. */
+  function book(main: string, sheets: [string, string][]): JSZip {
+    const zip = new JSZip();
+    zip.file(
+      "_rels/.rels",
+      `<Relationships ${REL}>` +
+        `<Relationship Id="rIdX" Type="${TYPE}/extended-properties" Target="docProps/app.xml"/>` +
+        `<Relationship Id="rIdM" Type="${TYPE}/officeDocument" Target="${main}"/>` +
+        `</Relationships>`,
+    );
+    zip.file("docProps/app.xml", "<Properties/>");
+    zip.file(
+      main,
+      `<workbook ${S} ${R}><sheets>` +
+        sheets.map(([name], i) => `<sheet name="${name}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join("") +
+        `</sheets></workbook>`,
+    );
+    const dir = main.slice(0, main.lastIndexOf("/"));
+    zip.file(
+      `${dir}/_rels/${main.slice(main.lastIndexOf("/") + 1)}.rels`,
+      `<Relationships ${REL}>` +
+        sheets
+          .map(([, part], i) => `<Relationship Id="rId${i + 1}" Type="${TYPE}/worksheet" Target="${part}"/>`)
+          .join("") +
+        `<Relationship Id="rIdS" Type="${TYPE}/sharedStrings" Target="strings.xml"/>` +
+        `</Relationships>`,
+    );
+    for (const [, part] of sheets) zip.file(`${dir}/${part}`, `<worksheet ${S}/>`);
+    zip.file(`${dir}/strings.xml`, `<sst ${S}/>`);
+    return zip;
+  }
+
+  it("follows the officeDocument relationship rather than a fixed name", async () => {
+    const parts = await workbookParts(book("book/main.xml", [["Data", "sheets/one.xml"]]));
+    expect(parts.sheets).toEqual(["book/sheets/one.xml"]);
+    expect(parts.byTitle.get("Data")).toBe("book/sheets/one.xml");
+    expect(parts.sharedStrings).toBe("book/strings.xml");
+  });
+
+  it("keeps the FIRST sheet declared under a title, never the last", async () => {
+    // Two sheets cannot share a title in a workbook Excel will open. If a
+    // generator writes one anyway, a chart's `Sheet1!$B$2` has to reach the
+    // sheet the workbook names first — taking the later one would fill a
+    // different cell and the chart would plot the one that was left.
+    const parts = await workbookParts(
+      book("xl/workbook.xml", [
+        ["Sheet1", "worksheets/first.xml"],
+        ["Sheet1", "worksheets/second.xml"],
+      ]),
+    );
+    expect(parts.byTitle.get("Sheet1")).toBe("xl/worksheets/first.xml");
+    // Both are still sheets — only the TITLE is claimed once.
+    expect(parts.sheets).toEqual(["xl/worksheets/first.xml", "xl/worksheets/second.xml"]);
+  });
+
+  it("answers empty for an embedding that is not a workbook at all", async () => {
+    // An OLE object under the same `package` relationship. Reported as nothing
+    // to fill rather than thrown on: a merge does not lose 240 slides over one.
+    const parts = await workbookParts(new JSZip());
+    expect(parts.sheets).toEqual([]);
+    expect(parts.sharedStrings).toBeUndefined();
+  });
+});
+
 describe("a chart part whose name needs a percent escape", () => {
   it("still gets its own copy per merged slide", async () => {
     const deck = await makeDeck([{ paragraphs: [["{{Region}}"]], chart: { title: "{{Region}}" } }]);

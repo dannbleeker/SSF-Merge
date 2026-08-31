@@ -254,11 +254,25 @@ async function workbookBytes(strings: string[], values: string[] = []): Promise<
       `<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>` +
       `<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>` +
       `<Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>` +
+      `<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>` +
       `</Types>`,
+  );
+  // Three relationships, the way Excel writes them, and the docProps two are
+  // not padding: `workbookParts` finds the workbook part by relationship TYPE,
+  // and with only one relationship here a reader that took whichever came
+  // first would pass. It did — a mutation sweep on 2026-08-31 flipped that
+  // `===` to `!==` and the whole suite stayed green, because the fixture had
+  // nothing else for it to pick. `core.xml` is FIRST so the wrong answer is the
+  // easy one to reach.
+  book.file(
+    "docProps/core.xml",
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n` +
+      `<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties"/>`,
   );
   book.file(
     "_rels/.rels",
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n<Relationships ${REL}>` +
+      `<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>` +
       `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>` +
       `</Relationships>`,
   );
