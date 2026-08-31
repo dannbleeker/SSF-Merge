@@ -126,6 +126,12 @@ describe("covering a shape without distorting", () => {
       ],
     ] as const) {
       expect(coverSrcRect(shape, image)).toEqual(NO_INSET);
+      // CONTAIN carries the identical guard and nothing was checking it: the
+      // test's name is about dividing by zero, and half the functions that can
+      // were outside the loop. Found by `scripts/mutate-core.mjs` — loosening
+      // contain's guard to `< 0` left the suite green, and a zero-sided shape
+      // then produces a 100% inset rather than none.
+      expect(containFillRect(shape, image)).toEqual(NO_INSET);
     }
   });
 

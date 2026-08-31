@@ -142,6 +142,42 @@ describe("applyFormat", () => {
   it("parses an unambiguous slash date day-first", () => {
     expect(parseDate("15/01/2026")?.toISOString().slice(0, 10)).toBe("2026-01-15");
   });
+
+  it("refuses every ambiguous pair, including the two at the edge of the year", () => {
+    // The refusal is `a <= 12 && b <= 12 && a !== b`, and each of those three
+    // clauses owns a case nothing was checking. `scripts/mutate-core.mjs` found
+    // it: `<= 12` loosened to `< 12` left the suite green, so every DECEMBER
+    // ambiguity — the commonest month in a renewal column — would have started
+    // parsing on one reading with nothing to say which.
+    //
+    // The owner decided this on 2026-08-12 with the cost on the table: a US
+    // author writing 03/01/2026 for 1 March gets an empty cell, because the
+    // alternative is a Gantt that draws perfectly and is two months wrong.
+    for (const d of ["03/01/2026", "12/01/2026", "01/12/2026"]) {
+      expect(parseDate(d), `${d} could be either reading`).toBeUndefined();
+    }
+    // And the two that are NOT ambiguous, which is what stops the rule
+    // swallowing dates it has no business refusing: same number both sides, and
+    // a first number no month could be.
+    expect(parseDate("12/12/2026")?.toISOString().slice(0, 10)).toBe("2026-12-12");
+    expect(parseDate("13/01/2026")?.toISOString().slice(0, 10)).toBe("2026-01-13");
+  });
+
+  it("reads a DATE the spreadsheet padded, in every spelling it accepts", () => {
+    // A cell arrives with whatever whitespace its export gave it, and one
+    // `.trim()` in `parseDate` is the whole of that. Removing it left the suite
+    // green — so a padded renewal column would have been printed as written on
+    // every slide, with no format applied and nothing to say why.
+    //
+    // The first version of this test asserted `numericValue` instead, and
+    // passed against the mutation because that function trims somewhere the
+    // sweep did not flag — which is a test proving a rule that was already
+    // held. Checking WHICH assertion failed is what caught it.
+    expect(parseDate(" 15/01/2026 ")?.toISOString().slice(0, 10)).toBe("2026-01-15");
+    expect(parseDate("\t2026-03-01\n")?.toISOString().slice(0, 10)).toBe("2026-03-01");
+    expect(parseDate(" 1 Mar 2026 ")?.toISOString().slice(0, 10)).toBe("2026-03-01");
+    expect(applyFormat(" 15/01/2026 ", "date:yyyy-MM-dd")).toBe("2026-01-15");
+  });
 });
 
 /**

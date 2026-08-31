@@ -138,6 +138,20 @@ describe("a picture where the placeholder was", () => {
     expect(order.slice(0, 2)).toEqual(["xfrm", "prstGeom"]);
   });
 
+  it("matches a photo whose cell the spreadsheet padded", async () => {
+    // `resolveImage` trims the cell before matching it against the files, and
+    // that `.trim()` is the whole rule. Removing it left the suite green —
+    // so a Photo column exported with a trailing space would report every
+    // picture missing, on a template that is correct, with the placeholder left
+    // visible on every slide.
+    const pkg = await template("{{Photo|image}}");
+    const out = await merge(pkg, [["Photo"], ["  ada.png  "]], new Map([["ada.png", WIDE]]));
+
+    expect(out.images.missing, "a padded cell is the same file").toEqual([]);
+    expect(out.images.placed).toBe(1);
+    expect(await blipFill(pkg, out.slides[0] as string)).toBeDefined();
+  });
+
   it("STRETCHES and says so when the shape states no size", async () => {
     // Cover and contain need a ratio, and a shape that inherits its box from a
     // layout placeholder does not state one. Reported, because a stretched
