@@ -233,6 +233,28 @@ is PowerPoint refreshing the chart from that workbook when Excel closes, which i
 where a merge that filled only the chart would revert in front of you. "Did not
 run" and "passed" are different answers.
 
+**The take-back after the pane closes, and WHICH deck it is offered on.** The
+pane remembers an unfinished merge in the browser's storage, which belongs to
+the add-in rather than to the presentation — so the record names the deck it was
+written on, and is only answered for that deck. What names the open deck is
+`Office.context.document.url`, and no round has ever looked at it. If the web
+host answers nothing there, or answers a different string on the second open
+than it did on the first, the take-back is simply never offered again, silently,
+in the one situation it exists for.
+
+Two presses, in this order, and the first is the one that proves anything:
+
+1. Merge as usual, then close the pane and open it again on the SAME deck. It
+   should say *"A merge from <date> added 6 slide(s) and the pane closed before
+   you could take them back"* and offer to remove them. Nothing said is the
+   failure — and it looks exactly like there being nothing to say.
+2. Open a DIFFERENT deck and check it is NOT offered there. **Passing this one
+   alone means nothing**: on a host that names no document, both decks stay
+   quiet, and quiet is what step 2 is looking for.
+
+Send back what the first one said, word for word, including the date and the
+count.
+
 **Answered since, and no longer open.**
 
 The preview step was skipped on 2026-08-28 and on the first round of 2026-08-30.
