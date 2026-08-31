@@ -324,15 +324,24 @@ rather than guessed at. A deck that draws perfectly and is two months wrong is
 the worse outcome. Write the date as `2026-03-01` in your source if you want it
 merged as a date.
 
-**Month names are read in English, Danish, Norwegian and Swedish**, in full or
-in the three-letter form a spreadsheet writes — `3 maj 2026`, `1 okt 2026`,
-`1 desember 2026`. Other languages are read where the browser happens to know
-them, which is inconsistent by nature; those four are a stated list.
+**Month names are read from a stated list**, in full or in the three-letter form
+a spreadsheet writes — `3 maj 2026`, `1 okt 2026`, `1 desember 2026`. The list
+is English, Danish, Norwegian, Swedish, German, Dutch, French, Spanish, Italian
+and Portuguese. Nothing outside it is read: a word the list does not carry
+leaves the cell exactly as you typed it.
 
-Until 2026-08-27 the list did not exist and every name went to the browser,
-which matches an English three-letter prefix. So `marts` and `januar` worked
-and `maj` and `oktober` did not — one Danish column, half of it formatted and
-half of it showing the raw cell.
+Until 2026-08-27 there was no list and every name went to the browser, which
+matches an English three-letter prefix. So `marts` and `januar` worked and `maj`
+and `oktober` did not — one Danish column, half of it formatted and half of it
+showing the raw cell. The list was added then, with the browser left behind it
+as a floor for languages it did not name; that floor is gone as of 2026-08-31,
+because the same prefix rule reads `1 marketing 2026` as **1 March 2026** and a
+date the data never gave is worse than a cell left alone.
+
+**An accented month is not read.** `février`, `août`, `märz` and `décembre`
+carry a letter the date reader does not accept, so those cells stay as they are
+while the rest of the same column formats. Write the month in the three-letter
+form, or use a numeric pattern.
 
 **The month name written OUT is English**, whatever language it was read from:
 `{{Start|date:d MMM yyyy}}` gives `3 May 2026`. The output is the template

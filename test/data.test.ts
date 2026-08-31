@@ -575,7 +575,20 @@ describe("month names the date gate already admits", () => {
       "januar februar marts april maj juni juli august september oktober november december",
       "januar februar mars april mai juni juli august september oktober november desember",
       "januari februari mars april maj juni juli augusti september oktober november december",
+      // The ASCII spellings of the languages the removed `new Date` fallback
+      // used to reach by accident, and their neighbours. An accented one —
+      // `février`, `août`, `märz` — never gets past `NAMED_DATE`'s character
+      // class, so it is not in the table and not in this list either.
+      "januar februar mars april mai juni juli august september oktober november dezember",
+      "januari februari maart april mei juni juli augustus september oktober november december",
+      "janvier fevrier mars avril mai juin juillet aout septembre octobre novembre decembre",
+      "enero febrero marzo abril mayo junio julio agosto septiembre octubre noviembre diciembre",
+      "gennaio febbraio marzo aprile maggio giugno luglio agosto settembre ottobre novembre dicembre",
+      "janeiro fevereiro marco abril maio junho julho agosto setembro outubro novembro dezembro",
     ];
+    // The spellings this table deliberately does NOT carry, because their real
+    // form is accented and the ASCII fallback is somebody else's guess.
+    const notClaimed = new Set(["fevrier", "aout", "decembre", "marco"]);
     const meaning = new Map<string, number>();
     for (const line of languages) {
       line.split(" ").forEach((word, i) => {
@@ -584,10 +597,14 @@ describe("month names the date gate already admits", () => {
         expect(already ?? month, `${word} means two different months`).toBe(month);
         meaning.set(word, month);
         // And the engine agrees with the list.
+        if (notClaimed.has(word)) {
+          expect(parseDate(`1 ${word} 2026`), `1 ${word} 2026`).toBeUndefined();
+          return;
+        }
         expect(parseDate(`1 ${word} 2026`)?.getUTCMonth(), `1 ${word} 2026`).toBe(i);
       });
     }
-    expect(meaning.size).toBe(25);
+    expect(meaning.size).toBeGreaterThan(25);
   });
 
   it("still refuses a day that month does not have, whatever the language", () => {
@@ -597,15 +614,49 @@ describe("month names the date gate already admits", () => {
     expect(parseDate("32 maj 2026")).toBeUndefined();
   });
 
-  it("keeps whatever the platform already handled", () => {
+  it("keeps whatever the platform used to handle, from the table instead", () => {
     /**
-     * The fallback stays on purpose. It is what makes French and Italian month
-     * names work today for users this table does not list, and dropping it
-     * would turn a partial answer into no answer for them. Its inconsistency is
-     * why the table exists — it is a floor, not the mechanism.
+     * There was a `new Date` fallback behind the table, kept on purpose so that
+     * languages the table did not list still worked. It is gone — see
+     * `monthFromName` — and these still pass, because what it really covered is
+     * listed now. More of it is: the prefix rule read `janvier` and `marzo` by
+     * luck and answered nothing at all for `enero`, `maart` or `gennaio`.
      */
     expect(parseDate("1 janvier 2026")?.toISOString().slice(0, 10)).toBe("2026-01-01");
+    expect(parseDate("1 marzo 2026")?.toISOString().slice(0, 10)).toBe("2026-03-01");
+    expect(parseDate("1 enero 2026")?.toISOString().slice(0, 10)).toBe("2026-01-01");
+    expect(parseDate("1 gennaio 2026")?.toISOString().slice(0, 10)).toBe("2026-01-01");
+    expect(parseDate("1 maart 2026")?.toISOString().slice(0, 10)).toBe("2026-03-01");
     expect(parseDate("1 March 2026")?.toISOString().slice(0, 10)).toBe("2026-03-01");
+  });
+
+  it("refuses a word that merely STARTS like a month", () => {
+    /**
+     * The defect the table was written to prevent, living in the branch behind
+     * it. `new Date("1 marketing 2001 00:00:00Z")` is 1 March 2001, because V8
+     * matches an English three-letter prefix — so a cell reading
+     * `1 marketing 2026` was typed `date`, parsed as March, and printed as
+     * `01-03-2026` on every merged slide.
+     *
+     * Each of these is an ordinary English word with a month's first three
+     * letters, and every one of them parsed before this.
+     */
+    for (const [word, wrongly] of [
+      ["marketing", "March"],
+      ["janitor", "January"],
+      ["novel", "November"],
+      ["decision", "December"],
+      ["separate", "September"],
+      ["octopus", "October"],
+      ["junior", "June"],
+    ] as const) {
+      expect(parseDate(`1 ${word} 2026`), `read as ${wrongly}`).toBeUndefined();
+      expect(applyFormat(`1 ${word} 2026`, "date:dd-MM-yyyy"), word).toBe(`1 ${word} 2026`);
+    }
+    // Not `augustus`, which looks like the same shape and is Dutch for August.
+    // A word that starts like a month is not automatically a non-month, which
+    // is why the list above is words rather than a rule.
+    expect(parseDate("1 augustus 2026")?.getUTCMonth()).toBe(7);
   });
 
   it("formats a whole Danish column the same way, which was the defect", () => {
@@ -865,7 +916,8 @@ describe("a data cell cannot reach Object's prototype", () => {
     // above and break the feature.
     expect(applyFormat("1 january 2026", "date:d MMM yyyy")).toBe("1 Jan 2026");
     expect(applyFormat("1 januar 2026", "date:d MMM yyyy")).toBe("1 Jan 2026");
-    // And the `new Date` fallback, which is the branch the guard now feeds.
+    // And an abbreviation, which is in the table like everything else — there
+    // is no `new Date` branch behind it any more.
     expect(applyFormat("1 Mar 2026", "date:d MMM yyyy")).toBe("1 Mar 2026");
   });
 });
