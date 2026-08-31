@@ -215,7 +215,9 @@ describe("a merge that raises", () => {
     // already in the deck. The DELTA is the evidence, never the absence of an
     // error.
     await reachMerge();
-    office.slideCount.mockResolvedValueOnce(18); // 12 before, 18 after: six landed
+    // Two counts now, and the FIRST is the floor: taken just before the insert
+    // rather than read off the pane's cache. See `deckBefore` in `main.ts`.
+    office.slideCount.mockResolvedValueOnce(12).mockResolvedValueOnce(18);
     office.runMerge.mockRejectedValueOnce(new Error("gave up waiting for: inserting the merged deck"));
     primary().click();
     await settle();
@@ -1044,7 +1046,7 @@ describe("taking a real merge back", () => {
     // card needs both. So the one case the branch exists for — a host that
     // performs a call and then raises on it — was the one case with no offer.
     await reachMerge();
-    office.slideCount.mockResolvedValueOnce(18); // 12 before, 18 after
+    office.slideCount.mockResolvedValueOnce(12).mockResolvedValueOnce(18); // before, after
     office.runMerge.mockRejectedValueOnce(new Error("gave up waiting for: inserting the merged deck"));
     primary().click();
     await settle();
@@ -1055,6 +1057,31 @@ describe("taking a real merge back", () => {
     undoButton()?.click();
     await settle();
     expect(office.undoMerge.mock.calls[0]?.[0]).toMatchObject({ deckAtStart: 12, added: 6 });
+  });
+
+  it("clamps the recovery to the deck as it was, not as the pane remembered it", async () => {
+    /**
+     * The pane counts the deck when the block is committed, and the step
+     * between that and this button is the one that sends the user into
+     * PowerPoint to put fields on the slides. Two slides added there leave the
+     * cached number low — and every clamp in `sweepPlan` compares SIZES, none
+     * of them freshness, so a floor two slides behind yields a plan that starts
+     * inside the user's own slides and satisfies every guard on the way.
+     *
+     * Cached 12, really 14, deck 20 after the raise. The run added six. Read
+     * from the cache it would report eight and offer to delete from index 12.
+     */
+    await reachMerge();
+    office.slideCount.mockResolvedValueOnce(14).mockResolvedValueOnce(20);
+    office.runMerge.mockRejectedValueOnce(new Error("gave up waiting for: inserting the merged deck"));
+    primary().click();
+    await settle();
+
+    expect(said().join(" "), "counted from the cache").toContain("6 slides landed anyway");
+    office.undoMerge.mockResolvedValueOnce({ removed: 6, detail: "removed 6 slide(s) from index 14" });
+    undoButton()?.click();
+    await settle();
+    expect(office.undoMerge.mock.calls[0]?.[0]).toMatchObject({ deckAtStart: 14, added: 6 });
   });
 
   it("does not take a second press while a sweep is out", async () => {

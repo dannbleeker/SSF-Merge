@@ -743,13 +743,34 @@ async function merge(): Promise<void> {
     // this whole change is about.
     state = { ...state, log: traceText() };
     draw();
+    /**
+     * The deck's size, COUNTED HERE, and the floor every sweep is clamped to.
+     *
+     * Not `state.deckSize`. That is read when the block is committed, and the
+     * step between that and this button is the one where the pane sends the
+     * user into PowerPoint to put fields on the slides — so a deck that gained
+     * a slide in between leaves the pane's number low, and every clamp in
+     * `sweepPlan` compares SIZES. None of them compares freshness. A cache two
+     * slides behind turns `{from: 12, count: 3}` into `{from: 10, count: 5}`:
+     * the run's three slides and two of the user's own, from a plan that
+     * satisfies every guard it passes through.
+     *
+     * The same shape `crumb.ts` records for the document key, one level out —
+     * there the missing question was "which deck", here it is "when".
+     */
+    let deckBefore: number | undefined;
     try {
-      // BEFORE the call that makes an undo necessary. `deckAtStart` is the floor
-      // every sweep is clamped to and it lives in a module variable, so a tab
-      // that dies during the insert leaves the deck holding the slides and the
-      // pane unable to take them back. `added` is 0 until the deck answers; the
-      // crumb is rewritten with the real number below.
-      dropCrumb({ deckAtStart: state.deckSize ?? 0, added: 0, runId: "pending", doc: documentKey() });
+      // BEFORE the call that makes an undo necessary. It lives in a module
+      // variable, so a tab that dies during the insert leaves the deck holding
+      // the slides and the pane unable to take them back. `added` is 0 until
+      // the deck answers; the crumb is rewritten with the real number below.
+      //
+      // No crumb at all when the count fails, rather than one clamped to a
+      // number nothing proved. A floor that cannot be shown is a floor that
+      // authorises nothing, which is the direction `sweepPlan` already takes.
+      deckBefore = await slideCount().catch(() => undefined);
+      if (deckBefore !== undefined)
+        dropCrumb({ deckAtStart: deckBefore, added: 0, runId: "pending", doc: documentKey() });
       const outcome = await runMerge({
         from: block.from,
         to: block.to,
@@ -793,7 +814,10 @@ async function merge(): Promise<void> {
       // undo is positional and clamped against them: a run whose numbers are
       // lost cannot be taken back at all.
       const deckAfter = await slideCount().catch(() => undefined);
-      const before = state.deckSize;
+      // The count taken just before the insert, never the pane's cached one.
+      // See `deckBefore`: this number is what a positional delete is clamped
+      // against, and a stale one reaches past the run into the user's slides.
+      const before = deckBefore;
       const added = deckAfter !== undefined && before !== undefined ? Math.max(0, deckAfter - before) : 0;
       if (added > 0 && before !== undefined) {
         dropCrumb({ deckAtStart: before, added, runId: "recovered", doc: documentKey() });
