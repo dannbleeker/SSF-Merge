@@ -374,6 +374,11 @@ rather than guessed at. A deck that draws perfectly and is two months wrong is
 the worse outcome. Write the date as `2026-03-01` in your source if you want it
 merged as a date.
 
+**A two-digit year is read the way Excel reads it.** `00`–`29` are the 2000s and
+`30`–`99` the 1900s, so `15/06/85` merges as 1985 and `15/06/25` as 2025. That
+window is a convention rather than a fact about the data — a birth year of `25`
+is 2025 here — so write the year in full where it matters.
+
 **Month names are read from a stated list**, in full or in the short form a
 spreadsheet writes — `3 maj 2026`, `1 okt 2026`, `1 desember 2026`, `1 dez
 2026`, `1 sept 2026`. The list is English, Danish, Norwegian, Swedish, German,

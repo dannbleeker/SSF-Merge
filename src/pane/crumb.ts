@@ -140,6 +140,18 @@ export function dropCrumb(c: Omit<Crumb, "kind" | "startedAt">): void {
   const s = store();
   if (!s) return;
   try {
+    // ANOTHER DECK'S record is not this run's to destroy. The read side refuses
+    // a stranger's crumb at length and `clearCrumb` was taught the same check;
+    // the write side had none, so opening a second deck and pressing Merge
+    // erased the first deck's record of slides that are still sitting in it —
+    // the asymmetry that makes a careful check on one side worthless.
+    //
+    // Only a crumb that is HOLDING something is protected. One written with
+    // `added: 0` is a pending marker for a run that may never have landed
+    // anything, and refusing to overwrite that would make the key unreclaimable
+    // by any other deck — the same trap `clearCrumb`'s docstring names.
+    const raw = s.getItem(KEY);
+    if (raw && belongsToAnotherDeck(raw, c.doc) && holdingSlides(raw)) return;
     const prior = readCrumb(c.doc);
     // The SAME run, and a date that is one. Two of the pane's writes use a
     // shared id — "pending" before an insert answers, and "recovered" for a run
@@ -185,6 +197,18 @@ export function clearCrumb(here: string): void {
     s.removeItem(KEY);
   } catch {
     /* nothing to be done, and nothing worth failing over */
+  }
+}
+
+/** Whether a stored record says a run left slides behind that nobody has taken back. */
+function holdingSlides(raw: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null) return false;
+    const added = (parsed as Partial<Crumb>).added;
+    return typeof added === "number" && added > 0;
+  } catch {
+    return false;
   }
 }
 

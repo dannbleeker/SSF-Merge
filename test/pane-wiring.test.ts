@@ -193,6 +193,98 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+describe("the boot crumb read", () => {
+  it("does not speak about, or delete, a run that is happening right now", async () => {
+    /**
+     * The deck count this handler waits on is issued at boot and can answer
+     * minutes later — long enough for the user to walk the wizard and press
+     * Merge. The crumb it then found was the pending marker THAT run had just
+     * written, so the pane said the merge "did not finish" while it was visibly
+     * running, and deleted the record in the one window it exists for.
+     */
+    let count: (n: number) => void = () => undefined;
+    office.slideCount.mockReset().mockReturnValueOnce(new Promise((res) => (count = res)));
+    await openPane();
+    await settle();
+
+    // The boot count is still out. The user walks the wizard and merges.
+    office.slideCount.mockResolvedValue(12);
+    type("from", "4");
+    type("to", "6");
+    office.inspectBlock.mockResolvedValueOnce(REPORT);
+    primary().click();
+    await settle();
+    type("paste", "First\tLast\nAda\tLovelace");
+    primary().click();
+    office.inspectBlock.mockResolvedValueOnce(REPORT);
+    primary().click();
+    await settle();
+    (pane().querySelector("[data-forward]") as HTMLElement).click();
+    await settle();
+
+    let landed: (o: unknown) => void = () => undefined;
+    office.runMerge.mockReturnValueOnce(new Promise((res) => (landed = res)));
+    primary().click();
+    await settle();
+    const during = localStorage.getItem("ssf-merge.run.v1");
+    expect(during, "the run wrote its pending marker").not.toBeNull();
+
+    // Now the boot count finally answers, mid-merge.
+    count(12);
+    await settle();
+
+    expect(document.body.textContent, "about a merge that is running").not.toContain("did not finish");
+    expect(localStorage.getItem("ssf-merge.run.v1"), "the record the run may need").not.toBeNull();
+
+    landed({ ...OUTCOME, deckAtStart: 12 });
+    await settle();
+  });
+});
+
+describe("a read that answers after the user has moved", () => {
+  it("leaves the user on the step they walked to", async () => {
+    /**
+     * The template read takes seconds and the Back link stays live throughout —
+     * deliberately, because a user who realises they typed the wrong slides
+     * should not be held. The advance at the end of the read was unconditional,
+     * so walking back to Data while it was running jumped the pane forward to
+     * Preview when the answer arrived, over the work the user had gone back to
+     * change.
+     *
+     * The block's own staleness was already re-checked. Where the USER is was
+     * not.
+     */
+    await openPane();
+    await settle();
+    type("from", "4");
+    type("to", "6");
+    office.inspectBlock.mockResolvedValueOnce(REPORT);
+    primary().click(); // template -> data
+    await settle();
+    type("paste", "First\tLast\nAda\tLovelace");
+    primary().click(); // data -> fields
+    await settle();
+    expect(pane().querySelector(".step-of")?.textContent).toBe("Step 3 of 5 · Fields");
+
+    // The fields step re-reads the slides, because the user has just been
+    // typing `{{Column}}` into PowerPoint and nothing tells the pane so.
+    let answer: (r: unknown) => void = () => undefined;
+    office.inspectBlock.mockReturnValueOnce(new Promise((res) => (answer = res)));
+    primary().click(); // fields -> reading
+    await settle();
+
+    // The user changes their mind about the data and walks back while it reads.
+    (pane().querySelector("[data-back]") as HTMLElement).click();
+    await settle();
+    const walkedTo = pane().querySelector(".step-of")?.textContent;
+    expect(walkedTo, "the user moved").toBe("Step 2 of 5 · Data");
+
+    answer(REPORT);
+    await settle();
+    expect(pane().querySelector(".step-of")?.textContent, "the read moved the user").toBe(walkedTo);
+  });
+});
+
 describe("a merge that raises", () => {
   it("says so, and gives the button back", async () => {
     // The committed version awaited runMerge with no catch, so a raise left the

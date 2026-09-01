@@ -166,11 +166,22 @@ function runSuite(cwd) {
  * prose. The middle-hit rule was chosen precisely to avoid a doc comment's
  * example and it only moved the problem along.
  *
+ * TWO shapes, and the first version only knew one. A line that IS a comment is
+ * caught by the leading-marker test; a comment that TRAILS code on a line of
+ * its own — `const n = 1; // the ?? here is deliberate` — is not, so a hit
+ * inside it was mutated, changed nothing, and was reported as a survivor. Both
+ * are answered by looking at what precedes the hit ON ITS OWN LINE.
+ *
+ * Deliberately crude: a `//` inside a string literal reads as a comment here
+ * and costs one skipped mutation site. Skipping a site under-reports; treating
+ * prose as a survivor makes up a gap, and this file exists to stop the second.
+ *
  * @param {string} source @param {number} at
  */
-function inComment(source, at) {
-  const line = (source.slice(0, at).split("\n").pop() ?? "") + (source.slice(at).split("\n")[0] ?? "");
-  return /^\s*(\*|\/\/|\/\*)/.test(line);
+export function inComment(source, at) {
+  const before = source.slice(0, at).split("\n").pop() ?? "";
+  const line = before + (source.slice(at).split("\n")[0] ?? "");
+  return /^\s*(\*|\/\/|\/\*)/.test(line) || before.includes("//");
 }
 
 /**
@@ -222,7 +233,12 @@ function main() {
     console.log(`control: the unmutated copy is green — ${ran} test(s), floor ${floor}`);
 
     outer: for (const file of TARGETS) {
-      const original = readFileSync(file, "utf8");
+      // Read from the COPY, which is what gets mutated and restored. Reading
+      // the repo instead was a race with the author: an edit saved during a run
+      // meant the mutation was computed against one text and written over
+      // another, and the "restore" then put a version of the file into the copy
+      // that had never been tested.
+      const original = readFileSync(join(copy, file), "utf8");
       for (const rule of RULES) {
         // Code only. A mutant in a doc comment changes nothing, so it survives
         // and names a gap that is not there.
@@ -239,7 +255,12 @@ function main() {
         writeFileSync(join(copy, file), mutated);
         let green;
         try {
-          green = runSuite(copy).green;
+          // A red is CONFIRMED before it is called a kill. One flaky failure
+          // otherwise records a mutant as caught, which inflates the score in
+          // the flattering direction — the same direction every defect this
+          // script has had so far pointed in. A survivor stays a survivor on
+          // the first green, so this costs a re-run only on kills.
+          green = runSuite(copy).green || runSuite(copy).green;
         } finally {
           // Restored inside the COPY. Nothing here can leave the repository
           // mutated, however this run ends.

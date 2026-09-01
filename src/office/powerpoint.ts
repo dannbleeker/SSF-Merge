@@ -549,7 +549,13 @@ export async function undoInsert(
   // range: a plan of six that proved four is a complete sweep at four.
   const wanted = targets.length;
   const held = plan.count - wanted;
-  const kept = held === 0 ? "" : `; ${held} slide(s) in the range are not this merge's and were left alone`;
+  // COULD NOT BE SHOWN, never "are not". `held` is `plan.count - targets.length`
+  // and a slide the host would not answer for arrives in it exactly like a slide
+  // carrying no mark — the limitation `UndoOutcome.disowned` is documented with,
+  // and this sentence reaches the user verbatim through the pane's "Nothing was
+  // removed — ${detail}". It was the last ownership claim left in the codebase.
+  const kept =
+    held === 0 ? "" : `; ${held} slide(s) in the range could not be shown to be this merge's and were left alone`;
   // The RAIL's numbering, which is the only one the pane speaks — this string
   // reaches the user verbatim, inside "Nothing was removed — …" and "Some of
   // the merge is still there — …". It said "from index 3" for slides the rail

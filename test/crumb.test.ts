@@ -145,6 +145,24 @@ describe("the numbers an undo cannot be done without", () => {
     expect(readCrumb(OTHER_DECK)).toBeUndefined();
   });
 
+  it("does not overwrite another deck's record of slides that are still there", () => {
+    // The read side refuses a stranger's crumb at length, and `clearCrumb` was
+    // taught the same check — but the WRITE side had none. So opening a second
+    // deck and pressing Merge erased the first deck's only record of six slides
+    // still sitting in it, which is the asymmetry that makes a careful check on
+    // one side worth nothing.
+    dropCrumb({ deckAtStart: 12, added: 6, runId: "r1", doc: DECK });
+    dropCrumb({ deckAtStart: 3, added: 0, runId: "pending-1", doc: OTHER_DECK });
+    expect(readCrumb(DECK), "the first deck's slides are still recorded").toMatchObject({ added: 6 });
+
+    // A pending marker holds nothing, so another deck may take the key — or it
+    // could never be reclaimed.
+    localStorage.clear();
+    dropCrumb({ deckAtStart: 12, added: 0, runId: "pending-1", doc: DECK });
+    dropCrumb({ deckAtStart: 3, added: 0, runId: "pending-2", doc: OTHER_DECK });
+    expect(readCrumb(OTHER_DECK), "a pending marker does not lock the key").toMatchObject({ deckAtStart: 3 });
+  });
+
   it("refuses when the host will not name the document", () => {
     // "" is what `documentKey()` answers for a host that will not say, and it
     // cannot be told apart from a match by guessing — so both sides must be

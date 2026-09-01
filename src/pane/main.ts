@@ -573,8 +573,15 @@ async function useBlock(from: StepId): Promise<void> {
     // step onto a preview that cannot run, where the only thing to do is come
     // back. `blockedReason` is the same question the screen asks, so the pane
     // cannot advance onto a step it would immediately draw as blocked.
+    //
+    // And only if the user is still WHERE THEY ASKED FROM. The read takes
+    // seconds, the Back link stays live throughout, and this moved the step
+    // whenever the answer arrived: walk back to Data while the template is
+    // being read and the pane jumped you forward two steps to Preview, over
+    // work you had gone back to change. The block's own staleness is already
+    // re-checked above; this is the other half of the same question.
     const next = nextStep(from);
-    if (report.ok && next && blockedReason(state, next) === null) step = next;
+    if (report.ok && next && step === from && blockedReason(state, next) === null) step = next;
   });
 }
 
@@ -1262,9 +1269,13 @@ async function endPreview(): Promise<void> {
       // screen has now reached by three separate routes.
       const deckNow = await slideCount().catch(() => undefined);
       if (offer !== null) {
-        // Slides came out, none was declined, and some are still owed: the
-        // window still holds only this run's slides and the next press has
-        // less to do.
+        // Slides came out, none was declined, and some are still owed, so
+        // pressing again is worth offering. That is NOT the same as the window
+        // holding only this run's slides — this comment said it was, which is
+        // the claim `nextSweepOffer`'s docstring exists to retract: the user may
+        // have deleted merged slides by hand and made others, and every quantity
+        // here is a size. The next press asks `provenSweep` for proof, which is
+        // what makes the offer safe rather than the window being clean.
         //
         // The card stops NAMING them. After a partial removal it cannot: the
         // ones that went took the numbering of the ones that stayed with them,
@@ -1495,11 +1506,20 @@ void Office.onReady(() => {
           // user's screen; that spelling is a house convention for the run log.
           notice: `A merge from ${crumb.startedAt.slice(0, 10)} added ${plural(crumb.added, "slide")} and the pane closed before you could take them back.`,
         };
-      } else if (crumb) {
+      } else if (crumb && !state.running) {
         // A run that died DURING the insert, which is the window the crumb was
         // built for and the one it served least: it is written with `added: 0`
         // before the call, and the tab never comes back to write the real
         // number.
+        //
+        // NOT while a run is in flight in this very pane. The deck count this
+        // handler waits on is issued at boot and can answer minutes later — long
+        // enough for the user to have walked the wizard and pressed Merge — and
+        // the crumb it then found was the pending marker THAT run had just
+        // written. It told the user the merge "did not finish" while it was
+        // visibly running, and deleted the record in the one window it exists
+        // for: if the tab died a moment later there would be nothing left to
+        // recover from.
         //
         // Told, not offered. The slides may well be in the deck, but nothing
         // here knows how many: taking the deck's growth as the answer would

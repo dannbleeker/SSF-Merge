@@ -131,9 +131,12 @@ export function undoSummary(added: number, deckSize: number, deckAtStart: number
   // number in this file is the one the thumbnail rail shows.
   const from = plan.from + 1;
   const to = plan.from + plan.count;
-  return plan.count === 1
-    ? `Remove slide ${from}, which this merge added.`
-    : `Remove slides ${from} to ${to}, which this merge added.`;
+  // "which this merge added" was a PROVENANCE claim built from sizes, and
+  // `sweepPlan`'s own docstring says none of its quantities is an identity: the
+  // range is where the merge's slides should be, not proof that they are. The
+  // press itself asks the slides (`provenSweep`), so the button is safe — the
+  // label simply may not promise what only the press can establish.
+  return plan.count === 1 ? `Remove slide ${from} from this merge.` : `Remove slides ${from} to ${to} from this merge.`;
 }
 
 /**
