@@ -149,6 +149,28 @@ function columnLetters(n: number): string {
  * a shape it must leave alone rather than guess at. Anything else answers null
  * and the series keeps its cached numbers.
  */
+/**
+ * The most cells one series may name before this pass refuses to read it.
+ *
+ * Excel's own ceiling for a 2-D chart is 32,000 points in a single data series,
+ * so a range naming more than that is not a series any chart draws — it is a
+ * whole-column reference, a generator's mistake, or a hand-written formula.
+ *
+ * Without a bound the loops below build one string per cell, and the endpoint
+ * pattern bounds the SHAPE of an address without bounding its magnitude:
+ * `Sheet1!A1:A99999999` allocated until the process died. Not a hang and not an
+ * exception the pane could show — a fatal out-of-memory abort, reached from
+ * `prepareBlock`, which runs when the user picks the template block and before
+ * any data has been pasted.
+ *
+ * A legal deck reaches the same code: `Sheet1!$A$1:$A$1048576` is what Excel
+ * writes when somebody selects a whole column as a series, and it is inside no
+ * bound at all. Refusing is the answer this function already gives for a
+ * rectangle, and every caller handles it the same way — the series is counted
+ * `unreadable` and keeps its cached numbers, which is the conservative outcome.
+ */
+export const MAX_SERIES_CELLS = 32_000;
+
 export function cellsOfFormula(formula: string): string[] | null {
   const bang = formula.lastIndexOf("!");
   const range = (bang < 0 ? formula : formula.slice(bang + 1)).replace(/\$/g, "");
@@ -165,10 +187,15 @@ export function cellsOfFormula(formula: string): string[] | null {
   const [c2, r2] = [columnNumber(to[1]!), Number(to[2])];
   const out: string[] = [];
   if (c1 === c2) {
+    // Refused BEFORE the loop, never by capping it: a truncated range is a
+    // different range, and pairing a cache index with the wrong cell is the one
+    // outcome this whole pass is written to avoid.
+    if (Math.abs(r2 - r1) + 1 > MAX_SERIES_CELLS) return null;
     for (let r = Math.min(r1, r2); r <= Math.max(r1, r2); r++) out.push(`${columnLetters(c1)}${r}`);
     return out;
   }
   if (r1 === r2) {
+    if (Math.abs(c2 - c1) + 1 > MAX_SERIES_CELLS) return null;
     for (let c = Math.min(c1, c2); c <= Math.max(c1, c2); c++) out.push(`${columnLetters(c)}${r1}`);
     return out;
   }
@@ -192,9 +219,38 @@ export function sheetOfFormula(formula: string): string | null {
   return name.startsWith("'") && name.endsWith("'") ? name.slice(1, -1).replace(/''/g, "'") : name;
 }
 
+/**
+ * Every cell in a sheet, by address, built once per document.
+ *
+ * `cellAt` walked the whole worksheet for EACH address, so reading a series was
+ * quadratic in the sheet: a legal `Sheet1!$A$1:$A$1048576` over twenty rows of
+ * data took 67 seconds where the same chart with a two-cell range took 194 ms,
+ * and a 240-row merge of it extrapolates past thirteen minutes — in a task-pane
+ * WebView, with nothing on screen to say why.
+ *
+ * Keyed on the Document, so it lives exactly as long as the sheet does and
+ * cannot outlive a run. Sound only while nothing ADDS a `<c>` to a sheet after
+ * a lookup: the one write this pass makes is a `<v>` inside a cell that already
+ * exists (see `setCellNumber`), and `test/chart-numbers.test.ts` holds that by
+ * scanning the source, because a new cell would be invisible to a stale index
+ * and the merge would leave it as the author typed it with nothing said.
+ */
+const CELL_INDEX = new WeakMap<Document, Map<string, Element>>();
+
 /** The `<c>` element for one address, or undefined. */
 export function cellAt(sheet: Document, ref: string): Element | undefined {
-  return elements(sheet, SSML_NS, "c").find((c) => c.getAttribute("r") === ref);
+  let index = CELL_INDEX.get(sheet);
+  if (!index) {
+    index = new Map<string, Element>();
+    // First wins, matching the `find` this replaces: a malformed sheet naming
+    // one address twice reads the same cell it always did.
+    for (const c of elements(sheet, SSML_NS, "c")) {
+      const at = c.getAttribute("r");
+      if (at !== null && !index.has(at)) index.set(at, c);
+    }
+    CELL_INDEX.set(sheet, index);
+  }
+  return index.get(ref);
 }
 
 /**

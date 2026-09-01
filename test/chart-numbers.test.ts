@@ -13,6 +13,7 @@
  * deck that looks right until somebody clicks Edit Data, which is exactly the
  * half-merge this project already knows from the label side.
  */
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import JSZip from "jszip";
 import { Pkg } from "../src/core/pptx/pkg.js";
@@ -20,7 +21,7 @@ import { prepareBlock } from "../src/core/merge/prepare.js";
 import { buildPlan } from "../src/core/merge/plan.js";
 import { runPlan } from "../src/core/merge/run.js";
 import { toRecordSet } from "../src/core/data/recordset.js";
-import { cellsOfFormula, modernSeries, sheetOfFormula } from "../src/core/merge/numbers.js";
+import { cellAt, cellsOfFormula, MAX_SERIES_CELLS, modernSeries, sheetOfFormula } from "../src/core/merge/numbers.js";
 import { parseXml } from "../src/core/pptx/xml.js";
 import { makeDeck, type ChartSpec } from "./fixtures/deck.js";
 
@@ -83,11 +84,90 @@ describe("reading which cell a cached point came from", () => {
     expect(cellsOfFormula("'My Sheet'!$B$2:$B$3")).toEqual(["B2", "B3"]);
   });
 
+  it("refuses a range too long to be a series, rather than allocating until the process dies", () => {
+    /**
+     * `Sheet1!A1:A99999999` killed the process — not a hang and not an
+     * exception the pane could show, but a fatal out-of-memory abort with no
+     * JS stack. It is reached from `prepareBlock`, which runs when the user
+     * picks the template block, before any data has been pasted.
+     *
+     * The endpoint pattern bounds the SHAPE of an address and not its
+     * magnitude, so the one range shape this function accepts was the one with
+     * no ceiling. `A1:ZZZZZZ1` is the same defect along the column axis.
+     */
+    expect(cellsOfFormula("Sheet1!A1:A99999999")).toBeNull();
+    expect(cellsOfFormula("Sheet1!A1:ZZZZZZ1")).toBeNull();
+    // Excel's own full-column reference, which it writes whenever somebody
+    // selects a whole column as a chart series. A legal deck, and it was inside
+    // no bound at all.
+    expect(cellsOfFormula("Sheet1!$A$1:$A$1048576")).toBeNull();
+  });
+
+  it("takes a series right up to the bound and refuses one cell past it", () => {
+    // The boundary itself, so the bound cannot be quietly widened or narrowed
+    // without this saying so.
+    expect(cellsOfFormula(`Sheet1!A1:A${MAX_SERIES_CELLS}`)).toHaveLength(MAX_SERIES_CELLS);
+    expect(cellsOfFormula(`Sheet1!A1:A${MAX_SERIES_CELLS + 1}`)).toBeNull();
+  });
+
   it("refuses a rectangle rather than guessing its order", () => {
     // A series does not read one, and walking it the wrong way would pair a
     // value with the wrong point — which no count would catch.
     expect(cellsOfFormula("Sheet1!$B$2:$D$4")).toBeNull();
     expect(cellsOfFormula("nonsense")).toBeNull();
+  });
+});
+
+describe("finding a cell in a sheet", () => {
+  /** A worksheet holding `n` cells down column A. */
+  function sheetOf(n: number): Document {
+    const cells = Array.from({ length: n }, (_, i) => `<c r="A${i + 1}"><v>${i}</v></c>`).join("");
+    return parseXml(
+      `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row>${cells}</row></sheetData></worksheet>`,
+    );
+  }
+
+  it("walks the sheet ONCE however many cells are asked for", () => {
+    /**
+     * It walked the whole worksheet for each address, so reading a series was
+     * quadratic in the sheet. A legal `Sheet1!$A$1:$A$1048576` over twenty rows
+     * of data took 67 seconds against 194 ms for the same chart with a two-cell
+     * range, and a 240-row merge of it extrapolates past thirteen minutes — in
+     * a task-pane WebView, with nothing on screen to say why.
+     *
+     * The assertion is on WORK rather than on wall clock: a stopwatch in a
+     * suite measures the machine it happens to run on, and this measures the
+     * thing that made it slow.
+     */
+    const sheet = sheetOf(500);
+    let walks = 0;
+    const real = sheet.getElementsByTagNameNS.bind(sheet);
+    sheet.getElementsByTagNameNS = ((ns: string, local: string) => {
+      walks++;
+      return real(ns, local);
+    }) as typeof sheet.getElementsByTagNameNS;
+
+    for (let i = 1; i <= 500; i++) expect(cellAt(sheet, `A${i}`)?.getAttribute("r")).toBe(`A${i}`);
+    expect(walks, "one walk per lookup is what made a legal chart take minutes").toBe(1);
+    // A miss is answered from the same index, not by walking again.
+    expect(cellAt(sheet, "ZZ99")).toBeUndefined();
+    expect(walks).toBe(1);
+  });
+
+  it("is sound only while nothing adds a cell to a sheet", () => {
+    /**
+     * The index lives as long as the sheet document, so a `<c>` created after a
+     * lookup would be invisible to it and the merge would leave that cell as
+     * the author typed it, with nothing said. The one write this pass makes is
+     * a `<v>` inside a cell that already exists.
+     *
+     * A source scan rather than a behavioural test, because the defect it
+     * guards against is a call site that does not exist yet — nothing can
+     * observe an absence behaviourally.
+     */
+    const source = readFileSync("src/core/merge/numbers.ts", "utf8");
+    const created = [...source.matchAll(/createElementNS\(\s*SSML_NS\s*,\s*"([^"]+)"/g)].map((m) => m[1]);
+    expect(created, "a new cell would be invisible to the index above").not.toContain("c");
   });
 });
 
