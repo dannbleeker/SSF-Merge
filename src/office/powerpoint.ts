@@ -362,6 +362,16 @@ export async function insertDeck(base64: string, expected: number): Promise<Inse
 
 export interface UndoOutcome {
   removed: number;
+  /**
+   * Slides in the range this run DISOWNED — they carry no mark of its own.
+   *
+   * Not the same as slides it failed to remove, and the pane read them as the
+   * same thing: `added - removed` counted a disowned slide as still owed, so
+   * the card went on offering to "remove the slides this merge added" over
+   * slides the sweep had just said were not this merge's, with a live delete
+   * button on them. The notice said both halves at once.
+   */
+  disowned: number;
   detail: string;
 }
 
@@ -429,12 +439,15 @@ export async function undoInsert(deckAtStart: number, added: number, runId: stri
   const deckNow = await slideCount();
   const plan = sweepPlan({ deckAtStart, deckNow, added });
   if (!plan) {
-    return { removed: 0, detail: `nothing to take back (deck was ${deckAtStart}, is ${deckNow})` };
+    return { removed: 0, disowned: 0, detail: `nothing to take back (deck was ${deckAtStart}, is ${deckNow})` };
   }
   const targets = provenSweep(plan, await runTagsAt(plan.from, plan.count), runId);
   if (targets.length === 0) {
     return {
       removed: 0,
+      // Every slide in the range disowned, which is the whole reason nothing
+      // went: they are not this run's to remove.
+      disowned: plan.count,
       detail: `nothing to take back — none of slides ${plan.from + 1} to ${plan.from + plan.count} carries this merge's mark`,
     };
   }
@@ -480,6 +493,7 @@ export async function undoInsert(deckAtStart: number, added: number, runId: stri
   const range = `slides ${plan.from + 1} to ${plan.from + plan.count}`;
   return {
     removed,
+    disowned: held,
     detail:
       removed === wanted
         ? `removed ${removed} slide(s) from ${range}${kept}${note}`

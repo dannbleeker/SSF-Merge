@@ -25,7 +25,7 @@ import type { ImageOutcome } from "../core/merge/images.js";
 import type { NumberOutcome } from "../core/merge/numbers.js";
 import type { RecordSet } from "../core/data/recordset.js";
 import type { EmptyPolicy } from "../core/merge/resolve.js";
-import { insertDeck, readTemplate, slideCount, undoInsert } from "./powerpoint.js";
+import { insertDeck, readTemplate, slideCount, undoInsert, type UndoOutcome } from "./powerpoint.js";
 import { readable } from "../host/errors.js";
 import { tornInsert } from "../host/verdicts.js";
 import { trace } from "../core/trace.js";
@@ -494,7 +494,7 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
  * project's by-id clean-up once reported 45 successful deletes having removed
  * nothing.
  */
-export async function undoMerge(outcome: MergeOutcome): Promise<{ removed: number; detail: string }> {
+export async function undoMerge(outcome: MergeOutcome): Promise<UndoOutcome> {
   // The run id travels with the numbers, because position alone cannot tell
   // this run's slides from a slide the user has since made at the same index.
   // See `provenSweep`.

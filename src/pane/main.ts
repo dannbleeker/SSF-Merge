@@ -1023,15 +1023,34 @@ async function undoRun(): Promise<void> {
     "undo",
     { entering: { notice: undefined }, whenItRaises: (e) => `The slides could not be removed: ${readable(e)}` },
     async () => {
-      const { removed, detail } = await undoMerge(outcome);
+      const { removed, disowned, detail } = await undoMerge(outcome);
       if (removed <= 0) {
         // A refusal is an OUTCOME and the detail already says why — usually that
         // the deck changed underneath the run, which is a thing the user can
         // check and act on rather than a failure of the pane.
-        state = { ...state, notice: `Nothing was removed — ${detail}` };
+        //
+        // The deck is RE-COUNTED, and that is what withdraws the offer. The
+        // card's arithmetic went on believing the size it had at merge time, so
+        // a refusal printed "nothing to take back (deck was 12, is 19)" beside
+        // a live "Remove slides 13 to 18" that would refuse for ever — two deck
+        // sizes on one screen, and a destructive button that could not work.
+        // `undoIsPossible` asks `sweepPlan` on every draw, so a truthful count
+        // takes the card down by itself, and puts it back if the deck comes
+        // back.
+        const deckNow = await slideCount().catch(() => undefined);
+        state = {
+          ...state,
+          notice: `Nothing was removed — ${detail}`,
+          ...(deckNow !== undefined ? { deckSize: deckNow } : {}),
+        };
         return;
       }
-      const remaining = outcome.added - removed;
+      // What the sweep DISOWNED is not still owed. A slide it left because the
+      // slide carries no mark of this run is not one the user is waiting for
+      // this pane to remove, and counting it here kept the card up saying
+      // "remove the slides this merge added" over slides the same sentence had
+      // just called not this merge's.
+      const remaining = Math.max(0, outcome.added - removed - (disowned ?? 0));
       last = remaining > 0 ? { ...outcome, added: remaining } : undefined;
       // The slides are the crumb's whole reason. Gone, and it is noise that would
       // offer a stale recovery on the next open.
@@ -1069,10 +1088,36 @@ async function endPreview(): Promise<void> {
   await duringRun("preview", { whenItRaises: (e) => `The preview could not be removed: ${readable(e)}` }, async () => {
     const { removed, detail } = await undoMerge(outcome);
     if (removed < outcome.added) {
-      // Said out loud rather than assumed. A sweep that removed fewer slides
-      // than it asked for leaves some of the preview in the deck, and the user
-      // is the only one who can finish the job.
-      state = { ...state, notice: `Some of the preview is still there — ${detail}` };
+      // ASK THE DECK before claiming anything. The commonest way to reach here
+      // is that the user did what the card told them the button does — deleted
+      // the preview slides themselves — so the deck never grew, the sweep
+      // refused, and this said "Some of the preview is still there" about
+      // slides that are gone. Its own second clause said the opposite:
+      // "nothing to take back (deck was 12, is 12)".
+      //
+      // And it returned with `previewing` still set, which was terminal. While
+      // a preview is up the forward link is withheld, the rail is not
+      // clickable, and the merge step refuses — so the user could not reach the
+      // merge again for the rest of the session, with nothing on screen saying
+      // why. A pane must always leave a way on.
+      const deckNow = await slideCount().catch(() => undefined);
+      const gone = deckNow !== undefined && deckNow <= outcome.deckAtStart;
+      if (!gone) {
+        state = {
+          ...state,
+          notice: `Some of the preview is still there — ${detail}`,
+          ...(deckNow !== undefined ? { deckSize: deckNow } : {}),
+        };
+        return;
+      }
+      shown = undefined;
+      state = {
+        ...state,
+        previewing: false,
+        previewSlides: undefined,
+        deckSize: deckNow,
+        notice: "Those slides are already gone — the preview is out of the deck.",
+      };
       return;
     }
     shown = undefined;

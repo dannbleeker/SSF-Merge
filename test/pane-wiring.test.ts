@@ -675,12 +675,47 @@ describe("the preview", () => {
     primary().click();
     await settle();
 
-    office.undoMerge.mockResolvedValueOnce({ removed: 1, detail: "removed 1 slide(s) from index 12" });
+    office.undoMerge.mockResolvedValueOnce({ removed: 1, detail: "removed 1 slide(s) from slides 13 to 13" });
+    // The DECK says so too: three went in, one came out, so two are still
+    // there. The pane asks before it claims, because the commonest way to
+    // reach a partial removal is that the user deleted the slides themselves —
+    // and then nothing is left behind and the deck is back where it started.
+    office.slideCount.mockResolvedValueOnce(14);
     primary().click();
     await settle();
 
     expect(pane().querySelector(".step-of")?.textContent).toBe("Step 4 of 5 · Preview");
     expect(pane().textContent).toContain("Some of the preview is still there");
+  });
+
+  it("carries on when the slides the sweep could not take are already gone", async () => {
+    /**
+     * The commonest way to reach a partial removal: the user did what the card
+     * says the button does and deleted the preview slides themselves. The deck
+     * never grew, the sweep refused, and this said "Some of the preview is
+     * still there — nothing to take back (deck was 12, is 12)" — one clause
+     * contradicting the next.
+     *
+     * And it returned with `previewing` still set, which was TERMINAL. While a
+     * preview is up the forward link is withheld, the rail is not clickable and
+     * the merge step refuses, so the user could not reach the merge again for
+     * the rest of the session, with nothing on screen saying why.
+     */
+    await reachPreview();
+    office.runMerge.mockResolvedValueOnce(PREVIEW);
+    primary().click();
+    await settle();
+
+    office.undoMerge.mockResolvedValueOnce({ removed: 0, detail: "nothing to take back (deck was 12, is 12)" });
+    office.slideCount.mockResolvedValueOnce(12);
+    primary().click();
+    await settle();
+
+    expect(pane().textContent).toContain("already gone");
+    expect(pane().textContent, "a sentence contradicting itself").not.toContain("still there");
+    // And the wizard is usable again, which is the half that was terminal.
+    expect(pane().querySelector(".step-of")?.textContent).toBe("Step 5 of 5 · Merge");
+    expect(pane().querySelectorAll(".card.undo")).toHaveLength(0);
   });
 
   it("says so when the sweep left some of it behind", async () => {
@@ -692,6 +727,8 @@ describe("the preview", () => {
     await settle();
 
     office.undoMerge.mockResolvedValueOnce({ removed: 1, detail: "asked for 3 slide(s) and the deck shrank by 1" });
+    // The deck agrees: two of the three are still in it.
+    office.slideCount.mockResolvedValueOnce(14);
     primary().click();
     await settle();
 
@@ -1185,11 +1222,39 @@ describe("taking a real merge back", () => {
     // A partial sweep leaves slides in the deck and the user is the only one
     // who can finish the job, so the button has to stay.
     await afterMerge();
-    office.undoMerge.mockResolvedValueOnce({ removed: 2, detail: "asked for 6 and the deck shrank by 2" });
+    office.undoMerge.mockResolvedValueOnce({
+      removed: 2,
+      disowned: 0,
+      detail: "asked for 6 and the deck shrank by 2",
+    });
     undoButton()?.click();
     await settle();
     expect(undoButton(), "still offered").not.toBeNull();
     expect(document.body.textContent).toContain("Some of the merge is still there");
+  });
+
+  it("does not go on offering slides the sweep has DISOWNED", async () => {
+    /**
+     * `provenSweep` leaves a slide in the range that carries no mark of this
+     * run — the user deleted two merged slides and appended two of their own.
+     * `added - removed` counted those as still owed, so the card stayed up
+     * saying "Remove slides 13 to 14, which this merge added" over slides the
+     * very same sentence had just called not this merge's, with a live delete
+     * button on them.
+     */
+    await afterMerge();
+    office.undoMerge.mockResolvedValueOnce({
+      removed: 4,
+      disowned: 2,
+      detail:
+        "removed 4 slide(s) from slides 13 to 18; 2 slide(s) in the range are not this merge's and were left alone",
+    });
+    undoButton()?.click();
+    await settle();
+    expect(undoButton(), "an offer over slides the sweep disowned").toBeNull();
+    expect(document.body.textContent, "and it does not claim they are still owed").not.toContain(
+      "Some of the merge is still there",
+    );
   });
 
   it("says so when the sweep refused, and leaves the deck alone", async () => {
@@ -1197,11 +1262,21 @@ describe("taking a real merge back", () => {
     // because the last N slides are then somebody else's. That refusal must
     // reach the user as a sentence rather than as a silent no-op.
     await afterMerge();
-    office.undoMerge.mockResolvedValueOnce({ removed: 0, detail: "nothing to take back (deck was 12, is 20)" });
+    office.undoMerge.mockResolvedValueOnce({
+      removed: 0,
+      disowned: 0,
+      detail: "nothing to take back (deck was 12, is 20)",
+    });
+    // The deck says the same thing the detail does, and the pane asks it. It
+    // used to keep the size it had at merge time, so the refusal printed
+    // "deck was 12, is 20" beside a live "Remove slides 13 to 18" drawn from
+    // an arithmetic that still believed 18 — two deck sizes on one screen, and
+    // a destructive button that would refuse for ever.
+    office.slideCount.mockResolvedValueOnce(20);
     undoButton()?.click();
     await settle();
     expect(document.body.textContent).toContain("Nothing was removed");
-    expect(undoButton(), "still offered, because nothing went").not.toBeNull();
+    expect(undoButton(), "an offer that can only refuse again").toBeNull();
   });
 
   it("KEEPS the way back when the user edits the merge after it landed", async () => {
