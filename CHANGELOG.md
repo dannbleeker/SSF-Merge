@@ -28,10 +28,13 @@ back to counting slides and took the whole range, including anything you had
 added in the meantime. Falling back is right for a first press, where counting
 is the only evidence there has ever been; a later press now requires the slides
 to prove they are the merge's, and takes nothing if they cannot. Where they
-cannot — an older PowerPoint has no slide tags to prove it with — the press that
-finds that out withdraws the button and says the slides can be deleted from the
-thumbnail rail, rather than leaving it standing there for the rest of the
-session. The merge button stays disarmed while those slides are in the deck.
+cannot — an older PowerPoint has no slide tags to prove it with, and one that
+does can go quiet — the button is withdrawn and the notice says the slides can
+be deleted from the thumbnail rail, rather than standing there for the rest of
+the session. A PowerPoint that cannot prove anything at all is answered on the
+first such press; one that merely did not answer gets a second try, because a
+single failed read and a delete PowerPoint swallowed look exactly the same and
+both come good next time.
 
 ### Fixed — the preview card named the wrong slides when the deck had moved
 
@@ -47,8 +50,9 @@ If the first press met a slide it would not claim as the preview's — one you h
 put there yourself, in the range the preview was on — the second press could
 delete it, under a notice saying there was nothing to take back. The same shape
 was reachable from the merge undo. A press that leaves behind a slide it could
-not show to be the merge's now ends the offer and says so, and the merge undo
-and the preview take that decision from one place instead of two.
+not show to be the merge's now says so, ends the preview's offer, and bounds the
+merge undo's — and both screens take that decision from one place instead of
+two.
 
 ### Fixed — a preview a co-author's edit stranded could not be dismissed
 

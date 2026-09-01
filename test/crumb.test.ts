@@ -58,6 +58,33 @@ describe("the numbers an undo cannot be done without", () => {
     expect(readCrumb(DECK)?.startedAt, "a new run keeps none of the old one's").not.toBe(WHEN);
   });
 
+  it("keeps the mark that says a press already proved these slides cannot go", () => {
+    // The crumb outlives the withdrawal on purpose — it is what stops the next
+    // merge overwriting a run whose slides are still in the deck — so it has to
+    // carry what the press learned, or the pane offers the same dead button on
+    // every open under a sentence that is not true.
+    dropCrumb({ deckAtStart: 12, added: 6, runId: "r1", doc: DECK, pressed: true, unremovable: true });
+    expect(readCrumb(DECK)).toMatchObject({ added: 6, pressed: true, unremovable: true });
+    // An older build's crumb carries neither, and reads as neither.
+    real.setItem(KEY, JSON.stringify({ kind: "ssf-merge-run", deckAtStart: 12, added: 6, runId: "r1", doc: DECK }));
+    expect(readCrumb(DECK)?.unremovable).toBeUndefined();
+  });
+
+  it("refuses a stored date that is not one this build wrote", () => {
+    // `Date.parse` was the first test and it is far looser than the writer:
+    // "2026", "0" and "Mar 2026 junk" all parse, and the recovery notice prints
+    // the first ten characters of whatever is carried — so a corrupt record
+    // outlived every re-write and reached the user as a date.
+    for (const junk of ["2026", "0", "1", "Mar 2026 junk", "2026-13-45T00:00:00.000Z"]) {
+      real.setItem(
+        KEY,
+        JSON.stringify({ kind: "ssf-merge-run", deckAtStart: 12, added: 6, runId: "r1", startedAt: junk, doc: DECK }),
+      );
+      dropCrumb({ deckAtStart: 12, added: 4, runId: "r1", doc: DECK });
+      expect(readCrumb(DECK)?.startedAt, `carried ${junk}`).not.toBe(junk);
+    }
+  });
+
   it("does not carry a date across two runs that share an id", () => {
     // Two of the pane's writes use a shared id rather than a run's own —
     // "pending", before an insert has answered, and "recovered", for a run

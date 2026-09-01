@@ -897,9 +897,12 @@ a bad minute — the FIRST press falls back to the clamps above, which is what t
 add-in did before slide marks existed and is why they are drawn as tightly as
 they are. A LATER press does not: by then a press has happened, so the deck has
 changed shape and the range can hold a slide you made in between. It takes
-nothing it cannot show is the merge's, and where nothing can be shown at all the
-card is withdrawn and the notice says the slides can be deleted from the
-thumbnail rail.
+nothing it cannot show is the merge's. Where nothing can be shown — an older
+PowerPoint has no slide marks at all, and a newer one can stop answering for
+them — the card is withdrawn and the notice says the slides can be deleted from
+the thumbnail rail: at once for a PowerPoint that has no marks, and after a
+second fruitless press for one that has them and did not answer, since a single
+failed read is not the same as a PowerPoint stuck.
 
 **If your deck grew after the merge, the offer goes away.** Add slides yourself,
 or have a co-author add some, and the last slides in the deck are no longer the
@@ -912,11 +915,11 @@ The same applies if you take some of the merged slides out yourself: the card
 then offers the ones that are left, not the number the merge originally added.
 
 A sweep that removed only some of them keeps the offer up, because the rest are
-still there and only you can finish. If pressing again proves nothing — an older
-PowerPoint has no slide marks to prove it with — the card goes rather than
-standing over slides it cannot remove, and the slides stay in the deck for you
-to delete by hand. The merge button stays disarmed either way: those slides are
-still there, and a re-armed button is how a deck gets the merge twice.
+still there and only you can finish. If pressing again proves nothing, the card
+goes rather than standing over slides it cannot remove, and the slides stay in
+the deck for you to delete by hand. The merge button is still the one that
+landed — "Added 6 slides", not "Add 6 slides" — until you change the block or
+the data, which is a different merge and arms it again.
 
 **If the pane closes before you take them back, the offer comes with you.**
 Reopen the add-in and it says which merge left slides in your deck and offers to

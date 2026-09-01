@@ -1563,6 +1563,128 @@ describe("taking a real merge back", () => {
     expect(document.body.textContent, "a claim about slides the sweep never doubted").not.toContain("The rest");
   });
 
+  it("does not offer a run again once a press has proved it cannot be taken back", async () => {
+    /**
+     * The crumb is kept after a withdrawal — it is the record that stops the
+     * next merge overwriting slides that are still in the deck — and it used to
+     * be kept VERBATIM. So every future open of that deck said "the pane closed
+     * before you could take them back", about a press that had happened and
+     * been refused, over a card that died the moment it was pressed. Once per
+     * open, indefinitely, under a sentence that was not true.
+     */
+    localStorage.setItem(
+      "ssf-merge.run.v1",
+      JSON.stringify({
+        kind: "ssf-merge-run",
+        deckAtStart: 12,
+        added: 6,
+        runId: "r1",
+        startedAt: "2026-08-27T10:00:00.000Z",
+        doc: "https://example-my.sharepoint.com/personal/x/Documents/deck.pptx",
+        pressed: true,
+        unremovable: true,
+      }),
+    );
+    office.slideCount.mockReset().mockResolvedValue(18);
+    await openPane();
+    await settle();
+
+    expect(undoButton(), "a card that would die on its first press").toBeNull();
+    expect(document.body.textContent, "a sentence that is not true").not.toContain("the pane closed");
+    expect(document.body.textContent).toContain("could not take back");
+    expect(document.body.textContent).toContain("thumbnail rail");
+  });
+
+  it("marks a press that moved nothing as a press, so the next one still asks for proof", async () => {
+    /**
+     * `pressed` was set only where slides came out. A press that removed
+     * nothing left the next one looking like a FIRST press — no proof asked —
+     * and `provenSweep`'s pre-tags fall-through then takes the whole positional
+     * window, which is where a slide the user made in between sits.
+     *
+     * Reachable without any host misbehaviour worth the name: PowerPoint
+     * accepts the deletes and performs none, which `undoInsert` already guards
+     * for, and answers `removed: 0`.
+     */
+    await afterMerge();
+    office.undoMerge.mockResolvedValueOnce({
+      removed: 0,
+      disowned: 2,
+      detail: "asked for 4 slide(s) from slides 13 to 18 and the deck shrank by 0",
+    });
+    office.slideCount.mockResolvedValueOnce(18);
+    undoButton()?.click();
+    await settle();
+    expect(undoButton(), "one failed press is not a host that cannot answer").not.toBeNull();
+
+    office.undoMerge.mockResolvedValueOnce({ removed: 6, disowned: 0, detail: "removed 6 slide(s)" });
+    office.slideCount.mockResolvedValueOnce(12);
+    undoButton()?.click();
+    await settle();
+    expect(office.undoMerge.mock.calls[1]?.[0], "the second press is not a first one").toMatchObject({
+      pressed: true,
+    });
+  });
+
+  it("stops offering after two presses that prove nothing, on a host that could have proved", async () => {
+    /**
+     * The other half of the same trade. A host that HAS slide tags and does not
+     * answer with them looks exactly like one that failed a single read — so
+     * the first fruitless press keeps the offer, and an unbounded number of
+     * them would leave a delete button standing over slides no press can take.
+     * Two is the smallest number that tells a hiccup from a state.
+     */
+    await afterMerge();
+    const fruitless = {
+      removed: 0,
+      disowned: 6,
+      detail: "nothing to take back — none of slides 13 to 18 could be shown to be this merge's",
+    };
+    office.undoMerge.mockResolvedValueOnce(fruitless);
+    office.slideCount.mockResolvedValueOnce(18);
+    undoButton()?.click();
+    await settle();
+    expect(undoButton(), "the first one may have been a bad minute").not.toBeNull();
+
+    office.undoMerge.mockResolvedValueOnce(fruitless);
+    office.slideCount.mockResolvedValueOnce(18);
+    undoButton()?.click();
+    await settle();
+    expect(undoButton(), "twice is a state, not a minute").toBeNull();
+    expect(document.body.textContent).toContain("thumbnail rail");
+  });
+
+  it("does not carry a withdrawal into the next merge, on either path out of a run", async () => {
+    /**
+     * `undoWithdrawn` is about the merge that earned it. The success path
+     * cleared it; the path where the merge RAISES and the slides land anyway
+     * did not — so a withdrawal, an edit, and a second merge that raised left
+     * nine slides in the deck with `last` correctly set and no card drawn. The
+     * only way back was gone for the session.
+     */
+    await afterMerge();
+    office.undoMerge.mockResolvedValueOnce({
+      removed: 0,
+      disowned: 6,
+      unprovable: true,
+      detail: "nothing to take back — none of slides 13 to 18 could be shown to be this merge's",
+    });
+    office.slideCount.mockResolvedValueOnce(18);
+    undoButton()?.click();
+    await settle();
+    expect(undoButton(), "withdrawn").toBeNull();
+
+    // An edit is a different merge, so the button arms again.
+    await rearm();
+    office.slideCount.mockResolvedValueOnce(18).mockResolvedValueOnce(21); // before, after
+    office.runMerge.mockRejectedValueOnce(new Error("gave up waiting for: inserting the merged deck"));
+    primary().click();
+    await settle();
+
+    expect(document.body.textContent, "the slides landed").toContain("landed anyway");
+    expect(undoButton(), "a way back to the slides this merge left").not.toBeNull();
+  });
+
   it("takes the card down only where the host says the press can NEVER work", async () => {
     /**
      * `removed: 0, disowned: n` is not a terminal answer. A 1.3 host that

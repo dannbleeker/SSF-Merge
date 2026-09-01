@@ -84,11 +84,29 @@ export interface MergeOutcome {
   /**
    * Whether this outcome is one the pane has already swept once.
    *
-   * Set when a press leaves slides still owed and the pane carries the outcome
-   * forward. It is the one thing `undoMerge` needs in order to refuse the
-   * pre-tags fall-through on a repeat press — see `provenSweep`.
+   * Set by ANY press that returned, whatever it achieved. It is the one thing
+   * `undoMerge` needs in order to refuse the pre-tags fall-through on a repeat
+   * press — see `provenSweep`.
+   *
+   * "Whatever it achieved" is load-bearing and was learned the hard way. It was
+   * set only where a press removed something, so a press that removed NOTHING
+   * left the next one looking like a first: no proof required, the whole
+   * positional window taken, and a slide the user made in between deleted. A
+   * press having happened is what the flag means, and a press that moved
+   * nothing is still a press — the deck has had time to change either way.
    */
   pressed?: boolean;
+  /**
+   * How many presses in a row have proved nothing.
+   *
+   * A press that removes nothing and disowns everything may still be worth
+   * repeating — a host that failed one tag read, or accepted a delete and
+   * performed none, both answer that way and both can succeed next time. A host
+   * STUCK in that mode never will, and the offer then stands over slides no
+   * press can take. Counting the fruitless ones bounds the difference: two, and
+   * the pane stops offering. Reset by any press that removes something.
+   */
+  fruitless?: number;
 
   runId: string;
   /** Placeholders found in the block, for the pane to report on. */

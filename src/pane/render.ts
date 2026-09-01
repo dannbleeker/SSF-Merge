@@ -46,6 +46,7 @@ import {
   statusOf,
   visibleRows,
   unmatchedFields,
+  undoCardShows,
   DISCLOSURES,
 } from "./steps.js";
 import type { DisclosureKind, OrangeHolder, PaneState, StepId } from "./steps.js";
@@ -214,19 +215,15 @@ export function render(root: HTMLElement, state: PaneState, current: StepId): vo
   //
   // Phrased as the SLIDES rather than as "undo", because this deletes part of
   // a presentation and the sentence should say which part.
+  // `undoCardShows` carries the three conditions the orange budget also has to
+  // ask — the slides, the withdrawal, and where the card lives. The deck size
+  // is asked here, because only the drawing has it.
   if (
     state.added &&
-    // A press has already proved this host cannot answer for the slides, so
-    // the button would refuse every time it was drawn. `added` is untouched:
-    // the slides are still in the deck and the merge button must stay disarmed.
-    state.undoWithdrawn !== true &&
+    undoCardShows(state, current) &&
     state.deckSize !== undefined &&
     state.deckAtStart !== undefined &&
-    undoIsPossible(state.added, state.deckSize, state.deckAtStart) &&
-    // Where a merge is pressed from — or wherever the user is, when the run
-    // that landed lost its pane and this is all that is left of it. See
-    // `recovered` in `steps.ts`.
-    (current === "merge" || state.recovered === true)
+    undoIsPossible(state.added, state.deckSize, state.deckAtStart)
   ) {
     const card = el(doc, "div", { class: "card undo" });
     card.append(el(doc, "p", { text: undoSummary(state.added, state.deckSize, state.deckAtStart) }));

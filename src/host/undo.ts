@@ -110,9 +110,19 @@ export function sweepPlan(o: { deckAtStart: number; deckNow: number; added: numb
  * — it is that a run which has met a slide it cannot claim has lost positional
  * identity for the rest of the range, and no count restores it.
  *
- * **A press that moved NOTHING ends it too.** The same press repeated gives the
- * same answer; offering it again is a button that cannot work, on a screen
- * that may be withholding the way forward.
+ * **A press that moved NOTHING is not this function's to decide.** It answers
+ * null, which is right for the PREVIEW: that screen withholds the way forward
+ * while it is up, so an offer that cannot finish is a wizard nobody can leave,
+ * and one wasted press is the better trade. The merge undo has no such
+ * constraint and takes the other one — it keeps the offer for a bounded number
+ * of fruitless presses (`FRUITLESS_LIMIT` in `src/pane/main.ts`), because a
+ * host that failed one tag read and a delete the host swallowed both answer
+ * this way and both come good on the next press. That branch never reaches
+ * here: `undoRun` returns before asking.
+ *
+ * The two screens differing is deliberate and stated because they have differed
+ * by ACCIDENT before, and that is how a fix for a stuck preview became a
+ * deletion of a stranger's slides.
  *
  * So the offer survives exactly one shape: slides came out, none was declined,
  * and some are still owed. That does NOT mean the remaining window holds only

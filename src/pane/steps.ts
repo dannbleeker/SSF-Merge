@@ -1276,6 +1276,22 @@ export function nextStep(from: StepId): StepId | null {
  */
 export type OrangeHolder = "tick" | "preview" | "undone" | "unmatched";
 
+/**
+ * Whether the undo card is on screen.
+ *
+ * ONE predicate, because two things depend on it and they had come apart: the
+ * card itself, and the orange budget that must not put a tick beside it. A
+ * withdrawn card left the merge screen with neither — no orange at all — since
+ * the budget still answered from `added` alone.
+ *
+ * `undoIsPossible` is deliberately NOT asked here. It needs the deck's size and
+ * belongs to the drawing, which asks it a line later; this answers the question
+ * both callers share and no more.
+ */
+export function undoCardShows(state: PaneState, step: StepId): boolean {
+  return (state.added ?? 0) > 0 && state.undoWithdrawn !== true && (step === "merge" || state.recovered === true);
+}
+
 export function orangeHolder(state: PaneState, step: StepId): OrangeHolder {
   if (state.previewing) return "preview";
   // A landed merge outranks the tick for the same reason a preview does: the
@@ -1284,7 +1300,11 @@ export function orangeHolder(state: PaneState, step: StepId): OrangeHolder {
   // card exists to undo.
   // Wherever the card is — see `recovered`. Gated on the merge step while the
   // card was not would put a tick beside an orange card on the other four.
-  if ((state.added ?? 0) > 0 && (step === "merge" || state.recovered === true)) return "undone";
+  // The same three conditions the card itself is drawn on, `undoWithdrawn`
+  // included. It answered from `state.added` alone, so a withdrawn card left
+  // the merge screen with neither a tick nor a card — no orange at all — which
+  // is the budget being enforced in two places rather than one.
+  if (undoCardShows(state, step)) return "undone";
   if (step === "fields" && unmatchedFields(state).length > 0) return "unmatched";
   return "tick";
 }

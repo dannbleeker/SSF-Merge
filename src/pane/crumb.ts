@@ -82,6 +82,35 @@ export interface Crumb {
    * follows it carries the mark.
    */
   pressed?: boolean;
+  /**
+   * A press has established that this add-in cannot remove these slides.
+   *
+   * Written when the sweep gave up — a host with no `Slide.tags` to prove
+   * ownership with, or one that answered nothing on two presses running. The
+   * crumb is KEPT rather than cleared, because it is what stops the next merge
+   * overwriting the record of slides that are still in the deck; the mark is
+   * what stops it lying about them. Without it every future open of this deck
+   * said "the pane closed before you could take them back" — about a press that
+   * happened and was refused — over a card that died the moment it was pressed.
+   */
+  unremovable?: boolean;
+}
+
+/** This build's own spelling of a moment, which is the only one it carries forward. */
+function now(): string {
+  return new Date().toISOString();
+}
+
+/**
+ * Whether a stored date is one this build wrote.
+ *
+ * `Date.parse` was the first test and it is far looser than the writer: it
+ * takes "2026", "0" and "Mar 2026 junk", each of which the recovery notice then
+ * prints through `.slice(0, 10)` as a date. The shape is checked first, and the
+ * parse second so that "2026-13-45T…" is refused as well.
+ */
+function isStamp(s: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(s) && Number.isFinite(Date.parse(s));
 }
 
 /** The store, or null where there is not one. Never throws. */
@@ -120,10 +149,7 @@ export function dropCrumb(c: Omit<Crumb, "kind" | "startedAt">): void {
     // separates them. A stored date that is not a date is replaced rather than
     // carried, or a corrupt one would outlive every re-write.
     const sameRun = prior !== undefined && prior.runId === c.runId && prior.deckAtStart === c.deckAtStart;
-    const startedAt =
-      sameRun && prior !== undefined && Number.isFinite(Date.parse(prior.startedAt))
-        ? prior.startedAt
-        : new Date().toISOString();
+    const startedAt = sameRun && prior !== undefined && isStamp(prior.startedAt) ? prior.startedAt : now();
     const crumb: Crumb = { kind: "ssf-merge-run", startedAt, ...c };
     s.setItem(KEY, JSON.stringify(crumb));
   } catch {
@@ -233,6 +259,7 @@ export function readCrumb(here: string): Crumb | undefined {
       startedAt: typeof c.startedAt === "string" ? c.startedAt : "unknown",
       doc: c.doc,
       ...(c.pressed === true ? { pressed: true } : {}),
+      ...(c.unremovable === true ? { unremovable: true } : {}),
     };
   } catch {
     return undefined;

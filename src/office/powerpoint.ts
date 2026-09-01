@@ -386,18 +386,22 @@ export interface UndoOutcome {
   disowned: number;
   detail: string;
   /**
-   * The press could not have gone differently, and repeating it cannot either.
+   * Proof was required, and this host said it cannot give any.
    *
-   * True only where PROOF was required and this host has no `Slide.tags` at
-   * all — PowerPointApi 1.3 — so the tag read answered nothing and always
-   * will. That is the one shape a caller may treat as terminal.
+   * Set where `hostSupports("1.3")` — the set that carries `Slide.tags` — is
+   * false, so the tag read answered nothing and will answer nothing on every
+   * later press. Note what that call actually reports: it is false for a host
+   * below 1.3 AND for one this add-in could not ASK, because `Office.context`
+   * was missing or `isSetSupported` threw. Both mean the same thing here — no
+   * proof is available — which is why they share a flag; neither is a claim
+   * about the slides.
    *
-   * Everything else that answers `removed: 0, disowned: n` may well succeed on
-   * the next press: a 1.3 host whose tag read failed once, and a delete the
-   * host accepted and did not perform, both look identical from here. The pane
-   * read the pair as terminal for one commit and withdrew the card and the
-   * crumb on both — leaving slides in the deck that the very next press would
-   * have removed, with nothing left able to ask for them.
+   * It is a floor on terminality, not the whole of it. A host that HAS the API
+   * and does not answer with it looks identical to one that failed a single tag
+   * read, and to a delete the host accepted and performed none of — so it is
+   * not reported here, and the pane bounds those by counting presses instead.
+   * Withdrawing the offer on the first such answer was a defect of its own: it
+   * threw away slides the very next press would have removed.
    */
   unprovable?: boolean;
 }
