@@ -213,7 +213,7 @@ export function cellsOfFormula(formula: string): string[] | null {
 export function sheetOfFormula(formula: string): string | null {
   const bang = formula.lastIndexOf("!");
   if (bang < 0) return null;
-  const name = formula.slice(0, bang);
+  const name = formula.slice(0, bang).trim();
   if (name === "") return null;
   // Excel doubles an apostrophe inside a quoted name.
   return name.startsWith("'") && name.endsWith("'") ? name.slice(1, -1).replace(/''/g, "'") : name;

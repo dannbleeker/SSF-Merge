@@ -552,6 +552,20 @@ describe("which sheet the formula names", () => {
     expect(sheetOfFormula("$B$2")).toBeNull();
   });
 
+  it("ignores whitespace around the sheet's name", () => {
+    /**
+     * The `.trim()` this asserts had no test, which a mutation run proved by
+     * removing it and watching the whole suite stay green. Without it a formula
+     * carrying a space — which a hand-edited one or a generator's easily does —
+     * looks up a sheet called " Sheet1", finds nothing, and the whole series is
+     * counted unreadable and left with its template numbers.
+     */
+    expect(sheetOfFormula(" Sheet1 !$B$2")).toBe("Sheet1");
+    expect(sheetOfFormula("\t'My Sheet' !$B$2")).toBe("My Sheet");
+    // And whitespace INSIDE a quoted name is a real part of it.
+    expect(sheetOfFormula("' Padded '!$B$2")).toBe(" Padded ");
+  });
+
   it("counts a series whose sheet the workbook does not have, rather than skipping it in silence", async () => {
     /**
      * Giving up is right — there is no safe guess between two sheets — but it
