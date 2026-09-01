@@ -504,22 +504,32 @@ export async function selectedBlock(): Promise<SelectedBlock> {
     return { ok: false, why: "This PowerPoint cannot say which slides are selected — type the two numbers instead." };
   }
   try {
+    // The deck's ids first, paged and positional — the selection's ids mean
+    // nothing without them, and a single collection load of both is exactly
+    // what office-js#4272 answers short. See `deckSlideIds`.
+    //
+    // OUTSIDE the budget below, the way `readTemplate` already does it. Every
+    // page of that walk carries its own `BUDGET.read`, and it was nested inside
+    // one more of the same size — so the outer budget bounded its own
+    // sub-budgets and fired whenever the TOTAL crossed 15 seconds, however
+    // promptly the host answered each call. On a 600-slide deck at the round
+    // trip times this file's own comment cites, "use the slides I've selected"
+    // refused every time with "gave up waiting", after 28 calls that had each
+    // answered well inside their budget. A merge of 200 rows over a three-slide
+    // block leaves exactly that deck. A wall-clock bound on the whole operation
+    // would have to be a larger constant than the per-call one; a budget that
+    // also bounds its own parts can only fire falsely.
+    const deckIds = await deckSlideIds();
     return await withTimeout(
-      (async () => {
-        // The deck's ids first, paged and positional — the selection's ids mean
-        // nothing without them, and a single collection load of both is exactly
-        // what office-js#4272 answers short. See `deckSlideIds`.
-        const deckIds = await deckSlideIds();
-        return PowerPoint.run(async (context) => {
-          const selected = context.presentation.getSelectedSlides();
-          selected.load("items/id");
-          await context.sync();
-          return blockFromSelection(
-            selected.items.map((s) => s.id),
-            deckIds,
-          );
-        });
-      })(),
+      PowerPoint.run(async (context) => {
+        const selected = context.presentation.getSelectedSlides();
+        selected.load("items/id");
+        await context.sync();
+        return blockFromSelection(
+          selected.items.map((s) => s.id),
+          deckIds,
+        );
+      }),
       BUDGET.read,
       "reading the selected slides",
     );

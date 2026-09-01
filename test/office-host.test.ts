@@ -81,7 +81,11 @@ describe("what an insert and an undo say when the host misbehaves", () => {
     vi.resetModules();
     const fake = installFakeHost(options);
     const module = await import("../src/office/powerpoint.js");
-    return { fake, module };
+    // From the SAME fresh registry. `resetModules` gives the host module its
+    // own copy of every import, so a trace read through this file's top-level
+    // import would be reading a different module's empty log.
+    const trace = await import("../src/core/trace.js");
+    return { fake, module, trace };
   }
 
   afterEach(() => {
@@ -104,6 +108,43 @@ describe("what an insert and an undo say when the host misbehaves", () => {
     expect(outcome.detail.length).toBeLessThanOrEqual(ERROR_CHARS + 64);
     expect(outcome.detail, "the reason itself is gone").toContain("InvalidArgument");
     expect(outcome.detail, "and what was dropped is counted rather than elided").toMatch(/more characters/);
+  });
+
+  it("does not spend the selection's budget walking the deck", async () => {
+    /**
+     * `deckSlideIds` pages the deck, and every page carries its own
+     * `BUDGET.read`. It was nested inside one more of the same size, so the
+     * outer budget bounded its own sub-budgets and fired whenever the TOTAL
+     * crossed it — however promptly the host answered each call.
+     *
+     * A 600-slide deck at half a second per round trip is 28 calls and about
+     * fifteen seconds of walking, so "use the slides I've selected" refused
+     * every time with "gave up waiting". A 200-row merge over a three-slide
+     * block leaves exactly that deck.
+     *
+     * The sync cost here is a tenth of the real one, so the test is quick; what
+     * makes it bite is the ARITHMETIC — many bounded calls summing past one
+     * bound — not the absolute numbers.
+     */
+    const slides = Array.from({ length: 600 }, (_, i) => `s${i}`);
+    const { module, trace } = await host({ slides, syncMs: 8, selected: ["s3", "s4", "s5"] });
+    trace.beginRun();
+    const started = Date.now();
+    const picked = await module.selectedBlock();
+    const whole = Date.now() - started;
+    expect(picked.ok, `refused: ${"why" in picked ? picked.why : ""}`).toBe(true);
+    expect(picked).toMatchObject({ from: 4, to: 6 });
+
+    // What the budget was actually asked to cover. A stopwatch could not tell
+    // these apart — the WALK is the same work either way — so the assertion is
+    // on how much of it the budgeted call was charged for. Nested, it is
+    // charged for all of it; correct, it is charged for one batch.
+    const charged = trace
+      .traceLog()
+      .entries.filter((e) => e.message === "answered" && e.data?.call === "reading the selected slides")
+      .map((e) => Number(e.data?.ms ?? 0));
+    expect(charged, "the call was never traced").toHaveLength(1);
+    expect(charged[0], `charged ${charged[0]}ms of a ${whole}ms walk`).toBeLessThan(whole / 3);
   });
 
   it("names the slides the way the rail numbers them, never a 0-based index", async () => {
