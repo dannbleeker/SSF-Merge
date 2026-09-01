@@ -5,7 +5,7 @@
  * in one place and can be tested without any XML.
  */
 import { applyFormat } from "../data/format.js";
-import { imageMode } from "./images.js";
+import { asksForImage } from "./images.js";
 import type { Resolve } from "./text.js";
 
 export type EmptyPolicy = "blank" | "keep" | "skip";
@@ -43,7 +43,11 @@ export function makeResolver(row: Record<string, string>, opts: ResolveOptions =
     // is already gone and there is nothing left to resolve; not placed, the
     // rule is the same one a field with no column follows — stay visible, so
     // the author sees their own gap rather than 240 finished-looking blanks.
-    if (imageMode(format)) return null;
+    // `asksForImage`, not `imageMode`: a spec naming a picture mode this engine
+    // does not have must not fall through to the text answer either. See that
+    // function — printing the file name is the outcome this whole branch is
+    // here to prevent, and a single transposed letter reached it.
+    if (asksForImage(format)) return null;
     if (!Object.prototype.hasOwnProperty.call(row, name)) return null;
     const raw = row[name] ?? "";
     if (raw.trim() === "") return onEmpty === "keep" ? null : "";

@@ -439,5 +439,8 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
  * nothing.
  */
 export async function undoMerge(outcome: MergeOutcome): Promise<{ removed: number; detail: string }> {
-  return undoInsert(outcome.deckAtStart, outcome.added);
+  // The run id travels with the numbers, because position alone cannot tell
+  // this run's slides from a slide the user has since made at the same index.
+  // See `provenSweep`.
+  return undoInsert(outcome.deckAtStart, outcome.added, outcome.runId);
 }

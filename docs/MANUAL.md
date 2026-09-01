@@ -201,6 +201,19 @@ The card names the slides it would take — *Remove slides 9 to 11, which this
 merge added* — and the button under it reads **Remove these slides**. It is
 still there if you close the pane and reopen it.
 
+**It only removes slides this merge made.** The card works out which slides to
+offer from how big the deck was before and after, and those numbers cannot tell
+one slide from another — so if you have edited the deck since, the positions it
+names may no longer hold only merged slides. Before deleting anything, the
+add-in asks each of those slides whether this merge made it: every merged slide
+carries a mark written into the file. A slide that does not carry it is left
+alone, and the message says how many were left and why.
+
+So a merge of six that you have half tidied up already takes back the four that
+are still there, not six slides counted off the end. On a PowerPoint too old to
+answer the question the offer falls back to counting positions, which is what
+it always did.
+
 ### If a placeholder has no column
 
 The commonest thing a first merge gets wrong is a spelling. `{{Roel}}` against

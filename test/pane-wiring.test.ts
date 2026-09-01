@@ -1156,7 +1156,7 @@ describe("taking a real merge back", () => {
     expect(undoButton(), "the new merge's own way back").not.toBeNull();
 
     for (let i = 0; i < STEP_COUNT; i++) {
-      pane().querySelector("[data-back]")?.click();
+      pane().querySelector<HTMLElement>("[data-back]")?.click();
       await settle();
     }
     expect(document.body.textContent, "walked all the way back").toContain("Step 1 of 5");

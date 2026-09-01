@@ -38,12 +38,31 @@ describe("the version floor", () => {
     expect(API_FLOOR).toBe("1.2");
   });
 
-  it("does not require anything for a call the add-in never makes", () => {
-    // The class of error, not the instance. `slide.tags` is the one that got
-    // through; the check is that the floor is justified by a call that exists
-    // in `src/office`, which is the only place this add-in touches the host.
+  it("requires nothing for a call that is optional", () => {
+    /**
+     * The class of error, not the instance. `slide.tags` is the one that got
+     * through — it justified a floor of 1.3 while nothing called it — and the
+     * rule it broke is that the floor must be read off the calls the add-in
+     * MUST make.
+     *
+     * `undoInsert` reads slide tags now, to ask a slide whether this run made
+     * it before deleting it. That does not move the floor, because the answer
+     * is not needed: without it the sweep falls back to position, which is what
+     * it did before the call existed. What makes that true rather than hoped
+     * for is the version gate in the same function, and this asserts it —
+     * dropping the gate would make a 1.2 host raise on an undo, which is the
+     * failure the floor exists to prevent, arriving from the other direction.
+     */
     const office = readFileSync("src/office/powerpoint.ts", "utf8") + readFileSync("src/office/merge.ts", "utf8");
-    expect(office, "nothing here reads slide tags through the API").not.toMatch(/\.tags\b/);
+    for (const [call, gate] of [[/\.tags\b/, /hostSupports\("1\.3"\)/]] as const) {
+      const uses = office.match(new RegExp(call, "g"))?.length ?? 0;
+      if (uses === 0) continue;
+      expect(office, `a call above the floor must be gated: ${String(call)}`).toMatch(gate);
+    }
+    // And the gate has to sit with the call rather than anywhere in the file.
+    const tagReader = /async function runTagsAt[\s\S]*?\n}/.exec(office)?.[0] ?? "";
+    expect(tagReader, "the gate is in the function that makes the call").toMatch(/hostSupports\("1\.3"\)/);
+    expect(tagReader, "and the call it guards is there too").toMatch(/\.tags\b/);
   });
 
   it("passes a host that has it", () => {

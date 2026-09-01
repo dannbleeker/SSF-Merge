@@ -34,6 +34,30 @@ const MODES: Record<string, FillMode> = {
   "image-stretch": "stretch",
 };
 
+/**
+ * Whether a format spec is asking for a PICTURE at all, mode known or not.
+ *
+ * Wider than `imageMode` on purpose, and the width is the point. A spec this
+ * engine does not recognise falls through to `applyFormat`, whose documented
+ * answer is to print the cell unchanged — right for a number, wrong for a
+ * picture, because the cell is a FILE NAME. One transposed letter in
+ * `{{Photo|image-fit}}` put `ada.png` as text in the frame that was supposed to
+ * hold the portrait, on every merged slide, with nothing reporting it.
+ *
+ * `image-cover` is the likeliest misspelling of the three real modes, because
+ * "covers" is the manual's own word for what `image` does.
+ *
+ * The test is on this engine's OWN namespace rather than on what the author
+ * might have meant: a format named `image`-something is an image format we do
+ * not have. `picture` and `photo` are deliberately not included — those are
+ * guesses about English, and guessing is what the rule exists to avoid. An
+ * unrecognised image format leaves its placeholder on the slide, which is what
+ * a field with no column already does, so the author sees their own typo.
+ */
+export function asksForImage(format: string | undefined): boolean {
+  return format !== undefined && format.trim().toLowerCase().startsWith("image");
+}
+
 /** Whether a format spec asks for a picture rather than formatted text. */
 export function imageMode(format: string | undefined): FillMode | undefined {
   if (format === undefined) return undefined;

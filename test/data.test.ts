@@ -288,6 +288,36 @@ describe("a cell the engine must not quietly rewrite", () => {
     expect(applyFormat("1234.5", "number:200")).toBe("1234.5");
   });
 
+  it("names a wide table of repeated headers without freezing the pane", () => {
+    /**
+     * The de-duplication scanned an ARRAY of the names taken so far, and
+     * restarted its suffix at 2 for every column — so a header row repeating
+     * one name cost O(columns³). This runs inside the `input` handler on the
+     * paste box, synchronously, on the UI thread, on every keystroke: 2000
+     * repeated columns froze the tab for 2.8 seconds per key, and 4000 for
+     * about 22.
+     *
+     * A pasted range is whatever the user has, and Excel allows 16384 columns.
+     * The same shape as the placeholder pattern's quadratic backtracking that
+     * `SECURITY.md` records — the impact is a frozen tab either way, and the
+     * pane's own call timeouts cannot save it because the work is synchronous.
+     *
+     * The budget is three orders of magnitude above what the fix costs (1 ms)
+     * and an order below what the defect cost, so it is a gate rather than a
+     * stopwatch.
+     */
+    const width = 4000;
+    const header = Array.from({ length: width }, () => "Amount");
+    const started = Date.now();
+    const rs = toRecordSet([header, header.map(() => "1")]);
+    expect(Date.now() - started, "naming a wide table is not cubic").toBeLessThan(3000);
+    // And it still names them the way it always did.
+    expect(rs.columns.length).toBe(width);
+    expect(rs.columns.slice(0, 4).map((c) => c.name)).toEqual(["Amount", "Amount 2", "Amount 3", "Amount 4"]);
+    expect(rs.columns[width - 1]?.name).toBe(`Amount ${width}`);
+    expect(new Set(rs.columns.map((c) => c.name)).size, "every name distinct").toBe(width);
+  });
+
   it("never lets an invented column name take one a real header owns", () => {
     // Counting forward alone let a made-up name STEAL a later column's: a
     // template's {{Name 2}} bound to the second "Name" and printed the wrong

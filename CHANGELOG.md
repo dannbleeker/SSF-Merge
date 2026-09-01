@@ -7,6 +7,49 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — an undo could remove slides you made yourself
+
+"Remove these slides" worked out what to delete from how big the deck was
+before the merge and how big it is now. Those are sizes, and a size cannot tell
+one slide from another. Delete two merged slides you did not want, add two of
+your own, and the deck is back to the same total — every check passed, and the
+offer was the last six slides, two of which were yours. The offer survives the
+session in a stored record, so it could be made the next day on a deck edited
+in between.
+
+Every merged slide carries a mark written into the file before it is inserted.
+The add-in reads it now and deletes only the slides that carry this merge's,
+leaving the rest alone and saying how many it left. A merge of six you have
+half tidied up takes back the four that are still there.
+
+On a PowerPoint too old to answer that question — the mark needs a version
+above the one this add-in requires — the offer falls back to counting
+positions, exactly as before. Nothing gets less capable; a host that can answer
+gets safer.
+
+### Fixed — a wide paste of repeated column headers froze the pane
+
+Naming the columns scanned everything named so far and restarted its counter
+for every column, so a header row repeating one name cost time proportional to
+the cube of the width. Four thousand repeated columns took 25 seconds — of a
+frozen tab, on every keystroke in the paste box, because the work happens as
+you type. It is now about a millisecond, and the names it produces are
+unchanged.
+
+### Fixed — a misspelt picture format printed the file name on the slide
+
+`{{Photo|image}}`, `{{Photo|image-fit}}` and `{{Photo|image-stretch}}` are the
+three picture formats. Anything else was treated as an unknown text format,
+whose documented answer is to print the cell unchanged — and the cell is a file
+name, so `{{Photo|image-cover}}` put `ada.png` as text in the frame that should
+have held the portrait, on every merged slide. `image-cover` is the likeliest
+of these, because "covers" is how this manual describes what `image` does.
+
+A format named `image`-something is now recognised as a picture format this
+add-in does not have, and its placeholder stays on the slide where you can see
+it — which is what a placeholder with no column already does. An unknown format
+that is not about pictures still prints the cell, as documented.
+
 ### Fixed — a number Excel grouped with a space was read as text
 
 The locales that group thousands with a space — Swedish, Norwegian, Finnish,
