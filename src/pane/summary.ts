@@ -204,11 +204,20 @@ export interface MergeReport {
 export function describeMerge(r: MergeReport): string {
   const parts = [`${plural(r.added, "slide")} added after slide ${r.deckAtStart}`];
   if (r.paragraphsMerged !== undefined) {
-    parts.push(
-      r.paragraphsMerged === 0
-        ? "no {{fields}} were filled — check the spelling in your template"
-        : `${plural(r.paragraphsMerged, "placeholder")} filled`,
-    );
+    // The alarm is about a run that matched NOTHING, and `paragraphsMerged`
+    // counts the text passes only — chart VALUES are counted separately and
+    // reported in their own clause below. A template whose only placeholder is
+    // a chart value cell therefore read "no {{fields}} were filled — check the
+    // spelling in your template · 2 chart values filled", which says the merge
+    // both failed and worked, and sends the author hunting a spelling mistake
+    // they did not make.
+    //
+    // Suppressed rather than folded into the count: adding the values to
+    // `paragraphsMerged` would report them twice in one sentence, and that
+    // number means one thing now.
+    const filledElsewhere = (r.chartValues?.filled ?? 0) > 0;
+    if (r.paragraphsMerged > 0) parts.push(`${plural(r.paragraphsMerged, "placeholder")} filled`);
+    else if (!filledElsewhere) parts.push("no {{fields}} were filled — check the spelling in your template");
   }
   if (r.workbooksUnreadable) {
     parts.push(

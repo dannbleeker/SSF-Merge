@@ -96,6 +96,43 @@ describe("the arithmetic above the merge button", () => {
   });
 });
 
+describe("a merge whose only placeholders are chart values", () => {
+  /**
+   * `paragraphsMerged` counts the text passes; chart VALUES are counted
+   * separately and reported in their own clause. So a template whose only
+   * placeholder is a chart value cell — which the engine accepts and fills —
+   * read both halves at once:
+   *
+   *   no {{fields}} were filled — check the spelling in your template ·
+   *   2 chart values filled
+   *
+   * The merge both failed and worked, and the author is sent hunting a spelling
+   * mistake they did not make.
+   */
+  it("does not raise the alarm about a run that filled something", () => {
+    const line = describeMerge({
+      added: 2,
+      deckAtStart: 1,
+      paragraphsMerged: 0,
+      chartValues: { filled: 2, refused: 0, unreadable: 0, unplotted: 0 },
+    });
+    expect(line).not.toContain("no {{fields}} were filled");
+    expect(line).toContain("2 chart values filled");
+  });
+
+  it("still raises it when nothing anywhere was filled", () => {
+    // The alarm is the whole point of the zero, and it is the likeliest way a
+    // first run against a real template goes wrong.
+    const line = describeMerge({
+      added: 2,
+      deckAtStart: 1,
+      paragraphsMerged: 0,
+      chartValues: { filled: 0, refused: 0, unreadable: 0, unplotted: 0 },
+    });
+    expect(line).toContain("no {{fields}} were filled");
+  });
+});
+
 describe("what the deck will look like afterwards", () => {
   it("says where the slides land as well as how many", () => {
     // "720 slides added" answers the wrong half of the question somebody
