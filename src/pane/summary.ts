@@ -78,7 +78,16 @@ export function mergeArithmetic(block: Block, rows: number, dropped = 0): string
  * The report keeps the past tense and lives in `describeMerge`, so the two no
  * longer read identically at opposite ends of the press.
  */
-export function mergeSummary(added: number, deckSize: number): string {
+export function mergeSummary(added: number, deckSize: number | undefined): string {
+  // A deck size the host would not give is UNKNOWN, not zero. `?? 0` at the
+  // call site read as an empty deck, so on a host whose slide count refuses,
+  // the sentence a user reads to decide whether to press said "6 slides will be
+  // added after slide 0, leaving 6 slides in the deck" — for a deck with twelve
+  // slides in it. Both halves false, in the one sentence that has to be true.
+  //
+  // The count of slides being added does not depend on the deck's size, so it
+  // is still stated; the two clauses that do are dropped rather than invented.
+  if (deckSize === undefined) return `${plural(added, "slide")} will be added at the end of the deck.`;
   return `${plural(added, "slide")} will be added after slide ${deckSize}, leaving ${plural(deckSize + added, "slide")} in the deck.`;
 }
 

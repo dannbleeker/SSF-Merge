@@ -291,6 +291,35 @@ describe("the preview step", () => {
     expect(pane.querySelector("button.primary")?.textContent).toBe("Preview the first row");
   });
 
+  it("counts the conditions the press will run with, not the block's size", () => {
+    /**
+     * `plannedSlides` exists because the product of slides-per-record and rows
+     * ignores the conditions, and its own docstring says so; the merge card and
+     * the merge button were fixed to use it and this sentence still multiplied.
+     * With two of three slides set to "only when Renewal" and a first row whose
+     * Renewal cell is empty, it promised three slides and the press landed one.
+     */
+    const records = {
+      columns: [
+        { name: "First", type: "text" as const },
+        { name: "Renewal", type: "text" as const },
+      ],
+      rows: [{ First: "Ada", Renewal: "" }],
+    };
+    const conditioned: PaneState = {
+      ...ready,
+      columns: ["First", "Renewal"],
+      records,
+      rows: 1,
+      conditions: { 5: "Renewal", 6: "Renewal" },
+    };
+    expect(paneFor(conditioned, "preview").textContent).toContain("Adds 1 slide ");
+
+    // And with no condition set it is the block's size again, so an ordinary
+    // preview reads exactly as it did.
+    expect(paneFor({ ...conditioned, conditions: {} }, "preview").textContent).toContain("Adds 3 slides");
+  });
+
   it("offers a way past it, because its primary does not advance", () => {
     // Every other step's primary carries the user forward; this one shows a
     // row. Without a forward link the wizard has no exit from step 3 at all,

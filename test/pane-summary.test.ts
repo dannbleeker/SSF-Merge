@@ -75,6 +75,23 @@ describe("what the deck will look like afterwards", () => {
     expect(s).toContain("720 slides will be added after slide 12");
     expect(s).toContain("732 slides in the deck");
   });
+
+  it("says nothing about the deck's size when the host would not give one", () => {
+    /**
+     * `?? 0` at the call site read a refusal as an empty deck, so on a host
+     * whose slide count throws — caught to `undefined` at boot and caught again
+     * in `useBlock` — the sentence a user reads to decide whether to press said
+     * "6 slides will be added after slide 0, leaving 6 slides in the deck" for
+     * a deck with twelve slides in it. Both halves false, in the one sentence
+     * that has to be true.
+     */
+    const s = mergeSummary(6, undefined);
+    expect(s).toBe("6 slides will be added at the end of the deck.");
+    // The count does not depend on the deck's size, so it is still stated. The
+    // two clauses that do are dropped rather than invented.
+    expect(s).not.toContain("slide 0");
+    expect(s).not.toContain("in the deck.");
+  });
 });
 
 describe("what an undo takes back", () => {

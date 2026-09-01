@@ -38,6 +38,8 @@ import {
   primary,
   readBlockDraft,
   readPastedTable,
+  firstIncludedRow,
+  plannedSlides,
   slidesPerRecord,
   statusOf,
   visibleRows,
@@ -472,6 +474,20 @@ function body(doc: Document, state: PaneState, current: StepId, orange: OrangeHo
 
   if (current === "preview" && !state.previewing) {
     const previewBlock = chosenBlock(state);
+    // Counted with the same function the PRESS runs on, not by multiplying.
+    // `slidesPerRecord` ignores the conditions, so with two of three slides set
+    // to "only when Renewal" this sentence promised three slides and the press
+    // landed one — the same defect `plannedSlides` was written for one element
+    // over, where the merge card and the merge button were fixed and this was
+    // not. `firstIncludedRow` is the row `preview()` actually merges, so the
+    // forecast is that row's conditions applied to that row's data; with no
+    // condition set it comes back to the product and the sentence is unchanged.
+    const row = firstIncludedRow(state);
+    const slides = row
+      ? plannedSlides({ ...state, records: row, excluded: undefined })
+      : previewBlock
+        ? slidesPerRecord(previewBlock)
+        : 0;
     out.push(
       el(doc, "p", {
         class: "muted",
@@ -480,7 +496,7 @@ function body(doc: Document, state: PaneState, current: StepId, orange: OrangeHo
             // the only way out of this step. It is not the route any more —
             // the button afterwards takes them back out and carries on — and
             // an instruction that names a dead end is how the step read as one.
-            `Adds ${plural(slidesPerRecord(previewBlock), "slide")} to the end of the deck — the first row, merged the way every row will be. Look at them, then carry on to the merge.`
+            `Adds ${plural(slides, "slide")} to the end of the deck — the first row, merged the way every row will be. Look at them, then carry on to the merge.`
           : "Choose the slides that repeat first.",
       }),
     );
@@ -505,7 +521,7 @@ function body(doc: Document, state: PaneState, current: StepId, orange: OrangeHo
     // screen say "240 rows x 3 slides" twice, which reads as a rendering bug.
     // The card carries the CONSEQUENCE, which is the other half of the answer.
     const card = el(doc, "div", { class: "card summary" });
-    card.append(el(doc, "p", { class: "facts", text: mergeSummary(slidesToAdd(state), state.deckSize ?? 0) }));
+    card.append(el(doc, "p", { class: "facts", text: mergeSummary(slidesToAdd(state), state.deckSize) }));
     out.push(card);
   }
 
