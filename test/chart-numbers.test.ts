@@ -808,6 +808,40 @@ describe("which sheet the formula names", () => {
     expect(out.graphics.numbers.unreadable, "and the run says so").toBeGreaterThan(0);
   });
 
+  it("counts a series whose range it cannot read, rather than passing over it", async () => {
+    /**
+     * A chart may point at a DEFINED NAME — `ChartData` — instead of a cell
+     * range, which Excel writes the moment somebody names the range in Edit
+     * Data. `cellsOfFormula` cannot turn that into addresses, and the branch
+     * that says so had no test: the series is left with the template's numbers,
+     * which is the right answer, and it has to be COUNTED or the pane reports a
+     * merge that filled everything.
+     *
+     * The neighbouring case — a formula naming a sheet the workbook does not
+     * declare — is the test above, and it fails one step earlier.
+     */
+    const pkg = await Pkg.open(
+      await makeDeck([
+        {
+          paragraphs: [["{{Name}}"]],
+          chart: { categories: ["{{Name}}", "Other"], workbook: ["{{Name}}"], values: ["{{Revenue}}", "42"] },
+        },
+      ]),
+    );
+    pkg.setText(
+      "ppt/charts/chart1.xml",
+      (await pkg.text("ppt/charts/chart1.xml")).replace("Sheet1!$B$2:$B$3", "ChartData"),
+    );
+
+    const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "s");
+    if (!prepared.ok) throw new Error(prepared.why);
+    const records = toRecordSet(ROWS);
+    const out = await runPlan(pkg, buildPlan(prepared.block, records, { runId: "s" }), records);
+
+    expect(out.graphics.numbers.filled, "there is no address to write to").toBe(0);
+    expect(out.graphics.numbers.unreadable, "and the run says so").toBeGreaterThan(0);
+  });
+
   it.each([
     ["exactly as declared", "Sheet2!$B$2:$B$3"],
     // Excel sheet names are case-INSENSITIVE — a workbook cannot hold both
