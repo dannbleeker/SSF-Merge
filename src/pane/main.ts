@@ -892,6 +892,9 @@ async function merge(): Promise<void> {
         ...(outcome.added > 0 && outcome.accountable
           ? {
               added: outcome.added,
+              // What the run did, kept apart from what is left to sweep. See
+              // `addedByRun`.
+              addedByRun: outcome.added,
               deckAtStart: outcome.deckAtStart,
               changedSinceMerge: undefined,
               // A NEW merge, so a withdrawal earned by the last one does not
@@ -976,7 +979,7 @@ async function merge(): Promise<void> {
         // withdrawal is about the merge that earned it, and carrying it into
         // the next one hid the only way back to slides that had just landed.
         ...(added > 0 && before !== undefined
-          ? { added, deckAtStart: before, changedSinceMerge: undefined, undoWithdrawn: undefined }
+          ? { added, addedByRun: added, deckAtStart: before, changedSinceMerge: undefined, undoWithdrawn: undefined }
           : {}),
         notice:
           added > 0

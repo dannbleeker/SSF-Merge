@@ -146,6 +146,25 @@ describe("a merge whose only placeholders are chart values", () => {
     expect(line).toContain("2 pictures placed");
   });
 
+  it("does not raise it about a run whose only placeholder lives in a chart's workbook", () => {
+    // The third route, and the one nothing could see. A chart label written as
+    // `{{Name}}` lives in the workbook's shared strings; it fills there and is
+    // counted by neither `paragraphsMerged` nor `chartValues`, so a merge that
+    // filled every placeholder in the deck told the author their spelling was
+    // wrong. More reachable since `prepareBlock` learned to accept such a
+    // block: before that it refused the merge outright.
+    const line = describeMerge({ added: 2, deckAtStart: 1, paragraphsMerged: 0, workbookText: 2 });
+    expect(line).not.toContain("no {{fields}} were filled");
+  });
+
+  it("still raises it when a workbook opened and filled nothing", () => {
+    // Opening is not filling. `workbooks` counts workbooks the merge could
+    // read, including ones with no placeholder in them, which is why the count
+    // of FILLS is a separate number.
+    const line = describeMerge({ added: 2, deckAtStart: 1, paragraphsMerged: 0, workbookText: 0 });
+    expect(line).toContain("no {{fields}} were filled");
+  });
+
   it("still raises it when the pictures were asked for and none landed", () => {
     // `placed: 0` is not "filled elsewhere" — a run that placed nothing filled
     // nothing, and the alarm is the whole finding.

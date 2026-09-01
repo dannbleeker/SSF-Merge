@@ -196,6 +196,15 @@ describe("applyFormat", () => {
      * that does not match its format.
      */
     expect(applyFormat("1000000000000000000000", "number:0")).toBe("1000000000000000000000");
+    // And BELOW 1e21, where the spelling is fine and the digits are not. A
+    // double cannot carry nineteen significant digits, so this printed
+    // "1 234 567 890 123 456 800" — not the number in the cell, with the
+    // confidence of a formatted one. An order number or a 19-digit identifier
+    // lands here, and changing one silently is worse than leaving it alone.
+    expect(applyFormat("1234567890123456789", "number:0")).toBe("1234567890123456789");
+    expect(applyFormat("9007199254740993", "number:0")).toBe("9007199254740993");
+    // The last exactly-representable integer still formats.
+    expect(applyFormat("9007199254740991", "number:0")).toBe("9 007 199 254 740 991");
     expect(applyFormat("1234567890123456789012345", "number:2")).toBe("1234567890123456789012345");
     // And the ordinary case is untouched.
     expect(applyFormat("1234567.891", "number:2")).toBe("1 234 567,89");

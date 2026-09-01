@@ -191,6 +191,8 @@ export interface MergeReport {
    * placeholder. Silence would leave that to be discovered by a recipient.
    */
   workbooksUnreadable?: number;
+  /** Placeholders filled inside the workbooks behind charts — invisible to every other counter. */
+  workbookText?: number;
   skippedRecords?: number;
   skippedSlides?: number;
   /** Conditions naming a column the data did not have. */
@@ -260,7 +262,8 @@ export function describeMerge(r: MergeReport): string {
     // contradicting sentence, sending the author after a spelling mistake two
     // clauses above the proof there is none. Every way a run can fill
     // something belongs in this test, not the first two anybody met.
-    const filledElsewhere = (r.chartValues?.filled ?? 0) > 0 || (r.pictures?.placed ?? 0) > 0;
+    const filledElsewhere =
+      (r.chartValues?.filled ?? 0) > 0 || (r.pictures?.placed ?? 0) > 0 || (r.workbookText ?? 0) > 0;
     if (r.paragraphsMerged > 0) parts.push(`${plural(r.paragraphsMerged, "placeholder")} filled`);
     else if (!filledElsewhere) parts.push("no {{fields}} were filled — check the spelling in your template");
   }

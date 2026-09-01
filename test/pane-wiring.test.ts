@@ -1687,6 +1687,24 @@ describe("taking a real merge back", () => {
     expect(document.body.textContent).toContain("thumbnail rail");
   });
 
+  it("does not report the sweep's remainder as what the merge added", async () => {
+    // `added` is what a further press may still take back, so a partial undo
+    // lowers it — and the disabled merge button read from it, so a six-slide
+    // merge with three swept back said "Added 3 slides" about a merge that
+    // added six. Two facts, one number.
+    await afterMerge();
+    expect(primary().textContent).toBe("Added 6 slides");
+
+    office.undoMerge.mockResolvedValueOnce({ removed: 3, disowned: 0, detail: "removed 3 slide(s)" });
+    office.slideCount.mockResolvedValueOnce(15);
+    undoButton()?.click();
+    await settle();
+
+    expect(primary().textContent, "a merge that added six").not.toBe("Added 3 slides");
+    expect(primary().textContent).toBe("3 of 6 slides still there");
+    expect(primary().disabled, "and it is still disarmed").toBe(true);
+  });
+
   it("marks a press that moved nothing as a press, so the next one still asks for proof", async () => {
     /**
      * `pressed` was set only where slides came out. A press that removed

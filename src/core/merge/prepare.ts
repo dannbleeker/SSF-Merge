@@ -101,9 +101,21 @@ export async function prepareBlock(pkg: Pkg, req: BlockRequest, runId: string): 
   const start = req.offsetInPackage;
   const count = req.to - req.from + 1;
   if (start < 0 || start + count > paths.length) {
+    // "the deck that came back" is only true on the whole-file route. On the
+    // subset route PowerPoint sends back the exported BLOCK, so the number here
+    // is the size of that export and matches nothing the user can count in
+    // their own deck — a sentence naming a deck of 4 to somebody looking at 30
+    // slides.
+    //
+    // `templateOffset` is `0` for the subset route and the block's start for the
+    // file route, so a positive offset PROVES the whole deck came back. Zero is
+    // either — the subset route, or the file route on a block starting at slide
+    // 1 — and the neutral phrase is true of both, which is the direction to be
+    // wrong in.
+    const what = start > 0 ? "the deck that came back" : "the slides PowerPoint sent back";
     return {
       ok: false,
-      why: `The template block is slides ${req.from} to ${req.to}, and the deck that came back has ${paths.length}.`,
+      why: `The template block is slides ${req.from} to ${req.to}, and ${what} has ${paths.length}.`,
     };
   }
 
@@ -112,7 +124,11 @@ export async function prepareBlock(pkg: Pkg, req: BlockRequest, runId: string): 
   const imageFields: string[] = [];
   for (let i = 0; i < count; i++) {
     const path = paths[start + i];
-    if (!path) return { ok: false, why: `Slide ${req.from + i} is not in the deck that came back.` };
+    if (!path)
+      return {
+        ok: false,
+        why: `Slide ${req.from + i} is not in ${start > 0 ? "the deck that came back" : "the slides PowerPoint sent back"}.`,
+      };
     // The slide, and its speaker notes.
     //
     // `runPlan` merges the notes page — a template whose notes read "Call

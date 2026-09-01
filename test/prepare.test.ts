@@ -50,6 +50,22 @@ describe("turning slide numbers into a block", () => {
     // Says both numbers, so the user can see which one is wrong.
     expect(out.why).toContain("2");
     expect(out.why).toContain("3");
+    // A positive offset proves the whole file came back, so "the deck" is what
+    // came back and the number is one the user can count.
+    expect(out.why).toContain("the deck that came back");
+  });
+
+  it("does not call an exported block 'the deck' when only the block came back", async () => {
+    // On the subset route PowerPoint sends back the exported BLOCK, so the
+    // count in this sentence is the size of that export — "the deck that came
+    // back has 3" to somebody looking at a deck of thirty. `offsetInPackage` is
+    // zero there, which is what tells the two routes apart.
+    const pkg = await deck(3);
+    const out = await prepareBlock(pkg, { from: 1, to: 9, offsetInPackage: 0 }, "r1");
+    expect(out.ok).toBe(false);
+    if (out.ok) return;
+    expect(out.why, "a deck the user cannot count").not.toContain("the deck that came back");
+    expect(out.why).toContain("the slides PowerPoint sent back");
   });
 
   it("refuses a block that ends before it starts", async () => {

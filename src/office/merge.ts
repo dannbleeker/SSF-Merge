@@ -133,6 +133,16 @@ export interface MergeOutcome {
   /** Charts whose embedded workbook the merge could not open. See `describeMerge`. */
   workbooksUnreadable?: number;
   /**
+   * Placeholders filled inside the workbooks behind charts.
+   *
+   * Its own field because no other counter can see them: a chart label written
+   * as `{{Name}}` lives in the workbook's shared strings, fills there, and
+   * appears in neither `paragraphsMerged` nor `chartValues`. The pane read that
+   * silence as "nothing matched" and told the author to check their spelling on
+   * a merge that had just filled every placeholder in the deck.
+   */
+  workbookText?: number;
+  /**
    * What became of the PICTURES.
    *
    * `runPlan` has always returned this, and every field on `ImageOutcome`
@@ -470,6 +480,7 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
     unknownConditions: plan.unknownConditions,
     paragraphsMerged: result.paragraphsMerged,
     workbooksUnreadable: result.graphics.unreadable.length,
+    workbookText: result.graphics.workbookText,
     pictures: result.images,
     chartValues: result.graphics.numbers,
     skippedRecords: plan.skippedRecords.length,

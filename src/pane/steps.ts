@@ -217,6 +217,15 @@ export interface PaneState {
    */
   added?: number;
   /**
+   * What the merge ADDED, which `added` stops being the moment a sweep runs.
+   *
+   * `added` is what a further press may still take back, so a partial undo
+   * lowers it — and the disabled merge button reads from it, so a six-slide
+   * merge with three swept back said "Added 3 slides" about a merge that added
+   * six. Two facts, one number; this is the one that does not move.
+   */
+  addedByRun?: number;
+  /**
    * The undo card is not offered, because a press has proved it cannot work.
    *
    * SEPARATE from `added`, which stays. `added` says what is in the deck — it
@@ -1230,6 +1239,12 @@ export function primary(state: PaneState, step: StepId): Primary {
       // An EDIT re-arms it, because an edit is a different merge. The undo
       // card does not go with it: the slides that landed are still there.
       if (state.added !== undefined && !state.changedSinceMerge) {
+        // What the run DID, unless a sweep has taken some of it back — then
+        // both numbers, because "Added 3 slides" about a six-slide merge is
+        // simply false and "Added 6" over three would be worse.
+        const run = state.addedByRun;
+        if (run !== undefined && run !== state.added)
+          return { label: `${state.added} of ${run} slides still there`, enabled: false };
         return { label: `Added ${state.added} slide${state.added === 1 ? "" : "s"}`, enabled: false };
       }
       // The INCLUDED rows, never the pasted ones. A user who has taken three
