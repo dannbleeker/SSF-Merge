@@ -511,6 +511,27 @@ learn to satisfy without meaning it. The honest fix is the heading.
   held short forms for four. A German column typed as a date on its SHAPE and
   then printed as the raw cell — half a deck formatted, half not. When a doc
   enumerates what the code supports, the enumeration is testable, so test it.
+- **Run the WHOLE gate as the last thing before a commit, not before the last
+  edit.** `npx prettier --check . && npm run lint && tsc --noEmit && vitest run`,
+  after the final change and not before it. A test added after the lint run
+  reached CI with a type assertion the compiler did not need, on a branch where
+  every earlier push had been green — the gate had run, just not on the code
+  that was committed.
+- **A fix for a review finding is this project's most defect-dense code.** Three
+  rounds, three times: a fix for a stuck preview introduced a worse deadlock, the
+  fix for THAT deleted slides the user had added, and the sentence written to
+  explain a withheld undo card was composed in a layer the pane discards. Treat
+  the diff that answers a review as needing its own review, and prefer stating
+  the INVARIANT — swept over its inputs — to fixing the case that was reported:
+  the preview's terminal state was reported three times by three routes before
+  anybody wrote down the one rule underneath.
+- **A property whose oracle is built from the code under test cannot see a
+  consistent error in it.** The split-run merge property computes what it expects
+  from the same `fieldsInText` and the same `makeResolver` as the merge it
+  checks, so a scanner reporting every field name as `""` — a merge filling every
+  slide from the wrong column — satisfied it, and so did a resolver that filled
+  nothing at all. Every property in that file now ends with an ANCHOR: one fixed
+  input whose answer is known from outside the code.
 - **All sample data is invented.** The repo is public.
 - **Merging to `main` is authorized.** Once CI is green on the exact pushed
   commit — verify the run's `head_sha` matches the branch head, because a
