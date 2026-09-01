@@ -132,6 +132,30 @@ const SPECS = [
   "upper:x",
 ];
 
+/**
+ * What `RAWS` MEANS, so a false positive is visible.
+ *
+ * `null` for the ones a spreadsheet would not read as a number.
+ */
+const KNOWN: Record<string, number | null> = {
+  "12": 12,
+  "1,5": 1.5,
+  "1.500": 1500,
+  "-0.4": -0.4,
+  "1e21": null,
+  "0x10": null,
+  "  7  ": 7,
+  "n/a": null,
+  "": null,
+  "1,234": 1234,
+  "12%": null,
+  "(3)": null,
+  // A THOUSAND and five, not one-and-a-bit: `1.005` is a dot group, by the same
+  // decided rule that reads `1,500` as fifteen hundred. Pinning it is how this
+  // test found out; the first version of this table guessed 1.005.
+  "1.005": 1005,
+};
+
 /** Values a cell can hold that a number reader has to decide about. */
 const RAWS = [
   "12",
@@ -160,7 +184,27 @@ const RAWS = [
  * almost entirely against text holding no fields at all.
  */
 function withFields(next: () => number, maxParts: number): string {
+  return generate(next, maxParts).text;
+}
+
+/**
+ * The same, saying how many placeholders it emitted WELL FORMED and with a name
+ * that is certainly a field.
+ *
+ * Without that count the tiling property below is a tautology: `fieldsInText`
+ * returning `[]` for every input satisfies "the hits are ordered, bounded and
+ * reconstruct the text" perfectly, and it did — the property passed against a
+ * gutted implementation. A generator that cannot say what it put in cannot hold
+ * a reader to finding it.
+ *
+ * Only the unambiguous ones are counted: a name from `NAMES` that carries a
+ * letter or digit, no braces and no pipe, closed properly. Anything else is
+ * still generated — the malformed shapes are the ones that have frozen a tab —
+ * it simply does not go into the floor.
+ */
+function generate(next: () => number, maxParts: number): { text: string; certain: number } {
   let out = "";
+  let certain = 0;
   const parts = Math.floor(next() * maxParts);
   for (let i = 0; i <= parts; i++) {
     const roll = next();
@@ -171,13 +215,16 @@ function withFields(next: () => number, maxParts: number): string {
       // `}`, a brace inside the name. Those are the ones that have frozen a tab.
       const shape = next();
       out += shape < 0.75 ? `{{${name}${format}}}` : shape < 0.9 ? `{{${name}${format}` : `{{${name}{{${format}}}`;
+      if (shape < 0.75 && /[\p{L}\p{N}]/u.test(name) && !name.includes("{") && !name.includes("|")) certain++;
     } else out += pick(next, ALPHABET);
   }
-  return out;
+  return { text: out, certain };
 }
 
 describe("the text boundaries, over input nobody wrote by hand", () => {
   it("reads placeholders that tile the text, whatever is around them", () => {
+    let total = 0;
+    let put = 0;
     /**
      * The invariant every text merge rests on: the hits are in order, do not
      * overlap, sit inside the string, and the pieces between them plus the
@@ -188,8 +235,10 @@ describe("the text boundaries, over input nobody wrote by hand", () => {
      */
     for (let seed = 1; seed <= 400; seed++) {
       const next = rng(seed);
-      const text = withFields(next, 24);
+      const { text, certain } = generate(next, 24);
       const hits = fieldsInText(text);
+      total += hits.length;
+      put += certain;
       let at = 0;
       let rebuilt = "";
       for (const hit of hits) {
@@ -205,9 +254,22 @@ describe("the text boundaries, over input nobody wrote by hand", () => {
       }
       expect(rebuilt + text.slice(at), `seed ${seed}: the hits do not tile the text`).toBe(text);
     }
+    // The FLOOR, without which everything above is a tautology: `text.slice(at,
+    // hit.index) + text.slice(hit.index, hit.index + hit.length)` is one slice,
+    // so once ordering and bounds hold the reconstruction cannot fail — and an
+    // empty hit list satisfies every assertion in the loop. `fieldsInText`
+    // returning `[]` for every input passed this property until this line.
+    //
+    // Corpus-wide rather than per seed: a well-formed placeholder can still be
+    // absorbed by an unclosed `{{` the alphabet emitted just before it, which
+    // is a correct reading and not a miss, so a per-seed floor has false
+    // positives. Most of what was put in has to come back.
+    expect(put, "the corpus put no placeholders in front of the scanner").toBeGreaterThan(300);
+    expect(total, "the scanner found almost none of them").toBeGreaterThan(put * 0.9);
   });
 
   it("answers a string for any raw value and any format spec", () => {
+    let formatted = 0;
     /**
      * `applyFormat`'s own contract: a value that does not match its format is
      * returned unchanged. Not blanked, not an error marker, and never a throw —
@@ -221,13 +283,22 @@ describe("the text boundaries, over input nobody wrote by hand", () => {
       const raw = next() < 0.5 ? pick(next, RAWS) : noise(next, 6);
       const spec = next() < 0.6 ? pick(next, SPECS) : noise(next, 4);
       const out = applyFormat(raw, spec);
-      expect(typeof out, `seed ${seed}: raw=${JSON.stringify(raw)} spec=${JSON.stringify(spec)}`).toBe("string");
+      const where = `seed ${seed}: raw=${JSON.stringify(raw)} spec=${JSON.stringify(spec)}`;
+      expect(typeof out, where).toBe("string");
       // A spec naming no format this add-in has is not a format, and the value
       // goes through untouched.
       const kind = (spec.split(":")[0] ?? "").trim().toLowerCase();
-      if (!["upper", "lower", "number", "date"].includes(kind))
-        expect(out, `seed ${seed}: spec=${JSON.stringify(spec)}`).toBe(raw);
+      if (!["upper", "lower", "number", "date"].includes(kind)) expect(out, where).toBe(raw);
+      // And the two formatters whose answer is a pure function of the input are
+      // ASSERTED, not merely reached. `typeof out === "string"` is satisfied by
+      // `applyFormat` returning the cell for every spec — and a version that
+      // formatted nothing at all passed this property.
+      if (kind === "upper") expect(out, where).toBe(raw.toLocaleUpperCase());
+      if (kind === "lower") expect(out, where).toBe(raw.toLocaleLowerCase());
+      if (out !== raw) formatted++;
     }
+    // And the corpus changed a value often enough for that to mean something.
+    expect(formatted, "no draw ever changed a value, so nothing above was tested").toBeGreaterThan(10);
   });
 
   it("builds a record set whose rows only ever answer for its own columns", () => {
@@ -256,9 +327,26 @@ describe("the text boundaries, over input nobody wrote by hand", () => {
       }
       for (const column of set.columns) {
         expect(["text", "number", "date", "image"], `seed ${seed}`).toContain(column.type);
-        expect(detectType(set.rows.map((r) => r[column.name] ?? "")), `seed ${seed}`).toBeTruthy();
+        // The column's stated type must be the type of the cells the set holds
+        // for it. Asserting only that `detectType` answers SOMETHING cannot
+        // fail — every `ColumnType` is a non-empty string — and a version
+        // returning `"image"` for everything passed this property.
+        expect(detectType(set.rows.map((r) => r[column.name] ?? "")), `seed ${seed}: ${column.name}`).toBe(column.type);
       }
     }
+    // The ANCHOR. Everything above compares the type a set states against the
+    // function that stated it, so the two agree by construction however wrong
+    // that function is — a `detectType` answering `"image"` for everything
+    // satisfies it. One table whose answer is known from outside the code turns
+    // the pair into a statement about typing rather than about agreement.
+    expect(
+      toRecordSet([
+        ["Amount", "When", "Photo", "Note"],
+        ["12", "2026-03-01", "ada.png", "n/a"],
+        ["7", "2026-04-01", "grace.jpg", "12"],
+      ]).columns.map((c) => c.type),
+      "a column's type is not read from its cells",
+    ).toEqual(["number", "date", "image", "text"]);
   });
 
   it("fills a placeholder split across runs exactly as it fills one that is not", () => {
@@ -276,7 +364,12 @@ describe("the text boundaries, over input nobody wrote by hand", () => {
      * including boundaries inside a placeholder's braces.
      */
     const A = 'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"';
-    const row = { First: "Ada", City: "Cairo", __proto__: "x", "9": "nine", "a|b": "pipe", "": "blank" };
+    // `__proto__` written in an OBJECT LITERAL sets the prototype instead of a
+    // key, and a string value makes it a silent no-op — so the hazard this row
+    // was meant to carry was not in it at all. Defined explicitly, it is a real
+    // own property, which is what a parsed row actually holds.
+    const row: Record<string, string> = { First: "Ada", City: "Cairo", "9": "nine", "a|b": "pipe", "": "blank" };
+    Object.defineProperty(row, "__proto__", { value: "x", enumerable: true, writable: true, configurable: true });
     for (let seed = 1; seed <= 300; seed++) {
       const next = rng(seed * 2_654_435_761);
       const text = withFields(next, 18);
@@ -321,6 +414,7 @@ describe("the text boundaries, over input nobody wrote by hand", () => {
   });
 
   it("never reads a number out of something a spreadsheet would not", () => {
+    let pinned = 0;
     // `numericValue` decides whether a chart cell is written, so a false
     // positive puts a made-up number in somebody's chart. Anything it answers
     // must be a finite number.
@@ -329,7 +423,17 @@ describe("the text boundaries, over input nobody wrote by hand", () => {
       const raw = next() < 0.6 ? pick(next, RAWS) : noise(next, 5);
       const n = numericValue(raw);
       if (n !== undefined) expect(Number.isFinite(n), `seed ${seed}: ${JSON.stringify(raw)} read as ${n}`).toBe(true);
+      // Finiteness alone is satisfied by a reader that answers 1 for
+      // everything, and one did. `KNOWN` pins what the corpus's own values mean,
+      // which is what makes a false POSITIVE visible — and a false positive is
+      // the failure this property is named for: a made-up number written into
+      // somebody's chart.
+      if (Object.prototype.hasOwnProperty.call(KNOWN, raw)) {
+        expect(n, `seed ${seed}: ${JSON.stringify(raw)}`).toBe(KNOWN[raw] ?? undefined);
+        pinned++;
+      }
     }
+    expect(pinned, "no draw was a value this test knows the meaning of").toBeGreaterThan(50);
   });
 });
 

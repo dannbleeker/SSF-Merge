@@ -836,7 +836,11 @@ async function merge(): Promise<void> {
       }
       state = {
         ...state,
-        deckSize: outcome.deckAtStart + outcome.added,
+        // From where the slides LANDED, not from where the run was planned. The
+        // two differ only when something added a slide under the merge, and
+        // there this was short by exactly that slide — which then feeds
+        // `readBlockDraft`'s "past the end of the deck" advice.
+        deckSize: (outcome.landedAfter ?? outcome.deckAtStart) + outcome.added,
         // The fields the RUN found, which is the authority: `inspectBlock` read
         // them before the merge and this is the same read after it.
         ...(outcome.fields.length > 0
@@ -1142,7 +1146,15 @@ async function endPreview(): Promise<void> {
         // `shown` shrinks by what actually went, so the next press asks for
         // what is left rather than for the original count — the same correction
         // the merge undo makes with `remaining`.
-        shown = { ...outcome, added: outstanding };
+        // `outcome.added - removed`, NOT `outstanding`. `sweepPlan` compares
+        // `added` against the deck's GROWTH, and a disowned slide is still in
+        // the deck — so carrying the disowned-adjusted count forward makes
+        // `grew` exceed `added` on the next press and the plan comes back null
+        // forever, on the one branch that does not clear `previewing`. That is
+        // the terminal state the comment above describes, reached by the fix
+        // for it. `outstanding` decides what to SAY and whether to stop; the
+        // number the sweep is clamped against is a deck size.
+        shown = { ...outcome, added: outcome.added - removed };
         state = {
           ...state,
           previewSlides: undefined,
@@ -1165,7 +1177,13 @@ async function endPreview(): Promise<void> {
         // measured leaves `previewing` cleared either way, which is the half
         // that matters: a preview that cannot be ended is a pane with no way
         // on.
-        notice: `Your deck is back to the ${outcome.deckAtStart} slide(s) it had before the preview, so there is nothing here to take back.`,
+        // `deckNow`, which is the number that was MEASURED. Printing
+        // `deckAtStart` made the sentence false whenever the deck had gone
+        // BELOW it — preview three onto twelve, delete five of your own, and
+        // the pane said "back to the 12 slide(s) it had" over a deck of ten,
+        // in the same object that set `deckSize` to ten correctly. The comment
+        // above this said "saying what was measured" while the line did not.
+        notice: `Your deck holds ${plural(deckNow ?? outcome.deckAtStart, "slide")}, no more than before the preview, so there is nothing here to take back.`,
       };
       return;
     }

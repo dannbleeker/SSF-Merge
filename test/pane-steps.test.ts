@@ -340,6 +340,12 @@ describe("reading the two slide-number boxes", () => {
     // all, and neither is 1.5.
     expect(readBlockDraft({ from: "0x10", to: "9" }).why).toContain("not one");
     expect(readBlockDraft({ from: "1.5", to: "9" }).why).toContain("not one");
+    // And two the first split got wrong, because `Number.isInteger` is asked of
+    // the double rather than of what was typed. A twenty-one-digit DECIMAL is
+    // `1e21` once read, which is an integer; a huge NEGATIVE is not bigger than
+    // anything, it is below 1.
+    expect(readBlockDraft({ from: "1000000000000000000000.5", to: "9" }).why, "a decimal").toContain("whole numbers");
+    expect(readBlockDraft({ from: "-1000000000000000000000", to: "9" }).why, "a negative").toContain("numbered from 1");
   });
 
   it("refuses a block that ends before it starts, naming both slides", () => {

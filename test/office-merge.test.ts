@@ -449,7 +449,11 @@ describe("a torn insert is reported in rows", () => {
      */
     return (async () => {
       host.readTemplate.mockResolvedValueOnce({ base64: await block(), offset: 0 });
-      host.insertDeck.mockResolvedValueOnce({ verdict: "yes", detail: "landed", landed: 6, before: 2, after: 8 });
+      // `before` matches the planned deck (the `slideCount` mock answers 3) on
+      // both sides, so neither outcome is unaccountable — the comparison is
+      // between two ordinary runs rather than between one that carries an extra
+      // field and one that does not.
+      host.insertDeck.mockResolvedValueOnce({ verdict: "yes", detail: "landed", landed: 6, before: 3, after: 9 });
       const whole = await runMerge({ from: 1, to: 2, records: rows });
 
       host.readTemplate.mockResolvedValueOnce({ base64: await block(), offset: 0 });

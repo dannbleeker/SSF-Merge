@@ -884,8 +884,14 @@ describe("month names the date gate already admits", () => {
       "jan feb mar apr may jun jul aug sep oct nov dec",
       "jan feb mar apr maj jun jul aug sep okt nov dec",
       "jan feb mar apr mai jun jul aug sep okt nov des",
-      // German, Dutch, Spanish, Italian, Portuguese — the accented `m\u00e4r`
-      // has its own line below, with the other accented forms.
+      // German as Excel on Windows writes it. The accented `m\u00e4r` is CLDR's
+      // spelling and has its own line below; a German column pasted out of
+      // Excel carries `Mrz`, and the table read eleven of its twelve months
+      // until that was noticed — which is the half-formatted deck again,
+      // missing by one word. The row is here because the list below had eight
+      // lines for ten languages and German was never one of them.
+      "jan feb mrz apr mai jun jul aug sep okt nov dez",
+      // Dutch, Spanish, Italian, Portuguese.
       "jan feb mrt apr mei jun jul aug sep okt nov dez",
       "ene feb mar abr may jun jul ago sep oct nov dic",
       "gen feb mar apr mag giu lug ago set ott nov dic",
@@ -903,7 +909,8 @@ describe("month names the date gate already admits", () => {
         expect(parseDate(`1 ${word} 2026`)?.getUTCMonth(), `1 ${word} 2026`).toBe(i);
       });
     }
-    expect(parseDate("1 m\u00e4r 2026")?.getUTCMonth(), "the German March").toBe(2);
+    expect(parseDate("1 m\u00e4r 2026")?.getUTCMonth(), "the German March, CLDR's spelling").toBe(2);
+    expect(parseDate("1 Mrz 2026")?.getUTCMonth(), "the German March, Excel's spelling").toBe(2);
     // And a whole column of one language formats, rather than half of it.
     expect(applyFormat("1 dez 2026", "date")).toBe("01-12-2026");
     expect(applyFormat("1 gen 2026", "date")).toBe("01-01-2026");
@@ -1341,9 +1348,27 @@ describe("dates a spreadsheet actually writes", () => {
     expect(applyFormat("2026-03-01", "date:yyyyMMdd")).toBe("20260301");
     expect(applyFormat("2026-03-01", "date:ddMMyyyy")).toBe("01032026");
     expect(applyFormat("2026-03-01", "date:yyMMdd")).toBe("260301");
-    // Letters after the last token stay: a token run does not swallow the text
-    // that follows it.
-    expect(applyFormat("2026-03-01", "date:yyyy-MM-ddTHH:mm")).toBe("2026-03-01THH:mm");
+    // A run that is part token and part word is a WORD. `ddTHH` holds letters
+    // that are not tokens, so it prints as written — which is the manual's own
+    // rule, and the price of it is that `yyyy-MM-ddTHH:mm` does not read as an
+    // ISO datetime. Taking the other trade ("starts with a token, tail printed
+    // as written") turns `den` into `1en`, and `den` is the ordinary Danish,
+    // German and Swedish long-date word.
+    expect(applyFormat("2026-03-01", "date:yyyy-MM-ddTHH:mm")).toBe("2026-03-ddTHH:mm");
+  });
+
+  it("leaves an ordinary word that begins with a token's letter alone", () => {
+    /**
+     * `den`, `dato`, `due` and `deadline` all start with a `d`, and `M` and `y`
+     * begin plenty more. A rule that tokenizes the head of a run and prints its
+     * tail as written turns `Berlin, den d. MMMM yyyy` — a perfectly ordinary
+     * long-date pattern — into `Berlin, 1en 1. March 2026`, on every merged
+     * slide.
+     */
+    expect(applyFormat("2026-03-01", "date:Berlin, den d. MMMM yyyy")).toBe("Berlin, den 1. March 2026");
+    expect(applyFormat("2026-03-01", "date:dato d MMM yyyy")).toBe("dato 1 Mar 2026");
+    expect(applyFormat("2026-03-01", "date:d MMM yyyy deadline")).toBe("1 Mar 2026 deadline");
+    expect(applyFormat("2026-03-01", "date:MMMM d yyyy due")).toBe("March 1 2026 due");
   });
 
   it("leaves a weekday spelling alone rather than reading it as two days", () => {
@@ -1354,5 +1379,13 @@ describe("dates a spreadsheet actually writes", () => {
     expect(applyFormat("2026-03-01", "date:dddd")).toBe("dddd");
     expect(applyFormat("2026-03-01", "date:dddd d MMM")).toBe("dddd 1 Mar");
     expect(applyFormat("2026-03-01", "date:yyyyyy")).toBe("yyyyyy");
+    // The ODD-length repeats too, which the "same letter twice" rule alone does
+    // not cover: `MMMMM` is `MMMM` plus a stray `M`, and printing `MarchM` is
+    // the `MMM` → `MarM` failure this file's history already names.
+    expect(applyFormat("2026-03-01", "date:MMMMM")).toBe("MMMMM");
+    expect(applyFormat("2026-03-01", "date:MMMMMM")).toBe("MMMMMM");
+    expect(applyFormat("2026-03-01", "date:ddd")).toBe("ddd");
+    expect(applyFormat("2026-03-01", "date:yyy")).toBe("yyy");
+    expect(applyFormat("2026-03-01", "date:yyyyy")).toBe("yyyyy");
   });
 });

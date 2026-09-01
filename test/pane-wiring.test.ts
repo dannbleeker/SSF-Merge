@@ -728,6 +728,44 @@ describe("the preview", () => {
     expect(pane().querySelector(".step-of")?.textContent, "the way on").toBe("Step 5 of 5 · Merge");
   });
 
+  it("can still end a preview after a press that left some of it behind", async () => {
+    /**
+     * `sweepPlan` clamps `added` against the deck's GROWTH, so the count
+     * carried forward after a partial press has to be a deck size. Subtracting
+     * the DISOWNED slide as well — which is right for deciding what to say —
+     * made `grew` exceed `added` on the next press, so the plan came back null
+     * forever, on the one branch that does not clear `previewing`.
+     *
+     * That is terminal: the forward link is withheld, the rail is pinned and
+     * the merge step refuses while a preview is up. The fix for a deadlock
+     * introduced a worse one, and the failing shape is `removed + disowned <
+     * added` with `disowned > 0`, which the test written beside it did not have.
+     */
+    await reachPreview();
+    office.runMerge.mockResolvedValueOnce(PREVIEW);
+    primary().click();
+    await settle();
+
+    // One removed, one disowned, of three: something is genuinely left.
+    office.undoMerge.mockResolvedValueOnce({ removed: 1, disowned: 1, detail: "removed 1 slide(s)" });
+    office.slideCount.mockResolvedValueOnce(14);
+    primary().click();
+    await settle();
+    expect(pane().textContent, "one is still outstanding").toContain("Some of the preview is still there");
+
+    // The second press must ask for what the DECK is holding — three added
+    // less the one that went — because `sweepPlan` clamps that number against
+    // the deck's growth and the disowned slide is still in the deck. Asked for
+    // two, the plan is null and the press does nothing, forever.
+    office.undoMerge.mockResolvedValueOnce({ removed: 2, disowned: 0, detail: "removed 2 slide(s)" });
+    primary().click();
+    await settle();
+    const second = office.undoMerge.mock.calls[1]?.[0] as { added: number; deckAtStart: number };
+    expect(second.added, "a count the sweep is clamped against is a deck size").toBe(2);
+    expect(second.deckAtStart, "and the floor it is measured from does not move").toBe(PREVIEW.deckAtStart);
+    expect(pane().querySelector(".step-of")?.textContent, "the way on").toBe("Step 5 of 5 · Merge");
+  });
+
   it("carries on when the slides the sweep could not take are already gone", async () => {
     /**
      * The commonest way to reach a partial removal: the user did what the card
@@ -755,7 +793,12 @@ describe("the preview", () => {
     // WHICH slides, made from a count — and a deck back to twelve is equally
     // consistent with the user having deleted three of their own. The sentence
     // says what was measured.
-    expect(pane().textContent).toContain("back to the 12 slide(s) it had before the preview");
+    // SIZE, and the size that was MEASURED. "Those slides are already gone" was
+    // a claim about WHICH slides made from a count of them; "back to the 12 it
+    // had" was then the wrong count, because the deck can be BELOW where it
+    // started — preview three onto twelve, delete five of your own, and the
+    // sentence named twelve over a deck of ten.
+    expect(pane().textContent).toContain("Your deck holds 12 slides");
     expect(pane().textContent, "a claim of identity taken from a size").not.toContain("already gone");
     expect(pane().textContent, "a sentence contradicting itself").not.toContain("still there");
     // And the wizard is usable again, which is the half that was terminal.

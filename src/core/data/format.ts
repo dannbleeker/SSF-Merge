@@ -451,8 +451,13 @@ const MONTH_NAMES: Readonly<Record<string, number>> = Object.freeze({
   // which is the property that lets one table serve them all, and it is
   // asserted over the whole table rather than trusted.
   //
-  // German
+  // German. `Mrz` as well as `M\u00e4r`: CLDR says `M\u00e4r` and Excel on
+  // Windows writes `Mrz`, and it is the spreadsheet's spelling that arrives in
+  // a pasted column. A table built from the standard alone reads eleven of a
+  // German year's twelve months, which is the half-formatted deck this table
+  // exists to prevent, missing by one word.
   "m\u00e4r": 3,
+  mrz: 3,
   dez: 12,
   // Dutch
   mrt: 3,
@@ -597,13 +602,19 @@ function pad(n: number): string {
  * `yyyy` before `yy`, `MMMM` before `MMM` before `MM`, `dd` before `d`, because
  * reordering them turns `yyyy` into `2626` — and:
  *
- * - a run that does not START with a token is literal, which is what keeps
- *   `Odds`, `address` and `Wedding` intact;
- * - two adjacent tokens spelling the same letter make the whole run literal,
- *   which is what keeps `dddd` a weekday name rather than two days of the
- *   month;
- * - letters after the last token are literal, so `yyyy-MM-ddTHH:mm` still
- *   prints its date and leaves `THH:mm` alone.
+ * - a run is tokenized only if the WHOLE of it is tokens, which is what keeps
+ *   `Odds`, `address`, `Wedding`, `den`, `dato` and `due` intact;
+ * - two adjacent tokens spelling the same letter make the run literal, which is
+ *   what keeps `dddd` a weekday name rather than two days of the month, and
+ *   `MMMMM` from printing `MarchM`.
+ *
+ * "Starts with a token, tail printed as written" was tried and is worse. It
+ * reads `yyyy-MM-ddTHH:mm` as a date with `THH:mm` after it — which is nice —
+ * and it also turns `Berlin, den d. MMMM yyyy` into `Berlin, 1en 1. March
+ * 2026`, because `den` starts with a `d`. `den` is the ordinary Danish, German
+ * and Swedish long-date word and the manual invites literal text in the
+ * pattern, so a rule that eats it is not a rule this can have. `H` is not a
+ * token here and never was; a run holding one is text.
  *
  * No lookbehind, deliberately. The seven-`replace` version was this file's only
  * use of one, and a lookbehind in a regex LITERAL is a parse-time SyntaxError
@@ -636,10 +647,11 @@ function tokenizeRun(run: string, d: Date): string | undefined {
     previous = hit[1];
     at += hit[0].length;
   }
-  // Nothing matched at the START of the run, so this is a word with a token's
-  // letters in it rather than a token.
-  if (at === 0) return undefined;
-  return out + run.slice(at);
+  // The whole run, or none of it. A run that is part token and part word is a
+  // word: `den`, `dato`, `due` and `deadline` all begin with a token's letter,
+  // and the manual promises that text in a pattern prints as written.
+  if (at !== run.length) return undefined;
+  return out;
 }
 
 export function formatDate(d: Date, pattern: string): string {

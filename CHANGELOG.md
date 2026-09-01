@@ -7,6 +7,31 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — the preview could get stuck with no way out
+
+Ending a preview that came back partly, over a slide the sweep would not claim,
+left the wizard on the preview step permanently: the forward link is withheld
+and the merge step refuses while a preview is up, so there was no route to the
+merge for the rest of the session. Introduced by the previous fix in this same
+release, which subtracted that slide from a count the sweep measures against the
+deck.
+
+### Fixed — a date pattern ate an ordinary word beginning with d, M or y
+
+`{{Signed|date:Berlin, den d. MMMM yyyy}}` printed `Berlin, 1en 1. March 2026` —
+`den` is the ordinary Danish, German and Swedish long-date word, and `dato`,
+`due` and `deadline` went the same way. A pattern is now read a word at a time
+and a word is either all tokens or none, which is what the manual has always
+said. `MMMMM` and `yyy` print as written again too, rather than `MarchM` and
+`26y`.
+
+### Fixed — German March was still not read
+
+Excel on Windows writes it `Mrz`, where the standard says `Mär`, and it is the
+spreadsheet's spelling that arrives in a pasted column. Eleven of a German
+year's twelve months read, which is the half-formatted deck this list exists to
+prevent, missing by one word.
+
 ### Fixed — six languages' short month names were not read
 
 The manual says month names are read in ten languages, "in full or in the short

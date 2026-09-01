@@ -68,6 +68,28 @@ export interface MergeOutcome {
   accountable: boolean;
   /** The deck's size before the insert — what an undo is clamped against. */
   deckAtStart: number;
+  /**
+   * The deck's size when the insert actually went out.
+   *
+   * The same as `deckAtStart` on every ordinary run — the whole path between
+   * the two reads is package work with no Office write in it — and different in
+   * exactly the case `accountable` is false for. It is the anchor the pane's
+   * sentence names, because `deckAtStart` names the wrong slide there.
+   *
+   * Optional because the early refusals — no template, an empty block, a
+   * package the engine would not build — never reached an insert, and there is
+   * no such moment to name. `describeMerge` falls back to `deckAtStart`.
+   */
+  landedAfter?: number;
+  /**
+   * Why this run cannot say which of the deck's new slides are its own, in
+   * words, when it cannot.
+   *
+   * Carried rather than left in `detail`: the pane shows `describeMerge` on the
+   * success path and discards `detail` entirely, so the explanation for a
+   * missing undo card had no route to a user.
+   */
+  unaccounted?: string;
   runId: string;
   /** Placeholders found in the block, for the pane to report on. */
   fields: string[];
@@ -418,6 +440,12 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
     added,
     accountable: unaccounted === undefined,
     deckAtStart,
+    // The anchor and the reason, carried so the PANE can say them. The engine's
+    // own `detail` is discarded on the success path — `main.ts` shows
+    // `describeMerge(outcome)` there — so a sentence composed here and not
+    // carried is a sentence nobody reads.
+    landedAfter: insert.before,
+    ...(unaccounted !== undefined ? { unaccounted } : {}),
     runId,
     fields: prepared.fields,
     imageFields: prepared.imageFields,

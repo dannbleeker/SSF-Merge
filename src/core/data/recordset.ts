@@ -67,8 +67,10 @@ export function looksLikeDate(value: string): boolean {
  *
  * A URL ending in one of these extensions still types as an image, and that is
  * right rather than an oversight — `https://intranet/photos/ada.png` names the
- * file `ada.png`, `imageNamesIn` matches by base name, and the picture is
- * placed from the file the user attached. This comment used to say such a
+ * file `ada.png`, and matching is by BASE NAME (`baseName`, read by the merge
+ * in `run.ts` and by the pane's tally in `steps.ts`), so the picture is placed
+ * from the file the user attached. `imageNamesIn` here returns the whole cell;
+ * it is the two matchers that take the last segment. This comment used to say such a
  * column "is text as far as this is concerned", which is simply not what the
  * pattern does, and the manual has always described the behaviour correctly.
  */

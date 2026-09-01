@@ -47,12 +47,18 @@ describe("bounding a host call", () => {
      * separate because they send a reader to different files. A raise with
      * nothing in it collapses the third back into "the host got in the way".
      */
+    // The rule this disables is the reason the arm exists: a rejection SHOULD
+    // be an Error, and the whole point here is what happens when a host's is
+    // not. Suppressed for the two lines that construct the case rather than
+    // for the file.
     beginRun();
+    // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
     await withTimeout(Promise.reject("GeneralException"), 1000, "an insert").catch(() => undefined);
     const raised = traceLog().entries.find((l) => l.message === "raised");
     expect(raised?.data?.error, "the run log is what a user hands over").toBe("GeneralException");
 
     beginRun();
+    // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
     await withTimeout(Promise.reject({ code: 5010 }), 1000, "an insert").catch(() => undefined);
     const other = traceLog().entries.find((l) => l.message === "raised");
     expect(typeof other?.data?.error, "still a string, whatever was thrown").toBe("string");

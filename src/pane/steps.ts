@@ -351,10 +351,17 @@ export function readBlockDraft(draft: BlockDraft, deckSize?: number): BlockRead 
     // them to check a thing that is already right.
     return {
       block: null,
-      why:
-        DECIMAL.test(bad) && Number.isInteger(Number(bad))
-          ? `Slide ${bad} is a bigger number than a deck can have slides.`
-          : `Slide numbers are whole numbers, and "${bad}" is not one.`,
+      // Three refusals, not two. `Number.isInteger` is asked of the DOUBLE, and
+      // `Number("1000000000000000000000.5")` is `1e21`, an integer — so a
+      // decimal was told it was too big, which is the branch this split exists
+      // to keep off it. And a huge NEGATIVE is not bigger than anything; it is
+      // a slide number below 1, which is the refusal the guard further down
+      // would give if the number were small enough to reach it.
+      why: !/^[+-]?\d+$/.test(bad)
+        ? `Slide numbers are whole numbers, and "${bad}" is not one.`
+        : bad.startsWith("-")
+          ? `Slides are numbered from 1, so slide ${bad} is not one.`
+          : `Slide ${bad} is a bigger number than a deck can have slides.`,
     };
   }
   if (a < 1) return { block: null, why: `Slides are numbered from 1, so slide ${a} is not one.` };

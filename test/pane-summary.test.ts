@@ -159,6 +159,42 @@ describe("a merge whose only placeholders are chart values", () => {
   });
 });
 
+describe("a merge the deck changed underneath", () => {
+  /**
+   * The sentence the PANE shows is `describeMerge`; a merge that succeeds
+   * discards `outcome.detail` entirely. So the explanation the engine composed
+   * for a run that can no longer identify its own slides was written, tested
+   * and shown to nobody — the undo card was withheld, correctly, with a plain
+   * success above the space where it had been and nothing to account for it.
+   */
+  it("says the deck changed, and why there is no way back", () => {
+    const line = describeMerge({
+      added: 6,
+      deckAtStart: 12,
+      landedAfter: 13,
+      unaccounted: "the deck was 12 slide(s) when this run was planned and 13 when it inserted",
+      paragraphsMerged: 6,
+    });
+    expect(line).toContain("no offer to take these slides back");
+    expect(line).toContain("when this run was planned");
+  });
+
+  it("anchors the count where the slides actually landed", () => {
+    // `deckAtStart` names the wrong slide in exactly this case — the slides
+    // went after 13, not after 12 — and the anchor is the one number in the
+    // sentence a reader can check against their own thumbnail rail.
+    const line = describeMerge({ added: 6, deckAtStart: 12, landedAfter: 13 });
+    expect(line).toContain("added after slide 13");
+    expect(line).not.toContain("added after slide 12");
+  });
+
+  it("falls back to the planned size when no insert was reached", () => {
+    // The early refusals never got as far as an insert, so there is no such
+    // moment to name.
+    expect(describeMerge({ added: 0, deckAtStart: 12 })).toContain("after slide 12");
+  });
+});
+
 describe("what the deck will look like afterwards", () => {
   it("says where the slides land as well as how many", () => {
     // "720 slides added" answers the wrong half of the question somebody

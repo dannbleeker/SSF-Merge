@@ -152,6 +152,26 @@ export function undoIsPossible(added: number, deckSize: number, deckAtStart: num
 export interface MergeReport {
   added: number;
   deckAtStart: number;
+  /**
+   * The deck's size when the insert actually went out, where it is known.
+   *
+   * The same as `deckAtStart` on every ordinary run, and different in exactly
+   * one case: something added a slide between the moment the run was planned
+   * and the moment it inserted. `deckAtStart` then names the wrong slide — "6
+   * slides added after slide 12" when they landed after 13 — so where this is
+   * given it is the anchor.
+   */
+  landedAfter?: number;
+  /**
+   * Why this run cannot say which of the deck's new slides are its own.
+   *
+   * Set only when it cannot. `accountable` already withholds the undo card on
+   * this condition; without the sentence, the card is withheld SILENTLY and the
+   * user reads a plain success above the space where it used to be. The engine
+   * composed this sentence for its own `detail`, which the pane discards on the
+   * success path — so it was written, tested, and shown to nobody.
+   */
+  unaccounted?: string;
   paragraphsMerged?: number;
   /**
    * Workbooks behind a chart that could not be opened.
@@ -202,7 +222,15 @@ export interface MergeReport {
  * short sentence and only an unusual one grows.
  */
 export function describeMerge(r: MergeReport): string {
-  const parts = [`${plural(r.added, "slide")} added after slide ${r.deckAtStart}`];
+  const parts = [`${plural(r.added, "slide")} added after slide ${r.landedAfter ?? r.deckAtStart}`];
+  // FIRST after the count, because it changes what the rest of the sentence is
+  // worth: the slides are there and there is no way to take them back.
+  if (r.unaccounted !== undefined) {
+    parts.push(
+      `the deck also changed while the merge was being built (${r.unaccounted}), ` +
+        `so there is no offer to take these slides back`,
+    );
+  }
   if (r.paragraphsMerged !== undefined) {
     // The alarm is about a run that matched NOTHING, and `paragraphsMerged`
     // counts the text passes only — chart VALUES are counted separately and
