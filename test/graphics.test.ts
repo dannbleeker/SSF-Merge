@@ -241,6 +241,36 @@ describe("the workbook behind a chart", () => {
     expect(out.graphics.unreadable).toEqual([]);
   });
 
+  it("merges the chart anyway when the workbook's own XML will not parse", async () => {
+    /**
+     * A zip that opens, holding a part that does not parse. Not the same case
+     * as the test below — that one is an embedded part which is not a zip at
+     * all, another tool's OLE object under the same relationship type — and the
+     * two take different branches: this reaches `docOf`'s catch, which decides
+     * whether one truncated sheet ends a 240-slide merge or costs one chart.
+     *
+     * `workbook.xml` rather than a worksheet, because it is the part that names
+     * the sheets: losing it loses the whole book, which is the sharpest version
+     * of the case.
+     */
+    const pkg = await Pkg.open(await makeDeck([{ paragraphs: [["Cover"]], chart: withWorkbook.chart }]));
+    const embedding = "ppt/embeddings/Microsoft_Excel_Worksheet1.xlsx";
+    const book = await JSZip.loadAsync(await pkg.bytes(embedding));
+    book.file("xl/workbook.xml", "<workbook><sheets><sheet name=");
+    pkg.setBytes(embedding, await book.generateAsync({ type: "uint8array" }));
+
+    const records = toRecordSet(ROWS.split("\n").map((l) => l.split("\t")));
+    const plan = buildPlan({ id: "r1", slides: [{ path: "ppt/slides/slide1.xml", seq: 1, fields: [] }] }, records, {
+      runId: "r1",
+    });
+    // The whole of the assertion is that this returns rather than throwing, and
+    // that the slides are still there: a merge does not fail because one part
+    // of one embedded workbook is corrupt.
+    const out = await runPlan(pkg, plan, records);
+    expect((await pkg.slidePaths()).length, "the slides landed").toBeGreaterThan(1);
+    expect(out.graphics.unreadable.length, "and the chart is reported, not silently skipped").toBeGreaterThan(0);
+  });
+
   it("merges the chart anyway when the workbook cannot be opened", async () => {
     // An embedded part that is not a zip: another tool's OLE object under the
     // same relationship type. The chart's own cache is what the reader sees,

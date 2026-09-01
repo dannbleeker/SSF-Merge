@@ -121,6 +121,20 @@ export function withinInflatedBudget(book: JSZip, budget = INFLATED_BUDGET): boo
 }
 
 export interface WorkbookParts {
+  /**
+   * Whether the part that DECLARES the sheets could be read at all.
+   *
+   * False for a workbook whose `xl/workbook.xml` is absent or will not parse,
+   * which is a different fact from "declares no sheets" and had the same
+   * answer: `mergeWorkbook` merged nothing, reported success, and the pane
+   * counted the chart among the ones it had merged. A truncated embedding —
+   * the commonest way a deck arrives damaged — therefore left every chart
+   * label reading `{{Name}}` in Edit Data with nothing anywhere saying so.
+   *
+   * The `unreadable` list exists for exactly that, and already carries the
+   * neighbouring case where the embedding is not a zip at all.
+   */
+  readable: boolean;
   /** Worksheet parts, in the order the workbook declares its sheets. */
   sheets: string[];
   /** Worksheet path by the sheet's own TITLE — what a chart's `<c:f>` names. */
@@ -204,5 +218,5 @@ export async function workbookParts(book: JSZip): Promise<WorkbookParts> {
   const sharedStrings =
     related && book.file(related) ? related : book.file(CONVENTIONAL_SST) ? CONVENTIONAL_SST : undefined;
 
-  return { sheets, byTitle, ...(sharedStrings ? { sharedStrings } : {}) };
+  return { readable: doc !== undefined, sheets, byTitle, ...(sharedStrings ? { sharedStrings } : {}) };
 }

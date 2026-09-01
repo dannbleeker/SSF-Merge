@@ -246,6 +246,11 @@ async function mergeWorkbook(pkg: Pkg, path: string, resolve: Resolve, held: Hel
   // definition of the range the chart reads; rewriting any of those would
   // change what the chart plots, where this pass only changes what it says.
   const parts = await workbookParts(zip);
+  // A workbook whose own declaration will not parse is UNREADABLE, not empty.
+  // Both merge nothing, and reporting the second as a success counted a chart
+  // among the ones this run had filled while every label in it still read
+  // `{{Name}}` in Edit Data.
+  if (!parts.readable) return false;
   let changed = false;
   for (const name of [...(parts.sharedStrings ? [parts.sharedStrings] : []), ...parts.sheets]) {
     const file = zip.file(name);

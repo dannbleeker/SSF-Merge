@@ -7,6 +7,14 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a damaged chart workbook was counted as merged
+
+An embedded workbook whose own `xl/workbook.xml` is truncated or damaged merged
+nothing and reported success, so the chart was counted among the ones the run
+had filled while every label in it still read `{{Name}}` in Edit Data — with
+nothing anywhere saying so. It is reported the same way an embedding that is not
+a spreadsheet at all already was.
+
 ### Fixed — the preview could get stuck with no way out
 
 Ending a preview that came back partly, over a slide the sweep would not claim,
