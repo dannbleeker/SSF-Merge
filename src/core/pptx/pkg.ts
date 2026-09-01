@@ -20,13 +20,128 @@ const ROOT_RELS = "_rels/.rels";
 
 /** The highest value PowerPoint accepts in `<p:sldId id="…">`; the format caps ids below 2^31. */
 const MAX_SLIDE_ID = 2_147_483_647;
+/**
+ * The next number for a part family, given the ones already in use.
+ *
+ * Highest plus one, never filling a gap — see `nextNumber`.
+ *
+ * The whole of the safety is `countable`. Above 2^53, `max + 1 === max` — so a
+ * package holding `slide9007199254740992.xml` answered a number already in use,
+ * `copyPart` overwrote it silently, and two merged slides shared one part while
+ * the deck stayed structurally valid. It is the very defect `nextNumber`'s own
+ * comment says it exists to prevent, reached by a route the comment does not
+ * cover. Ignoring a digit run too large to count exactly leaves the maximum
+ * exact, so `max + 1` is a real step past every member.
+ *
+ * This carried a `while (used.has(next)) next++` as well, described as belt and
+ * braces. It was dead code: every member of `used` is a safe integer, so
+ * `max + 1` is exactly representable and strictly greater than all of them, and
+ * the loop could never run. An adversarial review of the commit that added it
+ * said so — a comment claiming a line is load-bearing when nothing can reach it
+ * is worse than no comment, because the next reader trusts it.
+ */
+function nextFree(used: Set<number>): number {
+  let max = 0;
+  for (const n of used) if (n > max) max = n;
+  return max + 1;
+}
+
+/** Every whole number a path matched, ignoring any too large to count exactly. */
+function countable(n: number): boolean {
+  return Number.isSafeInteger(n) && n > 0;
+}
+
 /** PowerPoint's own numbering starts here, and ids below it are reserved. */
 const MIN_SLIDE_ID = 256;
 
 export class Pkg {
   private readonly docs = new Map<string, Document>();
 
+  /**
+   * The numbers each part family already uses, filled on first ask.
+   *
+   * Every counter here answered by scanning the whole zip, and the merge loop
+   * that calls them is the loop adding to it — so a run was quadratic in the
+   * rows: 250 rows took 353 ms and 2000 took 7364, eight times the work for
+   * twenty-one times the time. Seven scans of this shape sat in one clone
+   * (slides, charts, media, notes, tags, relationships, slide ids), and the
+   * merge is a task-pane WebView doing it with nothing on screen.
+   *
+   * Kept current by `noteWritten` rather than re-derived, which is sound
+   * because `setText`, `setBytes` and `copyPart` are the only three ways a part
+   * enters this package.
+   *
+   * A DELETED part is deliberately not taken back out, and that DOES change the
+   * answer: the counter was a fact about the package and is now a high-water
+   * mark for this `Pkg`. Remove `slide9.xml` and the old code answered 2 while
+   * this answers 10. Nothing can collide either way — the point of never
+   * filling a gap — but "the next free number" is not what it computes any
+   * more, and an earlier version of this comment said a stale high number is
+   * "the answer the counter would give anyway", which is the sentence that is
+   * not true.
+   */
+  private readonly families = new Map<string, { pattern: RegExp; used: Set<number> }>();
+
+  /**
+   * The highest `rId` each rels part has handed out.
+   *
+   * `addRel` re-read every `<Relationship>` in the part to find it, and a clone
+   * adds several to the presentation's rels — which is the part that grows by
+   * one per merged slide. Dropped rather than lowered when relationships are
+   * deleted: the id is the highest plus one so a stale high number is the
+   * answer it would give anyway, and reusing a freed id is the duplicate this
+   * function's own comment exists to prevent.
+   */
+  private readonly relHighWater = new Map<string, number>();
+
+  /** Every `<Override>` in `[Content_Types].xml`, by part name. */
+  private overrides?: Map<string, Element>;
+
+  /** The highest `<p:sldId>` in the deck's order, once read. */
+  private slideIdHighWater?: number;
+
   private constructor(private readonly zip: JSZip) {}
+
+  /** The numbers in use by one family, scanning the package once. */
+  private usedNumbers(key: string, pattern: RegExp): Set<number> {
+    const already = this.families.get(key);
+    if (already) return already.used;
+    const used = new Set<number>();
+    this.zip.forEach((path) => {
+      const n = Number(pattern.exec(path)?.[1] ?? 0);
+      if (countable(n)) used.add(n);
+    });
+    this.families.set(key, { pattern, used });
+    return used;
+  }
+
+  /** A part has entered the package: every counter that names it learns of it. */
+  private noteWritten(path: string): void {
+    for (const { pattern, used } of this.families.values()) {
+      const n = Number(pattern.exec(path)?.[1] ?? 0);
+      if (countable(n)) used.add(n);
+    }
+    // A rels part written WHOLE — created empty here, or copied from another
+    // part by `copyWithRels` — has an id range this cache no longer knows, so
+    // it is forgotten rather than guessed at.
+    if (path.endsWith(".rels")) this.relHighWater.delete(path);
+    // Same for the content types: `addContentTypeDefault` and this class are
+    // the only writers, but a wholesale replacement would leave a stale index.
+    if (path === CONTENT_TYPES) this.overrides = undefined;
+  }
+
+  /** Every `<Override>` by part name, indexed once. */
+  private async overrideIndex(): Promise<Map<string, Element>> {
+    if (this.overrides) return this.overrides;
+    const doc = await this.doc(CONTENT_TYPES);
+    const index = new Map<string, Element>();
+    for (const o of elements(doc, CT_NS, "Override")) {
+      const name = o.getAttribute("PartName");
+      if (name !== null && !index.has(name)) index.set(name, o);
+    }
+    this.overrides = index;
+    return index;
+  }
 
   static async open(input: Uint8Array | ArrayBuffer | string): Promise<Pkg> {
     const zip = await JSZip.loadAsync(input, typeof input === "string" ? { base64: true } : undefined);
@@ -63,6 +178,7 @@ export class Pkg {
   setText(path: string, xml: string): void {
     this.docs.delete(path);
     this.zip.file(path, xml);
+    this.noteWritten(path);
   }
 
   /**
@@ -77,6 +193,7 @@ export class Pkg {
   setBytes(path: string, bytes: Uint8Array): void {
     this.docs.delete(path);
     this.zip.file(path, bytes);
+    this.noteWritten(path);
   }
 
   /** The raw bytes of a part. Never for XML — see `text`, which honours edits. */
@@ -129,7 +246,7 @@ export class Pkg {
    */
   async contentTypeOf(part: string): Promise<string | undefined> {
     const doc = await this.doc(CONTENT_TYPES);
-    const override = elements(doc, CT_NS, "Override").find((o) => o.getAttribute("PartName") === `/${part}`);
+    const override = (await this.overrideIndex()).get(`/${part}`);
     if (override) return override.getAttribute("ContentType") ?? undefined;
     const extension = extensionOf(part);
     if (!extension) return undefined;
@@ -141,12 +258,7 @@ export class Pkg {
 
   /** The next free `ppt/media/imageN.<ext>`, across every extension. */
   nextMediaNumber(): number {
-    let max = 0;
-    this.zip.forEach((path) => {
-      const n = Number(/^ppt\/media\/image(\d+)\./.exec(path)?.[1] ?? 0);
-      if (n > max) max = n;
-    });
-    return max + 1;
+    return nextFree(this.usedNumbers("media", /^ppt\/media\/image(\d+)\./));
   }
 
   /**
@@ -168,16 +280,14 @@ export class Pkg {
    * `nextNotesNumber` comment records, generalised so the next family cannot
    * repeat it.
    *
-   * Never reuses a gap: the highest existing number plus one.
+   * Never reuses a gap: the highest number plus one. Since the counters are
+   * memoised (see `families`) that maximum is the highest this `Pkg` has SEEN,
+   * not the highest currently in the package — a deleted part does not lower
+   * it. Neither can collide; only one of them is "the next free number".
    */
   nextNumber(prefix: string, suffix = ".xml"): number {
-    let max = 0;
     const pattern = new RegExp(`^${escapeRegExp(prefix)}(\\d+)${escapeRegExp(suffix)}$`);
-    this.zip.forEach((path) => {
-      const n = Number(pattern.exec(path)?.[1] ?? 0);
-      if (n > max) max = n;
-    });
-    return max + 1;
+    return nextFree(this.usedNumbers(`${prefix}\u0000${suffix}`, pattern));
   }
 
   /**
@@ -227,6 +337,7 @@ export class Pkg {
     if (!file) throw new Error(`ssf-merge: cannot copy "${from}", it is not in the package`);
     this.zip.file(to, await file.async("uint8array"));
     this.docs.delete(to);
+    this.noteWritten(to);
   }
 
   // ---- relationships -------------------------------------------------------
@@ -261,12 +372,16 @@ export class Pkg {
     }
     const doc = await this.doc(path);
     const root = doc.documentElement;
-    let max = 0;
-    for (const rel of elements(doc, PKG_REL_NS, "Relationship")) {
-      const n = Number(/^rId(\d+)$/.exec(rel.getAttribute("Id") ?? "")?.[1] ?? 0);
-      if (n > max) max = n;
+    let max = this.relHighWater.get(path);
+    if (max === undefined) {
+      max = 0;
+      for (const rel of elements(doc, PKG_REL_NS, "Relationship")) {
+        const n = Number(/^rId(\d+)$/.exec(rel.getAttribute("Id") ?? "")?.[1] ?? 0);
+        if (n > max) max = n;
+      }
     }
     const id = `rId${max + 1}`;
+    this.relHighWater.set(path, max + 1);
     const rel = doc.createElementNS(PKG_REL_NS, "Relationship");
     rel.setAttribute("Id", id);
     rel.setAttribute("Type", type);
@@ -349,10 +464,11 @@ export class Pkg {
    */
   async addContentTypeOverride(partName: string, contentType: string): Promise<void> {
     const doc = await this.doc(CONTENT_TYPES);
-    const already = elements(doc, CT_NS, "Override").some((o) => o.getAttribute("PartName") === partName);
-    if (already) return;
+    const index = await this.overrideIndex();
+    if (index.has(partName)) return;
     const override = doc.createElementNS(CT_NS, "Override");
     override.setAttribute("PartName", partName);
+    index.set(partName, override);
     override.setAttribute("ContentType", contentType);
     doc.documentElement.appendChild(override);
   }
@@ -596,11 +712,20 @@ export class Pkg {
     for (const override of elements(types, CT_NS, "Override")) {
       if (override.getAttribute("PartName") === `/${path}`) override.parentNode?.removeChild(override);
     }
+    // Out of the index too. A stale entry here says a part is declared when it
+    // is not, so re-adding the part would skip its Override and PowerPoint
+    // would report the deck as damaged.
+    this.overrides?.delete(`/${path}`);
     this.docs.delete(path);
     this.zip.remove(path);
   }
 
-  /** The next free `ppt/slides/slideN.xml` number. Never reuses a gap. */
+  /**
+   * The next `ppt/slides/slideN.xml` number: the highest seen plus one.
+   *
+   * Never reuses a gap, and since the counter is memoised it does not go back
+   * down when a slide is removed either. See `families`.
+   */
   /**
    * The next free `ppt/notesSlides/notesSlideN.xml` number.
    *
@@ -627,12 +752,7 @@ export class Pkg {
   }
 
   nextSlideNumber(): number {
-    let max = 0;
-    this.zip.forEach((path) => {
-      const n = Number(/^ppt\/slides\/slide(\d+)\.xml$/.exec(path)?.[1] ?? 0);
-      if (n > max) max = n;
-    });
-    return max + 1;
+    return nextFree(this.usedNumbers("slides", /^ppt\/slides\/slide(\d+)\.xml$/));
   }
 
   /**
@@ -646,10 +766,13 @@ export class Pkg {
     const pres = await this.doc(PRESENTATION);
     const list = element(pres, P_NS, "sldIdLst");
     if (!list) throw new Error("ssf-merge: presentation.xml has no <p:sldIdLst>");
-    let max = MIN_SLIDE_ID - 1;
-    for (const sldId of elements(list, P_NS, "sldId")) {
-      const n = Number(sldId.getAttribute("id") ?? 0);
-      if (n > max) max = n;
+    let max = this.slideIdHighWater;
+    if (max === undefined) {
+      max = MIN_SLIDE_ID - 1;
+      for (const sldId of elements(list, P_NS, "sldId")) {
+        const n = Number(sldId.getAttribute("id") ?? 0);
+        if (n > max) max = n;
+      }
     }
     const id = max + 1;
     if (id > MAX_SLIDE_ID) throw new Error("ssf-merge: the deck has run out of slide ids");
@@ -657,6 +780,9 @@ export class Pkg {
     el.setAttribute("id", String(id));
     el.setAttributeNS(R_NS, "r:id", rId);
     list.appendChild(el);
+    // Highest plus one, so a removal deliberately does not lower it: a reused
+    // slide id is a duplicate, and the range is 2^31 wide.
+    this.slideIdHighWater = id;
     return id;
   }
 

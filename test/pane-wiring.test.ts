@@ -80,6 +80,9 @@ const OUTCOME = {
   ok: true,
   detail: "6 slides added after slide 12.",
   added: 6,
+  // The ordinary case: the deck grew by what the package held, so the run can
+  // account for every new slide and may offer to take them back.
+  accountable: true,
   deckAtStart: 12,
   runId: "r1",
   fields: ["First", "Last"],
@@ -940,7 +943,7 @@ describe("taking rows out, through the real pane", () => {
 
 describe("taking a real merge back", () => {
   /** Walk to the merge step and land a run of six slides. */
-  async function afterMerge(): Promise<HTMLElement> {
+  async function afterMerge(outcome: Record<string, unknown> = OUTCOME): Promise<HTMLElement> {
     const root = await openPane();
     await settle();
     type("from", "4");
@@ -958,7 +961,7 @@ describe("taking a real merge back", () => {
     // the preview step, which is why the first version of this helper landed
     // nothing.
     document.querySelector<HTMLButtonElement>('[data-forward="merge"]')?.click();
-    office.runMerge.mockResolvedValueOnce(OUTCOME);
+    office.runMerge.mockResolvedValueOnce(outcome);
     primary().click();
     await settle();
     return root;
@@ -988,6 +991,21 @@ describe("taking a real merge back", () => {
     // written, and no view rendered either.
     await afterMerge();
     expect(undoButton()).not.toBeNull();
+  });
+
+  it("does NOT offer it when the run cannot say which slides are its own", async () => {
+    // The deck grew by more than the package held — a co-author or AutoSave
+    // landing a slide across the insert. The slides are there and some are
+    // ours; nothing here can say which, and `sweepPlan` refuses that shape
+    // deliberately. Offering the card anyway put a slide-deleting button on
+    // screen that answered "nothing to take back" every time it was pressed.
+    await afterMerge({
+      ...OUTCOME,
+      ok: false,
+      accountable: false,
+      detail: "The deck changed in a way this run cannot account for.",
+    });
+    expect(undoButton(), "an offer the sweep will decline").toBeNull();
   });
 
   it("sweeps with the run's OWN numbers, not the pane's current ones", async () => {
@@ -1434,6 +1452,99 @@ describe("the conditional slide control", () => {
     primary().click();
     await settle();
     expect((office.runMerge.mock.calls[0]?.[0] as { conditions?: unknown }).conditions).toBeUndefined();
+  });
+
+  it("keeps conditions when the numbers are retyped to the SAME block", async () => {
+    /**
+     * The path a careful user takes: they set a condition, go back to check the
+     * slide numbers, retype the same last slide, and walk forward again. Every
+     * keystroke in those boxes ran the block-moved rule, so the conditions were
+     * gone — silently, with the merge button quietly offering more slides than
+     * they had asked for.
+     *
+     * The empty box in the middle is the part that makes this hard: after the
+     * first keystroke the pane names no block at all, so "has the block moved?"
+     * cannot be answered from the state and every later keystroke read as a
+     * move. The test types it the way a person does, one field at a time.
+     */
+    await toMergeWithData();
+    openConditions();
+    choose(5, "Last");
+    backToTemplate();
+    type("to", "");
+    type("to", "6");
+    office.inspectBlock.mockResolvedValueOnce(REPORT);
+    primary().click(); // template -> data
+    await settle();
+    office.inspectBlock.mockResolvedValueOnce(REPORT);
+    primary().click(); // data -> fields
+    primary().click(); // fields -> preview
+    await settle();
+    (pane().querySelector("[data-forward]") as HTMLElement).click(); // -> merge
+
+    const values = Array.from(pane().querySelectorAll("[data-condition]")).map((s) => (s as HTMLSelectElement).value);
+    expect(values, "the control is not open").toHaveLength(3);
+    expect(values, "the block did not move, so the condition should still be set").toEqual(["", "Last", ""]);
+
+    // And it is what reaches the engine, which is where it matters.
+    office.runMerge.mockResolvedValueOnce(OUTCOME);
+    primary().click();
+    await settle();
+    expect((office.runMerge.mock.calls[0]?.[0] as { conditions?: unknown }).conditions).toEqual({ 5: "Last" });
+  });
+
+  it("keeps conditions when the SELECTED slides are the same block", async () => {
+    /**
+     * The fix for the keystroke path went in and left this one calling
+     * `blockMoved` directly, so a user who set a condition, went back, and
+     * pressed "use the slides I've selected" with the same slides still
+     * selected lost it — the same silent widening of the merge, by the other
+     * route. Two routes to one question is how the defect was written in the
+     * first place; they share the rule now.
+     */
+    await toMergeWithData();
+    openConditions();
+    choose(5, "Last");
+    backToTemplate();
+    office.selectedBlock.mockResolvedValueOnce({ ok: true, from: 4, to: 6 });
+    (pane().querySelector('[data-action="selection"]') as HTMLElement).click();
+    await settle();
+    office.inspectBlock.mockResolvedValueOnce(REPORT);
+    primary().click(); // template -> data
+    await settle();
+    office.inspectBlock.mockResolvedValueOnce(REPORT);
+    primary().click(); // data -> fields
+    primary().click(); // fields -> preview
+    await settle();
+    (pane().querySelector("[data-forward]") as HTMLElement).click(); // -> merge
+
+    const values = Array.from(pane().querySelectorAll("[data-condition]")).map((s) => (s as HTMLSelectElement).value);
+    expect(values, "the control is not open").toHaveLength(3);
+    expect(values, "the same slides are not a different block").toEqual(["", "Last", ""]);
+  });
+
+  it("drops them when the SELECTED slides are a different block", async () => {
+    // The other direction, on the overlapping case: slide 5 is still inside the
+    // new block, so a stale key would silently apply to a slide nobody set it
+    // on rather than being ignored.
+    await toMergeWithData();
+    openConditions();
+    choose(5, "Last");
+    backToTemplate();
+    office.selectedBlock.mockResolvedValueOnce({ ok: true, from: 3, to: 5 });
+    (pane().querySelector('[data-action="selection"]') as HTMLElement).click();
+    await settle();
+    office.inspectBlock.mockResolvedValueOnce(REPORT);
+    primary().click();
+    await settle();
+    office.inspectBlock.mockResolvedValueOnce(REPORT);
+    primary().click();
+    primary().click();
+    await settle();
+    (pane().querySelector("[data-forward]") as HTMLElement).click();
+
+    const values = Array.from(pane().querySelectorAll("[data-condition]")).map((s) => (s as HTMLSelectElement).value);
+    expect(values).toEqual(["", "", ""]);
   });
 
   it("keeps a condition across a new paste, and says the column is gone", async () => {

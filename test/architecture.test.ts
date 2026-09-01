@@ -382,11 +382,42 @@ describe("every pane state field can actually be set", () => {
     return out;
   }
 
+  /**
+   * Fields a TRANSITION RULE sets, rather than a `state = { … }` in `main.ts`.
+   *
+   * `transitions.ts` exists because a change that clears six fields is a rule,
+   * and a rule written out at each call site drifts. A field only that file
+   * writes is reachable — main.ts reaches it by calling the rule — and the scan
+   * above cannot see it, so `conditionsFor` read as settable by nothing.
+   *
+   * Set to a VALUE, never CLEARED. That distinction is what keeps the bite:
+   * `blockMoved` writes `conditions: undefined`, and the whole reason this
+   * guard exists is that it caught `conditions` being readable and writable by
+   * nothing while that very line stood. Clearing a field is not evidence that
+   * anything can fill it.
+   *
+   * An empty literal is a clear too. The first version of this rejected only
+   * the word `undefined`, so `fields: []` and `imageFields: []` — both clears in
+   * `blockMoved` — counted as sets, and the assertion offered as proof of the
+   * narrowness passed only because the field it named happened to be spelled
+   * the other way. A review of that commit said so.
+   */
+  const CLEARED = new Set(["undefined", "[]", "{}", '""', "''"]);
+
+  function transitionSetFields(source: string): Set<string> {
+    const out = new Set<string>();
+    for (const m of source.matchAll(/[{,]\s*(?:\/\/[^\n]*\s*)*(\w+)\s*:\s*([^,\n]+)/g)) {
+      if (!CLEARED.has((m[2] ?? "").trim())) out.add(m[1] ?? "");
+    }
+    return out;
+  }
+
   const stepsSource = readFileSync("src/pane/steps.ts", "utf8");
   const mainSource = readFileSync("src/pane/main.ts", "utf8");
   const fields = fieldsOf(stepsSource);
   const assigned = assignedFields(mainSource);
   const viaTable = tableSetFields(stepsSource, mainSource);
+  const viaRule = transitionSetFields(readFileSync("src/pane/transitions.ts", "utf8"));
 
   it("reads both halves", () => {
     // Guards the two scans. Either answering nothing would make the comparison
@@ -397,10 +428,22 @@ describe("every pane state field can actually be set", () => {
     // The third scan, for the same reason: an empty table would exempt nothing
     // and this guard would pass by measuring less, not by the code being right.
     expect(viaTable.size, "the disclosure table read as empty").toBeGreaterThan(0);
+    // The fourth scan, same reason — and the assertions beside it hold its
+    // narrowness, in both spellings a clear takes. `slideFields: undefined` and
+    // `fields: []` are both clears, and clearing a field is not evidence that
+    // anything can fill it: this guard exists because `conditions` was readable
+    // and writable by nothing while exactly such a line stood, so a scan that
+    // counted a clear as a set would have exempted the field it was written to
+    // catch. Only the first was asserted, and the empty literal slipped through.
+    expect(viaRule.size, "the transition rules read as empty").toBeGreaterThan(0);
+    expect(viaRule.has("slideFields"), "a cleared field read as a set one").toBe(false);
+    expect(viaRule.has("fields"), "an empty literal read as a set one").toBe(false);
   });
 
   it("has no field the pane can only read", () => {
-    const unreachable = fields.filter((f) => !assigned.has(f) && !viaTable.has(f) && !SETTABLE_BY_NOTHING.has(f));
+    const unreachable = fields.filter(
+      (f) => !assigned.has(f) && !viaTable.has(f) && !viaRule.has(f) && !SETTABLE_BY_NOTHING.has(f),
+    );
     expect(unreachable, "PaneState fields nothing in main.ts sets").toEqual([]);
   });
 
@@ -411,7 +454,9 @@ describe("every pane state field can actually be set", () => {
     // the mechanism, not the single field that needed it.
     for (const f of SETTABLE_BY_NOTHING) {
       expect(fields, `${f} is not a PaneState field`).toContain(f);
-      expect(assigned.has(f) || viaTable.has(f), `${f} is set now — delete it from the list`).toBe(false);
+      expect(assigned.has(f) || viaTable.has(f) || viaRule.has(f), `${f} is set now — delete it from the list`).toBe(
+        false,
+      );
     }
   });
 });

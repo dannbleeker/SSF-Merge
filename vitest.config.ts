@@ -28,7 +28,16 @@ export default defineConfig({
       // change does not go red, and they are raised deliberately rather than
       // tracking the current number. A threshold that follows coverage upward
       // on its own only ever ratchets, and the first hard week gets it deleted.
-      thresholds: { statements: 90, branches: 65, functions: 92, lines: 95 },
+      //
+      // "A little under" is the whole design, and the branch floor had drifted
+      // out of it: 65 against a measured 87.3, which is not a floor a change
+      // could realistically hit. Deleting every assertion in three whole test
+      // files moves the number by one point, so a gate 22 points down was
+      // reachable by nothing short of deleting the suite. Measured on the
+      // commit that set them: 96.2 statements, 87.3 branches, 99.7 functions,
+      // 99.2 lines. Raise them the same way — measure, then leave two or three
+      // points of headroom, and say what you measured.
+      thresholds: { statements: 94, branches: 84, functions: 98, lines: 98 },
     },
   },
 });

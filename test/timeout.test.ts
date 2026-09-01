@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { BUDGET, Timeout, withTimeout } from "../src/host/timeout.js";
+import { beginRun, traceLog } from "../src/core/trace.js";
 
 describe("bounding a host call", () => {
   it("passes a result through when the work answers in time", async () => {
@@ -39,6 +40,48 @@ describe("bounding a host call", () => {
     await withTimeout(Promise.reject(new Error("nope")), 10000, "an insert").catch(() => undefined);
     expect(clear.mock.calls.length).toBeGreaterThan(before);
     clear.mockRestore();
+  });
+});
+
+describe("a call that answers after its run has ended", () => {
+  /**
+   * An abandoned call is not cancelled — nothing here can cancel a host call —
+   * so it may still answer, and its `.then` still traces. If the pane has begun
+   * another run by then, that line lands in the NEW run's log: the abandoned
+   * run ends on an `issued` with no answer, reading as a call that never came
+   * back, and the next run opens with an `answered` for a call nobody in it
+   * made. Both are false, and a run log is the only diagnostic a task-pane user
+   * can hand over.
+   */
+  it("does not write into the next run's log", async () => {
+    // NESTED, which is the shape that reaches it. A single `withTimeout` whose
+    // work answers late traces nothing — its race already settled on the
+    // timeout and the value handler never runs. What survives the outer budget
+    // is the INNER call's own wrapper, still waiting on its own larger one.
+    beginRun();
+    let settle: (v: string) => void = () => undefined;
+    const held = new Promise<string>((resolve) => (settle = resolve));
+    const inner = withTimeout(held, 10_000, "reading slide ids");
+    // The outer one gives up first, exactly as a budget nested inside another
+    // of its own size does.
+    await expect(withTimeout(inner, 20, "reading the selection")).rejects.toThrow(Timeout);
+
+    // The pane moves on, and only then does the inner call come back.
+    beginRun();
+    settle("late");
+    await inner;
+    await Promise.resolve();
+
+    const lines = traceLog().entries.map((e) => `${e.message} ${typeof e.data?.call === "string" ? e.data.call : ""}`);
+    expect(lines, "a line from a run that has ended").not.toContain("answered reading slide ids");
+    expect(lines, "and nothing else leaked either").toEqual([]);
+  });
+
+  it("still records an answer inside its own run", async () => {
+    // The other direction: the stamp must not swallow an ordinary line.
+    beginRun();
+    await withTimeout(Promise.resolve("ok"), 1000, "a quick read");
+    expect(traceLog().entries.map((e) => e.message)).toEqual(["issued", "answered"]);
   });
 });
 

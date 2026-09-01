@@ -68,7 +68,15 @@ async function merged(bytes: Uint8Array, from: number, to: number, sweep: boolea
 const EVERYTHING: SlideSpec = {
   paragraphs: [["{{Name}}"]],
   notes: "note {{Name}}",
-  chart: { title: "{{Name}}", categories: ["{{Name}}", "b"], workbook: ["{{Name}}"], values: ["1", "2"] },
+  chart: {
+    title: "{{Name}}",
+    categories: ["{{Name}}", "b"],
+    workbook: ["{{Name}}"],
+    values: ["1", "2"],
+    // A callout drawn ON the chart, which lives in a drawing part the CHART
+    // points at. It joined the combination the day it started being cloned.
+    callout: "callout {{Name}}",
+  },
   modernChart: { title: "{{Name}}", categories: ["{{Name}}"], series: "{{Name}}", workbook: ["{{Name}}"] },
   smartArt: ["{{Name}}", "second"],
   smartArtDrawingOn: "slide",
@@ -94,6 +102,28 @@ describe("the packages this engine hands over", () => {
   it("finds nothing wrong with a modern chart PowerPoint wrote, merged", async () => {
     const bytes = await merged(new Uint8Array(readFileSync("test-kit/modern-chart.pptx")), 1, 1, true);
     expect(problems(await partsOf(bytes))).toEqual([]);
+  });
+
+  it("finds nothing wrong after three merges with a round trip between each", async () => {
+    /**
+     * A package is opened, merged, written out, and opened again — which is
+     * what happens across two runs in one session, and what nothing here had
+     * ever done more than once.
+     *
+     * It is the shape that would catch a counter or an index that has gone
+     * stale: every part-number counter, the relationship ids, the content-type
+     * overrides and the slide ids are memoised on the `Pkg` for the life of a
+     * run, and a cache handing back a number already in use produces a package
+     * that is legal, opens, and quietly holds two slides sharing one part.
+     */
+    let bytes = await makeDeck([EVERYTHING, { paragraphs: [["after"]] }]);
+    for (let round = 0; round < 3; round++) {
+      bytes = await merged(bytes, 1, 1, false);
+      expect(problems(await partsOf(bytes)), `round ${round + 1}`).toEqual([]);
+      // Round-tripped, so the next round starts from bytes rather than from a
+      // Pkg that still holds the last round's caches.
+      bytes = await (await Pkg.open(bytes)).toBytes();
+    }
   });
 
   it("finds nothing wrong with every feature at once, template kept or swept", async () => {

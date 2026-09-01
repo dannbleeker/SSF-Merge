@@ -137,6 +137,14 @@ export interface ChartSpec {
    * as a number. Defaults to ordinary numbers.
    */
   values?: string[];
+  /**
+   * A callout drawn ON the chart, in its own `chartUserShapes` drawing part.
+   *
+   * PowerPoint puts a text box added to a chart here rather than on the slide,
+   * and the CHART owns the relationship — so every merged copy of the chart
+   * pointed at the template's one copy of it and the text was never filled.
+   */
+  callout?: string;
 }
 
 /** An `<a:xfrm>` of the given size, for a spec's `box`. */
@@ -493,6 +501,7 @@ const TYPE = {
   slide: "application/vnd.openxmlformats-officedocument.presentationml.slide+xml",
   notes: "application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml",
   chart: "application/vnd.openxmlformats-officedocument.drawingml.chart+xml",
+  chartShapes: "application/vnd.openxmlformats-officedocument.drawingml.chartshapes+xml",
   chartEx: "application/vnd.ms-office.chartex+xml",
   tags: "application/vnd.openxmlformats-officedocument.presentationml.tags+xml",
   diagramData: "application/vnd.openxmlformats-officedocument.drawingml.diagramData+xml",
@@ -503,6 +512,7 @@ const TYPE = {
 } as const;
 
 const REL_TYPE = {
+  chartUserShapes: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/chartUserShapes",
   slide: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide",
   notes: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide",
   layout: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout",
@@ -533,6 +543,13 @@ export async function makeDeck(slides: SlideSpec[]): Promise<Uint8Array> {
           ? [`<Override PartName="/ppt/notesSlides/notesSlide${i + 1}.xml" ContentType="${TYPE.notes}"/>`]
           : []),
         ...(s.chart ? [`<Override PartName="/ppt/charts/chart${i + 1}.xml" ContentType="${TYPE.chart}"/>`] : []),
+        // The chart's own drawing, declared the way PowerPoint declares it. A
+        // fixture that leaves a part undeclared is a fixture no PowerPoint
+        // would open, and a test written against it cannot tell the engine's
+        // copies apart from the template's own.
+        ...(typeof s.chart === "object" && s.chart.callout !== undefined
+          ? [`<Override PartName="/ppt/drawings/drawing${i + 1}.xml" ContentType="${TYPE.chartShapes}"/>`]
+          : []),
         // One part, whichever slide asked for it, so two slides carrying shape
         // tags do not declare it twice.
         ...(s.shapeTags && slides.findIndex((o) => o.shapeTags) === i
@@ -672,15 +689,32 @@ export async function makeDeck(slides: SlideSpec[]): Promise<Uint8Array> {
     if (spec.chart) {
       const chart: ChartSpec = typeof spec.chart === "string" ? { title: spec.chart } : spec.chart;
       zip.file(`ppt/charts/chart${n}.xml`, chartXml(chart));
-      if (chart.workbook) {
+      if (chart.callout !== undefined) {
         zip.file(
-          `ppt/embeddings/Microsoft_Excel_Worksheet${n}.xlsx`,
-          await workbookBytes(chart.workbook, chart.values ?? []),
+          `ppt/drawings/drawing${n}.xml`,
+          `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n` +
+            `<c:userShapes xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" ` +
+            `xmlns:cdr="http://schemas.openxmlformats.org/drawingml/2006/chartDrawing">` +
+            `<cdr:relSizeAnchor><cdr:sp><cdr:txBody><a:p ${A}><a:r><a:t>${chart.callout}</a:t></a:r></a:p>` +
+            `</cdr:txBody></cdr:sp></cdr:relSizeAnchor></c:userShapes>`,
         );
+      }
+      if (chart.workbook || chart.callout !== undefined) {
+        if (chart.workbook) {
+          zip.file(
+            `ppt/embeddings/Microsoft_Excel_Worksheet${n}.xlsx`,
+            await workbookBytes(chart.workbook, chart.values ?? []),
+          );
+        }
         zip.file(
           `ppt/charts/_rels/chart${n}.xml.rels`,
           `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n<Relationships ${REL}>` +
-            `<Relationship Id="rId1" Type="${REL_TYPE.package}" Target="../embeddings/Microsoft_Excel_Worksheet${n}.xlsx"/>` +
+            (chart.workbook
+              ? `<Relationship Id="rId1" Type="${REL_TYPE.package}" Target="../embeddings/Microsoft_Excel_Worksheet${n}.xlsx"/>`
+              : "") +
+            (chart.callout !== undefined
+              ? `<Relationship Id="rId2" Type="${REL_TYPE.chartUserShapes}" Target="../drawings/drawing${n}.xml"/>`
+              : "") +
             `</Relationships>`,
         );
       }

@@ -13,6 +13,7 @@
  * deck that looks right until somebody clicks Edit Data, which is exactly the
  * half-merge this project already knows from the label side.
  */
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import JSZip from "jszip";
 import { Pkg } from "../src/core/pptx/pkg.js";
@@ -20,7 +21,7 @@ import { prepareBlock } from "../src/core/merge/prepare.js";
 import { buildPlan } from "../src/core/merge/plan.js";
 import { runPlan } from "../src/core/merge/run.js";
 import { toRecordSet } from "../src/core/data/recordset.js";
-import { cellsOfFormula, modernSeries, sheetOfFormula } from "../src/core/merge/numbers.js";
+import { cellAt, cellsOfFormula, MAX_SERIES_CELLS, modernSeries, sheetOfFormula } from "../src/core/merge/numbers.js";
 import { parseXml } from "../src/core/pptx/xml.js";
 import { makeDeck, type ChartSpec } from "./fixtures/deck.js";
 
@@ -83,11 +84,110 @@ describe("reading which cell a cached point came from", () => {
     expect(cellsOfFormula("'My Sheet'!$B$2:$B$3")).toEqual(["B2", "B3"]);
   });
 
+  it("refuses a range too long to be a series, rather than allocating until the process dies", () => {
+    /**
+     * `Sheet1!A1:A99999999` killed the process — not a hang and not an
+     * exception the pane could show, but a fatal out-of-memory abort with no
+     * JS stack. It is reached from `prepareBlock`, which runs when the user
+     * picks the template block, before any data has been pasted.
+     *
+     * The endpoint pattern bounds the SHAPE of an address and not its
+     * magnitude, so the one range shape this function accepts was the one with
+     * no ceiling. `A1:ZZZZZZ1` is the same defect along the column axis.
+     */
+    expect(cellsOfFormula("Sheet1!A1:A99999999")).toBeNull();
+    expect(cellsOfFormula("Sheet1!A1:ZZZZZZ1")).toBeNull();
+    // Excel's own full-column reference, which it writes whenever somebody
+    // selects a whole column as a chart series. A legal deck, and it was inside
+    // no bound at all.
+    expect(cellsOfFormula("Sheet1!$A$1:$A$1048576")).toBeNull();
+  });
+
+  it("refuses an address too large to count, which the size bound cannot see", () => {
+    /**
+     * The bound above compares magnitudes, and an infinity defeats it:
+     * `Number("999…9")` overflows for a long enough run of digits, and
+     * `columnNumber` is unbounded base-26 so about 250 letters does the same.
+     * `Math.abs(Infinity - Infinity)` is NaN and `NaN > 32000` is FALSE, so the
+     * range was waved through — and what followed never terminated, either as
+     * a loop that does not advance or as one appending a character forever.
+     *
+     * Both were still fatal aborts of the pane AFTER the size bound landed,
+     * with the same signature and the same route through `prepareBlock`. This
+     * is the case the first fix missed, so it is asserted on its own.
+     */
+    const nines = "9".repeat(400);
+    expect(cellsOfFormula(`Sheet1!A${nines}:A${nines}`)).toBeNull();
+    expect(cellsOfFormula(`Sheet1!${"Z".repeat(250)}1:${"Z".repeat(250)}1`)).toBeNull();
+    // And the ordinary addresses either side of it still read.
+    expect(cellsOfFormula("Sheet1!$B$2:$B$4")).toEqual(["B2", "B3", "B4"]);
+  });
+
+  it("takes a series right up to the bound and refuses one cell past it", () => {
+    // The boundary itself, so the bound cannot be quietly widened or narrowed
+    // without this saying so.
+    expect(cellsOfFormula(`Sheet1!A1:A${MAX_SERIES_CELLS}`)).toHaveLength(MAX_SERIES_CELLS);
+    expect(cellsOfFormula(`Sheet1!A1:A${MAX_SERIES_CELLS + 1}`)).toBeNull();
+  });
+
   it("refuses a rectangle rather than guessing its order", () => {
     // A series does not read one, and walking it the wrong way would pair a
     // value with the wrong point — which no count would catch.
     expect(cellsOfFormula("Sheet1!$B$2:$D$4")).toBeNull();
     expect(cellsOfFormula("nonsense")).toBeNull();
+  });
+});
+
+describe("finding a cell in a sheet", () => {
+  /** A worksheet holding `n` cells down column A. */
+  function sheetOf(n: number): Document {
+    const cells = Array.from({ length: n }, (_, i) => `<c r="A${i + 1}"><v>${i}</v></c>`).join("");
+    return parseXml(
+      `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row>${cells}</row></sheetData></worksheet>`,
+    );
+  }
+
+  it("walks the sheet ONCE however many cells are asked for", () => {
+    /**
+     * It walked the whole worksheet for each address, so reading a series was
+     * quadratic in the sheet. A legal `Sheet1!$A$1:$A$1048576` over twenty rows
+     * of data took 67 seconds against 194 ms for the same chart with a two-cell
+     * range, and a 240-row merge of it extrapolates past thirteen minutes — in
+     * a task-pane WebView, with nothing on screen to say why.
+     *
+     * The assertion is on WORK rather than on wall clock: a stopwatch in a
+     * suite measures the machine it happens to run on, and this measures the
+     * thing that made it slow.
+     */
+    const sheet = sheetOf(500);
+    let walks = 0;
+    const real = sheet.getElementsByTagNameNS.bind(sheet);
+    sheet.getElementsByTagNameNS = ((ns: string, local: string) => {
+      walks++;
+      return real(ns, local);
+    }) as typeof sheet.getElementsByTagNameNS;
+
+    for (let i = 1; i <= 500; i++) expect(cellAt(sheet, `A${i}`)?.getAttribute("r")).toBe(`A${i}`);
+    expect(walks, "one walk per lookup is what made a legal chart take minutes").toBe(1);
+    // A miss is answered from the same index, not by walking again.
+    expect(cellAt(sheet, "ZZ99")).toBeUndefined();
+    expect(walks).toBe(1);
+  });
+
+  it("is sound only while nothing adds a cell to a sheet", () => {
+    /**
+     * The index lives as long as the sheet document, so a `<c>` created after a
+     * lookup would be invisible to it and the merge would leave that cell as
+     * the author typed it, with nothing said. The one write this pass makes is
+     * a `<v>` inside a cell that already exists.
+     *
+     * A source scan rather than a behavioural test, because the defect it
+     * guards against is a call site that does not exist yet — nothing can
+     * observe an absence behaviourally.
+     */
+    const source = readFileSync("src/core/merge/numbers.ts", "utf8");
+    const created = [...source.matchAll(/createElementNS\(\s*SSML_NS\s*,\s*"([^"]+)"/g)].map((m) => m[1]);
+    expect(created, "a new cell would be invisible to the index above").not.toContain("c");
   });
 });
 
@@ -221,6 +321,40 @@ describe("a value cell that holds its string inline", () => {
 
     expect(out.graphics.numbers.filled, "there is no point to fill").toBe(0);
     expect(out.graphics.numbers.unplotted, "and the run says so").toBe(1);
+    // NAMED as well as counted. The comment above says it was "not offered to
+    // the pane as a field", and the next test is what that cost.
+    expect(prepared.fields, "the pane is never offered the field").toContain("Revenue");
+  });
+
+  it("does not REFUSE a block whose only placeholder the cache has no point for", async () => {
+    /**
+     * `prepareBlock` refuses a block whose fields come back empty — "every copy
+     * would be identical" — and the walk above never reported this one. So a
+     * deck whose only placeholder is a chart value cell was refused outright,
+     * with a sentence telling the author to go and type field names onto a
+     * slide that already carried one. That is the documented workflow ("type
+     * {{Revenue}} into a value cell the way you would type a number") meeting
+     * the very cache shape the writers in the test above produce.
+     *
+     * The fixture is the same, minus the {{Name}} on the slide that was
+     * carrying the block past the refusal.
+     */
+    const deck = await makeDeck([
+      { paragraphs: [["Sales"]], chart: { categories: ["a", "b"], workbook: ["x"], values: ["10", "{{Revenue}}"] } },
+    ]);
+    const zip = await JSZip.loadAsync(deck);
+    const chart = await zip.file("ppt/charts/chart1.xml")!.async("string");
+    const holed = chart.replace(/<c:numCache>[\s\S]*?<\/c:numCache>/, (cache) =>
+      cache.replace(/<c:pt idx="1">[\s\S]*?<\/c:pt>/, ""),
+    );
+    expect(holed, "the fixture's cached points moved; this patches them by hand").not.toBe(chart);
+    zip.file("ppt/charts/chart1.xml", holed);
+
+    const pkg = await Pkg.open(await zip.generateAsync({ type: "uint8array" }));
+    const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "h");
+    expect(prepared.ok, prepared.ok ? "" : prepared.why).toBe(true);
+    if (!prepared.ok) return;
+    expect(prepared.fields).toEqual(["Revenue"]);
   });
 
   it("holds an INLINE value cell it refused, which shares no string with anything", async () => {
@@ -244,6 +378,101 @@ describe("a value cell that holds its string inline", () => {
     const sheet = await book.file("xl/worksheets/sheet1.xml")!.async("string");
     expect(sheet, "the placeholder is what stays").toContain("{{Notes}}");
     expect(sheet, "and the row's words did not replace it").not.toContain("hello");
+  });
+
+  it("puts the held strings back in the order they were in", async () => {
+    /**
+     * `liftHeld` detaches each held node and remembers the sibling that
+     * followed it AT THE MOMENT OF REMOVAL. It takes the shared-string table
+     * highest index first — deliberately, because removing one shifts the
+     * positions of those after it — and the restore replayed that list
+     * forwards, so each entry was re-inserted before an anchor the next
+     * insertion then jumped in front of.
+     *
+     * The held placeholders came back REVERSED against the chart's own point
+     * order: the sheet says B2 holds the third placeholder where the cache says
+     * B2 is point 0. Nothing sees it until the user opens Edit Data, and the
+     * part is only written back at all because something else in it merged.
+     */
+    const deck = await makeDeck([
+      {
+        paragraphs: [["Cover"]],
+        chart: { categories: ["{{Region}}"], workbook: ["{{Region}}"], values: ["{{A}}", "{{B}}", "{{C}}"] },
+      },
+    ]);
+    const pkg = await Pkg.open(deck);
+    const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "h");
+    if (!prepared.ok) throw new Error(prepared.why);
+    const records = toRecordSet([
+      ["Region", "A", "B", "C"],
+      ["Nordics", "x", "y", "z"],
+    ]);
+    const out = await runPlan(pkg, buildPlan(prepared.block, records, { runId: "h" }), records);
+    // All three value cells hold words, so all three are refused and held; the
+    // category label merges, which is what gets the part written back.
+    expect(out.graphics.numbers.refused).toBe(3);
+
+    const zip = await JSZip.loadAsync(await pkg.toBytes());
+    const emb = Object.keys(zip.files).filter((n) => /embeddings\/.*\.xlsx$/.test(n));
+    const book = await JSZip.loadAsync(await zip.file(emb[emb.length - 1]!)!.async("nodebuffer"));
+    const sst = await book.file("xl/sharedStrings.xml")!.async("string");
+    const strings = [...sst.matchAll(/<t[^>]*>([^<]*)<\/t>/g)].map((m) => m[1]);
+    expect(strings, "the held placeholders came back permuted").toEqual(["Nordics", "{{A}}", "{{B}}", "{{C}}"]);
+  });
+
+  it("survives two held cells that are next to each other in the sheet", async () => {
+    /**
+     * The same defect's sharp end. A ROW-oriented series with inline strings
+     * gives two held cells that are siblings: taking B2 records C2 as its
+     * anchor, then C2 is taken too, and replaying forwards calls
+     * `insertBefore(B2, C2)` with C2 detached.
+     *
+     * `NotFoundError: child not in parent`, out of `mergeWorkbook`, through
+     * `runPlan`, past `office/merge.ts`'s catch — which wraps the template read
+     * and not the run — and into the pane as an unhandled rejection. The user
+     * gets no slides, no notice and no way to know why.
+     */
+    const deck = await makeDeck([
+      { paragraphs: [["{{Name}}"]], chart: { categories: ["a"], workbook: ["x"], values: ["0", "0"] } },
+    ]);
+    const zip = await JSZip.loadAsync(deck);
+    // A series ACROSS a row, which the fixture does not write, so both cells
+    // land in one `<row>` and are siblings.
+    const chart = await zip.file("ppt/charts/chart1.xml")!.async("string");
+    const across = chart.replace("Sheet1!$B$2:$B$3", "Sheet1!$B$2:$C$2");
+    expect(across, "the fixture's range moved").not.toBe(chart);
+    zip.file("ppt/charts/chart1.xml", across);
+
+    const emb = Object.keys(zip.files).find((n) => /embeddings\/.*\.xlsx$/.test(n))!;
+    const book = await JSZip.loadAsync(await zip.file(emb)!.async("nodebuffer"));
+    const sheet = await book.file("xl/worksheets/sheet1.xml")!.async("string");
+    const patched = sheet.replace(
+      '<c r="B2"><v>0</v></c>',
+      '<c r="B2" t="inlineStr"><is><t>{{Alpha}}</t></is></c>' + '<c r="C2" t="inlineStr"><is><t>{{Beta}}</t></is></c>',
+    );
+    expect(patched, "the fixture's value cell moved").not.toBe(sheet);
+    book.file("xl/worksheets/sheet1.xml", patched);
+    zip.file(emb, await book.generateAsync({ type: "nodebuffer" }));
+
+    const pkg = await Pkg.open(await zip.generateAsync({ type: "uint8array" }));
+    const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "h");
+    if (!prepared.ok) throw new Error(prepared.why);
+    const records = toRecordSet([
+      ["Name", "Alpha", "Beta"],
+      ["Ada", "one", "two"],
+    ]);
+    // The merge must complete. Both cells hold words, so both are refused and
+    // held, and the slide's own {{Name}} is what writes the part back.
+    const out = await runPlan(pkg, buildPlan(prepared.block, records, { runId: "h" }), records);
+    expect(out.graphics.numbers.refused).toBe(2);
+
+    const after = await JSZip.loadAsync(await pkg.toBytes());
+    const books = Object.keys(after.files).filter((n) => /embeddings\/.*\.xlsx$/.test(n));
+    const merged = await JSZip.loadAsync(await after.file(books[books.length - 1]!)!.async("nodebuffer"));
+    const cells = await merged.file("xl/worksheets/sheet1.xml")!.async("string");
+    expect(cells, "the placeholders are what stay").toContain("{{Alpha}}");
+    expect(cells).toContain("{{Beta}}");
+    expect(cells.indexOf("{{Alpha}}"), "and in the order they were in").toBeLessThan(cells.indexOf("{{Beta}}"));
   });
 
   it("leaves a FORMULA cell and its formula alone", async () => {
@@ -436,6 +665,20 @@ describe("which sheet the formula names", () => {
     expect(sheetOfFormula("'My Sheet'!$B$2")).toBe("My Sheet");
     expect(sheetOfFormula("'It''s Data'!$B$2")).toBe("It's Data");
     expect(sheetOfFormula("$B$2")).toBeNull();
+  });
+
+  it("ignores whitespace around the sheet's name", () => {
+    /**
+     * The `.trim()` this asserts had no test, which a mutation run proved by
+     * removing it and watching the whole suite stay green. Without it a formula
+     * carrying a space — which a hand-edited one or a generator's easily does —
+     * looks up a sheet called " Sheet1", finds nothing, and the whole series is
+     * counted unreadable and left with its template numbers.
+     */
+    expect(sheetOfFormula(" Sheet1 !$B$2")).toBe("Sheet1");
+    expect(sheetOfFormula("\t'My Sheet' !$B$2")).toBe("My Sheet");
+    // And whitespace INSIDE a quoted name is a real part of it.
+    expect(sheetOfFormula("' Padded '!$B$2")).toBe(" Padded ");
   });
 
   it("counts a series whose sheet the workbook does not have, rather than skipping it in silence", async () => {

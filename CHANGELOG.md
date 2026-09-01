@@ -7,6 +7,201 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a chart could stop the merge dead, with nothing on screen
+
+Two placeholders sitting next to each other in a chart's data sheet, both
+holding text rather than a number, made the merge throw part-way through. No
+slides, no message, no way to tell what happened — the run simply ended. And
+where it did not throw, the placeholders came back in the wrong order: open Edit
+Data afterwards and they had been shuffled between the cells, so the sheet no
+longer agreed with the chart about which value belonged where.
+
+### Fixed — a chart's cell range could still stop PowerPoint dead
+
+The bound added earlier compares sizes, and an address long enough to overflow
+arithmetic defeated it — the pane died the same way, when the template block was
+picked and before any data was pasted. Any address too large to count exactly is
+refused now.
+
+### Fixed — a placeholder in a chart's data sheet could have the merge refused
+
+A placeholder typed into a data-sheet cell that the chart does not plot is
+filled by the merge, and nothing looked for it beforehand. If it was the only
+one in the block, the merge was refused outright — with a message telling you to
+type field names onto a slide that already carried one.
+
+### Fixed — a merge that filled only chart values said it had filled nothing
+
+"No {{fields}} were filled — check the spelling in your template · 2 chart
+values filled", in one sentence. The merge both failed and worked, and the
+author was sent hunting a spelling mistake they had not made.
+
+### Fixed — "use the slides I've selected" threw away your conditions
+
+The same defect as retyping a slide number, by the other route: selecting the
+same slides again lost every condition you had set, silently, and the merge
+button then quietly offered more slides than you asked for.
+
+### Fixed — a deck that changed underneath a merge, when the call also failed
+
+The case where PowerPoint both raised an error and took more slides than the
+merge held was read as an ordinary partial merge, so the contradictory sentence
+and the offer to take slides back — which would have refused — both came back.
+
+
+### Fixed — a chart's cell range could stop PowerPoint dead, and a legal one took minutes
+
+A chart series names its cells with a range like `Sheet1!$B$2:$B$5`. Nothing
+bounded how long that range could be, so a chart whose series named an enormous
+one used memory until the process died — not a hang and not a message, but the
+add-in simply gone. It happened when you chose the template block, before you
+had pasted any data.
+
+A range Excel writes itself reached the same code: select a whole column as a
+chart's series and it records `$A$1:$A$1048576`. That did not crash, it merely
+took about thirteen minutes, with nothing on screen to say why.
+
+A range longer than a chart series can hold is refused now — the series keeps
+the numbers it already has, which is what happens for any range this add-in
+cannot read — and looking a cell up in a sheet no longer re-reads the whole
+sheet each time.
+
+### Fixed — a callout drawn on a chart was the same on every merged slide
+
+PowerPoint keeps a text box or a callout you add to a chart with the CHART, not
+with the slide. Every merged copy pointed at the one original, so a `{{Name}}`
+written into a chart callout appeared unmerged on all of them. Each copy gets
+its own now, with its own row in it, and the manual says so.
+
+### Fixed — a chart value field could be refused as though the slide had no fields
+
+A chart's own copy of its numbers can have no slot for a cell that held no
+number when the template was made, which is exactly the cell you type
+`{{Revenue}}` into. That field was not reported, so a deck whose only
+placeholder was a chart value cell was refused outright — with a message telling
+you to type field names onto a slide that already carried one.
+
+### Fixed — a picture inside a group you had resized came out squashed
+
+Dragging a group's handles in PowerPoint stretches everything inside it without
+changing the numbers those shapes record. The merge read the recorded numbers,
+so it cropped the photo for the wrong shape and the group then stretched what
+was left — on the one setting, `image` (cover), whose whole job is not to
+distort. Nothing reported it, because a crop was computed and written.
+
+### Fixed — a merge slowed down sharply as the rows grew
+
+Measured on an ordinary one-slide template: 250 rows took under half a second,
+1000 took two seconds, and 2000 took over seven — each doubling costing four
+times the work, so a few thousand rows meant minutes of a frozen pane. Five
+separate places were re-counting what was already in the file every time they
+added to it. The same 2000 rows now take about a second, and 4000 under three.
+
+### Fixed — a logo used by every row was re-examined for every row
+
+Attaching one picture to 240 rows made the merge read all of its bytes 240
+times, to answer a question it had already answered. A four-megabyte logo cost
+twelve seconds of a frozen pane to produce a single copy in the file.
+
+### Fixed — a failed insert could put your whole merged deck on screen as an error
+
+When PowerPoint refuses the merged file it hands back the file itself inside its
+own error message. That message went to the pane unbounded — megabytes of your
+own merged rows as the failure sentence, with the explanation at the front and
+nothing after it readable, and into a bug report if you pasted it. Error text
+the pane shows is now cut to a readable length with the rest counted, which is
+what it already promised.
+
+### Fixed — a deck that changed underneath a merge was reported as a half-done merge
+
+If a colleague or AutoSave lands a slide while the merge is being inserted, the
+deck grows by more than the merge added and nothing can say which new slides are
+which. The pane read that as a torn merge and said so in a sentence that could
+not be true — "PowerPoint took only part of the merge: all 3 rows landed
+complete" — and then offered to take the slides back, which it would have
+refused to do. It now says what actually happened and withholds the offer.
+
+### Fixed — the way back named a slide one before the ones it would remove
+
+"Removed 6 slides from index 3" was about the slides you can see as 4 to 9. The
+pane speaks the numbering on your thumbnail rail and nothing else, and this
+sentence — which appears when an undo goes wrong — was the exception.
+
+### Fixed — "Preview the first row" could do nothing at all
+
+Untick every row, or choose "leave the whole row out" while every row qualifies,
+and the preview step still offered one enabled button that produced no slides,
+no message and no change to the screen. The merge step already explained that
+situation; the preview step now asks the same question, through the same rule.
+
+### Fixed — the preview promised more slides than it added
+
+With conditions set, the preview step counted the block's slides rather than the
+ones the conditions leave, so it promised three and added one.
+
+### Fixed — the merge card invented a deck size
+
+On a PowerPoint that will not say how many slides the deck has, the forecast
+read "6 slides will be added after slide 0, leaving 6 slides in the deck" — for
+a deck with twelve slides in it. It now says how many slides will be added and
+stops, which is the part that does not depend on the answer.
+
+### Fixed — retyping the same slide number threw away your conditions
+
+Set a condition, go back to check the slide numbers, retype the same number, and
+the conditions were gone with nothing said — and the merge button quietly
+offered more slides than you had asked for. Conditions are dropped when the
+block actually names different slides, which is what makes them stale, and not
+before.
+
+### Fixed — the heading multiplied to a number the button disagreed with
+
+With conditions set, the line above the merge button read "2 rows × 3 slides"
+beside a button reading "Add 4 slides", and a reader who multiplies gets six.
+The heading already said both numbers when rows were being skipped for a blank;
+conditions produce the same gap and were not covered. It now names the planned
+total when it differs from the product, and only then.
+
+### Fixed — "N placeholders filled" was counting paragraphs
+
+`Dear {{First}} {{Last}}, of {{City}}` is three placeholders on one line, and
+the merge reported one. The number now counts what its own words say.
+
+### Fixed — a blank verb, a plural pronoun, and a success over nothing
+
+Three sentences that were wrong in ways nothing could go wrong from, and every
+one of them is on an ordinary screen: "Slide 4 carry no fields yet" for a
+one-slide template; "Slide 13 is a preview … removing the preview deletes them";
+and "All 0 pictures matched" whenever no row named a picture, printed directly
+above "1 file no row refers to — ignored".
+
+### Fixed — a link that wrapped onto a second line was centred
+
+At the pane's narrowest width, one of the three option links on the merge step
+wraps — and sat centred under two siblings that were flush left, reading as a
+different kind of control.
+
+### Fixed — the run record named a version where it promised a host
+
+The first line of a run record says which build, which host and which API, and
+the host field carried an Office build number rather than "PowerPoint". On a
+host that would not say which platform it was, the same line read
+`platform: "undefined"`.
+
+### Fixed — "use the slides I've selected" refused on a large deck
+
+The step that reads your selection has a time limit, and it was also being
+charged for reading the deck's slide list — which has its own. On a deck of a
+few hundred slides, which a merge of a couple of hundred rows produces, it ran
+out of time every time while PowerPoint had answered every call promptly.
+
+### Fixed — a part could be named after one the file already held
+
+A file carrying a part with an enormous number in its name could make the merge
+name a new part after it, overwriting it, leaving two slides sharing one chart
+in a file that still opens.
+
+
 ### Fixed — a chart value could reach the data sheet and never the chart, in silence
 
 A chart keeps its own copy of the numbers it draws, and that copy can have no

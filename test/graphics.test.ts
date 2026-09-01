@@ -130,6 +130,57 @@ describe("a chart on a merged slide", () => {
   });
 });
 
+describe("a callout drawn ON a chart", () => {
+  /**
+   * PowerPoint puts a text box added to a chart in a drawing part the CHART
+   * points at, not on the slide. So every merged copy of the chart pointed at
+   * the template's one copy of it, and a `{{Name}}` typed into a chart callout
+   * shipped verbatim on all 240 slides — with nothing to say so, because the
+   * package is legal either way and the text pass was never handed the part.
+   *
+   * It is the last member of the family `graphics.ts` names in its own header:
+   * "a part a merge writes into may never be shared by two slides". The comment
+   * that hid it said a chart has no such relationship.
+   */
+  const withCallout: SlideSpec = {
+    paragraphs: [["Cover"]],
+    chart: { title: "Sales", callout: "Owner: {{Name}}" },
+  };
+
+  const drawingOf = async (zip: JSZip, slide: string) => {
+    const chart = (await related(zip, slide, "/chart"))[0] ?? "";
+    return chart === "" ? "" : ((await related(zip, chart, "/chartUserShapes"))[0] ?? "");
+  };
+
+  it("gives every copy its own drawing, with its own row in it", async () => {
+    const { zip } = await merge(withCallout);
+    const first = await drawingOf(zip, "ppt/slides/slide2.xml");
+    const second = await drawingOf(zip, "ppt/slides/slide3.xml");
+    expect(first, "the merged slide's chart names no drawing").not.toBe("");
+    expect(first).not.toBe(second);
+    expect((await textOf(zip, first, A_NS, "t")).join("")).toContain("Owner: Ada");
+    expect((await textOf(zip, second, A_NS, "t")).join("")).toContain("Owner: Grace");
+  });
+
+  it("leaves no merged copy pointing at the template's own drawing", async () => {
+    const { zip } = await merge(withCallout);
+    for (const slide of ["ppt/slides/slide2.xml", "ppt/slides/slide3.xml"]) {
+      expect(await drawingOf(zip, slide), slide).not.toBe("ppt/drawings/drawing1.xml");
+    }
+    // And the template's own is untouched, which is what the author still sees.
+    expect((await textOf(zip, "ppt/drawings/drawing1.xml", A_NS, "t")).join("")).toContain("{{Name}}");
+  });
+
+  it("declares each copy, so the deck opens", async () => {
+    const { zip } = await merge(withCallout);
+    const types = await zip.file("[Content_Types].xml")!.async("string");
+    for (const slide of ["ppt/slides/slide2.xml", "ppt/slides/slide3.xml"]) {
+      expect(types).toContain(`PartName="/${await drawingOf(zip, slide)}"`);
+    }
+    expect(types).toContain("drawingml.chartshapes+xml");
+  });
+});
+
 describe("the workbook behind a chart", () => {
   const withWorkbook: SlideSpec = {
     paragraphs: [["Cover"]],

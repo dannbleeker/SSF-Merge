@@ -35,7 +35,7 @@ import { graphicsOf, workbooksOf, type FieldSite } from "./sites.js";
 import { withinInflatedBudget, workbookParts } from "./workbook.js";
 
 export interface GraphicOutcome {
-  /** Text groups filled in chart and SmartArt parts. */
+  /** Placeholders filled in chart and SmartArt parts. */
   merged: number;
   /** Workbooks behind a chart whose strings were filled too. */
   workbooks: number;
@@ -176,6 +176,42 @@ function liftHeld(
   return out;
 }
 
+/**
+ * The field names a chart's WORKBOOK holds, without filling any of them.
+ *
+ * `prepareBlock` scanned the chart part and the cells the numeric pass reaches,
+ * and nothing else — so a placeholder living only in a workbook cell was filled
+ * by the run and unseen by the scan. If it was a block's only placeholder the
+ * merge was refused outright, with a sentence telling the author to type field
+ * names onto a slide that already carried one: the fourth instance of the class
+ * `sites.ts` enumerates, and the direction `prepare.ts` calls the worse one.
+ *
+ * It bites the generator-written population. A chart PowerPoint authored mirrors
+ * its labels into `<c:strCache>`, which the chart-part scan already sees; a
+ * workbook whose text is only in the sheet does not.
+ *
+ * A dry run of `mergeWorkbook` itself, driven by a resolver that records every
+ * name and answers null — the same shape `chartValueFields` uses, and for the
+ * same reason. Null is what a placeholder with no column gets everywhere else,
+ * so nothing merges, `changed` stays false and no workbook is repacked. A
+ * second reader that walked the workbook its own way would be free to disagree
+ * with the merge about what a placeholder is, which is the disagreement this
+ * whole seam exists to prevent.
+ */
+export async function workbookFields(pkg: Pkg, path: string): Promise<string[]> {
+  const seen: string[] = [];
+  await mergeWorkbook(
+    pkg,
+    path,
+    (name) => {
+      if (!seen.includes(name)) seen.push(name);
+      return null;
+    },
+    [],
+  );
+  return seen;
+}
+
 async function mergeWorkbook(pkg: Pkg, path: string, resolve: Resolve, held: HeldCell[]): Promise<boolean> {
   let zip: JSZip;
   try {
@@ -233,7 +269,19 @@ async function mergeWorkbook(pkg: Pkg, path: string, resolve: Resolve, held: Hel
     // node returns to the position it left.
     const lifted = liftHeld(doc, name, parts.sharedStrings === name, held);
     const merged = mergeDocument(doc, resolve);
-    for (const { node, parent, next } of lifted) parent.insertBefore(node, next);
+    // LAST OUT, FIRST BACK. Each `next` was the node's live sibling at the
+    // moment it was removed, so an anchor is only guaranteed to be in the tree
+    // again once every removal after it has been undone. Replaying the list
+    // forwards got both halves of this wrong: the shared-string table is taken
+    // highest index first, so restoring in that order re-inserted each entry
+    // before an anchor the next insertion then jumped in front of and the held
+    // strings came back REVERSED — a user's placeholders permuted against the
+    // chart's own point order, visible only in Edit Data. And two held cells
+    // that are siblings — a row-oriented series with inline strings — made the
+    // second removal detach the first's anchor, so `insertBefore` threw
+    // "child not in parent", out through `runPlan` and past the pane's own
+    // catch: no slides, no notice, an unhandled rejection.
+    for (const { node, parent, next } of [...lifted].reverse()) parent.insertBefore(node, next);
     if (merged === 0) continue;
     zip.file(name, serializeXml(doc));
     changed = true;

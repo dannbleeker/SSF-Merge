@@ -138,6 +138,18 @@ export interface PaneState {
   conditionsOpen?: boolean;
   /** Conditions the user set, keyed by SLIDE NUMBER — the numbering they can see. */
   conditions?: Record<number, string>;
+  /**
+   * The block those conditions are keyed to.
+   *
+   * Only `blockTyped` reads it, and only to tell an INCOMPLETE draft from a
+   * different one. While a slide-number box is empty the state names no block
+   * at all, so "has the block moved?" cannot be answered from the state alone —
+   * and answering it wrongly either loses the user's conditions on a keystroke
+   * that moved nothing, or keeps conditions keyed to slides that are no longer
+   * in the block. This is the anchor that makes the question answerable across
+   * the empty box in the middle.
+   */
+  conditionsFor?: Block;
   /** What the two slide-number boxes hold right now, as typed. */
   draft?: BlockDraft;
   /** What the user pasted into the data box, unparsed. */
@@ -798,11 +810,20 @@ export function unusedColumns(state: PaneState): string[] {
   return state.columns.filter((c) => !placed.has(c));
 }
 
-/** The chosen block as a sentence subject: "Slide 4", "Slides 4 to 6". */
-function blockSubject(state: PaneState): string {
+/**
+ * The chosen block as a sentence subject WITH its verb: "Slide 4 carries",
+ * "Slides 4 to 6 carry".
+ *
+ * The verb comes back with the subject because this is the only place that
+ * knows whether the subject is singular. It used to answer the subject alone
+ * and both callers appended "carry", which is right for a range and wrong for
+ * the single-slide block a badge or a certificate merge uses — the commonest
+ * shape there is: "Slide 4 carry no fields yet."
+ */
+function blockCarries(state: PaneState): string {
   const block = chosenBlock(state);
-  if (!block) return "Those slides";
-  return block.from === block.to ? `Slide ${block.from}` : `Slides ${block.from} to ${block.to}`;
+  if (!block) return "Those slides carry";
+  return block.from === block.to ? `Slide ${block.from} carries` : `Slides ${block.from} to ${block.to} carry`;
 }
 
 /**
@@ -820,7 +841,7 @@ function blockSubject(state: PaneState): string {
  * step".
  */
 export function noFieldsYet(state: PaneState): string {
-  return `${blockSubject(state)} carry no fields yet. Go back a step and put one on a slide.`;
+  return `${blockCarries(state)} no fields yet. Go back a step and put one on a slide.`;
 }
 
 /**
@@ -833,7 +854,7 @@ export function noFieldsYet(state: PaneState): string {
  * caught and no assertion would have.
  */
 export function noFieldsHere(state: PaneState): string {
-  return `${blockSubject(state)} carry no fields yet. Press a column above to put one on the slide, then check the slides again.`;
+  return `${blockCarries(state)} no fields yet. Press a column above to put one on the slide, then check the slides again.`;
 }
 
 /**
@@ -857,6 +878,37 @@ export type Status = "done" | "current" | "waiting";
  * to do, because "Not available" is a dead end and this pane has four places it
  * could have said that.
  */
+/**
+ * Why there is no row left to act on, or null.
+ *
+ * Shared by the preview and merge steps, because they ask the same question and
+ * had drifted: the merge asked it and the preview did not, so a user who
+ * unticked every row — or chose "leave the whole row out" while every row
+ * qualifies — reached a preview step whose one enabled button did NOTHING. No
+ * slides, no notice, no spinner, no change to the screen. `preview()` returns
+ * early on exactly this, so the enablement rule and the handler's precondition
+ * are now one function rather than two that agree by inspection.
+ *
+ * `firstIncludedRow` is that precondition. The two sentences below name WHICH
+ * control emptied the run, because "attach your data" would be wrong advice for
+ * both — the user did something deliberate and needs telling what.
+ */
+function noRowToRun(state: PaneState, verb: "preview" | "merge"): string | null {
+  // Not the same as having no data. A user who unticked every row has done
+  // something deliberate and needs telling what, not "attach data".
+  if (includedCount(state) === 0) return `Every row is unticked, so there is nothing to ${verb}.`;
+  // `rows` is the count and `records` is the data, and a state can carry the
+  // first without the second — the pane knows how many rows it has before it
+  // needs them. `firstIncludedRow` reads the data, so without it there is
+  // nothing to conclude, and concluding anyway blocked a merge that was fine.
+  // The same trap `includedCount` carries a comment about.
+  if (!state.records) return null;
+  if (firstIncludedRow(state)) return null;
+  // The user chose "leave the whole row out" and every row qualifies, so the
+  // sentence names the control that did it rather than the data.
+  return `Every row has a blank field, and "leave the whole row out" leaves nothing to ${verb}.`;
+}
+
 export function blockedReason(state: PaneState, step: StepId): string | null {
   switch (step) {
     case "template":
@@ -885,7 +937,7 @@ export function blockedReason(state: PaneState, step: StepId): string | null {
       // and a host insert to arrive at that refusal. Said here instead, where
       // it is still free to fix.
       if (state.fields.length === 0) return noFieldsYet(state);
-      return null;
+      return noRowToRun(state, "preview");
     case "merge": {
       if (!chosenBlock(state)) return "Choose the slides that repeat first.";
       if (!state.rows) return "Attach your data first.";
@@ -893,15 +945,11 @@ export function blockedReason(state: PaneState, step: StepId): string | null {
       // anybody meant and is expensive to undo. This is the same rule said
       // before the run rather than after it.
       if (state.fields.length === 0) return noFieldsYet(state);
-      // Not the same as having no data. A user who unticked every row has
-      // done something deliberate and needs telling what, not "attach data".
-      if (includedCount(state) === 0) return "Every row is unticked, so there is nothing to merge.";
-      // Not the same as having no rows, and not the same as unticking them.
-      // The user chose "leave the whole row out" and every row qualifies, so
-      // the sentence names the control that did it rather than the data.
-      if (state.slideFields && includedCount(state) > 0 && skippedRows(state).length === includedCount(state)) {
-        return 'Every row has a blank field, and "leave the whole row out" leaves nothing to merge.';
-      }
+      // The same question the preview step asks, through the same function —
+      // see `noRowToRun`. Written out twice here before, which is how the
+      // preview step came to be missing half of it.
+      const empty = noRowToRun(state, "merge");
+      if (empty !== null) return empty;
       // A placeholder with no column used to be refused here. It is a CAUTION
       // now — see `caution` below for why, and for where the sentence went.
       if (state.previewing) return "End the preview before merging.";

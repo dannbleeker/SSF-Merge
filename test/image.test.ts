@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { readImage } from "../src/core/image/read.js";
 import { NO_INSET, containFillRect, coverSrcRect } from "../src/core/image/fill.js";
+import { shapeBox } from "../src/core/image/place.js";
+import { A_NS, P_NS, elements, parseXml } from "../src/core/pptx/xml.js";
 
 /**
  * Real bytes, not hand-built headers.
@@ -364,5 +366,59 @@ describe("the geometry keeps the ratios it claims", () => {
     // And the case one might mistake for it, which is fine.
     const sliver = coverSrcRect({ w: 200, h: 100 }, { w: 1000, h: 1 });
     expect(sliver.l + sliver.r).toBeLessThan(M);
+  });
+});
+
+describe("a shape inside a group somebody has resized", () => {
+  /**
+   * A child of a `<p:grpSp>` states its size in the group's CHILD coordinate
+   * space, and the group scales that space by `ext ÷ chExt`. PowerPoint writes
+   * the two equal for a new group and leaves `chExt` alone when the user drags
+   * the group's handles, so every group anybody has resized has a scale factor.
+   *
+   * `shapeBox` read the declared extent and called it the rendered box, so
+   * `cover` — whose whole job is not to distort — computed its crop for the
+   * wrong ratio. Nothing reported it: a crop was computed and written.
+   */
+  /** The innermost `<p:sp>` of a spTree built from this markup. */
+  function shapeIn(markup: string): Element {
+    const doc = parseXml(
+      `<p:sld xmlns:p="${P_NS}" xmlns:a="${A_NS}"><p:cSld><p:spTree>${markup}</p:spTree></p:cSld></p:sld>`,
+    );
+    return elements(doc, P_NS, "sp").at(-1) ?? doc.documentElement;
+  }
+
+  const inner = `<p:sp><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="100" cy="100"/></a:xfrm></p:spPr></p:sp>`;
+  const group = (cx: number, cy: number, chx: number, chy: number, body: string) =>
+    `<p:grpSp><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/>` +
+    `<a:chOff x="0" y="0"/><a:chExt cx="${chx}" cy="${chy}"/></a:xfrm></p:grpSpPr>${body}</p:grpSp>`;
+
+  it("answers the box the picture is actually seen in", () => {
+    // Stretched 4x across, so a 100x100 child is rendered 400x100.
+    expect(shapeBox(shapeIn(group(400, 100, 100, 100, inner)))).toEqual({ w: 400, h: 100 });
+  });
+
+  it("crops the axis the rendered box asks for, not the declared one", () => {
+    const box = shapeBox(shapeIn(group(400, 100, 100, 100, inner)));
+    // A 2:1 picture in a box that is rendered 4:1: the picture is proportionally
+    // TALLER than its box, so top and bottom go. Read off the declared 1:1 box
+    // it was the sides, which then got stretched 4:1 by the group — a squashed
+    // photo on the one run that asked not to be squashed.
+    expect(coverSrcRect(box!, { w: 64, h: 32 })).toEqual({ l: 0, t: 25000, r: 0, b: 25000 });
+  });
+
+  it("accumulates through nested groups", () => {
+    const nested = group(400, 100, 100, 100, group(100, 200, 100, 100, inner));
+    expect(shapeBox(shapeIn(nested))).toEqual({ w: 400, h: 200 });
+  });
+
+  it("leaves the box alone for a group that has not been resized", () => {
+    // What PowerPoint writes for a new group, and the case that must not move.
+    expect(shapeBox(shapeIn(group(100, 100, 100, 100, inner)))).toEqual({ w: 100, h: 100 });
+  });
+
+  it("keeps the declared box when a group's own numbers cannot be read", () => {
+    const noChExt = `<p:grpSp><p:grpSpPr><a:xfrm><a:ext cx="400" cy="100"/></a:xfrm></p:grpSpPr>${inner}</p:grpSp>`;
+    expect(shapeBox(shapeIn(noChExt))).toEqual({ w: 100, h: 100 });
   });
 });

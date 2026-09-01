@@ -704,6 +704,42 @@ function audit() {
       `hit area ${Math.round(r.width)}x${Math.round(r.height)} on ${el.tagName.toLowerCase()}.${el.className || "-"} — a finger wants 24 on the short side`,
     );
   }
+  /*
+   * The sixth thing: whether a label that WRAPS still starts where its
+   * neighbours do.
+   *
+   * The option links on the merge step are `<button>` elements written to read
+   * as links, and a button centres its label. While a label fits on one line
+   * the button shrinks to it and the centring is invisible, so this survived
+   * every screenshot and every rule above: nothing overflowed, contrast was
+   * fine, the hit area was fine. At 320px "A blank cell leaves a blank — change
+   * what happens" wraps, and its second line sat centred underneath two
+   * siblings that were flush left.
+   *
+   * Measured off the LINE BOXES rather than off `text-align`, deliberately. A
+   * computed-style check on a class is a restatement of the stylesheet and
+   * passes for any value the stylesheet happens to hold; the line rects are
+   * where the reader's eye actually lands, and they catch a centring that
+   * arrives from a parent, from `direction`, or from a padding that only
+   * applies to one side.
+   *
+   * Only the link-shaped controls. The primary button is centred on purpose and
+   * a rule that fired on it would be switched off within a week.
+   */
+  for (const el of document.querySelectorAll("#pane button.back")) {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const lines = [...range.getClientRects()].filter((r) => r.width > 0);
+    if (lines.length < 2) continue;
+    const lefts = lines.map((r) => r.left);
+    const ragged = Math.max(...lefts) - Math.min(...lefts);
+    if (ragged <= 0.5) continue;
+    findings.push(
+      `wrapped label is not flush left: ${ragged.toFixed(1)}px between line starts on ` +
+        `${el.tagName.toLowerCase()}.${el.className || "-"} "${(el.textContent ?? "").trim().slice(0, 40)}"`,
+    );
+  }
+
   return findings;
 }
 
@@ -822,7 +858,8 @@ if (claims.length) {
 if (found.size === 0) {
   console.log(
     "audit: nothing overflows, every live label clears its contrast floor, every control shows where the keyboard is, " +
-      "every hit area is at least 24px on its short side, and axe finds no violation",
+      "every hit area is at least 24px on its short side, every wrapped link label starts flush left, " +
+      "and axe finds no violation",
   );
 } else {
   console.log(`audit: ${found.size} finding(s)`);

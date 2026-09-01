@@ -66,6 +66,73 @@ describe("the arithmetic above the merge button", () => {
   });
 });
 
+describe("the arithmetic above the merge button", () => {
+  /**
+   * `dropped` was added because the heading multiplied to 720 while the button
+   * two lines under it said 684 — two numbers on one screen, disagreeing, with
+   * the smaller one on the thing being pressed. Conditions produce the
+   * identical discrepancy and were not covered: two of three slides set to
+   * "only when Renewal" left the heading reading 2 × 3 beside "Add 4 slides".
+   */
+  it("says the planned total when the conditions change it", () => {
+    const block = { from: 4, to: 6 };
+    expect(mergeArithmetic(block, 2, 0, 4)).toBe("2 rows × 3 slides — 4 slides after conditions");
+  });
+
+  it("says nothing extra when the product IS the answer", () => {
+    // The ordinary merge, which must read exactly as it did — an extra clause
+    // that is always there means nothing when it appears.
+    const block = { from: 4, to: 6 };
+    expect(mergeArithmetic(block, 2, 0, 6)).toBe("2 rows × 3 slides");
+    expect(mergeArithmetic(block, 2)).toBe("2 rows × 3 slides");
+  });
+
+  it("counts the skipped rows out before comparing", () => {
+    // Both mechanisms at once: one row skipped for a blank, and conditions on
+    // top of that. The product is over the rows that survive the skip.
+    const block = { from: 4, to: 6 };
+    expect(mergeArithmetic(block, 3, 1, 6)).toBe("2 of 3 rows × 3 slides");
+    expect(mergeArithmetic(block, 3, 1, 4)).toBe("2 of 3 rows × 3 slides — 4 slides after conditions");
+  });
+});
+
+describe("a merge whose only placeholders are chart values", () => {
+  /**
+   * `paragraphsMerged` counts the text passes; chart VALUES are counted
+   * separately and reported in their own clause. So a template whose only
+   * placeholder is a chart value cell — which the engine accepts and fills —
+   * read both halves at once:
+   *
+   *   no {{fields}} were filled — check the spelling in your template ·
+   *   2 chart values filled
+   *
+   * The merge both failed and worked, and the author is sent hunting a spelling
+   * mistake they did not make.
+   */
+  it("does not raise the alarm about a run that filled something", () => {
+    const line = describeMerge({
+      added: 2,
+      deckAtStart: 1,
+      paragraphsMerged: 0,
+      chartValues: { filled: 2, refused: 0, unreadable: 0, unplotted: 0 },
+    });
+    expect(line).not.toContain("no {{fields}} were filled");
+    expect(line).toContain("2 chart values filled");
+  });
+
+  it("still raises it when nothing anywhere was filled", () => {
+    // The alarm is the whole point of the zero, and it is the likeliest way a
+    // first run against a real template goes wrong.
+    const line = describeMerge({
+      added: 2,
+      deckAtStart: 1,
+      paragraphsMerged: 0,
+      chartValues: { filled: 0, refused: 0, unreadable: 0, unplotted: 0 },
+    });
+    expect(line).toContain("no {{fields}} were filled");
+  });
+});
+
 describe("what the deck will look like afterwards", () => {
   it("says where the slides land as well as how many", () => {
     // "720 slides added" answers the wrong half of the question somebody
@@ -74,6 +141,23 @@ describe("what the deck will look like afterwards", () => {
     // FUTURE tense: nothing has happened when this sentence is on screen.
     expect(s).toContain("720 slides will be added after slide 12");
     expect(s).toContain("732 slides in the deck");
+  });
+
+  it("says nothing about the deck's size when the host would not give one", () => {
+    /**
+     * `?? 0` at the call site read a refusal as an empty deck, so on a host
+     * whose slide count throws — caught to `undefined` at boot and caught again
+     * in `useBlock` — the sentence a user reads to decide whether to press said
+     * "6 slides will be added after slide 0, leaving 6 slides in the deck" for
+     * a deck with twelve slides in it. Both halves false, in the one sentence
+     * that has to be true.
+     */
+    const s = mergeSummary(6, undefined);
+    expect(s).toBe("6 slides will be added at the end of the deck.");
+    // The count does not depend on the deck's size, so it is still stated. The
+    // two clauses that do are dropped rather than invented.
+    expect(s).not.toContain("slide 0");
+    expect(s).not.toContain("in the deck.");
   });
 });
 

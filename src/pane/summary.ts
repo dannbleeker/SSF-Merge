@@ -56,10 +56,20 @@ export function blockSummary(block: Block, rows?: number): string {
  * Both numbers rather than just the survivors: "228 rows" alone is a true
  * sentence that loses how many were pasted, and the gap is the thing a user
  * has to notice.
+ *
+ * `planned` is the same argument again, for CONDITIONS. `dropped` was added for
+ * the skip policy and conditions produce the identical discrepancy: with two of
+ * three slides set to "only when Renewal", the heading multiplied to 6 while
+ * the button beside it read "Add 4 slides". Said only when it differs, so an
+ * ordinary merge — where the product IS the answer — reads exactly as before
+ * and the extra clause means something when it appears.
  */
-export function mergeArithmetic(block: Block, rows: number, dropped = 0): string {
+export function mergeArithmetic(block: Block, rows: number, dropped = 0, planned?: number): string {
   const count = dropped > 0 ? `${rows - dropped} of ${plural(rows, "row")}` : plural(rows, "row");
-  return `${count} × ${plural(slidesPerRecord(block), "slide")}`;
+  const product = `${count} × ${plural(slidesPerRecord(block), "slide")}`;
+  const total = (rows - dropped) * slidesPerRecord(block);
+  if (planned === undefined || planned === total) return product;
+  return `${product} — ${plural(planned, "slide")} after conditions`;
 }
 
 /**
@@ -78,7 +88,16 @@ export function mergeArithmetic(block: Block, rows: number, dropped = 0): string
  * The report keeps the past tense and lives in `describeMerge`, so the two no
  * longer read identically at opposite ends of the press.
  */
-export function mergeSummary(added: number, deckSize: number): string {
+export function mergeSummary(added: number, deckSize: number | undefined): string {
+  // A deck size the host would not give is UNKNOWN, not zero. `?? 0` at the
+  // call site read as an empty deck, so on a host whose slide count refuses,
+  // the sentence a user reads to decide whether to press said "6 slides will be
+  // added after slide 0, leaving 6 slides in the deck" — for a deck with twelve
+  // slides in it. Both halves false, in the one sentence that has to be true.
+  //
+  // The count of slides being added does not depend on the deck's size, so it
+  // is still stated; the two clauses that do are dropped rather than invented.
+  if (deckSize === undefined) return `${plural(added, "slide")} will be added at the end of the deck.`;
   return `${plural(added, "slide")} will be added after slide ${deckSize}, leaving ${plural(deckSize + added, "slide")} in the deck.`;
 }
 
@@ -185,11 +204,20 @@ export interface MergeReport {
 export function describeMerge(r: MergeReport): string {
   const parts = [`${plural(r.added, "slide")} added after slide ${r.deckAtStart}`];
   if (r.paragraphsMerged !== undefined) {
-    parts.push(
-      r.paragraphsMerged === 0
-        ? "no {{fields}} were filled — check the spelling in your template"
-        : `${plural(r.paragraphsMerged, "placeholder")} filled`,
-    );
+    // The alarm is about a run that matched NOTHING, and `paragraphsMerged`
+    // counts the text passes only — chart VALUES are counted separately and
+    // reported in their own clause below. A template whose only placeholder is
+    // a chart value cell therefore read "no {{fields}} were filled — check the
+    // spelling in your template · 2 chart values filled", which says the merge
+    // both failed and worked, and sends the author hunting a spelling mistake
+    // they did not make.
+    //
+    // Suppressed rather than folded into the count: adding the values to
+    // `paragraphsMerged` would report them twice in one sentence, and that
+    // number means one thing now.
+    const filledElsewhere = (r.chartValues?.filled ?? 0) > 0;
+    if (r.paragraphsMerged > 0) parts.push(`${plural(r.paragraphsMerged, "placeholder")} filled`);
+    else if (!filledElsewhere) parts.push("no {{fields}} were filled — check the spelling in your template");
   }
   if (r.workbooksUnreadable) {
     parts.push(

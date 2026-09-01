@@ -25,6 +25,15 @@ export const REL_TYPE = {
   image: `${REL}/image`,
   chart: `${REL}/chart`,
   /**
+   * A callout, arrow or text box drawn ON a chart, in its own drawing part.
+   *
+   * The chart owns the relationship, not the slide, so a merged copy of the
+   * chart pointed at the template's one copy of the drawing — and the text pass
+   * never saw it. A `{{Name}}` in a chart callout shipped verbatim on every
+   * slide of the merge.
+   */
+  chartUserShapes: `${REL}/chartUserShapes`,
+  /**
    * A MODERN chart — waterfall, funnel, treemap, sunburst, histogram, pareto,
    * box-and-whisker, region map. PowerPoint stores none of those as a
    * `<c:chartSpace>`; they are a separate part under a Microsoft namespace.
@@ -101,4 +110,4 @@ export const OWNED_BY_SLIDE =
  * pictures, a theme override. That is the whole list, and it is an allowlist
  * for the reason above.
  */
-export const OWNABLE_BY_GRAPHIC = /^ppt\/(charts|diagrams|embeddings|media|theme)\//;
+export const OWNABLE_BY_GRAPHIC = /^ppt\/(charts|diagrams|drawings|embeddings|media|theme)\//;

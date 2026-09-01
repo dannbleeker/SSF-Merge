@@ -38,6 +38,7 @@ import {
 import { insertVerdict, type InsertVerdict } from "../host/verdicts.js";
 import { provenSweep, sweepPlan } from "../host/undo.js";
 import { BUDGET, withTimeout } from "../host/timeout.js";
+import { readable } from "../host/errors.js";
 import { TAG_RUN } from "../core/pptx/tags.js";
 
 /**
@@ -94,8 +95,23 @@ export function hostEnvironment(): Environment {
     // Substituted by Vite at build time. Undefined in the suite and under tsc,
     // which is why `environmentLine` answers "unknown" rather than blank.
     ...(typeof __BUILD_STAMP__ === "string" ? { build: __BUILD_STAMP__ } : {}),
-    ...((p) => (p ? { platform: p } : {}))(read(() => String(Office.context.platform))),
-    ...((h) => (h ? { host: h } : {}))(read(() => Office.context.diagnostics?.version)),
+    // `String` over a value that may be absent produces the STRING "undefined",
+    // which is truthy — so `environmentLine`'s `?? "unknown"` never fired and
+    // the line read `platform: "undefined"`, which is the exact outcome that
+    // fallback's own comment says it exists to prevent.
+    ...((p) => (p ? { platform: p } : {}))(
+      read(() => (Office.context.platform === undefined ? undefined : String(Office.context.platform))),
+    ),
+    // WHICH HOST, from the field that names it. `host` was filled from
+    // `diagnostics.version`, so the one field answering "which application am I
+    // in" carried a build number and the question went unasked.
+    ...((h) => (h ? { host: h } : {}))(
+      read(() => {
+        const named = Office.context.diagnostics?.host;
+        return named === undefined ? undefined : String(named);
+      }),
+    ),
+    ...((v) => (v ? { officeVersion: v } : {}))(read(() => Office.context.diagnostics?.version)),
     supports: hostSupports,
   });
 }
@@ -331,7 +347,14 @@ export async function insertDeck(base64: string, expected: number): Promise<Inse
       "inserting the merged deck",
     );
   } catch (e) {
-    error = e instanceof Error ? e.message : String(e);
+    // `readable`, not `e.message`: Office echoes an argument back through
+    // `debugInfo`, and the argument here is the ENTIRE merged deck as base64.
+    // Uncapped, a failed insert put megabytes of the user's own merged rows on
+    // screen as the failure sentence, with the explanation at the front and
+    // nothing after it readable — and into a bug report, if they pasted it.
+    // `errors.ts` was written for exactly this and its two callers were the
+    // paths that REJECT; this one is caught and returned, so it never asked.
+    error = readable(e);
   }
   const after = await slideCount();
   return { ...insertVerdict({ before, after, expected, error }), before, after };
@@ -435,7 +458,7 @@ export async function undoInsert(deckAtStart: number, added: number, runId: stri
     // rejection escape skipped the re-count below and told the caller the undo
     // had failed while the user's slides were already gone, with no count of
     // what went. The DELTA is the evidence, never the absence of an error.
-    error = e instanceof Error ? e.message : String(e);
+    error = readable(e);
   }
   // A queued delete that raised nothing has not necessarily happened. Adds,
   // inserts and tag writes have all been accepted here and not performed, so
@@ -448,12 +471,19 @@ export async function undoInsert(deckAtStart: number, added: number, runId: stri
   const wanted = targets.length;
   const held = plan.count - wanted;
   const kept = held === 0 ? "" : `; ${held} slide(s) in the range are not this merge's and were left alone`;
+  // The RAIL's numbering, which is the only one the pane speaks — this string
+  // reaches the user verbatim, inside "Nothing was removed — …" and "Some of
+  // the merge is still there — …". It said "from index 3" for slides the rail
+  // calls 4 to 9: a 0-based index, one before the slides actually touched, in a
+  // sentence about slides being deleted. The refusal branch twenty lines above
+  // already converts, so one function could report in both numberings at once.
+  const range = `slides ${plan.from + 1} to ${plan.from + plan.count}`;
   return {
     removed,
     detail:
       removed === wanted
-        ? `removed ${removed} slide(s) from index ${plan.from}${kept}${note}`
-        : `asked for ${wanted} slide(s) from index ${plan.from} and the deck shrank by ${removed}${kept}${note}`,
+        ? `removed ${removed} slide(s) from ${range}${kept}${note}`
+        : `asked for ${wanted} slide(s) from ${range} and the deck shrank by ${removed}${kept}${note}`,
   };
 }
 
@@ -489,22 +519,32 @@ export async function selectedBlock(): Promise<SelectedBlock> {
     return { ok: false, why: "This PowerPoint cannot say which slides are selected — type the two numbers instead." };
   }
   try {
+    // The deck's ids first, paged and positional — the selection's ids mean
+    // nothing without them, and a single collection load of both is exactly
+    // what office-js#4272 answers short. See `deckSlideIds`.
+    //
+    // OUTSIDE the budget below, the way `readTemplate` already does it. Every
+    // page of that walk carries its own `BUDGET.read`, and it was nested inside
+    // one more of the same size — so the outer budget bounded its own
+    // sub-budgets and fired whenever the TOTAL crossed 15 seconds, however
+    // promptly the host answered each call. On a 600-slide deck at the round
+    // trip times this file's own comment cites, "use the slides I've selected"
+    // refused every time with "gave up waiting", after 28 calls that had each
+    // answered well inside their budget. A merge of 200 rows over a three-slide
+    // block leaves exactly that deck. A wall-clock bound on the whole operation
+    // would have to be a larger constant than the per-call one; a budget that
+    // also bounds its own parts can only fire falsely.
+    const deckIds = await deckSlideIds();
     return await withTimeout(
-      (async () => {
-        // The deck's ids first, paged and positional — the selection's ids mean
-        // nothing without them, and a single collection load of both is exactly
-        // what office-js#4272 answers short. See `deckSlideIds`.
-        const deckIds = await deckSlideIds();
-        return PowerPoint.run(async (context) => {
-          const selected = context.presentation.getSelectedSlides();
-          selected.load("items/id");
-          await context.sync();
-          return blockFromSelection(
-            selected.items.map((s) => s.id),
-            deckIds,
-          );
-        });
-      })(),
+      PowerPoint.run(async (context) => {
+        const selected = context.presentation.getSelectedSlides();
+        selected.load("items/id");
+        await context.sync();
+        return blockFromSelection(
+          selected.items.map((s) => s.id),
+          deckIds,
+        );
+      }),
       BUDGET.read,
       "reading the selected slides",
     );
@@ -512,7 +552,7 @@ export async function selectedBlock(): Promise<SelectedBlock> {
     // An OUTCOME, never a raise. The pane awaits this from a click handler, and
     // a rejection there is an unhandled one — the shape of defect an
     // adversarial review already found in this pane once.
-    return { ok: false, why: e instanceof Error ? e.message : String(e) };
+    return { ok: false, why: readable(e) };
   }
 }
 
@@ -573,7 +613,7 @@ export async function insertTextAtCursor(text: string): Promise<CursorInsert> {
       // Documented to call back rather than throw, and it throws anyway on a
       // host with no document open. Answered, because the caller has a
       // fallback and a raise would take it with it.
-      resolve({ ok: false, why: e instanceof Error ? e.message : String(e) });
+      resolve({ ok: false, why: readable(e) });
     }
   });
 }

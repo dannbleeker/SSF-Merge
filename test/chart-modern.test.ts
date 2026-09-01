@@ -170,10 +170,34 @@ describe("a modern chart is merged", () => {
       title: undefined,
       categories: ["one", "two"],
       series: undefined,
+      // The WORKBOOK too. `FUNNEL`'s carries `{{Region}}` and `{{Name}}`, and
+      // this assertion used to read "only Revenue" while they sat in the sheet
+      // — true only because nothing scanned a workbook's text. The merge has
+      // always filled them, so the scan reporting them is right and the fixture
+      // was what made this test about one field.
+      workbook: ["one", "two", "nobody"],
       values: ["{{Revenue}}", "42"],
     };
     const { prepared } = await mergeDeck({ paragraphs: [["Cover"]], modernChart: spec });
     expect(prepared.ok && [...prepared.fields].sort()).toEqual(["Revenue"]);
+  });
+
+  it("reports a field that is ONLY in the workbook's text, which the value walk cannot see", async () => {
+    /**
+     * The numeric walk opens the cells a `<c:f>` names and the cache has a
+     * point for; the text pass merges every string in the workbook. So a
+     * placeholder in any other cell was filled by the run and unseen by the
+     * scan — and if it was the block's only one, the merge was refused as
+     * though the slide had no fields at all, with a sentence telling the
+     * author to type field names onto a slide that already carried one.
+     *
+     * It bites the generator-written population: a chart PowerPoint authored
+     * mirrors its labels into the cache, which the chart-part scan already
+     * sees.
+     */
+    const spec = { ...FUNNEL, title: undefined, categories: ["one", "two"], series: undefined };
+    const { prepared } = await mergeDeck({ paragraphs: [["Cover"]], modernChart: spec });
+    expect(prepared.ok && [...prepared.fields].sort()).toEqual(["Name", "Region"]);
   });
 
   it("refuses a value that will not be a number, and says so rather than guessing", async () => {

@@ -7,7 +7,7 @@
  */
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { blockMoved, dataChanged } from "../src/pane/transitions.js";
+import { blockMoved, blockDrafted, dataChanged } from "../src/pane/transitions.js";
 import type { PaneState } from "../src/pane/steps.js";
 
 const FULL: PaneState = {
@@ -93,6 +93,54 @@ describe("when the block moves", () => {
     // Two callers set a notice of their own, so clearing it here would make the
     // order of two statements decide whether the user sees the sentence.
     expect(after.notice).toBe("something the host said");
+  });
+});
+
+describe("when the slide numbers are typed in", () => {
+  /**
+   * `blockMoved` is right for its own contract; this is about WHEN it fires. It
+   * ran on every keystroke, so a user who set "slide 5 only when Renewal", went
+   * back to check the slide numbers, retyped the same last slide and walked
+   * forward again found the conditions gone — silently, with the merge button
+   * quietly offering more slides than they had asked for.
+   */
+  it("keeps the conditions when the numbers still name the same block", () => {
+    const same = blockDrafted(FULL, { from: "3", to: "5" });
+    expect(same.conditions, "the block did not move, so nothing became stale").toEqual({ 5: "Renewal" });
+    // Everything read off the SLIDES still goes: this pane has no way to know
+    // they were not edited between the read and the keystroke.
+    expect(same.fields).toEqual([]);
+    expect(same.slideFields).toBeUndefined();
+  });
+
+  it("keeps them while a box is empty, which is incomplete rather than different", () => {
+    // The route the user actually takes: clear the box, then retype. Dropping
+    // them here would lose them before the second keystroke could keep them.
+    const clearing = blockDrafted(FULL, { from: "3", to: "" });
+    expect(clearing.conditions).toEqual({ 5: "Renewal" });
+    expect(blockDrafted(clearing, { from: "3", to: "5" }).conditions).toEqual({ 5: "Renewal" });
+  });
+
+  it("drops them once the block has genuinely moved, across the empty box too", () => {
+    // The case the anchor exists to get right: clear a box, then type a
+    // DIFFERENT number. Without it the second keystroke reads as "no block
+    // before, no move", and conditions keyed to slide 5 survive onto a block
+    // that no longer contains it.
+    const clearing = blockDrafted(FULL, { from: "3", to: "" });
+    expect(blockDrafted(clearing, { from: "3", to: "9" }).conditions).toBeUndefined();
+  });
+
+  it("drops the anchor with the conditions, so a later keystroke cannot revive them", () => {
+    expect(blockMoved(FULL).conditionsFor).toBeUndefined();
+    const moved = blockDrafted(FULL, { from: "3", to: "9" });
+    expect(moved.conditionsFor).toBeUndefined();
+  });
+
+  it("drops them the moment the numbers name different slides", () => {
+    // Which is the rule `blockMoved` exists for: a condition is keyed by slide
+    // NUMBER, so a block starting one slide later applies it to another slide.
+    expect(blockDrafted(FULL, { from: "3", to: "9" }).conditions).toBeUndefined();
+    expect(blockDrafted(FULL, { from: "4", to: "5" }).conditions).toBeUndefined();
   });
 });
 

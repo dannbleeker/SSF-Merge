@@ -264,7 +264,17 @@ export const KNOWN_SETS = ["1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "1.7", "1.8
 export interface Environment {
   build: string;
   platform: string;
+  /**
+   * WHICH HOST — "PowerPoint", "Word". `Office.context.diagnostics.host`.
+   *
+   * This was filled from `diagnostics.version` and named `host`, so the one
+   * field that answers "which application am I in" carried a build number, and
+   * the question this line exists to answer went unasked. The version has its
+   * own field below.
+   */
   host: string;
+  /** The Office build, `Office.context.diagnostics.version`. */
+  officeVersion: string;
   /** EVERY set the host publishes, not only the ones we gate on. */
   sets: string[];
   floor: string;
@@ -294,6 +304,7 @@ export function environmentLine(o: {
   build?: string;
   platform?: string;
   host?: string;
+  officeVersion?: string;
   supports: Supports;
 }): Environment {
   return {
@@ -302,6 +313,7 @@ export function environmentLine(o: {
     build: o.build ?? "unknown",
     platform: o.platform ?? "unknown",
     host: o.host ?? "unknown",
+    officeVersion: o.officeVersion ?? "unknown",
     sets: KNOWN_SETS.filter((v) => o.supports(v)),
     floor: API_FLOOR,
     clearsFloor: checkFloor(o.supports).ok,

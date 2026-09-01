@@ -291,6 +291,35 @@ describe("the preview step", () => {
     expect(pane.querySelector("button.primary")?.textContent).toBe("Preview the first row");
   });
 
+  it("counts the conditions the press will run with, not the block's size", () => {
+    /**
+     * `plannedSlides` exists because the product of slides-per-record and rows
+     * ignores the conditions, and its own docstring says so; the merge card and
+     * the merge button were fixed to use it and this sentence still multiplied.
+     * With two of three slides set to "only when Renewal" and a first row whose
+     * Renewal cell is empty, it promised three slides and the press landed one.
+     */
+    const records = {
+      columns: [
+        { name: "First", type: "text" as const },
+        { name: "Renewal", type: "text" as const },
+      ],
+      rows: [{ First: "Ada", Renewal: "" }],
+    };
+    const conditioned: PaneState = {
+      ...ready,
+      columns: ["First", "Renewal"],
+      records,
+      rows: 1,
+      conditions: { 5: "Renewal", 6: "Renewal" },
+    };
+    expect(paneFor(conditioned, "preview").textContent).toContain("Adds 1 slide ");
+
+    // And with no condition set it is the block's size again, so an ordinary
+    // preview reads exactly as it did.
+    expect(paneFor({ ...conditioned, conditions: {} }, "preview").textContent).toContain("Adds 3 slides");
+  });
+
   it("offers a way past it, because its primary does not advance", () => {
     // Every other step's primary carries the user forward; this one shows a
     // row. Without a forward link the wizard has no exit from step 3 at all,
@@ -354,6 +383,20 @@ describe("the preview step", () => {
     expect(card?.textContent).toContain("template is untouched");
     // Singular, because one slide is one slide.
     expect(card?.textContent).toContain("Slide 13 ");
+    // ALL the way through the sentence. The is/are was chosen from the block's
+    // size and the pronoun was written plural regardless, so the card read
+    // "Slide 13 is a preview … removing the preview deletes them" — agreeing
+    // with itself in one clause and not in the next. A one-slide preview is
+    // ordinary: a badge, a certificate, or a block this row's conditions left
+    // one slide of.
+    expect(card?.textContent).toContain("deletes it.");
+    expect(card?.textContent).not.toContain("deletes them");
+
+    const many = paneFor({ ...ready, previewing: true, previewSlides: { from: 13, to: 15 } }, "preview").querySelector(
+      ".card.undo",
+    );
+    expect(many?.textContent).toContain("are a preview");
+    expect(many?.textContent).toContain("deletes them.");
   });
 
   it("hides the forward link while a preview is showing", () => {
@@ -783,6 +826,16 @@ describe("the picture picker", () => {
     const pane = paneFor({ ...withPhotos, images: files("ada.png", "grace.jpg") }, "data");
     expect(pane.textContent).toContain("All 2 pictures matched.");
     expect(pane.querySelector(".images .blocked")).toBeNull();
+  });
+
+  it("does not claim a success over an empty set", () => {
+    // "All 0 pictures matched" is what this said whenever no row NAMES a
+    // picture — every cell blank, or the rows that name one unticked. Nothing
+    // was matched and nothing was asked for, and it sat directly above "1 file
+    // no row refers to — ignored", which is the fact that actually applies.
+    const pane = paneFor({ ...withPhotos, excluded: [0, 1], images: files("ada.png") }, "data");
+    expect(pane.textContent).not.toContain("All 0 pictures matched");
+    expect(pane.textContent).toContain("No row names a picture");
   });
 
   it("says when two picture names differ only by their folder", () => {

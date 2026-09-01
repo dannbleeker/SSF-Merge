@@ -317,6 +317,45 @@ describe("every icon a manifest names is a file this repo builds", () => {
   });
 });
 
+describe("every PAGE a manifest names is a file this repo builds", () => {
+  /**
+   * The icon check above covers `/assets/`, and covered only that. Every other
+   * same-origin URL a manifest carries is a PAGE — the task pane itself, the
+   * support page, the privacy page — and nothing offline asked whether this
+   * repo produces any of them.
+   *
+   * The cost of the gap is not symmetric. A missing icon is a blank square; a
+   * missing `taskpane.html` is an add-in that installs and opens an empty pane,
+   * and a missing support or privacy page is a submission rejection, since
+   * Microsoft fetches both. The release workflow does fetch these (see
+   * `manifest-urls.mjs`), which catches it at the last possible moment and only
+   * for a deploy that already happened — this catches it in the pull request
+   * that renames the file.
+   *
+   * Two source roots, because one build serves from two places: `public/` is
+   * copied verbatim, and `src/pane` is vite's root, so `src/pane/taskpane.html`
+   * is served as `/taskpane.html`. Checking the SOURCES rather than `dist/`
+   * keeps this runnable without a build, which is what lets it sit in the same
+   * job as the rest of the suite.
+   */
+  it("serves each one out of public/ or the pane's own root", () => {
+    const pages = new Set(
+      NAMES.flatMap((n) => urlsIn(read(n)) as string[])
+        .filter((u) => u.startsWith(`${PROD_ORIGIN}/`) || u.startsWith(`${DEV_ORIGIN}/`))
+        .map((u) => new URL(u).pathname.slice(1))
+        .filter((path) => !path.startsWith("assets/")),
+    );
+    expect(pages.size, "no page is being checked at all").toBeGreaterThan(0);
+    expect(pages, "the pane itself is not among them").toContain("taskpane.html");
+    for (const path of pages) {
+      expect(
+        existsSync(`public/${path}`) || existsSync(`src/pane/${path}`),
+        `${path} is named by a manifest and this repo builds no such page`,
+      ).toBe(true);
+    }
+  });
+});
+
 describe("the store icons are the sizes AppSource asks for", () => {
   /** A PNG's width and height, out of its IHDR. */
   function pngSize(path: string): [number, number] {

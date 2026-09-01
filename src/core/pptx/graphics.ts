@@ -33,6 +33,7 @@ import { A_NS, MC_NS, PKG_REL_NS, P_NS, child, element, elements, relationshipId
 /** The embedded workbook behind a chart. Declared as a package, not as a part. */
 
 const CHART_TYPE = "application/vnd.openxmlformats-officedocument.drawingml.chart+xml";
+const CHART_SHAPES_TYPE = "application/vnd.openxmlformats-officedocument.drawingml.chartshapes+xml";
 const CHARTEX_TYPE = "application/vnd.ms-office.chartex+xml";
 const DIAGRAM_DATA_TYPE = "application/vnd.openxmlformats-officedocument.drawingml.diagramData+xml";
 const DIAGRAM_DRAWING_TYPE = "application/vnd.ms-office.drawingml.diagramDrawing+xml";
@@ -96,6 +97,7 @@ export async function cloneSlideGraphics(pkg: Pkg, slidePath: string): Promise<v
       const path = `ppt/charts/chart${n}.xml`;
       await copyWithRels(pkg, source, path, CHART_TYPE);
       await cloneChartWorkbook(pkg, path);
+      await cloneChartUserShapes(pkg, path);
       await repoint(pkg, slidePath, rId, `../charts/chart${n}.xml`);
     } else if (type === REL_TYPE.chartEx) {
       // A modern chart takes the same three steps as a classic one, and its
@@ -107,6 +109,7 @@ export async function cloneSlideGraphics(pkg: Pkg, slidePath: string): Promise<v
       const path = `ppt/charts/chartEx${n}.xml`;
       await copyWithRels(pkg, source, path, CHARTEX_TYPE);
       await cloneChartWorkbook(pkg, path);
+      await cloneChartUserShapes(pkg, path);
       await repoint(pkg, slidePath, rId, `../charts/chartEx${n}.xml`);
     } else if (type === REL_TYPE.diagramData) {
       const n = pkg.nextNumber("ppt/diagrams/data");
@@ -144,6 +147,38 @@ export async function cloneSlideGraphics(pkg: Pkg, slidePath: string): Promise<v
  * picture-of-data, or one whose external data was stripped, simply has no
  * `package` relationship, and its cache is all there is.
  */
+/**
+ * Give a copied chart its own copy of the shapes drawn ON it.
+ *
+ * A callout, an arrow or a text box added to a chart in PowerPoint does not
+ * live on the slide: it lives in a drawing part the CHART points at. So every
+ * merged copy of the chart pointed at the template's one copy of it, and a
+ * `{{Name}}` typed into a chart callout shipped verbatim on all 240 slides —
+ * with nothing to say so, because the package is legal either way and the text
+ * pass was never handed the part.
+ *
+ * The same shape as `cloneChartWorkbook` and `cloneDiagramDrawing`, and the
+ * last member of the family this file's own header names: "a part a merge
+ * writes into may never be shared by two slides".
+ *
+ * `copyWithRels`, not `copyPart`: a callout can hold a picture, so the drawing
+ * owns image relationships of its own. The `rId` is left alone because
+ * `<c:userShapes r:id="…">` inside the chart names it.
+ */
+async function cloneChartUserShapes(pkg: Pkg, chartPath: string): Promise<void> {
+  for (const rel of await relsOf(pkg, chartPath)) {
+    if (rel.getAttribute("Type") !== REL_TYPE.chartUserShapes) continue;
+    const target = rel.getAttribute("Target");
+    if (!target || (rel.getAttribute("TargetMode") ?? "") === "External") continue;
+    const source = resolve(chartPath, target);
+    if (!pkg.has(source)) continue;
+    const n = pkg.nextNumber("ppt/drawings/drawing");
+    const path = `ppt/drawings/drawing${n}.xml`;
+    await copyWithRels(pkg, source, path, CHART_SHAPES_TYPE);
+    await repoint(pkg, chartPath, rel.getAttribute("Id") ?? "", `../drawings/drawing${n}.xml`);
+  }
+}
+
 async function cloneChartWorkbook(pkg: Pkg, chartPath: string): Promise<void> {
   for (const rel of await relsOf(pkg, chartPath)) {
     if (rel.getAttribute("Type") !== REL_TYPE.package) continue;
@@ -286,11 +321,19 @@ export async function graphicPartsOf(pkg: Pkg, slidePath: string): Promise<strin
     const path = resolve(slidePath, target);
     if (!pkg.has(path) || out.includes(path)) continue;
     out.push(path);
-    // Only a data part has a drawing hanging off it to chase. A drawing found
-    // on the slide is already in `out`, and a chart has no such relationship.
-    if (type !== REL_TYPE.diagramData) continue;
+    // A DRAWING hanging off this part, which both a SmartArt data part and a
+    // chart can have. This said "a chart has no such relationship", and that
+    // was the false claim hiding the defect: a callout drawn on a chart is a
+    // `chartUserShapes` drawing, and it holds text a merge has to fill.
+    const chases =
+      type === REL_TYPE.diagramData
+        ? REL_TYPE.diagramDrawing
+        : type === REL_TYPE.chart || type === REL_TYPE.chartEx
+          ? REL_TYPE.chartUserShapes
+          : undefined;
+    if (chases === undefined) continue;
     for (const drawing of await relsOf(pkg, path)) {
-      if (drawing.getAttribute("Type") !== REL_TYPE.diagramDrawing) continue;
+      if (drawing.getAttribute("Type") !== chases) continue;
       const drawingTarget = drawing.getAttribute("Target");
       if (!drawingTarget) continue;
       const drawingPath = resolve(path, drawingTarget);
@@ -309,6 +352,21 @@ export async function graphicPartsOf(pkg: Pkg, slidePath: string): Promise<strin
  * charts is exactly the mix-up a count would not catch.
  */
 export async function packagesOfChart(pkg: Pkg, chartPath: string): Promise<string[]> {
+  // Only a CHART is asked for its workbook. `fieldSites` hands this every part
+  // `graphicPartsOf` found, which includes a SmartArt data part, a diagram
+  // drawing and — since chart callouts are cloned — a chart's user-shapes
+  // drawing. None of those has an embedded workbook, and pairing one with a
+  // `package` relationship it happened to carry would fill a chart's numbers
+  // from a stranger's cells.
+  //
+  // A chart stored somewhere other than `ppt/charts/` would be skipped by this,
+  // and its value cells would go unmerged. Part names are arbitrary in OPC, so
+  // that is possible in principle; no producer has been named that does it, and
+  // this engine's own clones are renamed into that folder. Left as it is rather
+  // than widened on a hunch — the shape that would close it properly is passing
+  // the relationship TYPE down from `graphicPartsOf` instead of inferring the
+  // kind from a path, which is a change worth making the day something real
+  // needs it.
   if (!chartPath.startsWith("ppt/charts/")) return [];
   const out: string[] = [];
   for (const rel of await relsOf(pkg, chartPath)) {

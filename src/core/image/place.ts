@@ -53,8 +53,42 @@ export function shapeBox(sp: Element): Box | undefined {
   const xfrm = spPr ? child(spPr, A_NS, "xfrm") : undefined;
   const ext = xfrm ? child(xfrm, A_NS, "ext") : undefined;
   if (!ext) return undefined;
-  const w = Number(ext.getAttribute("cx") ?? 0);
-  const h = Number(ext.getAttribute("cy") ?? 0);
+  let w = Number(ext.getAttribute("cx") ?? 0);
+  let h = Number(ext.getAttribute("cy") ?? 0);
+  if (!(w > 0 && h > 0)) return undefined;
+  // Scaled by every GROUP this shape is inside.
+  //
+  // A child of a `<p:grpSp>` states its size in the group's CHILD coordinate
+  // space, and the group scales that space by `ext ÷ chExt`. PowerPoint writes
+  // the two equal for a new group and leaves `chExt` alone when the user drags
+  // the group's handles — so every group anybody has resized has a scale
+  // factor, and the box this used to answer was not the box the picture is seen
+  // in. `cover`, whose whole job is not to distort, then computed its crop for
+  // the wrong ratio: a group stretched 4:1 horizontally cropped the SIDES off a
+  // 2:1 photo and had the group stretch the remaining square, on the one run
+  // that asked not to be squashed. Nothing reported it, because a crop was
+  // computed and written.
+  //
+  // Only the RATIO is used downstream, so the factors are applied to `w` and
+  // `h` directly and no EMU rounding enters. Groups nest, so this accumulates
+  // rather than looking one level up; a level whose numbers are missing or
+  // non-positive is skipped, which leaves the box as it stands rather than
+  // discarding a scale it cannot read.
+  for (let at = sp.parentNode; at !== null; at = at.parentNode) {
+    if (at.nodeType !== 1) continue;
+    const node = at as Element;
+    if (node.namespaceURI !== P_NS || node.localName !== "grpSp") continue;
+    const props = child(node, P_NS, "grpSpPr");
+    const groupXfrm = props ? child(props, A_NS, "xfrm") : undefined;
+    if (!groupXfrm) continue;
+    const outer = child(groupXfrm, A_NS, "ext");
+    const inner = child(groupXfrm, A_NS, "chExt");
+    if (!outer || !inner) continue;
+    const [ox, oy] = [Number(outer.getAttribute("cx") ?? 0), Number(outer.getAttribute("cy") ?? 0)];
+    const [ix, iy] = [Number(inner.getAttribute("cx") ?? 0), Number(inner.getAttribute("cy") ?? 0)];
+    if (ox > 0 && ix > 0) w *= ox / ix;
+    if (oy > 0 && iy > 0) h *= oy / iy;
+  }
   return w > 0 && h > 0 ? { w, h } : undefined;
 }
 

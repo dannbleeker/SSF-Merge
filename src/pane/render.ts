@@ -38,6 +38,8 @@ import {
   primary,
   readBlockDraft,
   readPastedTable,
+  firstIncludedRow,
+  plannedSlides,
   slidesPerRecord,
   statusOf,
   visibleRows,
@@ -122,10 +124,17 @@ export function render(root: HTMLElement, state: PaneState, current: StepId): vo
     // untouched, because the obvious fear about a preview on a real deck is
     // that it has edited the thing being previewed — which is exactly what the
     // design on this project's rejected list would have done.
+    // One slide is an ordinary preview: a name badge, a certificate, or a block
+    // whose other slides this row's conditions left out. Both halves of the
+    // sentence take their number from the same test — the is/are was chosen
+    // from the block's size and the pronoun was written plural regardless, so
+    // "Slide 13 is a preview … removing the preview deletes them" was on
+    // screen, agreeing with itself in one clause and not in the next.
+    const one = state.previewSlides ? state.previewSlides.from === state.previewSlides.to : false;
     card.append(
       el(doc, "p", {
         text: state.previewSlides
-          ? `${blockName(state.previewSlides)} ${state.previewSlides.from === state.previewSlides.to ? "is" : "are"} a preview of the first row. Your template is untouched — removing the preview deletes them.`
+          ? `${blockName(state.previewSlides)} ${one ? "is" : "are"} a preview of the first row. Your template is untouched — removing the preview deletes ${one ? "it" : "them"}.`
           : "A preview is in your deck. Your template is untouched — removing the preview deletes it.",
       }),
     );
@@ -357,7 +366,7 @@ function headline(state: PaneState, current: StepId): string {
     case "merge": {
       const block = chosenBlock(state);
       return block && state.rows
-        ? mergeArithmetic(block, includedCount(state), skippedRows(state).length)
+        ? mergeArithmetic(block, includedCount(state), skippedRows(state).length, slidesToAdd(state))
         : "Nothing to merge yet";
     }
   }
@@ -465,6 +474,20 @@ function body(doc: Document, state: PaneState, current: StepId, orange: OrangeHo
 
   if (current === "preview" && !state.previewing) {
     const previewBlock = chosenBlock(state);
+    // Counted with the same function the PRESS runs on, not by multiplying.
+    // `slidesPerRecord` ignores the conditions, so with two of three slides set
+    // to "only when Renewal" this sentence promised three slides and the press
+    // landed one — the same defect `plannedSlides` was written for one element
+    // over, where the merge card and the merge button were fixed and this was
+    // not. `firstIncludedRow` is the row `preview()` actually merges, so the
+    // forecast is that row's conditions applied to that row's data; with no
+    // condition set it comes back to the product and the sentence is unchanged.
+    const row = firstIncludedRow(state);
+    const slides = row
+      ? plannedSlides({ ...state, records: row, excluded: undefined })
+      : previewBlock
+        ? slidesPerRecord(previewBlock)
+        : 0;
     out.push(
       el(doc, "p", {
         class: "muted",
@@ -473,7 +496,7 @@ function body(doc: Document, state: PaneState, current: StepId, orange: OrangeHo
             // the only way out of this step. It is not the route any more —
             // the button afterwards takes them back out and carries on — and
             // an instruction that names a dead end is how the step read as one.
-            `Adds ${plural(slidesPerRecord(previewBlock), "slide")} to the end of the deck — the first row, merged the way every row will be. Look at them, then carry on to the merge.`
+            `Adds ${plural(slides, "slide")} to the end of the deck — the first row, merged the way every row will be. Look at them, then carry on to the merge.`
           : "Choose the slides that repeat first.",
       }),
     );
@@ -498,7 +521,7 @@ function body(doc: Document, state: PaneState, current: StepId, orange: OrangeHo
     // screen say "240 rows x 3 slides" twice, which reads as a rendering bug.
     // The card carries the CONSEQUENCE, which is the other half of the answer.
     const card = el(doc, "div", { class: "card summary" });
-    card.append(el(doc, "p", { class: "facts", text: mergeSummary(slidesToAdd(state), state.deckSize ?? 0) }));
+    card.append(el(doc, "p", { class: "facts", text: mergeSummary(slidesToAdd(state), state.deckSize) }));
     out.push(card);
   }
 
@@ -667,13 +690,20 @@ function imageControl(doc: Document, state: PaneState): HTMLElement {
     return wrap;
   }
 
+  // "All 0 pictures matched" is what the first branch said whenever no row
+  // NAMES a picture — every row's cell blank, or the rows that name one
+  // unticked. Nothing was matched and nothing was asked for, and the sentence
+  // claimed a success over an empty set, directly above "1 file no row refers
+  // to — ignored", which is the fact that actually applies.
   wrap.append(
     el(doc, "p", {
       class: tally.missing.length > 0 ? "blocked" : "muted",
       text:
-        tally.missing.length === 0
-          ? `All ${plural(tally.wanted, "picture")} matched.`
-          : `${tally.matched} of ${tally.wanted} matched. Missing: ${tally.missing.slice(0, 6).join(", ")}${tally.missing.length > 6 ? `, and ${tally.missing.length - 6} more` : ""}.`,
+        tally.wanted === 0
+          ? "No row names a picture, so none of these files will be placed."
+          : tally.missing.length === 0
+            ? `All ${plural(tally.wanted, "picture")} matched.`
+            : `${tally.matched} of ${tally.wanted} matched. Missing: ${tally.missing.slice(0, 6).join(", ")}${tally.missing.length > 6 ? `, and ${tally.missing.length - 6} more` : ""}.`,
     }),
   );
   // Named once, and not as a problem. Picking a whole folder is the ordinary

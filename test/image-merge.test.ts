@@ -8,7 +8,7 @@ import { Pkg } from "../src/core/pptx/pkg.js";
 import { A_NS, elements } from "../src/core/pptx/xml.js";
 import { makeDeck, xfrm } from "./fixtures/deck.js";
 import { makeResolver } from "../src/core/merge/resolve.js";
-import { imageMode } from "../src/core/merge/images.js";
+import { imageMode, MediaCache } from "../src/core/merge/images.js";
 
 const WIDE = new Uint8Array(readFileSync("test/fixtures/wide.png")); // 64 x 32
 const TALL = new Uint8Array(readFileSync("test/fixtures/tall.jpg")); // 30 x 90
@@ -504,5 +504,65 @@ describe("what the picture pass must not take with it", () => {
 
     expect(out.images.missing, "a field with no shape was skipped in silence").toEqual(["Photo"]);
     expect(out.images.placed).toBe(0);
+  });
+});
+
+describe("one picture used by many rows", () => {
+  /**
+   * The bytes are hashed to decide whether the package already holds them, and
+   * the digest deliberately walks every byte — a sample would let two pictures
+   * collide and the wrong one be reused. The key was computed BEFORE the
+   * lookup, so a picture already in the cache was re-hashed on every row.
+   *
+   * A logo on all 240 rows is the case this class exists for, and it was the
+   * case that paid most: 12.3 seconds of blocking work in a task-pane WebView
+   * to produce one media part, against 57 ms for the same lookup once the hash
+   * was skipped. `resolveImage` hands back the same buffer instance for every
+   * row naming one file, so identity is free.
+   *
+   * The assertion is on WORK, not on wall clock, which measures the machine it
+   * happens to run on. The proxy counts iterations of the buffer, which is what
+   * the digest does and the only thing that costs anything here.
+   */
+  it("hashes the bytes once, not once per row", async () => {
+    const pkg = await template("{{Photo|image}}");
+    const cache = new MediaCache(pkg);
+    let walks = 0;
+    const watched = new Proxy(WIDE, {
+      // Read off the TARGET rather than through `Reflect.get` with the proxy as
+      // receiver: a typed array's accessors are tied to its internal slot and
+      // refuse a foreign receiver ("Method get TypedArray.prototype.length
+      // called on incompatible receiver").
+      get(target, key) {
+        if (key !== Symbol.iterator) return Reflect.get(target, key) as unknown;
+        walks++;
+        return target[Symbol.iterator].bind(target);
+      },
+    });
+
+    const first = await cache.part(watched, "png", "image/png");
+    for (let row = 0; row < 20; row++) {
+      expect(await cache.part(watched, "png", "image/png"), "one picture, one part").toBe(first);
+    }
+    expect(walks, "the digest ran again for a picture already in the package").toBe(1);
+  });
+
+  it("still stores one part for the same picture supplied under two names", async () => {
+    // The content key is what makes that true and identity alone cannot see it,
+    // so it stays. This is the case that would be lost by replacing it.
+    const pkg = await template("{{Photo|image}}");
+    const cache = new MediaCache(pkg);
+    const copy = new Uint8Array(WIDE);
+    expect(await cache.part(new Uint8Array(WIDE), "png", "image/png")).toBe(await cache.part(copy, "png", "image/png"));
+  });
+
+  it("keeps two parts for the same bytes asked for under two extensions", async () => {
+    // The content key has always said so; the identity shortcut has to agree.
+    const pkg = await template("{{Photo|image}}");
+    const cache = new MediaCache(pkg);
+    const png = await cache.part(WIDE, "png", "image/png");
+    const jpeg = await cache.part(WIDE, "jpeg", "image/jpeg");
+    expect(jpeg).not.toBe(png);
+    expect(await cache.part(WIDE, "png", "image/png"), "and the first is still its own part").toBe(png);
   });
 });
