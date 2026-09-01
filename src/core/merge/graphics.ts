@@ -35,7 +35,7 @@ import { graphicsOf, workbooksOf, type FieldSite } from "./sites.js";
 import { withinInflatedBudget, workbookParts } from "./workbook.js";
 
 export interface GraphicOutcome {
-  /** Text groups filled in chart and SmartArt parts. */
+  /** Placeholders filled in chart and SmartArt parts. */
   merged: number;
   /** Workbooks behind a chart whose strings were filled too. */
   workbooks: number;

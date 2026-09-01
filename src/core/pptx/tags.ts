@@ -77,7 +77,7 @@ export function tagPartXml(entries: [string, string][]): string {
 }
 
 /**
- * The next free `ppt/tags/tagN.xml`.
+ * An unused `ppt/tags/tagN.xml`: the highest this package has held, plus one.
  *
  * Blind use of `tag1.xml` is the trap here: a template that already carries one
  * would have it overwritten, and every slide pointing at it would silently lose
@@ -87,8 +87,13 @@ export function nextTagNumber(pkg: Pkg): number {
   // Through `Pkg`'s own counter, which reads the package once and then keeps
   // itself current. The walk this replaces asked the package for every number
   // from 1 up on every call, and a merge calls it once per slide — so tagging
-  // 2000 slides made 2,000,000 lookups. Same contract, and `nextNumber` states
-  // it in the same words: the highest in use plus one, never a gap.
+  // 2000 slides made 2,000,000 lookups.
+  //
+  // NOT the same contract, and the comment here said it was. The walk was
+  // FIRST FREE and filled gaps: a package holding tag2 and tag5 and no tag1
+  // answered 1, where this answers 6. Both are names the package does not
+  // hold, which is all this has to guarantee — but "the next free" is not what
+  // it means any more, and the docstring above says so now.
   return pkg.nextNumber("ppt/tags/tag");
 }
 

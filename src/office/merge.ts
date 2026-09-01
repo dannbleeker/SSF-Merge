@@ -78,7 +78,7 @@ export interface MergeOutcome {
   /** Conditions naming a column the data does not have. */
   unknownConditions: string[];
   /**
-   * How many paragraphs the merge actually rewrote.
+   * How many PLACEHOLDERS the merge actually filled, in the text passes.
    *
    * `runPlan` has always returned this, with a docstring saying "a zero here on
    * a real template means the fields never matched", and this file threw it

@@ -23,25 +23,27 @@ const MAX_SLIDE_ID = 2_147_483_647;
 /**
  * The next number for a part family, given the ones already in use.
  *
- * Highest plus one, never filling a gap — see `nextNumber`. The `used` check is
- * belt and braces over that arithmetic: it makes the answer a number the
- * package demonstrably does not hold, however the maximum was arrived at.
+ * Highest plus one, never filling a gap — see `nextNumber`.
  *
- * A digit run past `Number.MAX_SAFE_INTEGER` is ignored rather than counted,
- * and that is what makes this terminate. Above 2^53, `max + 1 === max` — so a
- * package holding `slide99999999999999999999.xml` answered a number already in
- * use, `copyPart` overwrote it silently, and three merged slides shared one
- * part while the deck stayed structurally valid. It is the very defect
- * `nextNumber`'s own comment says it exists to prevent, reached by a route the
- * comment does not cover. Ignoring the outlier leaves the maximum exact, so
- * `max + 1` is a real step and the loop below can only run finitely.
+ * The whole of the safety is `countable`. Above 2^53, `max + 1 === max` — so a
+ * package holding `slide9007199254740992.xml` answered a number already in use,
+ * `copyPart` overwrote it silently, and two merged slides shared one part while
+ * the deck stayed structurally valid. It is the very defect `nextNumber`'s own
+ * comment says it exists to prevent, reached by a route the comment does not
+ * cover. Ignoring a digit run too large to count exactly leaves the maximum
+ * exact, so `max + 1` is a real step past every member.
+ *
+ * This carried a `while (used.has(next)) next++` as well, described as belt and
+ * braces. It was dead code: every member of `used` is a safe integer, so
+ * `max + 1` is exactly representable and strictly greater than all of them, and
+ * the loop could never run. An adversarial review of the commit that added it
+ * said so — a comment claiming a line is load-bearing when nothing can reach it
+ * is worse than no comment, because the next reader trusts it.
  */
 function nextFree(used: Set<number>): number {
   let max = 0;
   for (const n of used) if (n > max) max = n;
-  let next = max + 1;
-  while (used.has(next)) next++;
-  return next;
+  return max + 1;
 }
 
 /** Every whole number a path matched, ignoring any too large to count exactly. */
@@ -67,9 +69,16 @@ export class Pkg {
    *
    * Kept current by `noteWritten` rather than re-derived, which is sound
    * because `setText`, `setBytes` and `copyPart` are the only three ways a part
-   * enters this package. A DELETED part is deliberately not taken back out: the
-   * contract is the highest number plus one, never filling a gap, so a stale
-   * high number is the answer the counter would give anyway.
+   * enters this package.
+   *
+   * A DELETED part is deliberately not taken back out, and that DOES change the
+   * answer: the counter was a fact about the package and is now a high-water
+   * mark for this `Pkg`. Remove `slide9.xml` and the old code answered 2 while
+   * this answers 10. Nothing can collide either way — the point of never
+   * filling a gap — but "the next free number" is not what it computes any
+   * more, and an earlier version of this comment said a stale high number is
+   * "the answer the counter would give anyway", which is the sentence that is
+   * not true.
    */
   private readonly families = new Map<string, { pattern: RegExp; used: Set<number> }>();
 
@@ -271,7 +280,10 @@ export class Pkg {
    * `nextNotesNumber` comment records, generalised so the next family cannot
    * repeat it.
    *
-   * Never reuses a gap: the highest existing number plus one.
+   * Never reuses a gap: the highest number plus one. Since the counters are
+   * memoised (see `families`) that maximum is the highest this `Pkg` has SEEN,
+   * not the highest currently in the package — a deleted part does not lower
+   * it. Neither can collide; only one of them is "the next free number".
    */
   nextNumber(prefix: string, suffix = ".xml"): number {
     const pattern = new RegExp(`^${escapeRegExp(prefix)}(\\d+)${escapeRegExp(suffix)}$`);
@@ -708,7 +720,12 @@ export class Pkg {
     this.zip.remove(path);
   }
 
-  /** The next free `ppt/slides/slideN.xml` number. Never reuses a gap. */
+  /**
+   * The next `ppt/slides/slideN.xml` number: the highest seen plus one.
+   *
+   * Never reuses a gap, and since the counter is memoised it does not go back
+   * down when a slide is removed either. See `families`.
+   */
   /**
    * The next free `ppt/notesSlides/notesSlideN.xml` number.
    *

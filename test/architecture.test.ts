@@ -390,16 +390,24 @@ describe("every pane state field can actually be set", () => {
    * writes is reachable — main.ts reaches it by calling the rule — and the scan
    * above cannot see it, so `conditionsFor` read as settable by nothing.
    *
-   * Set to a VALUE, never to `undefined`. That distinction is what keeps the
-   * bite: `blockMoved` writes `conditions: undefined`, and the whole reason
-   * this guard exists is that it caught `conditions` being readable and
-   * writable by nothing while that very line stood. Clearing a field is not
-   * evidence that anything can fill it.
+   * Set to a VALUE, never CLEARED. That distinction is what keeps the bite:
+   * `blockMoved` writes `conditions: undefined`, and the whole reason this
+   * guard exists is that it caught `conditions` being readable and writable by
+   * nothing while that very line stood. Clearing a field is not evidence that
+   * anything can fill it.
+   *
+   * An empty literal is a clear too. The first version of this rejected only
+   * the word `undefined`, so `fields: []` and `imageFields: []` — both clears in
+   * `blockMoved` — counted as sets, and the assertion offered as proof of the
+   * narrowness passed only because the field it named happened to be spelled
+   * the other way. A review of that commit said so.
    */
+  const CLEARED = new Set(["undefined", "[]", "{}", '""', "''"]);
+
   function transitionSetFields(source: string): Set<string> {
     const out = new Set<string>();
     for (const m of source.matchAll(/[{,]\s*(?:\/\/[^\n]*\s*)*(\w+)\s*:\s*([^,\n]+)/g)) {
-      if ((m[2] ?? "").trim() !== "undefined") out.add(m[1] ?? "");
+      if (!CLEARED.has((m[2] ?? "").trim())) out.add(m[1] ?? "");
     }
     return out;
   }
@@ -420,15 +428,16 @@ describe("every pane state field can actually be set", () => {
     // The third scan, for the same reason: an empty table would exempt nothing
     // and this guard would pass by measuring less, not by the code being right.
     expect(viaTable.size, "the disclosure table read as empty").toBeGreaterThan(0);
-    // The fourth scan, same reason — and the assertion beside it holds its
-    // narrowness. `slideFields` appears in `transitions.ts` only as
-    // `slideFields: undefined`, and clearing a field is not evidence that
+    // The fourth scan, same reason — and the assertions beside it hold its
+    // narrowness, in both spellings a clear takes. `slideFields: undefined` and
+    // `fields: []` are both clears, and clearing a field is not evidence that
     // anything can fill it: this guard exists because `conditions` was readable
     // and writable by nothing while exactly such a line stood, so a scan that
     // counted a clear as a set would have exempted the field it was written to
-    // catch.
+    // catch. Only the first was asserted, and the empty literal slipped through.
     expect(viaRule.size, "the transition rules read as empty").toBeGreaterThan(0);
     expect(viaRule.has("slideFields"), "a cleared field read as a set one").toBe(false);
+    expect(viaRule.has("fields"), "an empty literal read as a set one").toBe(false);
   });
 
   it("has no field the pane can only read", () => {

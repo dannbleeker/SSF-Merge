@@ -42,7 +42,18 @@ export interface RunResult {
   runId: string;
   /** Package paths of the slides produced, in the order they were added. */
   slides: string[];
-  /** How many paragraphs were rewritten. A zero here on a real template means the fields never matched. */
+  /**
+   * How many PLACEHOLDERS were filled by the text passes.
+   *
+   * A zero on a real template means the fields never matched, which is the
+   * alarm the pane speaks from. It counted node GROUPS until 2026-09-01 — one
+   * per paragraph rather than one per placeholder — so `Dear {{First}}
+   * {{Last}}` reported one; the name is left alone because every caller reads
+   * it and the number is what changed.
+   *
+   * The text passes ONLY. Chart values are counted in `graphics.numbers`, and
+   * `describeMerge` withholds the zero alarm when those filled something.
+   */
   paragraphsMerged: number;
   /** What the picture pass did, pooled over every slide it touched. */
   images: ImageOutcome;
