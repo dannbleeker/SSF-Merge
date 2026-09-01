@@ -163,6 +163,51 @@ describe("applyFormat", () => {
     expect(parseDate("13/01/2026")?.toISOString().slice(0, 10)).toBe("2026-01-13");
   });
 
+  it("reads a number Excel grouped with the space it actually uses", () => {
+    /**
+     * A number formatted with a SPACE group — Swedish, Norwegian, Finnish,
+     * French, Polish, Czech, Russian — is not written with U+0020. Excel uses
+     * a NO-BREAK SPACE, and modern builds use the NARROW no-break space in
+     * French, precisely so the number cannot be broken across a line. Copying
+     * that cell puts the DISPLAYED text on the clipboard, so a paste into the
+     * pane carries the space Excel chose and not the one a keyboard writes.
+     *
+     * `NUMBER` admitted `[ .,]` — plain ASCII — so the whole column typed as
+     * text: `{{Revenue|number:2}}` left the cell exactly as pasted, and the
+     * chart writer refused every value and counted it unfilled. Nothing said
+     * why, because the cell LOOKS like a number and the pane's own output uses
+     * a space too. The population that meets this is the same one the
+     * semicolon delimiter was added for.
+     */
+    for (const space of ["\u00a0", "\u202f", "\u2009"]) {
+      const grouped = `1${space}234${space}567`;
+      expect(numericValue(grouped), JSON.stringify(space)).toBe(1234567);
+      expect(looksLikeNumber(grouped), JSON.stringify(space)).toBe(true);
+      expect(applyFormat(grouped, "number:0"), JSON.stringify(space)).toBe("1 234 567");
+      // A decimal comma behind that grouping, which is the form the same
+      // locales write and the reason the group and the decimal may not be the
+      // same character.
+      expect(numericValue(`1${space}234,5`), JSON.stringify(space)).toBe(1234.5);
+    }
+  });
+
+  it("still refuses a number whose groups disagree, whichever spaces they are", () => {
+    // The property `NUMBER`'s backreference holds, extended to the new
+    // characters rather than left behind by them: the separator is captured
+    // once and every later group must repeat THAT one. Mixing them is not a
+    // locale, it is a paste that went through something.
+    expect(numericValue("1\u00a0234\u202f567")).toBeUndefined();
+    expect(numericValue("1.234\u00a0567")).toBeUndefined();
+    // But a space group with a DOT decimal is a real number and always has
+    // been with the ASCII space, so it stays one with the others. The
+    // backreference forbids reusing the GROUP character, not every separator.
+    expect(numericValue("1\u00a0234.567")).toBe(1234.567);
+    expect(numericValue("1 234.567")).toBe(1234.567);
+    // And a space is never the DECIMAL separator, so a trailing group of
+    // anything but three digits is not a number.
+    expect(numericValue("1\u00a05")).toBeUndefined();
+  });
+
   it("reads a DATE the spreadsheet padded, in every spelling it accepts", () => {
     // A cell arrives with whatever whitespace its export gave it, and one
     // `.trim()` in `parseDate` is the whole of that. Removing it left the suite
@@ -576,9 +621,10 @@ describe("month names the date gate already admits", () => {
       "januar februar mars april mai juni juli august september oktober november desember",
       "januari februari mars april maj juni juli augusti september oktober november december",
       // The ASCII spellings of the languages the removed `new Date` fallback
-      // used to reach by accident, and their neighbours. An accented one —
-      // `février`, `août`, `märz` — never gets past `NAMED_DATE`'s character
-      // class, so it is not in the table and not in this list either.
+      // used to reach by accident, and their neighbours. The accented forms —
+      // `février`, `août`, `décembre`, `märz`, `março` — ARE in the table,
+      // and have their own test below; what stays out is the transliteration
+      // somebody's exporter might write instead, which is `notClaimed`.
       "januar februar mars april mai juni juli august september oktober november dezember",
       "januari februari maart april mei juni juli augustus september oktober november december",
       "janvier fevrier mars avril mai juin juillet aout septembre octobre novembre decembre",
@@ -587,7 +633,8 @@ describe("month names the date gate already admits", () => {
       "janeiro fevereiro marco abril maio junho julho agosto setembro outubro novembro dezembro",
     ];
     // The spellings this table deliberately does NOT carry, because their real
-    // form is accented and the ASCII fallback is somebody else's guess.
+    // form is accented and the ASCII fallback is somebody else's guess. The
+    // real form is read; this list is the guess at it, and it stays refused.
     const notClaimed = new Set(["fevrier", "aout", "decembre", "marco"]);
     const meaning = new Map<string, number>();
     for (const line of languages) {
@@ -657,6 +704,44 @@ describe("month names the date gate already admits", () => {
     // A word that starts like a month is not automatically a non-month, which
     // is why the list above is words rather than a rule.
     expect(parseDate("1 augustus 2026")?.getUTCMonth()).toBe(7);
+  });
+
+  it("reads the accented spellings, which the character class used to refuse", () => {
+    /**
+     * `NAMED_DATE` admitted `[A-Za-z\u00c6\u00d8\u00c5\u00e6\u00f8\u00e5]`, so French, German and
+     * Portuguese were PARTIAL: nine months of twelve read and three did not.
+     * That is one column rendering two ways, which is the defect this whole
+     * describe block exists for — and the sharpest version of it, because the
+     * three that failed are the ones nobody spells any other way.
+     */
+    expect(parseDate("1 f\u00e9vrier 2026")?.toISOString().slice(0, 10)).toBe("2026-02-01");
+    expect(parseDate("1 ao\u00fbt 2026")?.toISOString().slice(0, 10)).toBe("2026-08-01");
+    expect(parseDate("1 d\u00e9cembre 2026")?.toISOString().slice(0, 10)).toBe("2026-12-01");
+    expect(parseDate("1 m\u00e4rz 2026")?.toISOString().slice(0, 10)).toBe("2026-03-01");
+    expect(parseDate("1 mar\u00e7o 2026")?.toISOString().slice(0, 10)).toBe("2026-03-01");
+    // Capitalised, which is how German writes it and how a spreadsheet's own
+    // month formatting writes all of them.
+    expect(parseDate("1 M\u00e4rz 2026")?.toISOString().slice(0, 10)).toBe("2026-03-01");
+  });
+
+  it("reads a name whose accent is a combining mark", () => {
+    /**
+     * The same five words in NFD, which is what a CSV exported on macOS
+     * carries: `\u00e9` is `e` followed by U+0301 rather than one code point. The
+     * character class has to admit the mark and the table lookup has to
+     * normalise, and neither half is visible in a string that LOOKS identical
+     * in a diff.
+     */
+    const nfd = "1 f\u00e9vrier 2026".normalize("NFD");
+    expect(nfd).not.toBe("1 f\u00e9vrier 2026");
+    expect(parseDate(nfd)?.toISOString().slice(0, 10)).toBe("2026-02-01");
+    expect(parseDate("1 ao\u00fbt 2026".normalize("NFD"))?.toISOString().slice(0, 10)).toBe("2026-08-01");
+  });
+
+  it("formats a whole French column the same way, which was the same defect", () => {
+    // Before this, the first of these formatted and the other two came out raw.
+    const column = ["1 janvier 2026", "1 f\u00e9vrier 2026", "1 ao\u00fbt 2026"];
+    expect(column.map((c) => applyFormat(c, "date:dd-MM-yyyy"))).toEqual(["01-01-2026", "01-02-2026", "01-08-2026"]);
   });
 
   it("formats a whole Danish column the same way, which was the defect", () => {
@@ -799,7 +884,17 @@ describe("the number gate and the number parser cannot disagree", () => {
    * repeat THAT one, and forbids a decimal part from reusing it.
    */
   const CORPUS = (() => {
-    const seps = ["", ",", ".", " "];
+    // Every character that can separate two digits here, which since
+    // 2026-09-01 is four spaces rather than one: the gate admits the no-break,
+    // narrow no-break and thin spaces Excel groups with.
+    //
+    // Widening this list detects NOTHING TODAY, and that is worth saying out
+    // loud rather than leaving a reader to assume the opposite. The property
+    // below is a tautology — `looksLikeNumber` is defined as `numericValue`,
+    // which is the right end state — so the corpus is a record of the input
+    // space this pair is meant to cover, kept in step with the pattern so that
+    // it is already right if the two are ever separated again.
+    const seps = ["", ",", ".", " ", "\u00a0", "\u202f", "\u2009"];
     const groups = ["", "0", "5", "12", "234", "1234"];
     const out = new Set<string>();
     for (const a of groups)
@@ -821,7 +916,7 @@ describe("the number gate and the number parser cannot disagree", () => {
     // puts 64 of these back.
     const violations = CORPUS.filter((v) => looksLikeNumber(v) !== (numericValue(v) !== undefined));
     expect(violations, "a form one of them accepts and the other cannot read").toEqual([]);
-    expect(CORPUS.length, "the sweep stopped covering anything").toBeGreaterThan(5000);
+    expect(CORPUS.length, "the sweep stopped covering anything").toBeGreaterThan(9000);
   });
 
   it("refuses a separator used for both grouping and the decimal", () => {

@@ -320,6 +320,19 @@ is what you typed, and showing it is more useful than hiding it.
 Both European and American forms are read. `1,5` is one and a half; `1,500` is
 one thousand five hundred; `1.234,56` and `1,234.56` are the same number.
 
+**A space group is read too, whichever space it is.** Swedish, Norwegian,
+Finnish, French, Polish, Czech and Russian group with a space, and Excel does
+not use the one on your keyboard — it writes a no-break space so the number
+cannot break across a line, and a narrow one in French. Copying a formatted
+cell puts what you SEE on the clipboard, so that is the character a paste
+carries. Until 2026-09-01 only the plain space was accepted, and such a column
+was treated as text: `{{Revenue|number:2}}` left it exactly as pasted and a
+chart fed from it filled nothing.
+
+The groups have to agree with each other. `1 234 567` written with two
+different spaces is not a locale, it is a paste that has been through
+something, and it is left alone.
+
 ### Dates
 
 `2026-03-01` and `3 March 2026` are read. So is `15/01/2026`, because only one
@@ -345,10 +358,17 @@ as a floor for languages it did not name; that floor is gone as of 2026-08-31,
 because the same prefix rule reads `1 marketing 2026` as **1 March 2026** and a
 date the data never gave is worse than a cell left alone.
 
-**An accented month is not read.** `février`, `août`, `märz` and `décembre`
-carry a letter the date reader does not accept, so those cells stay as they are
-while the rest of the same column formats. Write the month in the three-letter
-form, or use a numeric pattern.
+**Accented months are read.** `février`, `août`, `décembre`, `März` and
+`março` are the five European month names that are not spelled with plain
+letters, and until 2026-09-01 the date reader refused the letter itself — so
+French, German and Portuguese columns formatted nine months of twelve and left
+the other three showing the raw cell. They are read in either normalisation, so
+a file exported on a Mac reads the same as one exported on Windows.
+
+Write the month the way the language spells it. `fevrier` and `marco` without
+their accents are not read: they are somebody's guess at the spelling rather
+than the spelling, and reading a guess is how the old prefix rule invented
+months.
 
 **The month name written OUT is English**, whatever language it was read from:
 `{{Start|date:d MMM yyyy}}` gives `3 May 2026`. The output is the template

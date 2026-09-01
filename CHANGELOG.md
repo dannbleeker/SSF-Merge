@@ -7,6 +7,65 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a number Excel grouped with a space was read as text
+
+The locales that group thousands with a space — Swedish, Norwegian, Finnish,
+French, Polish, Czech, Russian — do not write U+0020. Excel uses a NO-BREAK
+space so the number cannot break across a line, and modern builds use the
+NARROW no-break space in French; a thin space turns up in exports from
+elsewhere. Copying a formatted cell puts its DISPLAYED text on the clipboard,
+so a paste into the pane carries the space Excel chose rather than the one a
+keyboard writes.
+
+`NUMBER` admitted `[ .,]` — plain ASCII — so the whole column typed as text.
+`{{Revenue|number:2}}` left the cell exactly as pasted, and the chart writer
+refused every value and counted it unfilled. Nothing said why: the cell looks
+like a number, and this project's own `number:` output uses a space too, so
+round-tripping our own text worked while a real paste did not. The population
+that meets this is the same one the semicolon delimiter was added for.
+
+The four spellings are alternatives inside ONE capture, so the backreference
+that has held since the grouping pattern was written still holds: whichever
+space opens the number, every later group must repeat that one.
+`1<NBSP>234<NNBSP>567` is refused, and so is a group of `.` followed by a
+group of space. A space is never the decimal separator in any locale, so the
+decimal tail stays `[.,]` and `1<NBSP>5` is not one and a half.
+
+`numericValue` already stripped all four before parsing, because `\s` covers
+them — the shape gate in front of it was the only thing refusing. That is the
+same pair this file records disagreeing twice before, and the reason they are
+one function's two halves rather than two functions.
+
+### Fixed — an accented month name left three rows of a column unformatted
+
+`février`, `août`, `décembre`, `März` and `março` are the five European month
+names not written with plain letters, and the date reader's character class
+admitted only `A-Z`, `a-z` and `ÆØÅ` — Danish, added on purpose, and nothing
+beyond it. So French, German and Portuguese columns read nine months of twelve.
+
+The visible failure is not a wrong date, it is one column rendering two ways:
+`1 janvier 2026` formatted to `01-01-2026` and `1 février 2026` came out as
+typed, on the same slide, with the column still typed `date` and nothing saying
+why. That is the defect the month-name table was written to end, surviving in
+the gate in front of it.
+
+The class carries Latin-1 Supplement and Latin Extended-A and -B now, plus the
+combining marks — so a name reads the same whether the file spells `é` as one
+code point or as `e` followed by U+0301, which is the difference between a CSV
+exported on macOS and one exported on Windows. `monthFromName` normalises to
+NFC before the table lookup, and the two halves have to agree: a class that
+admits the mark without a lookup that folds it would type the column a date and
+then refuse every accented row in it.
+
+Latin only, deliberately. Whatever the class admits is typed `date`, and a
+script whose month names are not in the table would be typed and then rendered
+raw — the same defect, in a new alphabet.
+
+The unaccented transliterations stay refused. `fevrier` and `marco` are guesses
+at how an exporter might mangle a name rather than how the language spells it,
+and reading a guess is what the removed `new Date` fallback did when it read
+`1 marketing 2026` as March.
+
 ### Fixed — Alt+Enter in a cell put a hard line break on the slide
 
 Found by the desktop round of 2026-08-31, and only findable there.
