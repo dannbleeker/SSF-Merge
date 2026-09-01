@@ -690,13 +690,20 @@ function imageControl(doc: Document, state: PaneState): HTMLElement {
     return wrap;
   }
 
+  // "All 0 pictures matched" is what the first branch said whenever no row
+  // NAMES a picture — every row's cell blank, or the rows that name one
+  // unticked. Nothing was matched and nothing was asked for, and the sentence
+  // claimed a success over an empty set, directly above "1 file no row refers
+  // to — ignored", which is the fact that actually applies.
   wrap.append(
     el(doc, "p", {
       class: tally.missing.length > 0 ? "blocked" : "muted",
       text:
-        tally.missing.length === 0
-          ? `All ${plural(tally.wanted, "picture")} matched.`
-          : `${tally.matched} of ${tally.wanted} matched. Missing: ${tally.missing.slice(0, 6).join(", ")}${tally.missing.length > 6 ? `, and ${tally.missing.length - 6} more` : ""}.`,
+        tally.wanted === 0
+          ? "No row names a picture, so none of these files will be placed."
+          : tally.missing.length === 0
+            ? `All ${plural(tally.wanted, "picture")} matched.`
+            : `${tally.matched} of ${tally.wanted} matched. Missing: ${tally.missing.slice(0, 6).join(", ")}${tally.missing.length > 6 ? `, and ${tally.missing.length - 6} more` : ""}.`,
     }),
   );
   // Named once, and not as a problem. Picking a whole folder is the ordinary

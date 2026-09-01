@@ -828,6 +828,16 @@ describe("the picture picker", () => {
     expect(pane.querySelector(".images .blocked")).toBeNull();
   });
 
+  it("does not claim a success over an empty set", () => {
+    // "All 0 pictures matched" is what this said whenever no row NAMES a
+    // picture — every cell blank, or the rows that name one unticked. Nothing
+    // was matched and nothing was asked for, and it sat directly above "1 file
+    // no row refers to — ignored", which is the fact that actually applies.
+    const pane = paneFor({ ...withPhotos, excluded: [0, 1], images: files("ada.png") }, "data");
+    expect(pane.textContent).not.toContain("All 0 pictures matched");
+    expect(pane.textContent).toContain("No row names a picture");
+  });
+
   it("says when two picture names differ only by their folder", () => {
     // Before the picker and before the "nothing attached yet" branch, because
     // the clash is a fact about the DATA: it is there whether or not a file
