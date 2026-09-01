@@ -511,7 +511,20 @@ export async function mergeChartNumbers(
       const cell = doc ? cellAt(doc, address!) : undefined;
       if (!cell) continue;
       const text = stringOfCell(cell, shared);
-      if (text === undefined || fieldsInText(text).length === 0) continue;
+      const hits = text === undefined ? [] : fieldsInText(text);
+      if (hits.length === 0) continue;
+      // NAMED as well as counted, and this is the half that decides whether the
+      // block is merged at all. `chartValueFields` is this same walk driven by a
+      // recording resolver, and `prepareBlock` refuses a block whose fields come
+      // back empty — "every copy would be identical". So a chart whose only
+      // placeholder sits in a cell with no cached point reported no field, and
+      // the pane told the author to go and type field names onto a slide that
+      // already carried one. The documented workflow, refused.
+      //
+      // The answer is thrown away deliberately: there is no point to write to,
+      // which is the whole condition here. The resolver is pure, so asking it
+      // costs nothing on a real run and is the recording channel on a dry one.
+      for (const hit of hits) resolve(hit.name);
       out.unplotted++;
     }
 

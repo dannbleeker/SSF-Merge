@@ -301,6 +301,40 @@ describe("a value cell that holds its string inline", () => {
 
     expect(out.graphics.numbers.filled, "there is no point to fill").toBe(0);
     expect(out.graphics.numbers.unplotted, "and the run says so").toBe(1);
+    // NAMED as well as counted. The comment above says it was "not offered to
+    // the pane as a field", and the next test is what that cost.
+    expect(prepared.fields, "the pane is never offered the field").toContain("Revenue");
+  });
+
+  it("does not REFUSE a block whose only placeholder the cache has no point for", async () => {
+    /**
+     * `prepareBlock` refuses a block whose fields come back empty — "every copy
+     * would be identical" — and the walk above never reported this one. So a
+     * deck whose only placeholder is a chart value cell was refused outright,
+     * with a sentence telling the author to go and type field names onto a
+     * slide that already carried one. That is the documented workflow ("type
+     * {{Revenue}} into a value cell the way you would type a number") meeting
+     * the very cache shape the writers in the test above produce.
+     *
+     * The fixture is the same, minus the {{Name}} on the slide that was
+     * carrying the block past the refusal.
+     */
+    const deck = await makeDeck([
+      { paragraphs: [["Sales"]], chart: { categories: ["a", "b"], workbook: ["x"], values: ["10", "{{Revenue}}"] } },
+    ]);
+    const zip = await JSZip.loadAsync(deck);
+    const chart = await zip.file("ppt/charts/chart1.xml")!.async("string");
+    const holed = chart.replace(/<c:numCache>[\s\S]*?<\/c:numCache>/, (cache) =>
+      cache.replace(/<c:pt idx="1">[\s\S]*?<\/c:pt>/, ""),
+    );
+    expect(holed, "the fixture's cached points moved; this patches them by hand").not.toBe(chart);
+    zip.file("ppt/charts/chart1.xml", holed);
+
+    const pkg = await Pkg.open(await zip.generateAsync({ type: "uint8array" }));
+    const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "h");
+    expect(prepared.ok, prepared.ok ? "" : prepared.why).toBe(true);
+    if (!prepared.ok) return;
+    expect(prepared.fields).toEqual(["Revenue"]);
   });
 
   it("holds an INLINE value cell it refused, which shares no string with anything", async () => {
