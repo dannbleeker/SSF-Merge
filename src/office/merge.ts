@@ -376,13 +376,23 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
    * Both halves of the defect this was written for survived on that branch: the
    * undo card offered over slides the sweep would decline, and the sentence
    * that says a merge landed partly and completely at once.
+   *
+   * The FIRST term is about the window before the insert, and it was the one
+   * missing. `deckAtStart` is measured when the run is planned; `insert.before`
+   * when the call goes out, and the package is built in between. A slide
+   * arriving in that window leaves `landed` exactly equal to what was sent —
+   * every later term says accountable — while the indices an undo would sweep
+   * have moved onto somebody else's slide. `sweepPlan` then declines, which is
+   * correct and arrives too late: the outcome has already offered the card.
    */
   const unaccounted =
-    insert.landed > sending.length
-      ? `the deck grew by ${insert.landed} while the package held ${sending.length} slide(s), so this run cannot say which of them are its own`
-      : insert.landed < 0
-        ? `the deck SHRANK by ${-insert.landed} slide(s) across an insert of ${sending.length}, so something else changed it`
-        : undefined;
+    insert.before !== deckAtStart
+      ? `the deck was ${deckAtStart} slide(s) when this run was planned and ${insert.before} when it inserted, so this run cannot say which of them are its own`
+      : insert.landed > sending.length
+        ? `the deck grew by ${insert.landed} while the package held ${sending.length} slide(s), so this run cannot say which of them are its own`
+        : insert.landed < 0
+          ? `the deck SHRANK by ${-insert.landed} slide(s) across an insert of ${sending.length}, so something else changed it`
+          : undefined;
 
   // How many slides each ROW produced, in plan order — the unit a torn insert
   // has to be read in.

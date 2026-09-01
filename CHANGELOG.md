@@ -7,6 +7,45 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a very long slide number emptied the pane
+
+Twenty-one digits typed into the slide range read as a whole number, so the pane
+offered "Use slides 1 to 1e+21" — a number appearing nowhere in what was typed —
+and pressing it took the merge step down to a blank pane rather than a sentence.
+
+### Fixed — two sentences that sent you to the wrong place
+
+"Slides 2 to 4 has no {{fields}}" is the refusal the pane shows word for word.
+And "go back a step" is two steps from the merge screen, whose only back control
+says "Back to preview"; it names the Fields step now.
+
+### Fixed — a merge that filled only pictures said it had filled nothing
+
+"No {{fields}} were filled — check the spelling in your template · 2 pictures
+placed", in one sentence. The same contradiction the chart-value fix removed,
+by the other route: a photo template — a shape fill named by a column, no text
+placeholder anywhere — filled its pictures and was told to go and check its
+spelling.
+
+### Fixed — a chart could draw one number while Edit Data showed another
+
+A data-sheet cell holding a placeholder that does not resolve to a number is
+left alone on purpose, so the chart goes on drawing the template's value. Where
+that cell read the FIRST entry of the workbook's string table — which is where
+a one-string workbook keeps its only string — the text pass rewrote the entry
+underneath it anyway. The chart then showed the template's number while Edit
+Data showed the row's words, and closing Excel refreshed the chart from the
+sheet: the bar changed on its own.
+
+### Fixed — the undo card was offered after the deck changed under the merge
+
+A slide arriving between the moment a run is planned and the moment it inserts
+— a co-author, or AutoSave — left the run unable to say which of the deck's
+slides were its own, while every count still agreed. The card offered to take
+them back, and the undo then refused, correctly and too late. The run says so up
+front now, and does not offer.
+
+
 ### Fixed — a chart could stop the merge dead, with nothing on screen
 
 Two placeholders sitting next to each other in a chart's data sheet, both

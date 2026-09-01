@@ -335,8 +335,16 @@ export function readBlockDraft(draft: BlockDraft, deckSize?: number): BlockRead 
   // numbered from 1" is a true sentence that says nothing about the boxes in
   // front of them, and the manual promised numbers for all four cases while
   // two of them carried none.
-  if (!Number.isInteger(a) || !Number.isInteger(b)) {
-    const bad = !Number.isInteger(a) ? from : to;
+  // SAFE integers, so a number too large to count exactly cannot get through.
+  // Twenty-one digits pass `DECIMAL` and `Number.isInteger`, and the pane then
+  // showed a slide number that appears nowhere in what the user typed —
+  // "Slide 1e+21 is past the end of the deck" — beside a live "Use slides 1 to
+  // 1e+21". Pressing it took the merge step down with
+  // `RangeError: Invalid array length` out of `blockSlides`: a BLANK PANE, not
+  // a sentence. It is the same defect the `0x10` guard above was written for,
+  // reached by a route that guard cannot see.
+  if (!Number.isSafeInteger(a) || !Number.isSafeInteger(b)) {
+    const bad = !Number.isSafeInteger(a) ? from : to;
     return { block: null, why: `Slide numbers are whole numbers, and "${bad}" is not one.` };
   }
   if (a < 1) return { block: null, why: `Slides are numbered from 1, so slide ${a} is not one.` };
@@ -841,7 +849,12 @@ function blockCarries(state: PaneState): string {
  * step".
  */
 export function noFieldsYet(state: PaneState): string {
-  return `${blockCarries(state)} no fields yet. Go back a step and put one on a slide.`;
+  // NAMES the step. This is shown on preview AND merge, and from the merge step
+  // the fields step is two back — the only back control on that screen says
+  // "Back to preview". `noFieldsHere`'s own docstring records fixing exactly
+  // this misdirection on the fields step; this sentence still counted steps
+  // that do not exist from where it is read.
+  return `${blockCarries(state)} no fields yet. Go back to Fields and put one on a slide.`;
 }
 
 /**

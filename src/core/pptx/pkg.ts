@@ -39,11 +39,22 @@ const MAX_SLIDE_ID = 2_147_483_647;
  * the loop could never run. An adversarial review of the commit that added it
  * said so — a comment claiming a line is load-bearing when nothing can reach it
  * is worse than no comment, because the next reader trusts it.
+ *
+ * `countable` leaves ONE hole, and this is where it is closed. A package
+ * holding both `slide9007199254740991.xml` and `slide9007199254740992.xml`
+ * counts the first — it is exactly `MAX_SAFE_INTEGER` — and ignores the second,
+ * so `max + 1` answers a name that is already in the package: the collision the
+ * whole guard exists to prevent, one step further out. There is no larger safe
+ * number to offer, so this refuses rather than answering, the same way
+ * `addSlideId` refuses a deck that has run out of ids. Unreachable by any real
+ * deck, whose part numbers are three digits.
  */
 function nextFree(used: Set<number>): number {
   let max = 0;
   for (const n of used) if (n > max) max = n;
-  return max + 1;
+  const next = max + 1;
+  if (!Number.isSafeInteger(next)) throw new Error("ssf-merge: this package's part numbers are too large to extend");
+  return next;
 }
 
 /** Every whole number a path matched, ignoring any too large to count exactly. */

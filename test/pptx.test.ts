@@ -74,6 +74,23 @@ describe("Pkg", () => {
     expect(pkg.nextSlideNumber()).toBe(2);
   });
 
+  it("refuses to name a part when the package's numbers leave nowhere safe to go", async () => {
+    /**
+     * The hole the rule above leaves. Ignoring a digit run too large to count
+     * keeps the maximum exact — but a package holding the largest COUNTABLE
+     * number and the one after it counts the first and ignores the second, so
+     * "highest plus one" answers a name that is already there. That is the
+     * collision the whole guard exists to prevent, one step further out.
+     *
+     * There is no larger safe number to hand back, so the answer is to refuse.
+     * A deck reaching this has sixteen-digit part numbers and is not a deck.
+     */
+    const pkg = await deck(ONE);
+    pkg.setBytes(`ppt/charts/chart${Number.MAX_SAFE_INTEGER}.xml`, new Uint8Array([1]));
+    pkg.setBytes("ppt/charts/chart9007199254740992.xml", new Uint8Array([1]));
+    expect(() => pkg.nextNumber("ppt/charts/chart")).toThrow(/too large to extend/);
+  });
+
   it("reads a part's relationships once, not once per relationship added", async () => {
     /**
      * `addRel` re-read every `<Relationship>` in the part to find the highest
@@ -143,6 +160,37 @@ describe("cloneSlide", () => {
     expect(await pkg.slidePaths()).toEqual(["ppt/slides/slide1.xml", "ppt/slides/slide2.xml"]);
     expect(await pkg.text("[Content_Types].xml")).toContain("/ppt/slides/slide2.xml");
     expect(pkg.has("ppt/slides/_rels/slide2.xml.rels")).toBe(true);
+  });
+
+  it("leaves a foreign custDataLst alone when it holds no tags of ours", async () => {
+    /**
+     * `dropInheritedTags` removes the template's `<p:tags>` from the copy, and
+     * a `<p:custDataLst>` may hold customer data with no `<p:tags>` in it at
+     * all — which `writeSlideTags`'s own fixture calls the ordinary shape of a
+     * template built by another tool.
+     *
+     * The guard is a conjunction, and nothing exercised it: with `custData ||
+     * tags` the clone reaches `removeChild(undefined)` on exactly this slide.
+     * Found by `scripts/mutate-core.mjs`.
+     */
+    const P = 'xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"';
+    const A = 'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"';
+    const R = 'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
+    const pkg = await deck(ONE);
+    pkg.setText(
+      "ppt/slides/slide1.xml",
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n` +
+        `<p:sld ${P} ${A} ${R}><p:cSld><p:spTree>` +
+        `<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>` +
+        `</p:spTree>` +
+        `<p:custDataLst><p:custData r:id="rId9"/></p:custDataLst>` +
+        `</p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`,
+    );
+
+    const copy = await cloneSlide(pkg, "ppt/slides/slide1.xml", { creationId: () => 222 });
+    const xml = await pkg.text(copy);
+    expect(xml, "the other tool's entry is not ours to remove").toContain('<p:custData r:id="rId9"');
+    expect(xml.match(/<p:custDataLst/g) ?? []).toHaveLength(1);
   });
 
   it("gives every copy its own creation id", async () => {

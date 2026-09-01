@@ -162,7 +162,12 @@ export async function prepareBlock(pkg: Pkg, req: BlockRequest, runId: string): 
     // Not an error the engine can see: a merge with no placeholders produces N
     // identical copies, which is never what anybody meant and is expensive to
     // undo once it is in the deck.
-    const where = count === 1 ? `Slide ${req.from}` : `Slides ${req.from} to ${req.to}`;
+    // The verb with the subject, because this is the one place that knows
+    // whether the subject is singular. It said "Slides 2 to 4 HAS no
+    // {{fields}}" — the mirror of the pane's own "Slide 4 carry no fields yet",
+    // in the engine refusal the pane shows verbatim. `blockCarries` in the pane
+    // already solved this; this sentence never got the fix.
+    const where = count === 1 ? `Slide ${req.from} has` : `Slides ${req.from} to ${req.to} have`;
     // Says the SYNTAX, not the word "placeholder".
     //
     // PowerPoint calls its own empty content boxes placeholders — "Click to add
@@ -172,7 +177,7 @@ export async function prepareBlock(pkg: Pkg, req: BlockRequest, runId: string): 
     return {
       ok: false,
       why:
-        `${where} has no {{fields}}, so every copy would be identical. Type your column headers onto ` +
+        `${where} no {{fields}}, so every copy would be identical. Type your column headers onto ` +
         `the slides in double braces — {{First}}, {{City}} — then press again. PowerPoint's own empty ` +
         `"Click to add title" boxes are not fields.`,
     };

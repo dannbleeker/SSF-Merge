@@ -215,7 +215,14 @@ export function describeMerge(r: MergeReport): string {
     // Suppressed rather than folded into the count: adding the values to
     // `paragraphsMerged` would report them twice in one sentence, and that
     // number means one thing now.
-    const filledElsewhere = (r.chartValues?.filled ?? 0) > 0;
+    //
+    // PICTURES are the same case and were not covered. A template whose only
+    // placeholder is a photo shape read "no {{fields}} were filled — check the
+    // spelling in your template · 2 pictures placed" — the same self-
+    // contradicting sentence, sending the author after a spelling mistake two
+    // clauses above the proof there is none. Every way a run can fill
+    // something belongs in this test, not the first two anybody met.
+    const filledElsewhere = (r.chartValues?.filled ?? 0) > 0 || (r.pictures?.placed ?? 0) > 0;
     if (r.paragraphsMerged > 0) parts.push(`${plural(r.paragraphsMerged, "placeholder")} filled`);
     else if (!filledElsewhere) parts.push("no {{fields}} were filled — check the spelling in your template");
   }

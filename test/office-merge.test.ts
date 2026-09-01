@@ -279,8 +279,8 @@ describe("a torn insert is reported in rows", () => {
         verdict: "no",
         detail: "5 of 6 slide(s) landed",
         landed: 5,
-        before: 2,
-        after: 7,
+        before: 3,
+        after: 8,
       });
 
       const out = await runMerge({ from: 1, to: 2, records: rows });
@@ -294,7 +294,7 @@ describe("a torn insert is reported in rows", () => {
 
   it("carries the row counts for anything else that reports", async () => {
     host.readTemplate.mockResolvedValueOnce({ base64: await block(), offset: 0 });
-    host.insertDeck.mockResolvedValueOnce({ verdict: "no", detail: "5 of 6", landed: 5, before: 2, after: 7 });
+    host.insertDeck.mockResolvedValueOnce({ verdict: "no", detail: "5 of 6", landed: 5, before: 3, after: 8 });
 
     const out = await runMerge({ from: 1, to: 2, records: rows });
     expect(out).toMatchObject({ rowsComplete: 2, rowsTorn: 1, rowsAbsent: 0 });
@@ -308,8 +308,8 @@ describe("a torn insert is reported in rows", () => {
       verdict: "no",
       detail: "the call raised nothing and the deck did not grow",
       landed: 0,
-      before: 2,
-      after: 2,
+      before: 3,
+      after: 3,
     });
 
     const out = await runMerge({ from: 1, to: 2, records: rows });
@@ -333,8 +333,8 @@ describe("a torn insert is reported in rows", () => {
       verdict: "unknown",
       detail: "the deck grew by 8 while the package held 6 slide(s), so this run cannot say which of them are its own",
       landed: 8,
-      before: 2,
-      after: 10,
+      before: 3,
+      after: 11,
     });
 
     const out = await runMerge({ from: 1, to: 2, records: rows });
@@ -345,6 +345,34 @@ describe("a torn insert is reported in rows", () => {
       "cannot say which of them are its own",
     );
     expect(out.accountable, "the pane may not offer to sweep slides this run cannot identify").toBe(false);
+  });
+
+  it("does not read a deck that grew BEFORE the insert as accountable", async () => {
+    /**
+     * The window nothing was watching. `deckAtStart` is measured when the run
+     * is planned and `insert.before` when the call goes out, with the package
+     * built in between — long enough for a co-author or AutoSave to land a
+     * slide. `landed` then equals what was sent, so every other term here says
+     * accountable, while the indices an undo would sweep have moved onto
+     * somebody else's slide.
+     *
+     * `sweepPlan` declines that, correctly and too late: the outcome has
+     * already offered the card. Found by an adversarial review.
+     */
+    host.slideCount.mockReset().mockResolvedValue(3);
+    host.readTemplate.mockResolvedValueOnce({ base64: await block(), offset: 0 });
+    host.insertDeck.mockResolvedValueOnce({
+      verdict: "ok",
+      detail: "all 6 slide(s) landed",
+      landed: 6,
+      // Three when the run was planned; four when it inserted.
+      before: 4,
+      after: 10,
+    });
+
+    const out = await runMerge({ from: 1, to: 2, records: rows });
+    expect(out.accountable, "the pane may not offer to sweep slides this run cannot identify").toBe(false);
+    expect(out.detail).toContain("cannot say which of them are its own");
   });
 
   it("does not read an over-grown deck as accountable just because the call also raised", async () => {
@@ -364,8 +392,8 @@ describe("a torn insert is reported in rows", () => {
       verdict: "threw",
       detail: "the call threw: GeneralException, and 8 slide(s) landed anyway",
       landed: 8,
-      before: 2,
-      after: 10,
+      before: 3,
+      after: 11,
     });
 
     const out = await runMerge({ from: 1, to: 2, records: rows });
@@ -411,7 +439,7 @@ describe("a torn insert is reported in rows", () => {
       const whole = await runMerge({ from: 1, to: 2, records: rows });
 
       host.readTemplate.mockResolvedValueOnce({ base64: await block(), offset: 0 });
-      host.insertDeck.mockResolvedValueOnce({ verdict: "no", detail: "5 of 6", landed: 5, before: 2, after: 7 });
+      host.insertDeck.mockResolvedValueOnce({ verdict: "no", detail: "5 of 6", landed: 5, before: 3, after: 8 });
       const torn = await runMerge({ from: 1, to: 2, records: rows });
 
       // The premise: one of each. Without this the comparison below could be

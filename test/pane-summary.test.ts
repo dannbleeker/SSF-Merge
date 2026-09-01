@@ -131,6 +131,32 @@ describe("a merge whose only placeholders are chart values", () => {
     });
     expect(line).toContain("no {{fields}} were filled");
   });
+
+  it("does not raise it about a run whose only placeholder was a picture", () => {
+    // The same contradiction by the other route. A photo template — a shape
+    // fill named by a column, no text placeholder anywhere — filled its
+    // pictures and was told to go and check its spelling.
+    const line = describeMerge({
+      added: 2,
+      deckAtStart: 1,
+      paragraphsMerged: 0,
+      pictures: { placed: 2, missing: [], unreadable: [], crowded: [], stretched: [] },
+    });
+    expect(line).not.toContain("no {{fields}} were filled");
+    expect(line).toContain("2 pictures placed");
+  });
+
+  it("still raises it when the pictures were asked for and none landed", () => {
+    // `placed: 0` is not "filled elsewhere" — a run that placed nothing filled
+    // nothing, and the alarm is the whole finding.
+    const line = describeMerge({
+      added: 2,
+      deckAtStart: 1,
+      paragraphsMerged: 0,
+      pictures: { placed: 0, missing: ["Photo"], unreadable: [], crowded: [], stretched: [] },
+    });
+    expect(line).toContain("no {{fields}} were filled");
+  });
 });
 
 describe("what the deck will look like afterwards", () => {
