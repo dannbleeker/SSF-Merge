@@ -7,21 +7,15 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
-### Fixed — a date pattern written in another alphabet printed itself
+### Fixed — a date pattern is read a word at a time
 
-`{{When|date:yyyy年MM月dd日}}` — the ordinary Japanese and Chinese pattern —
-printed the pattern on every merged slide, and so did the Korean and Russian
-equivalents. Widening what counts as a word to cover accents had swept every
-other script's date words in with it. The manual invites writing the month in
-your own language; this is what that means for languages not written in this
-alphabet. The typographic apostrophe Word produces is handled now too.
-
-### Fixed — an undo that had been pressed once could not be finished on an older PowerPoint
-
-The guard added above requires a slide to prove it is the merge's, and a
-PowerPoint below the version that carries those marks can never prove it — so a
-partial undo could not be completed and the button sat over slides no press
-would ever take. Proof is asked only of a PowerPoint that could give it.
+`{{Signed|date:d MMM yyyy}}` and its cousins now read the pattern as words: a
+run of letters is either all tokens or none of them, so `yyyyMMdd` prints the
+date and `Odds:`, `den`, `dato`, `día`, `décembre` and `d'échéance` print
+themselves — including in alphabets this one has no tokens in, so
+`yyyy年MM月dd日` reads as a date and `dddd` stays a weekday name rather than
+becoming `0101`. It is the manual's own rule ("any other text in the pattern is
+printed as written"), which the pattern reader had never quite kept.
 
 ### Fixed — a second undo press could delete a slide made between the presses
 
@@ -66,29 +60,6 @@ had filled while every label in it still read `{{Name}}` in Edit Data — with
 nothing anywhere saying so. It is reported the same way an embedding that is not
 a spreadsheet at all already was.
 
-### Fixed — the preview could get stuck with no way out
-
-Ending a preview that came back partly, over a slide the sweep would not claim,
-left the wizard on the preview step permanently: the forward link is withheld
-and the merge step refuses while a preview is up, so there was no route to the
-merge for the rest of the session. Introduced by the previous fix in this same
-release, which subtracted that slide from a count the sweep measures against the
-deck. Two further routes to the same state — a deck a co-author grew, and a deck
-back to the size it started at with preview slides still in it — are fixed in
-the entries above, and the rule is swept rather than tested case by case.
-
-### Fixed — a date pattern ate an ordinary word beginning with d, M or y
-
-`{{Signed|date:Berlin, den d. MMMM yyyy}}` printed `Berlin, 1en 1. March 2026` —
-`den` is the ordinary Danish, German and Swedish long-date word, and `dato`,
-`due` and `deadline` went the same way. A pattern is now read a word at a time
-and a word is either all tokens or none, which is what the manual's "any other
-text in the pattern is printed as written" has always promised. `MMMMM` and
-`yyy` print as written again too, rather than `MarchM` and `26y`. An accented
-word counts as one word: `día`, `décembre` and `d'échéance` are printed as
-written, where matching ASCII alone cut them at the accent and left a bare `d`
-to be read as a token.
-
 ### Fixed — German March was still not read
 
 Excel on Windows writes it `Mrz`, where the standard says `Mär`, and it is the
@@ -104,13 +75,6 @@ in the list, so a German column of `1 dez 2026` was recognised as a date column
 on its shape and then printed as the raw cell — half a deck formatted, half of
 it not, with nothing saying why. German, Dutch, French, Spanish, Italian and
 Portuguese short forms are read now, including the four-letter French ones.
-
-### Fixed — a date pattern made only of tokens printed itself
-
-`{{When|date:yyyyMMdd}}` — the spelling used for file names, and every token in
-it one the manual lists — printed `yyyyMMdd`. Bounding each token against its
-neighbours to keep `Odds:` and `Wedding` intact had made every token in a run of
-adjacent tokens refuse to match.
 
 ### Fixed — a merge that landed while the deck changed said nothing
 
