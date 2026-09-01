@@ -10,7 +10,7 @@ import {
   whyNotAField,
   type FieldHit,
 } from "../src/core/merge/text.js";
-import { A_NS, elements, parseXml, serializeXml } from "../src/core/pptx/xml.js";
+import { A_NS, P_NS, elements, parseXml, serializeXml } from "../src/core/pptx/xml.js";
 
 const A = `xmlns:a="${A_NS}"`;
 
@@ -28,6 +28,46 @@ function text(p: Element): string {
     .map((t) => t.textContent ?? "")
     .join("");
 }
+
+describe("how many placeholders a merge says it filled", () => {
+  /**
+   * `mergeDocument` counted one per GROUP of nodes, and the pane prints that
+   * number as "N placeholders filled". They are not the same thing: a line like
+   * `Dear {{First}} {{Last}}, of {{City}}` is one group and three placeholders,
+   * so an ordinary letter reported 2 where six were filled — a number that is
+   * neither the placeholders nor anything else the user can check against their
+   * own slides.
+   */
+  it("counts the placeholders, not the paragraphs they sit in", () => {
+    const doc = parseXml(
+      `<p:sld xmlns:p="${P_NS}" xmlns:a="${A_NS}"><p:cSld><p:spTree><p:sp><p:txBody>` +
+        `<a:p><a:r><a:t>Dear {{First}} {{Last}}, of {{City}}</a:t></a:r></a:p>` +
+        `</p:txBody></p:sp></p:spTree></p:cSld></p:sld>`,
+    );
+    const filled = mergeDocument(doc, (name) => ({ First: "Ada", Last: "Lovelace", City: "London" })[name] ?? null);
+    expect(filled).toBe(3);
+    expect(elements(doc, A_NS, "t")[0]?.textContent).toBe("Dear Ada Lovelace, of London");
+  });
+
+  it("still answers zero when nothing matched, which is the alarm", () => {
+    const doc = parseXml(
+      `<p:sld xmlns:p="${P_NS}" xmlns:a="${A_NS}"><p:cSld><p:spTree><p:sp><p:txBody>` +
+        `<a:p><a:r><a:t>Dear {{Nickname}}</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>`,
+    );
+    expect(mergeDocument(doc, () => null)).toBe(0);
+  });
+
+  it("counts a placeholder split across runs once", () => {
+    // The joined text is what is scanned, so a token PowerPoint has split by
+    // formatting is one placeholder however many nodes it spans.
+    const doc = parseXml(
+      `<p:sld xmlns:p="${P_NS}" xmlns:a="${A_NS}"><p:cSld><p:spTree><p:sp><p:txBody>` +
+        `<a:p><a:r><a:t>{{Fi</a:t></a:r><a:r><a:t>rst}}</a:t></a:r></a:p>` +
+        `</p:txBody></p:sp></p:spTree></p:cSld></p:sld>`,
+    );
+    expect(mergeDocument(doc, () => "Ada")).toBe(1);
+  });
+});
 
 describe("mergeParagraph", () => {
   it("replaces a placeholder that PowerPoint split across runs", () => {

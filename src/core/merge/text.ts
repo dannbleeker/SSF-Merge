@@ -265,8 +265,26 @@ export function mergeParagraph(paragraph: Element, resolve: Resolve): boolean {
  * the same support ticket as a slide's.
  */
 export function mergeRuns(nodes: Element[], resolve: Resolve): boolean {
+  return fillRuns(nodes, resolve) > 0;
+}
+
+/**
+ * The same merge, answering HOW MANY placeholders it filled.
+ *
+ * `mergeDocument` counted one per group of nodes, and the pane prints that
+ * number as "N placeholders filled". They are not the same thing: `Dear
+ * {{First}} {{Last}}, of {{City}}` is one group and three placeholders, so an
+ * ordinary letter reported 2 where six were filled. The count was neither the
+ * placeholders nor anything else a user could check against their own slides.
+ *
+ * `mergeRuns` keeps its boolean because it is the answer its other caller wants
+ * — `mergeParagraph` is a public export and means "did anything change" — and
+ * zero still means nothing matched, which is the alarm `runPlan`'s docstring
+ * relies on.
+ */
+function fillRuns(nodes: Element[], resolve: Resolve): number {
   const { spans, joined } = spansOf(nodes);
-  if (!spans.length) return false;
+  if (!spans.length) return 0;
 
   const edits: Edit[] = [];
   for (const hit of fieldsInText(joined)) {
@@ -276,7 +294,7 @@ export function mergeRuns(nodes: Element[], resolve: Resolve): boolean {
     if (value === null) continue;
     edits.push({ start: hit.index, end: hit.index + hit.length, value });
   }
-  return editRuns(nodes, edits);
+  return editRuns(nodes, edits) ? edits.length : 0;
 }
 
 /** A replacement, given in offsets into the JOINED text rather than into any one node. */
@@ -345,7 +363,7 @@ export function editRuns(nodes: Element[], edits: Edit[]): boolean {
  */
 export function mergeDocument(doc: Document, resolve: Resolve): number {
   let n = 0;
-  for (const nodes of textGroups(doc)) if (mergeRuns(nodes, resolve)) n++;
+  for (const nodes of textGroups(doc)) n += fillRuns(nodes, resolve);
   return n;
 }
 
