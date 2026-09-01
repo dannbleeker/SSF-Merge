@@ -1150,3 +1150,48 @@ describe("a data cell cannot reach Object's prototype", () => {
     expect(applyFormat("1 Mar 2026", "date:d MMM yyyy")).toBe("1 Mar 2026");
   });
 });
+
+describe("dates a spreadsheet actually writes", () => {
+  it("reads a two-digit year in the window Excel uses", () => {
+    /**
+     * Excel reads 00-29 as the 2000s and 30-99 as the 1900s, and `dd/mm/yy` is
+     * an ordinary cell format there. This added 2000 to everything, so
+     * `15/06/85` merged as 2085 — a birth date or a contract history a century
+     * out on every slide, silently, with the column still typed a clean date.
+     * The tests only ever used 24 and 26, which are on the right side of the
+     * cutoff under either rule.
+     */
+    expect(applyFormat("15/06/85", "date:dd-MM-yyyy")).toBe("15-06-1985");
+    expect(applyFormat("15 juni 85", "date:d MMMM yyyy")).toBe("15 June 1985");
+    // The boundary, from both sides.
+    expect(applyFormat("01/01/29", "date:yyyy")).toBe("2029");
+    expect(applyFormat("01/01/30", "date:yyyy")).toBe("1930");
+    // A four-digit year is untouched.
+    expect(applyFormat("15/06/1985", "date:yyyy")).toBe("1985");
+  });
+
+  it("refuses an ISO date with something other than a time after it", () => {
+    /**
+     * The tail was `.*`, so a PERIOD — an ordinary way to write a range — was
+     * typed as a date and formatted as its first half, with the rest discarded
+     * and nothing to say so.
+     */
+    expect(applyFormat("2026-03-01 - 2026-03-31", "date:d MMM yyyy")).toBe("2026-03-01 - 2026-03-31");
+    expect(applyFormat("2026-03-01 (provisional)", "date")).toBe("2026-03-01 (provisional)");
+    expect(looksLikeDate("2026-03-01 - 2026-03-31")).toBe(false);
+    // A real time still reads, which is what the tail was for.
+    expect(applyFormat("2026-03-01T10:00", "date:d MMM yyyy")).toBe("1 Mar 2026");
+    expect(applyFormat("2026-03-01 10:00:00", "date:d MMM yyyy")).toBe("1 Mar 2026");
+    expect(applyFormat("2026-03-01", "date:d MMM yyyy")).toBe("1 Mar 2026");
+  });
+
+  it("prints text in a date pattern as written, including words holding dd", () => {
+    // The manual promises exactly this. Only the single `d` was bounded, and
+    // `dd` sits inside add, odd, middle, wedding and address.
+    expect(applyFormat("2026-03-01", "date:Odds: d MMM yyyy")).toBe("Odds: 1 Mar 2026");
+    expect(applyFormat("2026-03-01", "date:Wedding on d MMMM")).toBe("Wedding on 1 March");
+    // And the tokens themselves still work, longest first.
+    expect(applyFormat("2026-03-01", "date:dd/MM/yyyy")).toBe("01/03/2026");
+    expect(applyFormat("2026-03-01", "date:d MMMM yy")).toBe("1 March 26");
+  });
+});

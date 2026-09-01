@@ -65,6 +65,22 @@ const NUMBER = new RegExp(
 );
 
 /**
+ * A two-digit year, in the window the application it was copied from uses.
+ *
+ * Excel reads 00-29 as the 2000s and 30-99 as the 1900s, and a cell formatted
+ * `dd/mm/yy` is ordinary there. This added 2000 to everything, so `15/06/85`
+ * merged as 2085 — a birth date or a contract history a century out on every
+ * slide, silently, with the column still typed a clean `date`.
+ *
+ * The window is Excel's rather than invented here, because the cell came out of
+ * Excel and a merge that reads it differently from the sheet is the surprise.
+ */
+function fullYear(year: number): number {
+  if (year >= 100) return year;
+  return year < 30 ? 2000 + year : 1900 + year;
+}
+
+/**
  * Whether a cell is a number we are willing to claim — the ONE answer.
  *
  * `looksLikeDate` has been the single definition of a date since `format.ts`
@@ -89,7 +105,12 @@ function isNumberShape(value: string): boolean {
   return NUMBER.test(value.trim());
 }
 /** Deliberately narrow. See `looksLikeDate`. */
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}(?:[T ].*)?$/;
+// The tail is a TIME, not anything. `.*` accepted any text after the day, so a
+// PERIOD — `2026-03-01 - 2026-03-31`, an ordinary way to write a range — was
+// typed as a date and formatted as its first half, with the rest discarded and
+// nothing to say so. A cell this engine cannot fully claim is printed as the
+// author typed it; that is the rule every other refusal here follows.
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}(?:[T ]\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/;
 /**
  * The letters a month NAME may be written with.
  *
@@ -247,7 +268,7 @@ export function parseDate(raw: string): Date | undefined {
     // number cannot be a month is the day.
     const day = a > 12 ? a : b;
     const month = a > 12 ? b : a;
-    return utcDate(year < 100 ? 2000 + year : year, month, day);
+    return utcDate(fullYear(year), month, day);
   }
   // ISO, whose components are right there in the string. Taken from the string
   // rather than from a parsed Date for two reasons, and both have bitten:
@@ -277,7 +298,7 @@ export function parseDate(raw: string): Date | undefined {
     const month = monthFromName(named[2] ?? "");
     if (month === undefined) return undefined;
     const year = Number(named[3]);
-    return utcDate(year < 100 ? 2000 + year : year, month, Number(named[1]));
+    return utcDate(fullYear(year), month, Number(named[1]));
   }
   return undefined;
 }
@@ -524,14 +545,25 @@ function pad(n: number): string {
  * standing — which is the shape of every undocumented repeat here.
  */
 export function formatDate(d: Date, pattern: string): string {
-  return pattern
-    .replace(/yyyy/g, String(d.getUTCFullYear()))
-    .replace(/yy/g, pad(d.getUTCFullYear() % 100))
-    .replace(/MMMM/g, MONTHS_FULL_EN[d.getUTCMonth()] ?? "")
-    .replace(/MMM/g, MONTHS_EN[d.getUTCMonth()] ?? "")
-    .replace(/MM/g, pad(d.getUTCMonth() + 1))
-    .replace(/dd/g, pad(d.getUTCDate()))
-    .replace(/\bd\b/g, String(d.getUTCDate()));
+  return (
+    pattern
+      // Each token bounded, not only the single `d`. The manual promises that
+      // "any other text in the pattern is printed as written", and `dd` sits
+      // inside add, odd, middle, wedding and address: `Odds: d MMM yyyy` printed
+      // `O01s: 1 Mar 2026`. `dddd` — the Excel and .NET spelling of a weekday
+      // name, which a template author reaches for — printed `0101`.
+      //
+      // The bound is "not next to another letter of the same token", which is
+      // what makes the longer spellings win: `MMMM` is matched before `MMM`, and
+      // `MMM` cannot match inside `MMMM` because the character after it is `M`.
+      .replace(/(?<![A-Za-z])yyyy(?![A-Za-z])/g, String(d.getUTCFullYear()))
+      .replace(/(?<![A-Za-z])yy(?![A-Za-z])/g, pad(d.getUTCFullYear() % 100))
+      .replace(/(?<![A-Za-z])MMMM(?![A-Za-z])/g, MONTHS_FULL_EN[d.getUTCMonth()] ?? "")
+      .replace(/(?<![A-Za-z])MMM(?![A-Za-z])/g, MONTHS_EN[d.getUTCMonth()] ?? "")
+      .replace(/(?<![A-Za-z])MM(?![A-Za-z])/g, pad(d.getUTCMonth() + 1))
+      .replace(/(?<![A-Za-z])dd(?![A-Za-z])/g, pad(d.getUTCDate()))
+      .replace(/(?<![A-Za-z])d(?![A-Za-z])/g, String(d.getUTCDate()))
+  );
 }
 
 export function formatNumber(n: number, decimals: number, group: string, point: string): string {
