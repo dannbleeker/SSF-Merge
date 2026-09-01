@@ -60,7 +60,9 @@ const GROUP_SPACE = " \u00a0\u202f\u2009";
 // ONCE. Written inline, the class would have to be repeated wherever the same
 // question is asked, which is how the shape gate and the parser drifted apart
 // before.
-const NUMBER = new RegExp(`^-?\\d{1,3}([${GROUP_SPACE}.,])\\d{3}(?:\\1\\d{3})*(?:(?!\\1)[.,]\\d+)?$|^-?\\d+(?:[.,]\\d+)?$`);
+const NUMBER = new RegExp(
+  `^-?\\d{1,3}([${GROUP_SPACE}.,])\\d{3}(?:\\1\\d{3})*(?:(?!\\1)[.,]\\d+)?$|^-?\\d+(?:[.,]\\d+)?$`,
+);
 
 /**
  * Whether a cell is a number we are willing to claim — the ONE answer.
