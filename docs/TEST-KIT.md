@@ -273,6 +273,46 @@ copy of a repeated string, so the two cannot be told apart.
 not, which was verified by hashing them either side of the regeneration. If you
 are sideloading `manifest-prod.xml`, it is the same file you already have.
 
+## Also new on 2026-09-01, and each is one edit to the template
+
+Four more changes a suite cannot judge. Each needs something added to the
+template by hand first, which is the point — they are about what PowerPoint
+does with a file, and the fixtures in this repo were all written by this repo.
+
+**4. A callout drawn on a chart.** Click a chart, **Insert ▸ Text Box**, draw it
+INSIDE the chart's frame, and type `Owner: {{Name}}`. (Check it belongs to the
+chart: drag the chart and the box should go with it. If it stays behind it is on
+the slide, which has always worked and is not what this tests.) Merge.
+
+- Every merged slide should read `Owner: Ada`, `Owner: Grace`, `Owner: Alan` —
+  its own row, not the template's `{{Name}}`.
+- Until now every copy showed the template's text, because PowerPoint keeps
+  that box with the CHART and each copy pointed at the one original.
+
+**5. A chart whose only field is a value cell.** On a fresh slide put a chart
+and NO other placeholder — no title field, nothing in the body. Right-click ▸
+**Edit Data** and put `{{Revenue}}` in a value cell. Choose that one slide as
+the block.
+
+- It should be accepted, and the fields list should offer `Revenue`.
+- It used to be refused outright, with a message telling you to type field names
+  onto a slide that already carried one.
+
+**6. A photo in a group you have resized.** Put a picture frame with
+`{{Photo|image}}` in it, select it with something else, **Group** them, then
+drag the group's corner so it is clearly wider than it was. Merge.
+
+- The photos should be cropped, not squashed — the same as an ungrouped frame.
+- They used to be cropped for the shape's ORIGINAL proportions and then
+  stretched by the group.
+
+**7. A big merge, for the clock.** Paste 500 rows — any nonsense will do, copy
+the three you have and repeat them — and time the merge with a stopwatch.
+
+- It should be roughly five times a 100-row merge, not twenty-five times.
+- Say the number either way. This is the one item here where the answer is a
+  measurement rather than a yes or a no.
+
 ## What still has no real-host answer
 
 This is the list to read when somebody asks what is open, so it is kept short
