@@ -112,6 +112,14 @@ offered more slides than you had asked for. Conditions are dropped when the
 block actually names different slides, which is what makes them stale, and not
 before.
 
+### Fixed — the heading multiplied to a number the button disagreed with
+
+With conditions set, the line above the merge button read "2 rows × 3 slides"
+beside a button reading "Add 4 slides", and a reader who multiplies gets six.
+The heading already said both numbers when rows were being skipped for a blank;
+conditions produce the same gap and were not covered. It now names the planned
+total when it differs from the product, and only then.
+
 ### Fixed — "N placeholders filled" was counting paragraphs
 
 `Dear {{First}} {{Last}}, of {{City}}` is three placeholders on one line, and
