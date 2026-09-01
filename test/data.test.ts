@@ -426,6 +426,38 @@ describe("a cell the engine must not quietly rewrite", () => {
     expect(rs.rows[0]?.Name).toBe("Ada");
   });
 
+  it("trims the header on the DEDUP side too, not only where the name is built", () => {
+    /**
+     * The same `.trim()` appears twice: once building the set of names the
+     * sheet DECLARES, and once building each column's name. Only the second had
+     * a test, so dropping the first left the whole suite green.
+     *
+     * It decides whether an INVENTED name may take a name a later column really
+     * owns. With `declared` holding `" Column 1 "`, an empty first header
+     * invents `Column 1` for itself and the real one is pushed to `Column 1 2`
+     * — so a template's `{{Column 1}}` binds to the empty column and prints
+     * nothing on every slide, which is the defect the set was added to prevent,
+     * reached by a padded header.
+     *
+     * Found by `scripts/mutate-core.mjs`.
+     */
+    const padded = toRecordSet([
+      ["", " Column 1 "],
+      ["a", "b"],
+    ]);
+    expect(padded.columns.map((c) => c.name)).toEqual(["Column 1 2", "Column 1"]);
+    // The row's data goes with the name, which is the half that matters.
+    expect(padded.rows[0]?.["Column 1"]).toBe("b");
+    // And a header with no padding answers the same way, which is what makes
+    // the pair a statement about the trim rather than about this input.
+    expect(
+      toRecordSet([
+        ["", "Column 1"],
+        ["a", "b"],
+      ]).columns.map((c) => c.name),
+    ).toEqual(["Column 1 2", "Column 1"]);
+  });
+
   it("keeps the first row as data when told there is no header", () => {
     // `header: false` is a public option — `toRecordSet` is exported from
     // `src/index.ts` — and it appears nowhere in this repo, so nothing held it.

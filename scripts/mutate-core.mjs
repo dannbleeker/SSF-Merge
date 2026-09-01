@@ -23,6 +23,31 @@
  * produce — a cell holding only spaces, an edit landing exactly on a run
  * boundary. Its first run found both of those, and they are tests now.
  *
+ * **The survivors that have been read, so nobody reads them twice.** Every run
+ * so far ends with the same handful, and each is an EQUIVALENT mutant — the two
+ * spellings cannot differ on any input the code can be given:
+ *
+ * - `x ?? ""` against `x || ""` where `x` is `getAttribute(...)` or
+ *   `textContent`. Both spellings answer `""` for `null` and for `""`, and
+ *   those are the only two values in play.
+ * - `opts.recordIndexes ?? …` and `table[0] ?? []`. An array is truthy however
+ *   empty it is, so `??` and `||` take the same branch.
+ * - `row[name] ?? ""` in `resolve.ts`. A cell is a string; `""` and `undefined`
+ *   both come out `""`.
+ * - `ALNUM.test(column.trim())` in `text.ts`. `ALNUM` looks for one letter or
+ *   digit ANYWHERE, so trimming cannot change its answer.
+ * - `format.trim()` in `images.ts`. Every caller is handed a `FieldHit.format`,
+ *   which the scanner has already trimmed; the call is defensive for the
+ *   exported entry point and there is no reachable input that needs it.
+ * - `s.from >= edit.end` in `editRuns`. The `>` form differs only for a span
+ *   starting exactly where an edit ends, which is an empty intersection either
+ *   way.
+ *
+ * Anything NOT on that list is a gap until somebody says otherwise in writing.
+ * Three that were on it are tests now: a value cell reading shared string
+ * ZERO, a slide whose `<p:custDataLst>` holds no tags of ours, and a sheet name
+ * quoted at one end.
+ *
  * Not wired into CI, and deliberately: it runs the whole suite once per mutant,
  * which is minutes rather than seconds, and a check that slow in front of every
  * merge gets switched off after the first bad week. The sibling project reaches
