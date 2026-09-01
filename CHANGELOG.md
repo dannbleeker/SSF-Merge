@@ -7,6 +7,32 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — Alt+Enter in a cell put a hard line break on the slide
+
+Found by the desktop round of 2026-08-31, and only findable there.
+
+`CHAR(11)` has been folded to a space since earlier that day, because XML
+cannot carry it and the deck would not open at all. That fix named the wrong
+character for the commonest way of producing one. **Excel's Alt+Enter is
+`CHAR(10)`**: the clipboard carries a bare LF, and the pane's `<textarea>`
+normalises what it is handed to CRLF before anything reads it. All of those are
+legal XML, so nothing stopped them and they reached `<a:t>` intact — where
+DrawingML renders a literal newline as a HARD break.
+
+Merging `"Ada⏎Lovelace"` therefore produced a title reading "Ada" on one line
+and "Lovelace — Nordics" on the next, with the same break in the notes page and
+in both halves of the SmartArt: five parts of the deck, none of it announced.
+
+**The file opens cleanly, which is why the sweep that found `CHAR(11)` did not
+find this.** There was no repair prompt to notice — only a slide that reads
+wrong, which no byte-level check was asking about.
+
+Folded in `makeResolver` rather than beside `XML_FORBIDDEN`, because it is a
+fact about a CELL rather than about a text run: the same value reaches a
+chart's cached labels, an embedded workbook and a SmartArt's model through that
+one function, and each would otherwise need its own copy of the rule. CRLF is
+one break and folds to one space.
+
 ### Changed — TypeScript 5.9.3 to 6.0.3, which is the road to 7
 
 Dependabot #190 proposed 5.9.3 straight to 7.0.2 and it cannot be taken.

@@ -278,6 +278,13 @@ header does not have to. A header cell holding Alt+Enter — `Revenue` above
 line break in the middle and no placeholder can be written for it. Retype that
 header on one line and paste again.
 
+A **data** cell is different: it may hold one, and the merge writes it as a
+space. `Ada` above `Lovelace` in the Name column reaches the slide as
+`Ada Lovelace`, on one line, wherever that field appears — body text, a chart's
+title, a SmartArt box or the notes page. A slide is not a spreadsheet cell and
+has no room for a break you cannot see, so the merge closes it up rather than
+carrying it through.
+
 The Fields step will not offer a button for a column it cannot write as a field,
 and says which one and which of these rules it breaks.
 
