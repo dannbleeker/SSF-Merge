@@ -562,7 +562,17 @@ async function useBlock(from: StepId): Promise<void> {
  */
 async function takeImages(files: FileList | null): Promise<void> {
   if (!files || files.length === 0) return;
-  const images = new Map<string, Uint8Array>();
+  // ADDED to what is already held, not put in its place. A browser's picker
+  // returns one directory's selection, and a spreadsheet built from a photo
+  // library routinely names files in several — so picking the second folder
+  // threw the first one away and the tally then reported every name from it as
+  // missing, with the files sitting on the disk the author had just chosen
+  // them from. There is no other way to attach two folders.
+  //
+  // Same-name-wins-last inside the map, which is the rule a single pick
+  // already follows and the one `clashingPicturesNote` exists to warn about.
+  const images = new Map<string, Uint8Array>(state.images ?? []);
+  const held = images.size;
   let refused = 0;
   for (const file of Array.from(files)) {
     try {
@@ -582,7 +592,11 @@ async function takeImages(files: FileList | null): Promise<void> {
     changedSinceMerge: true,
     ...(refused > 0
       ? { notice: `${refused} of the ${files.length} file(s) could not be read and were left out.` }
-      : { notice: undefined }),
+      : held > 0
+        ? // Said only when there was something to add TO, because a reader who
+          // expects the picker to replace needs telling once that it did not.
+          { notice: `Added to the pictures already attached — ${plural(images.size, "file")} now.` }
+        : { notice: undefined }),
   };
   draw();
 }
@@ -1103,8 +1117,20 @@ async function endPreview(): Promise<void> {
       const deckNow = await slideCount().catch(() => undefined);
       const gone = deckNow !== undefined && deckNow <= outcome.deckAtStart;
       if (!gone) {
+        // The card names the slides the preview is on, and after a partial
+        // removal it cannot: the ones that went took the numbering of the ones
+        // that stayed with them. It went on saying "Slides 5 to 8 are a preview
+        // of the first row" over a deck where 5 is the user's own slide again,
+        // beside a button offering to delete them. The card has a numberless
+        // sentence for exactly this, and it is the honest one here.
+        //
+        // `shown` shrinks by what actually went, so the next press asks for
+        // what is left rather than for the original count — the same correction
+        // the merge undo makes with `remaining`.
+        shown = { ...outcome, added: outcome.added - removed };
         state = {
           ...state,
+          previewSlides: undefined,
           notice: `Some of the preview is still there — ${detail}`,
           ...(deckNow !== undefined ? { deckSize: deckNow } : {}),
         };

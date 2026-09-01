@@ -648,7 +648,27 @@ export function pictureColumns(state: PaneState): string[] {
  * is to edit a spreadsheet that was fine.
  */
 export function imagesWanted(state: PaneState): string[] {
-  const rows = includedRecords(state)?.rows ?? [];
+  return pictureNamesOver(state, includedRecords(state)?.rows ?? []);
+}
+
+/**
+ * The same, over EVERY row pasted rather than the ticked ones.
+ *
+ * Only for telling two zeroes apart. `imagesWanted` reading the ticked rows is
+ * right and is what the merge runs on — but it makes "no row names a picture"
+ * and "the rows that name one are not ticked" the same answer, and the pane
+ * said the first. An author who unticks the row with the photo in it was told
+ * their data has no pictures in it, which sends them to look at the
+ * spreadsheet rather than at the row picker one control above.
+ *
+ * Never a count anybody merges on: every number on that screen is a statement
+ * about what pressing the button will do.
+ */
+export function imagesNamedAnywhere(state: PaneState): string[] {
+  return pictureNamesOver(state, state.records?.rows ?? []);
+}
+
+function pictureNamesOver(state: PaneState, rows: Record<string, string>[]): string[] {
   const seen = new Set<string>();
   for (const column of pictureColumns(state)) for (const name of imageNamesIn(rows, column)) seen.add(name);
   return [...seen];

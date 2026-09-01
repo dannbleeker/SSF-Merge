@@ -7,6 +7,29 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — picking a second folder of pictures threw away the first
+
+A browser's file picker returns one directory's selection, and a spreadsheet
+built from a photo library routinely names files in several. The second pick
+replaced the first, so the tally reported every name from folder one as missing
+— with the files sitting in the folder they had just been chosen from, and no
+way at all to attach both. Pictures are added to what is already attached now,
+and the pane says so once.
+
+### Fixed — three picture sentences that said the wrong thing
+
+"All 2 pictures matched" was printed directly under the warning that says two of
+those names get the same file, so the pane said both things and the cheerful one
+came last. "No row names a picture" was also said when the rows that name one
+were simply unticked, which sends the author to the spreadsheet instead of to
+the row picker one control above.
+
+### Fixed — the preview card named slides that were no longer there
+
+Remove the preview, have some of it come back and some not, and the card went on
+naming the range it started on — over a deck where those numbers now belong to
+the user's own slides, beside a button offering to delete them.
+
 ### Fixed — a merged number could disagree with the spreadsheet it came from
 
 `{{Price|number:2}}` rounded the binary value rather than the number in the

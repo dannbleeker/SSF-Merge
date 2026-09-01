@@ -686,6 +686,12 @@ describe("the preview", () => {
 
     expect(pane().querySelector(".step-of")?.textContent).toBe("Step 4 of 5 · Preview");
     expect(pane().textContent).toContain("Some of the preview is still there");
+    // And it stops NAMING the slides. The ones that went took the numbering of
+    // the ones that stayed with them, so "Slides 12 to 14 are a preview of the
+    // first row" was on screen over a deck where 12 is the user's own slide
+    // again, beside a button offering to delete them.
+    expect(pane().textContent, "a range the deck no longer answers to").not.toMatch(/Slides? \d+.*are a preview/);
+    expect(pane().textContent).toContain("A preview is in your deck.");
   });
 
   it("carries on when the slides the sweep could not take are already gone", async () => {
@@ -2168,6 +2174,25 @@ describe("the pictures the user picked", () => {
     await settle();
     type("paste", "First\tPhoto\nAda\tada.png\nGrace\tgrace.png");
   }
+
+  it("keeps the first folder's pictures when a second folder is picked", async () => {
+    /**
+     * A browser's picker returns one directory's selection, and a spreadsheet
+     * built from a photo library routinely names files in several. Picking the
+     * second folder replaced the first: the tally then reported every name
+     * from folder one as missing, with the files sitting on the disk the
+     * author had just chosen them from and no way at all to attach both.
+     */
+    await reachData();
+    choose({ name: "ada.png", bytes: new Uint8Array([1]) });
+    await settle();
+    choose({ name: "grace.png", bytes: new Uint8Array([2]) });
+    await settle();
+
+    expect(pane().textContent, "both names are answered for").toContain("All 2 pictures matched.");
+    // And the reader is told once that the picker added rather than replaced.
+    expect(pane().textContent).toContain("Added to the pictures already attached — 2 files now.");
+  });
 
   it("hands them to the merge, keyed by the name the file has on disk", async () => {
     await reachData();

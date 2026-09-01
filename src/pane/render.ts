@@ -23,6 +23,8 @@ import {
   fieldToken,
   pictureColumns,
   clashingPicturesNote,
+  imageNameClashes,
+  imagesNamedAnywhere,
   emptyCellSummary,
   skippedRows,
   imageTally,
@@ -695,14 +697,30 @@ function imageControl(doc: Document, state: PaneState): HTMLElement {
   // unticked. Nothing was matched and nothing was asked for, and the sentence
   // claimed a success over an empty set, directly above "1 file no row refers
   // to — ignored", which is the fact that actually applies.
+  //
+  // TWO zeroes, and they were one sentence. `imagesWanted` reads the TICKED
+  // rows — correctly, because that is what the merge runs on — so an author who
+  // unticks the row holding the photo was told "no row names a picture", which
+  // sends them to the spreadsheet rather than to the row picker one control
+  // above.
+  const namedAnywhere = imagesNamedAnywhere(state).length;
+  // And "All 2 pictures matched" was printed under the clash warning, which
+  // says two of those names get the SAME file. A success sentence directly
+  // below the notice that one of the slides will carry the wrong picture: the
+  // pane says both things and the reader believes the cheerful one.
+  const clashes = imageNameClashes(state).length > 0;
   wrap.append(
     el(doc, "p", {
-      class: tally.missing.length > 0 ? "blocked" : "muted",
+      class: tally.missing.length > 0 || (tally.wanted > 0 && clashes) ? "blocked" : "muted",
       text:
         tally.wanted === 0
-          ? "No row names a picture, so none of these files will be placed."
+          ? namedAnywhere > 0
+            ? "The rows you have ticked name no pictures — the rows that do are not included."
+            : "No row names a picture, so none of these files will be placed."
           : tally.missing.length === 0
-            ? `All ${plural(tally.wanted, "picture")} matched.`
+            ? clashes
+              ? `${plural(tally.wanted, "picture")} matched a file, and the clashing names above matched the same one.`
+              : `All ${plural(tally.wanted, "picture")} matched.`
             : `${tally.matched} of ${tally.wanted} matched. Missing: ${tally.missing.slice(0, 6).join(", ")}${tally.missing.length > 6 ? `, and ${tally.missing.length - 6} more` : ""}.`,
     }),
   );
