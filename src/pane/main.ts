@@ -1215,7 +1215,7 @@ async function endPreview(): Promise<void> {
       // account of where it came from.
       notice:
         (disowned ?? 0) > 0
-          ? `${plural(removed, "slide")} of the preview removed. ` +
+          ? `${removed > 0 ? `${plural(removed, "slide")} of the preview removed. ` : "None of the preview came back. "}` +
             `${plural(disowned ?? 0, "slide")} in that range ${(disowned ?? 0) === 1 ? "is" : "are"} not this ` +
             `run's and ${(disowned ?? 0) === 1 ? "was" : "were"} left alone.`
           : undefined,
