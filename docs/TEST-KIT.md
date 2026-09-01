@@ -279,6 +279,25 @@ This is the list to read when somebody asks what is open, so it is kept short
 and it is kept true. An item leaves it when a round has actually done the thing,
 not when the code looks right.
 
+**Does PowerPoint honour a photo's EXIF orientation?** A camera or a phone
+storing a portrait photo writes the pixels LANDSCAPE and sets a tag saying
+"turn this 90 degrees to show it". This add-in reads the stored dimensions and
+ignores the tag, so for `{{Photo|image}}` — the setting that crops rather than
+squashes — it computes the crop for the picture the wrong way round.
+
+What happens next depends on something only a real PowerPoint can say, and the
+two possibilities want opposite fixes, so nothing has been changed yet:
+
+1. Put a **portrait photo straight off a phone** into a portrait frame with
+   `{{Photo|image}}` and merge one row.
+2. If the picture appears upright but **cropped on the wrong axis** — the top
+   and bottom of a head cut off where nothing needed cropping — then PowerPoint
+   honours the tag and this add-in must read it too.
+3. If the picture appears **lying on its side**, PowerPoint ignores the tag and
+   the fix is a different one.
+
+Say which of the two it is, and attach the photo you used if you can.
+
 **Touch-only operation, and Firefox.** Both are unticked in `docs/PUBLISHING.md`
 and neither has been done. The desktop round of 2026-08-31 could not: the machine
 it ran on has no digitizer, and reporting a pass from synthetic mouse clicks

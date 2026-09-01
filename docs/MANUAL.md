@@ -1023,6 +1023,10 @@ never see the notice.
 series NAMES, and every SmartArt box. The workbook behind the chart is merged
 too, so the labels are still right if you click Edit Data on a merged slide.
 
+**A callout or a text box drawn on the chart is merged as well.** PowerPoint
+keeps those with the chart rather than on the slide, so `{{Name}}` in a callout
+lands on each copy the way it does anywhere else.
+
 **The numbers too, from the chart's own data sheet — in a modern chart as well
 as an ordinary one.** Right-click the chart, press **Edit Data**, and type
 `{{Revenue}}` into a value cell the way you would type a number. Each merged copy then gets that row's figure, written both into
