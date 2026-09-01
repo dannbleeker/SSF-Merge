@@ -56,10 +56,20 @@ export function blockSummary(block: Block, rows?: number): string {
  * Both numbers rather than just the survivors: "228 rows" alone is a true
  * sentence that loses how many were pasted, and the gap is the thing a user
  * has to notice.
+ *
+ * `planned` is the same argument again, for CONDITIONS. `dropped` was added for
+ * the skip policy and conditions produce the identical discrepancy: with two of
+ * three slides set to "only when Renewal", the heading multiplied to 6 while
+ * the button beside it read "Add 4 slides". Said only when it differs, so an
+ * ordinary merge — where the product IS the answer — reads exactly as before
+ * and the extra clause means something when it appears.
  */
-export function mergeArithmetic(block: Block, rows: number, dropped = 0): string {
+export function mergeArithmetic(block: Block, rows: number, dropped = 0, planned?: number): string {
   const count = dropped > 0 ? `${rows - dropped} of ${plural(rows, "row")}` : plural(rows, "row");
-  return `${count} × ${plural(slidesPerRecord(block), "slide")}`;
+  const product = `${count} × ${plural(slidesPerRecord(block), "slide")}`;
+  const total = (rows - dropped) * slidesPerRecord(block);
+  if (planned === undefined || planned === total) return product;
+  return `${product} — ${plural(planned, "slide")} after conditions`;
 }
 
 /**

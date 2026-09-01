@@ -366,7 +366,7 @@ function headline(state: PaneState, current: StepId): string {
     case "merge": {
       const block = chosenBlock(state);
       return block && state.rows
-        ? mergeArithmetic(block, includedCount(state), skippedRows(state).length)
+        ? mergeArithmetic(block, includedCount(state), skippedRows(state).length, slidesToAdd(state))
         : "Nothing to merge yet";
     }
   }

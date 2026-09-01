@@ -66,6 +66,36 @@ describe("the arithmetic above the merge button", () => {
   });
 });
 
+describe("the arithmetic above the merge button", () => {
+  /**
+   * `dropped` was added because the heading multiplied to 720 while the button
+   * two lines under it said 684 — two numbers on one screen, disagreeing, with
+   * the smaller one on the thing being pressed. Conditions produce the
+   * identical discrepancy and were not covered: two of three slides set to
+   * "only when Renewal" left the heading reading 2 × 3 beside "Add 4 slides".
+   */
+  it("says the planned total when the conditions change it", () => {
+    const block = { from: 4, to: 6 };
+    expect(mergeArithmetic(block, 2, 0, 4)).toBe("2 rows × 3 slides — 4 slides after conditions");
+  });
+
+  it("says nothing extra when the product IS the answer", () => {
+    // The ordinary merge, which must read exactly as it did — an extra clause
+    // that is always there means nothing when it appears.
+    const block = { from: 4, to: 6 };
+    expect(mergeArithmetic(block, 2, 0, 6)).toBe("2 rows × 3 slides");
+    expect(mergeArithmetic(block, 2)).toBe("2 rows × 3 slides");
+  });
+
+  it("counts the skipped rows out before comparing", () => {
+    // Both mechanisms at once: one row skipped for a blank, and conditions on
+    // top of that. The product is over the rows that survive the skip.
+    const block = { from: 4, to: 6 };
+    expect(mergeArithmetic(block, 3, 1, 6)).toBe("2 of 3 rows × 3 slides");
+    expect(mergeArithmetic(block, 3, 1, 4)).toBe("2 of 3 rows × 3 slides — 4 slides after conditions");
+  });
+});
+
 describe("what the deck will look like afterwards", () => {
   it("says where the slides land as well as how many", () => {
     // "720 slides added" answers the wrong half of the question somebody
