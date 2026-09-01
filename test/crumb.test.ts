@@ -36,7 +36,7 @@ describe("the numbers an undo cannot be done without", () => {
 
   it("is gone once the slides are", () => {
     dropCrumb({ deckAtStart: 12, added: 720, runId: "r1", doc: DECK });
-    clearCrumb();
+    clearCrumb(DECK);
     expect(readCrumb(DECK)).toBeUndefined();
   });
 
@@ -129,7 +129,7 @@ describe("a store that will not cooperate", () => {
     }).not.toThrow();
     expect(readCrumb(DECK)).toBeUndefined();
     expect(() => {
-      clearCrumb();
+      clearCrumb(DECK);
     }).not.toThrow();
   });
 
@@ -171,5 +171,51 @@ describe("a store that will not cooperate", () => {
     expect(() => {
       dropCrumb({ deckAtStart: 1, added: 1, runId: "r2", doc: DECK });
     }).not.toThrow();
+  });
+});
+
+describe("whose crumb it is, on the way OUT as well as in", () => {
+  /**
+   * `readCrumb` asks which deck a crumb belongs to and refuses a stranger's —
+   * the docstring on `Crumb.doc` sets out why at length. `clearCrumb` asked
+   * nothing at all, so a run in one deck deleted the recovery record of
+   * another: the read side was careful and the write side was not.
+   *
+   * The store is one key for every deck the user opens, because `localStorage`
+   * belongs to the add-in's ORIGIN. So this is not a corner — it is what
+   * happens whenever somebody merges into a second deck while a first one has
+   * a run they have not taken back.
+   */
+  it("will not let one deck's run delete another deck's record", () => {
+    dropCrumb({ deckAtStart: 12, added: 6, runId: "r1", doc: DECK });
+    // A run in a DIFFERENT deck finishes having added nothing, and clears up
+    // after itself.
+    clearCrumb(OTHER_DECK);
+    expect(readCrumb(DECK)?.added, "deck A's six slides are still in deck A").toBe(6);
+  });
+
+  it("still clears the record of the deck it belongs to", () => {
+    dropCrumb({ deckAtStart: 12, added: 6, runId: "r1", doc: DECK });
+    clearCrumb(DECK);
+    expect(readCrumb(DECK)).toBeUndefined();
+  });
+
+  it("clears a crumb this build cannot read rather than leaving it forever", () => {
+    // A record from an older build carries no `doc`, so no caller can ever
+    // match it and nothing would remove it. Refusing to clear what cannot be
+    // identified would make the key unreclaimable.
+    real.setItem(KEY, JSON.stringify({ kind: "ssf-merge-run", deckAtStart: 1, added: 1 }));
+    clearCrumb(DECK);
+    expect(real.getItem(KEY)).toBeNull();
+  });
+
+  it("does not fall over when the store refuses", () => {
+    useStorage({
+      getItem: () => {
+        throw new Error("denied");
+      },
+      removeItem: () => undefined,
+    });
+    expect(() => clearCrumb(DECK)).not.toThrow();
   });
 });
