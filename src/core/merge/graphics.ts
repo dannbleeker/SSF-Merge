@@ -233,7 +233,19 @@ async function mergeWorkbook(pkg: Pkg, path: string, resolve: Resolve, held: Hel
     // node returns to the position it left.
     const lifted = liftHeld(doc, name, parts.sharedStrings === name, held);
     const merged = mergeDocument(doc, resolve);
-    for (const { node, parent, next } of lifted) parent.insertBefore(node, next);
+    // LAST OUT, FIRST BACK. Each `next` was the node's live sibling at the
+    // moment it was removed, so an anchor is only guaranteed to be in the tree
+    // again once every removal after it has been undone. Replaying the list
+    // forwards got both halves of this wrong: the shared-string table is taken
+    // highest index first, so restoring in that order re-inserted each entry
+    // before an anchor the next insertion then jumped in front of and the held
+    // strings came back REVERSED — a user's placeholders permuted against the
+    // chart's own point order, visible only in Edit Data. And two held cells
+    // that are siblings — a row-oriented series with inline strings — made the
+    // second removal detach the first's anchor, so `insertBefore` threw
+    // "child not in parent", out through `runPlan` and past the pane's own
+    // catch: no slides, no notice, an unhandled rejection.
+    for (const { node, parent, next } of [...lifted].reverse()) parent.insertBefore(node, next);
     if (merged === 0) continue;
     zip.file(name, serializeXml(doc));
     changed = true;

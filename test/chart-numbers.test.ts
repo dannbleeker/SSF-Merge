@@ -380,6 +380,101 @@ describe("a value cell that holds its string inline", () => {
     expect(sheet, "and the row's words did not replace it").not.toContain("hello");
   });
 
+  it("puts the held strings back in the order they were in", async () => {
+    /**
+     * `liftHeld` detaches each held node and remembers the sibling that
+     * followed it AT THE MOMENT OF REMOVAL. It takes the shared-string table
+     * highest index first — deliberately, because removing one shifts the
+     * positions of those after it — and the restore replayed that list
+     * forwards, so each entry was re-inserted before an anchor the next
+     * insertion then jumped in front of.
+     *
+     * The held placeholders came back REVERSED against the chart's own point
+     * order: the sheet says B2 holds the third placeholder where the cache says
+     * B2 is point 0. Nothing sees it until the user opens Edit Data, and the
+     * part is only written back at all because something else in it merged.
+     */
+    const deck = await makeDeck([
+      {
+        paragraphs: [["Cover"]],
+        chart: { categories: ["{{Region}}"], workbook: ["{{Region}}"], values: ["{{A}}", "{{B}}", "{{C}}"] },
+      },
+    ]);
+    const pkg = await Pkg.open(deck);
+    const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "h");
+    if (!prepared.ok) throw new Error(prepared.why);
+    const records = toRecordSet([
+      ["Region", "A", "B", "C"],
+      ["Nordics", "x", "y", "z"],
+    ]);
+    const out = await runPlan(pkg, buildPlan(prepared.block, records, { runId: "h" }), records);
+    // All three value cells hold words, so all three are refused and held; the
+    // category label merges, which is what gets the part written back.
+    expect(out.graphics.numbers.refused).toBe(3);
+
+    const zip = await JSZip.loadAsync(await pkg.toBytes());
+    const emb = Object.keys(zip.files).filter((n) => /embeddings\/.*\.xlsx$/.test(n));
+    const book = await JSZip.loadAsync(await zip.file(emb[emb.length - 1]!)!.async("nodebuffer"));
+    const sst = await book.file("xl/sharedStrings.xml")!.async("string");
+    const strings = [...sst.matchAll(/<t[^>]*>([^<]*)<\/t>/g)].map((m) => m[1]);
+    expect(strings, "the held placeholders came back permuted").toEqual(["Nordics", "{{A}}", "{{B}}", "{{C}}"]);
+  });
+
+  it("survives two held cells that are next to each other in the sheet", async () => {
+    /**
+     * The same defect's sharp end. A ROW-oriented series with inline strings
+     * gives two held cells that are siblings: taking B2 records C2 as its
+     * anchor, then C2 is taken too, and replaying forwards calls
+     * `insertBefore(B2, C2)` with C2 detached.
+     *
+     * `NotFoundError: child not in parent`, out of `mergeWorkbook`, through
+     * `runPlan`, past `office/merge.ts`'s catch — which wraps the template read
+     * and not the run — and into the pane as an unhandled rejection. The user
+     * gets no slides, no notice and no way to know why.
+     */
+    const deck = await makeDeck([
+      { paragraphs: [["{{Name}}"]], chart: { categories: ["a"], workbook: ["x"], values: ["0", "0"] } },
+    ]);
+    const zip = await JSZip.loadAsync(deck);
+    // A series ACROSS a row, which the fixture does not write, so both cells
+    // land in one `<row>` and are siblings.
+    const chart = await zip.file("ppt/charts/chart1.xml")!.async("string");
+    const across = chart.replace("Sheet1!$B$2:$B$3", "Sheet1!$B$2:$C$2");
+    expect(across, "the fixture's range moved").not.toBe(chart);
+    zip.file("ppt/charts/chart1.xml", across);
+
+    const emb = Object.keys(zip.files).find((n) => /embeddings\/.*\.xlsx$/.test(n))!;
+    const book = await JSZip.loadAsync(await zip.file(emb)!.async("nodebuffer"));
+    const sheet = await book.file("xl/worksheets/sheet1.xml")!.async("string");
+    const patched = sheet.replace(
+      '<c r="B2"><v>0</v></c>',
+      '<c r="B2" t="inlineStr"><is><t>{{Alpha}}</t></is></c>' + '<c r="C2" t="inlineStr"><is><t>{{Beta}}</t></is></c>',
+    );
+    expect(patched, "the fixture's value cell moved").not.toBe(sheet);
+    book.file("xl/worksheets/sheet1.xml", patched);
+    zip.file(emb, await book.generateAsync({ type: "nodebuffer" }));
+
+    const pkg = await Pkg.open(await zip.generateAsync({ type: "uint8array" }));
+    const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "h");
+    if (!prepared.ok) throw new Error(prepared.why);
+    const records = toRecordSet([
+      ["Name", "Alpha", "Beta"],
+      ["Ada", "one", "two"],
+    ]);
+    // The merge must complete. Both cells hold words, so both are refused and
+    // held, and the slide's own {{Name}} is what writes the part back.
+    const out = await runPlan(pkg, buildPlan(prepared.block, records, { runId: "h" }), records);
+    expect(out.graphics.numbers.refused).toBe(2);
+
+    const after = await JSZip.loadAsync(await pkg.toBytes());
+    const books = Object.keys(after.files).filter((n) => /embeddings\/.*\.xlsx$/.test(n));
+    const merged = await JSZip.loadAsync(await after.file(books[books.length - 1]!)!.async("nodebuffer"));
+    const cells = await merged.file("xl/worksheets/sheet1.xml")!.async("string");
+    expect(cells, "the placeholders are what stay").toContain("{{Alpha}}");
+    expect(cells).toContain("{{Beta}}");
+    expect(cells.indexOf("{{Alpha}}"), "and in the order they were in").toBeLessThan(cells.indexOf("{{Beta}}"));
+  });
+
   it("leaves a FORMULA cell and its formula alone", async () => {
     // `t="str"` is a formula's cached string result, and it keeps that result
     // in `<v>`. The reader used to name `str` alongside `inlineStr` and then
