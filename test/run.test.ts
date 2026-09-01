@@ -202,6 +202,53 @@ describe("a cell holding nothing but spaces", () => {
   });
 });
 
+describe("a cell holding a line break the author typed inside it", () => {
+  /**
+   * Alt+Enter. `CHAR(11)` — the spelling Word keeps — has been folded to a
+   * space since 2026-08-31, because XML cannot carry it and the deck would not
+   * open. Excel's is a different character and it is LEGAL XML: the cell holds
+   * `CHAR(10)`, the clipboard carries a bare LF, and a `<textarea>` hands the
+   * pane CRLF. Nothing refused any of them, so they reached `<a:t>` intact.
+   *
+   * Legal is not harmless, and this is why the desktop round of 2026-08-31
+   * caught it and the sweep that found `CHAR(11)` did not: the file opens
+   * clean. DrawingML renders a literal newline inside a run as a HARD break, so
+   * the merged title read "Ada" on one line and "Lovelace — Nordics" on the
+   * next — the same break reaching the notes page and both halves of the
+   * SmartArt, none of it announced.
+   *
+   * Asserted on the merged TEXT rather than on the resolver's return value, so
+   * that moving the fold to another layer cannot make this pass while the slide
+   * still carries the break.
+   */
+  const broken = (name: string) =>
+    toRecordSet([
+      ["Name", "Notes"],
+      [name, "first"],
+    ]);
+
+  const notesBlock: Block = { id: "b", slides: [{ path: "ppt/slides/slide2.xml", seq: 1 }] };
+
+  it("folds every spelling of it to one space, on the slide", async () => {
+    for (const brk of ["\r\n", "\n", "\r"]) {
+      const rows = broken(`Ada${brk}Lovelace`);
+      const pkg = await template();
+      const result = await runPlan(pkg, buildPlan(notesBlock, rows, { runId: "r" }), rows);
+
+      expect(await textOf(pkg, result.slides[0]!), JSON.stringify(brk)).toBe("Notes for Ada Lovelace: first");
+    }
+  });
+
+  it("leaves no newline anywhere in the merged part", async () => {
+    const rows = broken("Ada\r\nLovelace");
+    const pkg = await template();
+    const result = await runPlan(pkg, buildPlan(notesBlock, rows, { runId: "r" }), rows);
+
+    const runs = elements(await pkg.doc(result.slides[0]!), A_NS, "t").map((t) => t.textContent ?? "");
+    expect(runs.filter((t) => /[\r\n]/.test(t))).toEqual([]);
+  });
+});
+
 describe("an edit that lands exactly on a run boundary", () => {
   /**
    * A placeholder's value goes into the run that HELD the placeholder, which is
