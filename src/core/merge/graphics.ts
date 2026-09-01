@@ -176,6 +176,42 @@ function liftHeld(
   return out;
 }
 
+/**
+ * The field names a chart's WORKBOOK holds, without filling any of them.
+ *
+ * `prepareBlock` scanned the chart part and the cells the numeric pass reaches,
+ * and nothing else — so a placeholder living only in a workbook cell was filled
+ * by the run and unseen by the scan. If it was a block's only placeholder the
+ * merge was refused outright, with a sentence telling the author to type field
+ * names onto a slide that already carried one: the fourth instance of the class
+ * `sites.ts` enumerates, and the direction `prepare.ts` calls the worse one.
+ *
+ * It bites the generator-written population. A chart PowerPoint authored mirrors
+ * its labels into `<c:strCache>`, which the chart-part scan already sees; a
+ * workbook whose text is only in the sheet does not.
+ *
+ * A dry run of `mergeWorkbook` itself, driven by a resolver that records every
+ * name and answers null — the same shape `chartValueFields` uses, and for the
+ * same reason. Null is what a placeholder with no column gets everywhere else,
+ * so nothing merges, `changed` stays false and no workbook is repacked. A
+ * second reader that walked the workbook its own way would be free to disagree
+ * with the merge about what a placeholder is, which is the disagreement this
+ * whole seam exists to prevent.
+ */
+export async function workbookFields(pkg: Pkg, path: string): Promise<string[]> {
+  const seen: string[] = [];
+  await mergeWorkbook(
+    pkg,
+    path,
+    (name) => {
+      if (!seen.includes(name)) seen.push(name);
+      return null;
+    },
+    [],
+  );
+  return seen;
+}
+
 async function mergeWorkbook(pkg: Pkg, path: string, resolve: Resolve, held: HeldCell[]): Promise<boolean> {
   let zip: JSZip;
   try {

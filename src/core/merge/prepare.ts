@@ -11,6 +11,7 @@ import type { Pkg } from "../pptx/pkg.js";
 import type { Block, BlockSlide } from "./plan.js";
 import { fieldsIn } from "./text.js";
 import { chartValueFields } from "./numbers.js";
+import { workbookFields } from "./graphics.js";
 import { imageFieldsIn } from "./images.js";
 import { fieldSites } from "./sites.js";
 
@@ -140,7 +141,18 @@ export async function prepareBlock(pkg: Pkg, req: BlockRequest, runId: string): 
       // reader is a dry run of the merge's own walk, so the two cannot hold
       // different opinions about which cells carry a placeholder.
       if (site.workbooks.length > 0) own.push(...(await chartValueFields(pkg, site.part, site.workbooks[0])));
+      // And the workbook's own TEXT, which the numeric walk above does not
+      // reach: it opens only the cells a `<c:f>` names and the cache has a
+      // point for. A placeholder in any other cell was filled by the run and
+      // unseen here — and if it was the block's only one, the merge was refused
+      // as though the slide had no fields at all.
+      //
+      // Every workbook, not `[0]`: the text pass merges the whole set.
+      for (const book of site.workbooks) own.push(...(await workbookFields(pkg, book)));
     }
+    // Deduped here rather than at each push. A chart's label is reported by the
+    // chart-part scan AND by its workbook, which is not a disagreement — it is
+    // the same string in the two places PowerPoint keeps it.
     for (const f of own) if (!fields.includes(f)) fields.push(f);
     const condition = req.conditions?.[req.from + i];
     slides.push({ path, seq: i + 1, fields: own, ...(condition ? { condition } : {}) });
