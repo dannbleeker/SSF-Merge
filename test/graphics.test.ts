@@ -20,7 +20,7 @@ import { toRecordSet } from "../src/core/data/recordset.js";
 import { Pkg } from "../src/core/pptx/pkg.js";
 import { REL_TYPE } from "../src/core/pptx/parts.js";
 import { A_NS, C_NS, PKG_REL_NS, SSML_NS, elements, parseXml } from "../src/core/pptx/xml.js";
-import { sheetNamed, workbookParts } from "../src/core/merge/workbook.js";
+import { sheetNamed, withinInflatedBudget, workbookParts } from "../src/core/merge/workbook.js";
 import { makeDeck, type SlideSpec } from "./fixtures/deck.js";
 
 const ROWS = "Name\tRegion\nAda\tNordics\nGrace\tBenelux";
@@ -312,6 +312,43 @@ describe("a workbook a generator wrote", () => {
  * A rule no test can drive is a rule nobody can check — and a mutation sweep
  * proved both were exactly that.
  */
+describe("an embedded workbook that would inflate to gigabytes", () => {
+  /**
+   * A `.pptx` arrives from wherever the user got it, and a chart's data is a
+   * whole `.xlsx` sitting inside it. Deflate reaches about 1000:1 on repetitive
+   * XML — measured, 19 KB became 20 MB — and BOTH passes over a workbook open
+   * it once per merged row, because every clone gets its own copy. At 240 rows
+   * that is a task pane doing gigabytes of work it cannot be interrupted out
+   * of.
+   *
+   * The zip declares each entry's inflated size, so the question is answered
+   * before anything is inflated and costs nothing on an ordinary deck.
+   *
+   * Refusing is the answer an unparseable workbook already gets: the chart
+   * keeps its cached values, the run finishes, and the pane says the data
+   * behind it could not be opened — a sentence the user can act on, where a
+   * frozen tab is not.
+   */
+  it("is refused rather than inflated", async () => {
+    const book = new JSZip();
+    book.file("xl/workbook.xml", `<workbook><sheets/></workbook>`);
+    // Bigger than the budget, and it costs a few kilobytes on disk.
+    book.file("xl/sharedStrings.xml", `<sst>${"a".repeat(80 * 1024 * 1024)}</sst>`);
+    const bytes = await book.generateAsync({ type: "uint8array", compression: "DEFLATE" });
+    expect(bytes.length, "a bomb is small on disk").toBeLessThan(1024 * 1024);
+    expect(withinInflatedBudget(await JSZip.loadAsync(bytes)), "refused").toBe(false);
+  });
+
+  it("and an ordinary one is not", async () => {
+    // The other half, because a budget that refuses everything is not a budget.
+    const book = new JSZip();
+    book.file("xl/workbook.xml", `<workbook><sheets/></workbook>`);
+    book.file("xl/sharedStrings.xml", `<sst>${"<si><t>Ada Lovelace</t></si>".repeat(20000)}</sst>`);
+    const bytes = await book.generateAsync({ type: "uint8array", compression: "DEFLATE" });
+    expect(withinInflatedBudget(await JSZip.loadAsync(bytes)), "a real workbook passes").toBe(true);
+  });
+});
+
 describe("workbookParts", () => {
   const REL = 'xmlns="http://schemas.openxmlformats.org/package/2006/relationships"';
   const S = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"';

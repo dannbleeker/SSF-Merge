@@ -32,7 +32,7 @@ import {
   type NumberOutcome,
 } from "./numbers.js";
 import { graphicsOf, workbooksOf, type FieldSite } from "./sites.js";
-import { workbookParts } from "./workbook.js";
+import { withinInflatedBudget, workbookParts } from "./workbook.js";
 
 export interface GraphicOutcome {
   /** Text groups filled in chart and SmartArt parts. */
@@ -183,6 +183,11 @@ async function mergeWorkbook(pkg: Pkg, path: string, resolve: Resolve, held: Hel
   } catch {
     return false;
   }
+  // Refused before a byte is inflated, and reported as unreadable — which is
+  // what an unparseable workbook already gets. See `withinInflatedBudget`: this
+  // read happens once per merged row, so a bomb costs the row count times its
+  // inflated size.
+  if (!withinInflatedBudget(zip)) return false;
 
   // The parts that hold text a merge can fill, taken from what the workbook
   // DECLARES rather than from their names.

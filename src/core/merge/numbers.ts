@@ -29,7 +29,7 @@
 import JSZip from "jszip";
 import type { Pkg } from "../pptx/pkg.js";
 import { C_NS, CX_NS, SSML_NS, children, elements, parseXml, serializeXml } from "../pptx/xml.js";
-import { sheetNamed, workbookParts } from "./workbook.js";
+import { sheetNamed, withinInflatedBudget, workbookParts } from "./workbook.js";
 import { numericValue } from "../data/format.js";
 import { fieldsInText, type Resolve } from "./text.js";
 
@@ -355,6 +355,9 @@ export async function mergeChartNumbers(
     // readable zip is a thing to step over, not to lose the run on.
     return out;
   }
+  // And the same budget, for the same reason and at the same point: before a
+  // byte is inflated. Both passes open every workbook once per merged row.
+  if (!withinInflatedBudget(book)) return out;
 
   // The workbook's OWN declarations, shared with the text pass — see
   // `workbook.ts`. Reading them by part name is what let one generator's

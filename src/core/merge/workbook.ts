@@ -74,6 +74,46 @@ export function sheetNamed(parts: WorkbookParts, title: string): string | undefi
   return parts.byTitle.get(foldTitle(title));
 }
 
+/**
+ * How much inflated XML one embedded workbook may cost, in characters.
+ *
+ * A chart's data sheet is tens of kilobytes; Excel writes nothing near this.
+ * The number is three orders of magnitude of headroom, and it is here to bound
+ * a DECOMPRESSION BOMB rather than to judge a big workbook.
+ *
+ * A `.pptx` arrives from wherever the user got it, and a zip entry declares its
+ * inflated size before anything inflates it. Measured: 19 KB of deflate becomes
+ * 20 MB of text at a ratio of about 1000:1 — and this read happens ONCE PER
+ * MERGED ROW, because every clone gets its own copy of the chart's workbook. At
+ * 240 rows that is a pane doing gigabytes of work inside a WebView, from a deck
+ * somebody was sent.
+ *
+ * Refusing is the same answer an unparseable workbook already gets: the chart
+ * keeps its cached values, the run finishes, and the pane says the data behind
+ * it could not be opened. That is a sentence the user can act on, where a
+ * frozen tab is not.
+ */
+const INFLATED_BUDGET = 64 * 1024 * 1024;
+
+/**
+ * Whether a workbook's XML is small enough to read at all.
+ *
+ * Asked of the zip's own DECLARED sizes, which is the point: it costs nothing
+ * and it is answered before a single byte is inflated. Only the XML parts are
+ * counted — an embedded image inside a workbook is not something either pass
+ * reads, so its size is not this budget's business.
+ */
+export function withinInflatedBudget(book: JSZip): boolean {
+  let total = 0;
+  for (const name of Object.keys(book.files)) {
+    if (!/\.(xml|rels)$/i.test(name)) continue;
+    const declared = (book.files[name] as { _data?: { uncompressedSize?: number } })._data?.uncompressedSize;
+    if (typeof declared === "number") total += declared;
+    if (total > INFLATED_BUDGET) return false;
+  }
+  return true;
+}
+
 export interface WorkbookParts {
   /** Worksheet parts, in the order the workbook declares its sheets. */
   sheets: string[];
