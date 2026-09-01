@@ -335,6 +335,43 @@ describe("what a long merge holds in memory", () => {
     expect(await held(20)).toBe(await held(2));
   });
 
+  it("does not keep one parsed document per slide already IN THE DECK", async () => {
+    /**
+     * The other axis, and nothing measured it. Both tests above hold the deck
+     * at one slide and vary the RECORD count, so a cost that scales with the
+     * TEMPLATE deck was invisible to them — a gate whose name is wider than
+     * its coverage.
+     *
+     * The first `cloneSlide` gathers the creation ids already in the package,
+     * once, to avoid an O(N²) reparse. It read each slide through the document
+     * cache, which retains, so a merge parsed and held EVERY slide in the deck
+     * before it had merged a single record.
+     *
+     * That is the file route's shape exactly: on any host below PowerPointApi
+     * 1.10 the template arrives as the user's ENTIRE presentation, so a
+     * 300-slide deck was 300 held documents on clone one. Measured at 120
+     * modest slides it was 23 MB and 125 held parts before any work; at real
+     * slide sizes the sibling measurement this cache exists to avoid — 1697 MB
+     * against a WebView's 2 GB — is the neighbourhood.
+     *
+     * Counted rather than measured, like its neighbours: what is claimed is
+     * that the held count does not track the deck's size.
+     */
+    const held = async (deckSlides: number) => {
+      const spec = Array.from({ length: deckSlides }, (_, i) => ({
+        paragraphs: [[`Slide ${i} {{Name}}`]],
+        creationId: 100 + i,
+      }));
+      const pkg = await Pkg.open(await makeDeck(spec));
+      const rows = toRecordSet([["Name"], ["Ada"], ["Grace"]]);
+      const block: Block = { id: "b", slides: [{ path: "ppt/slides/slide1.xml", seq: 1 }] };
+      let id = 0;
+      await runPlan(pkg, buildPlan(block, rows, { runId: "r" }), rows, { clone: { creationId: () => 900 + ++id } });
+      return pkg.cachedParts();
+    };
+    expect(await held(40)).toBe(await held(2));
+  });
+
   it("does not keep one parsed chart or diagram per output slide either", async () => {
     // The same property, on the parts a chart adds. Every copy gets its own
     // chart, its own workbook, its own SmartArt model and its own rendering —

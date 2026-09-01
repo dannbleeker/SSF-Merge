@@ -233,15 +233,21 @@ export async function setCreationId(pkg: Pkg, slidePath: string, value: number):
 
 /** Read a slide's creation id, for tests and for the pane's diagnostics. */
 export async function creationIdOf(pkg: Pkg, slidePath: string): Promise<number | undefined> {
-  const doc = await pkg.doc(slidePath);
-  // Scoped like the write. Reading the first one in the part reported a stray
-  // id from inside the shape tree as the slide's own, which is a diagnostic
-  // agreeing with a stamp that never landed.
-  const cSld = element(doc, P_NS, "cSld");
-  const own = cSld ? child(cSld, P_NS, "extLst") : undefined;
-  const id = own ? Array.from(own.getElementsByTagNameNS(P14_NS, "creationId"))[0] : undefined;
-  const val = id?.getAttribute("val");
-  return val === undefined || val === null ? undefined : Number(val);
+  // `peek`, not `doc`: this only LOOKS at the slide, and `usedIds` below calls
+  // it once for every slide in the package. Through `doc` that left the whole
+  // deck parsed and held for the rest of the run — on the file route, where the
+  // template is the user's entire presentation, three hundred documents before
+  // the first record was merged.
+  return pkg.peek(slidePath, (doc) => {
+    // Scoped like the write. Reading the first one in the part reported a stray
+    // id from inside the shape tree as the slide's own, which is a diagnostic
+    // agreeing with a stamp that never landed.
+    const cSld = element(doc, P_NS, "cSld");
+    const own = cSld ? child(cSld, P_NS, "extLst") : undefined;
+    const id = own ? Array.from(own.getElementsByTagNameNS(P14_NS, "creationId"))[0] : undefined;
+    const val = id?.getAttribute("val");
+    return val === undefined || val === null ? undefined : Number(val);
+  });
 }
 
 /**

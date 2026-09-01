@@ -51,6 +51,38 @@ describe("a deck this repository publishes", () => {
     expect(committedDecks().length).toBeGreaterThan(0);
   });
 
+  it("would notice a name if one were there", () => {
+    /**
+     * The rule below asserts an EMPTY list, and an empty list is what a
+     * matcher that has stopped matching also returns. Replacing `namesIn`'s
+     * body with `return []` left all of this green — so the one guard standing
+     * between a public repository and somebody's name in a file nobody opens
+     * was proving nothing about the matcher at all.
+     *
+     * The file list is already anchored above, which is the same worry caught
+     * one level out and is exactly why this gap is easy to miss: a guard can
+     * be defended against vacuity in one dimension and open in the other.
+     *
+     * Anchored on the shape Office actually writes, and on the two ways a
+     * field is legitimately empty — a self-closing tag and an empty pair —
+     * because reporting those would fail every clean deck in the repo.
+     */
+    const core = (creator: string) =>
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties>${creator}<cp:revision>2</cp:revision></cp:coreProperties>`;
+    const tags = ["dc:creator", "cp:lastModifiedBy"];
+
+    expect(namesIn(core("<dc:creator>Ada Lovelace</dc:creator>"), tags)).toEqual(['dc:creator="Ada Lovelace"']);
+    expect(namesIn(core("<cp:lastModifiedBy>Ada Lovelace</cp:lastModifiedBy>"), tags)).toEqual([
+      'cp:lastModifiedBy="Ada Lovelace"',
+    ]);
+    // An attribute on the tag must not hide the name.
+    expect(namesIn(core('<dc:creator xml:lang="en">Ada</dc:creator>'), tags)).toEqual(['dc:creator="Ada"']);
+    // And the empty spellings a scrubbed deck carries are not names.
+    expect(namesIn(core("<dc:creator/>"), tags)).toEqual([]);
+    expect(namesIn(core("<dc:creator></dc:creator>"), tags)).toEqual([]);
+    expect(namesIn(core("<dc:creator>   </dc:creator>"), tags)).toEqual([]);
+  });
+
   it.each(committedDecks())("names nobody in its properties: %s", async (path) => {
     const zip = await JSZip.loadAsync(readFileSync(path));
     const held: string[] = [];

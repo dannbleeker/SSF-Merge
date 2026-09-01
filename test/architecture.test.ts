@@ -106,14 +106,39 @@ function codeOf(file: string): string {
   return withoutTsProse(readFileSync(file, "utf8")) as string;
 }
 
+/** The file as written, for a rule whose subject is a string literal. */
+function rawOf(file: string): string {
+  return readFileSync(file, "utf8");
+}
+
+/**
+ * An import of the host's own typings or shim, in any spelling.
+ *
+ * Read against the RAW source, so it must not match the word where it appears
+ * in prose — hence the `import`/`require`/`from` context rather than the bare
+ * package name, which turns up in half a dozen comments explaining what the
+ * engine does not do.
+ */
+const IMPORTS_OFFICE = /(?:^|\n)\s*(?:import\b[^\n]*|const[^\n]*=\s*require\s*\()\s*["'`][^"'`\n]*office-js/;
+
 describe("src/core", () => {
   it("imports nothing from Office.js", () => {
     // The seam the whole design rests on. The engine takes bytes and records
     // and returns bytes, which is what lets it run in the pane, in a CLI and in
     // this suite with no PowerPoint anywhere. One import here and the merge can
     // only ever be tested inside a host that is documented to lie about ids.
-    const offenders = filesUnder("src/core").filter((f) => codeOf(f).match(/\bOffice\.|\bPowerPoint\.|office-js/));
-    expect(offenders).toEqual([]);
+    // TWO reads, because the two halves of this rule live in different places.
+    // An identifier — `Office.` or `PowerPoint.` — is code, and must be read
+    // with the prose stripped or a paragraph explaining why the engine avoids
+    // them fails four correct files. An IMPORT SPECIFIER is a string literal,
+    // and `withoutTsProse` blanks those: `import "office-js"` came out as
+    // `import ""`, so the alternative that names the package could never match
+    // anything and the guard passed a real dependency. Its own module says so
+    // — "a guard that reads IMPORTS must read the raw source instead" — and two
+    // other guards in this file already do; this one did not.
+    const usesHost = filesUnder("src/core").filter((f) => codeOf(f).match(/\bOffice\.|\bPowerPoint\./));
+    const importsHost = filesUnder("src/core").filter((f) => rawOf(f).match(IMPORTS_OFFICE));
+    expect([...new Set([...usesHost, ...importsHost])]).toEqual([]);
   });
 
   it("keeps Office.js out of src/host too, so every decision stays testable", () => {
@@ -123,7 +148,9 @@ describe("src/core", () => {
     // probe could answer anything is that its judgements lived outside the
     // PowerPoint.run callback and could be checked in CI; one Office.js import
     // here and the same rules become untestable again.
-    const offenders = filesUnder("src/host").filter((f) => codeOf(f).match(/\bOffice\.|\bPowerPoint\.|office-js/));
+    const usesHost = filesUnder("src/host").filter((f) => codeOf(f).match(/\bOffice\.|\bPowerPoint\./));
+    const importsHost = filesUnder("src/host").filter((f) => rawOf(f).match(IMPORTS_OFFICE));
+    const offenders = [...new Set([...usesHost, ...importsHost])];
     expect(offenders).toEqual([]);
   });
 

@@ -156,6 +156,31 @@ export class Pkg {
     return max + 1;
   }
 
+  /**
+   * Read a part without KEEPING the parsed copy.
+   *
+   * `doc` retains, because the cache is also the dirty-part set — every
+   * document it hands out is written back on flush, which is what makes an edit
+   * survive. A reader that only wants to look at a part therefore pays for it
+   * twice: once to parse, and then for the rest of the run to hold it.
+   *
+   * That is not a corner. Gathering the creation ids already in a package reads
+   * every slide in the deck exactly once, and on the file route the deck is the
+   * user's WHOLE presentation — so a merge parsed and held three hundred
+   * documents before it had merged a single record. Held parts should track
+   * neither the record count (which `release` answers) nor the deck's size,
+   * which is this.
+   *
+   * A part somebody has already parsed stays parsed: it is in the cache because
+   * a writer may be amending it, and dropping it here would throw away an edit.
+   * Only a part this call brought in is discarded.
+   */
+  async peek<T>(path: string, read: (doc: Document) => T): Promise<T> {
+    const cached = this.docs.get(path);
+    if (cached) return read(cached);
+    return read(parseXml(await this.text(path)));
+  }
+
   async doc(path: string): Promise<Document> {
     const cached = this.docs.get(path);
     if (cached) return cached;
