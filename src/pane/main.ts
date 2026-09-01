@@ -36,6 +36,7 @@ import {
   includedRecords,
   nextStep,
   readPastedTable,
+  slidesToAdd,
   withCondition,
   type PaneState,
   type StepId,
@@ -769,7 +770,17 @@ async function merge(): Promise<void> {
       // number nothing proved. A floor that cannot be shown is a floor that
       // authorises nothing, which is the direction `sweepPlan` already takes.
       deckBefore = await slideCount().catch(() => undefined);
-      if (deckBefore !== undefined)
+      // NOT over a record of slides that are still in the deck.
+      //
+      // The pending marker is insurance against a tab that dies mid-insert. An
+      // earlier run whose slides nobody has taken back is insurance against the
+      // same thing, for slides that are already there — and it is worth more,
+      // because those slides exist now and this run's may never. Overwriting it
+      // is how a second merge that added nothing left six slides in a deck with
+      // no record of them anywhere.
+      const outstanding = readCrumb(documentKey());
+      const holding = outstanding !== undefined && outstanding.added > 0;
+      if (deckBefore !== undefined && !holding)
         dropCrumb({ deckAtStart: deckBefore, added: 0, runId: "pending", doc: documentKey() });
       const outcome = await runMerge({
         from: block.from,
@@ -780,10 +791,24 @@ async function merge(): Promise<void> {
         // The pictures too, so a preview and a merge produce the same slides.
         ...(state.images ? { images: state.images } : {}),
       });
-      last = outcome;
-      if (outcome.added > 0)
+      // Only a run that ADDED something becomes the one an undo is offered for,
+      // and the guard is the same one `state.added` below has always carried.
+      //
+      // Without it the card and the button read from two different runs: the
+      // sentence came from `state.added`, correctly still describing the six
+      // slides in the deck, while `last` had been overwritten by a merge that
+      // added nothing. The offer stayed on screen, the press swept with the
+      // second run's numbers, and it removed nothing — forever. The raise path
+      // below already guarded this; the success path did not, and that
+      // asymmetry was the whole defect.
+      if (outcome.added > 0) {
+        last = outcome;
         dropCrumb({ deckAtStart: outcome.deckAtStart, added: outcome.added, runId: outcome.runId, doc: documentKey() });
-      else clearCrumb();
+      } else if (!holding) {
+        // Clear only what this run itself wrote. A crumb describing slides that
+        // are still in the deck is not this run's to throw away.
+        clearCrumb(documentKey());
+      }
       state = {
         ...state,
         deckSize: outcome.deckAtStart + outcome.added,
@@ -798,7 +823,19 @@ async function merge(): Promise<void> {
         // asks `sweepPlan` and a positional offer needs both: `added` says how
         // many slides, this says which.
         ...(outcome.added > 0
-          ? { added: outcome.added, deckAtStart: outcome.deckAtStart, changedSinceMerge: undefined }
+          ? {
+              added: outcome.added,
+              deckAtStart: outcome.deckAtStart,
+              changedSinceMerge: undefined,
+              // This run's slides are not a recovered run's, so the card goes
+              // back to living on the merge step. `recovered` says WHERE the
+              // offer may be drawn, and it was set at boot and never cleared —
+              // so one dead run put a slide-deleting button on every step of
+              // the wizard for the rest of the session, the template step
+              // included, whose whole job is choosing slides out of the deck
+              // that button deletes from.
+              recovered: undefined,
+            }
           : {}),
         // What the merge DID. `outcome.detail` says how much the deck GREW,
         // which is equally true of a merge that filled every placeholder and one
@@ -818,7 +855,26 @@ async function merge(): Promise<void> {
       // See `deckBefore`: this number is what a positional delete is clamped
       // against, and a stale one reaches past the run into the user's slides.
       const before = deckBefore;
-      const added = deckAfter !== undefined && before !== undefined ? Math.max(0, deckAfter - before) : 0;
+      // CAPPED at what this merge could possibly have built, exactly as
+      // `runMerge` caps the same quantity on the path that returns.
+      //
+      // The delta alone is not "what this run added" — it is everything that
+      // arrived, from anywhere. `sweepPlan` refuses when the deck grew by more
+      // than the run added, and that clamp is the one thing keeping a
+      // positional delete off a stranger's slides; an uncapped count absorbs
+      // the excess, so `grew` and `added` come out equal by construction and
+      // the clamp can never fire.
+      //
+      // This is the LIKELIER path for it, which is why the omission mattered: a
+      // co-author's slides landing in a shared deck is the same kind of event
+      // that makes a call time out in the first place. Twelve of theirs plus
+      // six of ours read as eighteen of ours, and the pane offered to remove
+      // all eighteen. Capped, `grew > added` stays true and the sweep declines
+      // — which is the answer to give when this run cannot say which slides
+      // are its own.
+      const couldHaveAdded = slidesToAdd(state);
+      const grew = deckAfter !== undefined && before !== undefined ? Math.max(0, deckAfter - before) : 0;
+      const added = Math.min(grew, couldHaveAdded);
       if (added > 0 && before !== undefined) {
         dropCrumb({ deckAtStart: before, added, runId: "recovered", doc: documentKey() });
         last = {
@@ -966,7 +1022,7 @@ async function undoRun(): Promise<void> {
       // offer a stale recovery on the next open.
       if (remaining > 0)
         dropCrumb({ deckAtStart: outcome.deckAtStart, added: remaining, runId: outcome.runId, doc: documentKey() });
-      else clearCrumb();
+      else clearCrumb(documentKey());
       state = {
         ...state,
         deckSize: (state.deckSize ?? outcome.deckAtStart + outcome.added) - removed,
@@ -1161,7 +1217,7 @@ void Office.onReady(() => {
         };
         // Said once. There is no action attached to it, so leaving the crumb
         // would repeat the same sentence on every open for ever.
-        clearCrumb();
+        clearCrumb(documentKey());
       }
       draw();
     },

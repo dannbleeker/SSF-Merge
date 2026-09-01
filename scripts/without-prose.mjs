@@ -68,8 +68,29 @@ export function withoutTsComments(text) {
  * does exactly that, deliberately, and says so.
  */
 export function withoutTsProse(text) {
-  return withoutTsComments(text)
-    .replace(/`(?:[^`\\]|\\.)*`/g, '""')
-    .replace(/"(?:[^"\\\n]|\\.)*"/g, '""')
-    .replace(/'(?:[^'\\\n]|\\.)*'/g, '""');
+  return (
+    withoutTsComments(text)
+      .replace(/`(?:[^`\\]|\\.)*`/g, '""')
+      .replace(/"(?:[^"\\\n]|\\.)*"/g, '""')
+      .replace(/'(?:[^'\\\n]|\\.)*'/g, '""')
+      // A TRAILING comment, last and only here.
+      //
+      // `withoutTsComments` drops block comments and lines that BEGIN with `//`
+      // or `*`, and stops — so `const x = 1; // never calls PowerPoint.run`
+      // survived, and the architecture guard went red on a file that was
+      // entirely correct. That is the exact failure this module exists to
+      // prevent, in the one position it did not cover.
+      //
+      // It cannot go in `withoutTsComments`, which keeps literals on purpose: a
+      // URL in a string is full of `//`. Here the literals are already blanked,
+      // so a `//` that is left is nearly always a comment.
+      //
+      // NEARLY: a REGEX literal is not blanked, and one that ENDS in an escaped
+      // slash puts two together — `/https:\/\//` is `…\` `/` `/`, where the
+      // second slash is the terminator. The lookbehind is what separates them,
+      // and it was written after getting this wrong: the first version claimed
+      // an escaped slash could never be adjacent to another and truncated that
+      // very pattern.
+      .replace(/(?<!\\)\/\/[^\n]*/g, "")
+  );
 }

@@ -14,13 +14,14 @@
  */
 import { describe, expect, it } from "vitest";
 import JSZip from "jszip";
+import { prepareBlock } from "../src/core/merge/prepare.js";
 import { buildPlan } from "../src/core/merge/plan.js";
 import { runPlan } from "../src/core/merge/run.js";
 import { toRecordSet } from "../src/core/data/recordset.js";
 import { Pkg } from "../src/core/pptx/pkg.js";
 import { REL_TYPE } from "../src/core/pptx/parts.js";
 import { A_NS, C_NS, PKG_REL_NS, SSML_NS, elements, parseXml } from "../src/core/pptx/xml.js";
-import { workbookParts } from "../src/core/merge/workbook.js";
+import { INFLATED_BUDGET, sheetNamed, withinInflatedBudget, workbookParts } from "../src/core/merge/workbook.js";
 import { makeDeck, type SlideSpec } from "./fixtures/deck.js";
 
 const ROWS = "Name\tRegion\nAda\tNordics\nGrace\tBenelux";
@@ -312,6 +313,116 @@ describe("a workbook a generator wrote", () => {
  * A rule no test can drive is a rule nobody can check — and a mutation sweep
  * proved both were exactly that.
  */
+describe("one unparseable part inside an otherwise good workbook", () => {
+  /**
+   * A template arrives from wherever the user got it, and a workbook it carries
+   * may have a part this parser will not take. The recovery is a `continue` —
+   * the other parts are still worth merging, and the chart's own cache already
+   * holds the number a reader sees — and the branch had never been executed.
+   *
+   * If it regressed, an ordinary sender's deck would throw out of the middle of
+   * a merge rather than finishing with the chart intact. That is the whole
+   * difference between a run that reports a shortfall and one that reports
+   * nothing at all.
+   */
+  it("does not lose the merge over it", async () => {
+    const pkg = await Pkg.open(
+      await makeDeck([
+        {
+          paragraphs: [["{{Name}}"]],
+          chart: { title: "{{Name}}", categories: ["{{Name}}"], workbook: ["{{Name}}"] },
+        },
+      ]),
+    );
+    const embedding = pkg.partNames().find((n) => /^ppt\/embeddings\/.+\.xlsx$/.test(n))!;
+    const book = await JSZip.loadAsync(await pkg.bytes(embedding));
+    // A worksheet the workbook still DECLARES, holding markup no parser takes.
+    const sheets = Object.keys(book.files).filter((n) => /worksheets\/.*\.xml$/.test(n));
+    expect(sheets.length, "the fixture has a worksheet to break").toBeGreaterThan(0);
+    book.file(sheets[0]!, "<worksheet><sheetData><row></worksheet>");
+    pkg.setBytes(embedding, await book.generateAsync({ type: "uint8array" }));
+
+    const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "r");
+    if (!prepared.ok) throw new Error(prepared.why);
+    const records = toRecordSet([["Name"], ["Ada"]]);
+    // The merge finishes. That is the assertion — the shape of the failure this
+    // guards is a throw, not a wrong answer.
+    const out = await runPlan(pkg, buildPlan(prepared.block, records, { runId: "r" }), records);
+    expect(out.slides.length, "the slide was still produced").toBe(1);
+  });
+});
+
+describe("an embedded workbook that would inflate to gigabytes", () => {
+  /**
+   * A `.pptx` arrives from wherever the user got it, and a chart's data is a
+   * whole `.xlsx` sitting inside it. Deflate reaches about 1000:1 on repetitive
+   * XML — measured, 19 KB became 20 MB — and BOTH passes over a workbook open
+   * it once per merged row, because every clone gets its own copy. At 240 rows
+   * that is a task pane doing gigabytes of work it cannot be interrupted out
+   * of.
+   *
+   * The zip declares each entry's inflated size, so the question is answered
+   * before anything is inflated and costs nothing on an ordinary deck.
+   *
+   * Refusing is the answer an unparseable workbook already gets: the chart
+   * keeps its cached values, the run finishes, and the pane says the data
+   * behind it could not be opened — a sentence the user can act on, where a
+   * frozen tab is not.
+   */
+  /**
+   * A real deflated workbook, small on disk and large inflated.
+   *
+   * One megabyte of repetition rather than the eighty the budget is set at: the
+   * question is whether the declared sizes are summed and compared, and the
+   * budget is a parameter so the test can ask that without allocating what a
+   * real bomb would. The first version built eighty megabytes and TIMED OUT in
+   * CI — a slow test, not a strict one.
+   */
+  const bomb = async (chars: number) => {
+    const book = new JSZip();
+    book.file("xl/workbook.xml", `<workbook><sheets/></workbook>`);
+    book.file("xl/sharedStrings.xml", `<sst>${"a".repeat(chars)}</sst>`);
+    return JSZip.loadAsync(await book.generateAsync({ type: "uint8array", compression: "DEFLATE" }));
+  };
+
+  it("is refused rather than inflated", async () => {
+    const zip = await bomb(1024 * 1024);
+    expect(withinInflatedBudget(zip, 256 * 1024), "past the budget").toBe(false);
+    expect(withinInflatedBudget(zip, 4 * 1024 * 1024), "inside it").toBe(true);
+  });
+
+  it("sums the parts rather than judging them one at a time", async () => {
+    // A bomb split across many entries is the same bomb. Each of these is well
+    // under the budget and together they are over it.
+    const book = new JSZip();
+    for (let i = 0; i < 8; i++) book.file(`xl/part${i}.xml`, `<x>${"a".repeat(100_000)}</x>`);
+    const zip = await JSZip.loadAsync(await book.generateAsync({ type: "uint8array", compression: "DEFLATE" }));
+    expect(withinInflatedBudget(zip, 200_000), "eight parts of 100 KB are 800 KB").toBe(false);
+  });
+
+  it("counts only the XML, because a picture is not read", async () => {
+    // An image inside a workbook is not something either pass parses, so its
+    // size is not this budget's business — and counting it would refuse an
+    // ordinary workbook with a logo in it.
+    const book = new JSZip();
+    book.file("xl/workbook.xml", "<workbook><sheets/></workbook>");
+    book.file("xl/media/image1.png", new Uint8Array(2_000_000));
+    const zip = await JSZip.loadAsync(await book.generateAsync({ type: "uint8array", compression: "DEFLATE" }));
+    expect(withinInflatedBudget(zip, 100_000), "the picture is not counted").toBe(true);
+  });
+
+  it("and an ordinary one is not refused", async () => {
+    // The other half, because a budget that refuses everything is not a budget.
+    // At the REAL budget, which is what ships.
+    const book = new JSZip();
+    book.file("xl/workbook.xml", `<workbook><sheets/></workbook>`);
+    book.file("xl/sharedStrings.xml", `<sst>${"<si><t>Ada Lovelace</t></si>".repeat(20000)}</sst>`);
+    const zip = await JSZip.loadAsync(await book.generateAsync({ type: "uint8array", compression: "DEFLATE" }));
+    expect(withinInflatedBudget(zip), "a real workbook passes").toBe(true);
+    expect(INFLATED_BUDGET, "and the shipped budget is what we think it is").toBe(64 * 1024 * 1024);
+  });
+});
+
 describe("workbookParts", () => {
   const REL = 'xmlns="http://schemas.openxmlformats.org/package/2006/relationships"';
   const S = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"';
@@ -353,7 +464,7 @@ describe("workbookParts", () => {
   it("follows the officeDocument relationship rather than a fixed name", async () => {
     const parts = await workbookParts(book("book/main.xml", [["Data", "sheets/one.xml"]]));
     expect(parts.sheets).toEqual(["book/sheets/one.xml"]);
-    expect(parts.byTitle.get("Data")).toBe("book/sheets/one.xml");
+    expect(sheetNamed(parts, "Data")).toBe("book/sheets/one.xml");
     expect(parts.sharedStrings).toBe("book/strings.xml");
   });
 
@@ -368,7 +479,7 @@ describe("workbookParts", () => {
         ["Sheet1", "worksheets/second.xml"],
       ]),
     );
-    expect(parts.byTitle.get("Sheet1")).toBe("xl/worksheets/first.xml");
+    expect(sheetNamed(parts, "Sheet1")).toBe("xl/worksheets/first.xml");
     // Both are still sheets — only the TITLE is claimed once.
     expect(parts.sheets).toEqual(["xl/worksheets/first.xml", "xl/worksheets/second.xml"]);
   });

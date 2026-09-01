@@ -234,13 +234,21 @@ export function describeMerge(r: MergeReport): string {
   if (r.chartValues) {
     const c = r.chartValues;
     // No zero clause here, and the asymmetry with the pictures above is the
-    // point. Every value placeholder either fills or refuses, so a zero here
-    // is ALWAYS a refusal — and the refusal clause below says the same thing
-    // and names the count. "no chart values were filled · 3 chart values did
-    // not read as a number" is one fact reported twice. A picture can be
-    // absent for a reason this sentence deliberately does not name (an empty
-    // cell keeps its placeholder by design), so there the zero is the only
-    // thing said and has to stay.
+    // point. A value placeholder that was LOOKED AT either fills or refuses, so
+    // a zero between those two is always a refusal — and the refusal clause
+    // below says the same thing and names the count. "no chart values were
+    // filled · 3 chart values did not read as a number" is one fact reported
+    // twice. A picture can be absent for a reason this sentence deliberately
+    // does not name (an empty cell keeps its placeholder by design), so there
+    // the zero is the only thing said and has to stay.
+    //
+    // "Looked at" is the correction, and it used to read "every". A third
+    // outcome exists: a series whose range cannot be read, or which names a
+    // sheet the workbook does not declare, is abandoned before any cell is
+    // opened. That was a bare `continue` in `numbers.ts` — no fill, no refusal,
+    // nothing — so this block was handed two zeros and said nothing at all,
+    // about the one case where the user has no other signal. It is counted now
+    // and it has its own clause.
     if (c.filled > 0) parts.push(`${plural(c.filled, "chart value")} filled`);
     // The one a reader cannot see for themselves. Nothing is written when a
     // cell's placeholder does not resolve to a number, so the point keeps the
@@ -250,6 +258,29 @@ export function describeMerge(r: MergeReport): string {
         `${plural(c.refused, "chart value")} did not read as a number, so ${
           c.refused === 1 ? "that point still shows" : "those points still show"
         } the template's`,
+      );
+    }
+    // Said in the language of the CHART rather than of the cell, because when a
+    // range cannot be read there is no cell to point the reader at — the count
+    // is per series, which is the only honest granularity for it.
+    // The one with a REMEDY, so the sentence carries it. The value is in the
+    // workbook — an ordinary text merge put it there — and the chart's cached
+    // point list has no entry at that index to draw it from, because the writer
+    // omitted the point for a cell that held no number. Opening Edit Data and
+    // closing it refreshes the cache from the sheet, which is a thing the user
+    // can do and the merge cannot.
+    if (c.unplotted > 0) {
+      parts.push(
+        `${plural(c.unplotted, "chart value")} reached the data sheet but not the chart — press Edit Data on ${
+          c.unplotted === 1 ? "that chart" : "those charts"
+        } and close it to bring ${c.unplotted === 1 ? "it" : "them"} in`,
+      );
+    }
+    if (c.unreadable > 0) {
+      parts.push(
+        `the data behind ${plural(c.unreadable, "chart series")} could not be read, so ${
+          c.unreadable === 1 ? "it keeps" : "they keep"
+        } the template's numbers`,
       );
     }
   }

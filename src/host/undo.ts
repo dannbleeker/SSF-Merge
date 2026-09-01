@@ -27,9 +27,19 @@ export interface SweepPlan {
  *
  * Every clamp here is load-bearing and each is asserted in the tests. Together
  * they guarantee the first index removed is at or after the deck's size when
- * the run started, so nothing the user owned can be reached — and that the
- * deck has gained EXACTLY what the run added, so the last `count` slides are
- * provably the run's own.
+ * the run started, so nothing the user owned BEFORE the run can be reached.
+ *
+ * They do NOT prove the slides are the run's own, and this docstring claimed
+ * they did — "the deck has gained EXACTLY what the run added, so the last
+ * `count` slides are provably the run's own". Net growth being equal does not
+ * mean that. A user who deletes two merged slides and appends two of their own
+ * leaves the deck the same size, satisfies every clamp, and gets a plan whose
+ * last two entries are slides they made. Every quantity here is a SIZE; none
+ * of them is an identity.
+ *
+ * `provenSweep` is the identity question, asked of the tags in the package.
+ * This function answers which slides a sweep may CONSIDER; that one answers
+ * which of them it may take.
  */
 export function sweepPlan(o: { deckAtStart: number; deckNow: number; added: number }): SweepPlan | null {
   // `added` with the other two, which it was not. The two counts were checked
@@ -74,4 +84,50 @@ export function sweepPlan(o: { deckAtStart: number; deckNow: number; added: numb
   // deletes slides from somebody's presentation.
   if (from < o.deckAtStart) return null;
   return { from, count };
+}
+
+/**
+ * Which of a plan's slides this run may actually delete.
+ *
+ * `sweepPlan` bounds the RANGE from the deck's sizes. This bounds the SET
+ * inside it from what the slides say about themselves: every merged slide
+ * carries `SSF_MERGE_RUN` in the package, written before the insert where no
+ * host can refuse it, so position stops being the only evidence there is.
+ *
+ * `tags` is one entry per slide in the plan, in deck order — the run id a slide
+ * carries, or `undefined` where it carries none or the host would not say.
+ *
+ * The answer is 0-based deck indices, HIGHEST FIRST: removing a slide shifts
+ * every index after it, so walking upward deletes the wrong slides after the
+ * first.
+ *
+ * Three rules, and each exists because getting it wrong has a cost:
+ *
+ * - **A host that answers nothing takes the whole plan.** An empty read is not
+ *   an empty slide — this repo's rule, learned from two signals agreeing at
+ *   zero and both being wrong. A host that cannot read tags is not evidence
+ *   that a slide is not ours, so the answer is what it was before anything was
+ *   asked. This can only make an undo safer, never less capable.
+ * - **A read that does not line up with the plan takes the whole plan.** A
+ *   short answer is a read that failed, not a set of slides disowned. Deleting
+ *   on it would be acting on an answer nobody gave.
+ * - **An id that is not among the answers cannot discriminate**, so the
+ *   question falls back to the one that still can: did this add-in make the
+ *   slide. A run recovered from a crumb carries a placeholder id, because the
+ *   real one was never written — the run died before it could answer. Matching
+ *   on it would take back none of the slides that are sitting in the deck,
+ *   which is the case recovery exists for.
+ */
+export function provenSweep(plan: SweepPlan, tags: (string | undefined)[], runId: string): number[] {
+  const all: number[] = [];
+  for (let i = plan.from + plan.count - 1; i >= plan.from; i--) all.push(i);
+  if (tags.length !== plan.count) return all;
+  if (tags.every((t) => t === undefined)) return all;
+  // Only where the id actually appears can it tell two runs apart.
+  const discriminates = tags.includes(runId);
+  return all.filter((index) => {
+    const tag = tags[index - plan.from];
+    if (tag === undefined) return false;
+    return discriminates ? tag === runId : true;
+  });
 }

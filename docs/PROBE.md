@@ -1,7 +1,8 @@
 # The host probe
 
-Four questions that only a real PowerPoint can answer, and one that only a
-person can. Nothing in the add-in should be built on a guess about any of them.
+The questions that only a real PowerPoint can answer, and one at the end that
+only a person can — the table under *What it asks* is the whole list. Nothing in
+the add-in should be built on a guess about any of them.
 
 Running it takes about two minutes and leaves your deck as it found it.
 
@@ -150,7 +151,8 @@ pretending it is clean.
 
 ## What it has answered so far
 
-Six sheets, all PowerPoint for the web, filed under `docs/host-answers/`.
+Six sheets as of 2026-09-01, all PowerPoint for the web, filed under
+`docs/host-answers/` — that directory is the count, not this line.
 
 The first answered nothing about the host and three things about the probe: it
 gave a verdict on a question it had not asked, it named none of the four calls

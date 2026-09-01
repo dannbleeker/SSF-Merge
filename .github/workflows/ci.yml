@@ -41,6 +41,16 @@ jobs:
       # 2026-09-01, and no run said so.
       - name: Library build
         run: npm run build:lib
+      # The PANE build, which is the artifact a user actually loads.
+      #
+      # Everything above checks the source; `npm run build` is what turns it
+      # into `dist/`, and until 2026-09-01 no required check ran it. The only
+      # place it happened was the Pages DEPLOY job, which is `push: main` only —
+      # so a pull request that broke the bundle went green, merged, and failed
+      # after the fact, with the deploy as the first thing to notice. That is
+      # the same shape as the library build above, one artifact further out.
+      - name: Pane build
+        run: npm run build
       - name: Tests and coverage
         run: npm run coverage
       - name: Test count

@@ -95,13 +95,55 @@ jobs:
 
       # Production only, no localhost, and every manifest the documentation
       # tells a reader to download is actually attached.
+      # The version too, which the dispatch box takes as free text and nothing
+      # had ever looked at: `v9.9.9` would have been tagged, released and
+      # attached to assets saying something else, reconcilable afterwards only
+      # by deleting a published tag. Checked against `package.json` and against
+      # the changelog having a section to read.
       - name: Release assets are the ones the docs promise
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
         run: node scripts/check-release.mjs
 
       # Written to a file rather than piped, so the heredoc's indentation
       # cannot reach the notes. An indented heredoc body keeps its leading
       # spaces, which markdown renders as a code block — the whole release note
       # in a grey box.
+      # The ACCESSIBILITY audit, on a release and nowhere else.
+      #
+      # It renders every pane state at both widths in both themes and measures
+      # contrast, overflow, focus and axe — minutes of work, which is why it is
+      # a weekly job and deliberately not a required check: a slow gate in front
+      # of every merge is one that gets switched off after the first bad week.
+      #
+      # A release is manual and rare, and accessibility is an AppSource
+      # certification criterion, so this is the one place the cost is worth
+      # paying. Same argument the live-URL check below already makes for itself.
+      # The browser itself, which `npm ci` does not fetch.
+      - run: npx playwright install --with-deps chromium
+
+      # Server and measurement in ONE step, and the wait POLLED rather than
+      # slept — both for the reasons `pane-audit.yml` gives at its own copy: a
+      # `&` in its own step leaves a process whose lifetime is the job's, and a
+      # fixed wait is either too short on a slow runner or wasted on a fast one.
+      - name: The pane is still accessible
+        run: |
+          npx vite --port 5199 --strictPort > /tmp/vite.log 2>&1 &
+          vite=$!
+          for _ in $(seq 1 60); do
+            curl --silent --fail --output /dev/null http://localhost:5199/taskpane.html && break
+            sleep 1
+          done
+          curl --silent --fail --output /dev/null http://localhost:5199/taskpane.html || {
+            echo "the dev server never answered"; cat /tmp/vite.log; kill "$vite"; exit 1;
+          }
+          set +e
+          node scripts/pane-shots.mjs
+          code=$?
+          set -e
+          kill "$vite"
+          exit "$code"
+
       - name: Write the release notes
         run: |
           cat > /tmp/notes.md <<'NOTES'

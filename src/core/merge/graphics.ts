@@ -21,11 +21,18 @@
 import JSZip from "jszip";
 import { Pkg } from "../pptx/pkg.js";
 
-import { parseXml, serializeXml } from "../pptx/xml.js";
+import { SSML_NS, elements, parseXml, serializeXml } from "../pptx/xml.js";
 import { mergeDocument, type Resolve } from "./text.js";
-import { emptyNumberOutcome, mergeChartNumbers, tallyNumbers, type NumberOutcome } from "./numbers.js";
+import {
+  cellAt,
+  emptyNumberOutcome,
+  mergeChartNumbers,
+  tallyNumbers,
+  type HeldCell,
+  type NumberOutcome,
+} from "./numbers.js";
 import { graphicsOf, workbooksOf, type FieldSite } from "./sites.js";
-import { workbookParts } from "./workbook.js";
+import { withinInflatedBudget, workbookParts } from "./workbook.js";
 
 export interface GraphicOutcome {
   /** Text groups filled in chart and SmartArt parts. */
@@ -61,6 +68,8 @@ export async function mergeGraphics(pkg: Pkg, sites: FieldSite[], resolve: Resol
   // held, one document per record per chart. One walk cannot have that order
   // wrong.
   const graphics = graphicsOf(sites);
+  /** Per workbook, the nodes the numeric pass claimed. */
+  const held = new Map<string, HeldCell[]>();
   const parts = graphics.map((site) => site.part);
   const workbooks = workbooksOf(sites);
 
@@ -76,12 +85,20 @@ export async function mergeGraphics(pkg: Pkg, sites: FieldSite[], resolve: Resol
     // cell, and filling those from different charts is the mix-up no count
     // would catch.
     if (site.workbooks.length === 0) continue;
-    tallyNumbers(out.numbers, await mergeChartNumbers(pkg, site.part, site.workbooks[0], resolve));
+    const pass = await mergeChartNumbers(pkg, site.part, site.workbooks[0], resolve);
+    tallyNumbers(out.numbers, pass);
+    // What that pass REFUSED, kept against the workbook it refused it in. The
+    // text pass below reads the same file and would otherwise merge the very
+    // placeholder the numeric one declined — see the refusal in `numbers.ts`.
+    if (pass.held.length) {
+      const path = site.workbooks[0]!;
+      held.set(path, [...(held.get(path) ?? []), ...pass.held]);
+    }
   }
 
   for (const part of parts) out.merged += mergeDocument(await pkg.doc(part), resolve);
   for (const path of workbooks) {
-    if (await mergeWorkbook(pkg, path, resolve)) out.workbooks++;
+    if (await mergeWorkbook(pkg, path, resolve, held.get(path) ?? [])) out.workbooks++;
     else out.unreadable.push(path);
   }
 
@@ -109,13 +126,68 @@ export async function mergeGraphics(pkg: Pkg, sites: FieldSite[], resolve: Resol
  * same relationship type, a file another tool wrote — and a merge that loses
  * 240 slides over one of them is worse than a merge that reports it.
  */
-async function mergeWorkbook(pkg: Pkg, path: string, resolve: Resolve): Promise<boolean> {
+/**
+ * Take the nodes the numeric pass claimed out of a workbook part, briefly.
+ *
+ * A refused value cell keeps the placeholder the author typed — that is the
+ * promise — and the text pass that runs next would merge it, in the shared
+ * string it reads through or in the cell itself. Neither pass can be reordered:
+ * the numeric one has to go first, because it recognises a value cell by the
+ * placeholder still standing in it.
+ *
+ * So the nodes come out for the duration of the merge and go back where they
+ * were. Each one is remembered with its parent and the sibling that followed
+ * it, which is what makes putting it back exact rather than approximate.
+ *
+ * **A shared string may serve more than one cell, and holding it holds them
+ * all.** Excel keeps one `<si>` per distinct string, so a workbook where the
+ * same placeholder is both a value and a label has one entry behind both — and
+ * this leaves the label unmerged. That is the right way round: a value cell
+ * whose sheet disagrees with the chart is a contradiction nobody sees until
+ * they open Edit Data, and it changes the drawing when they close it, where an
+ * unmerged label is wrong in a way the author can see. `test/chart-numbers.test.ts`
+ * holds the trade so it stays a decision.
+ */
+function liftHeld(
+  doc: Document,
+  partName: string,
+  isSharedStrings: boolean,
+  held: HeldCell[],
+): { node: Element; parent: Node; next: Node | null }[] {
+  const out: { node: Element; parent: Node; next: Node | null }[] = [];
+  const take = (node: Element | undefined) => {
+    if (!node?.parentNode) return;
+    out.push({ node, parent: node.parentNode, next: node.nextSibling });
+    node.parentNode.removeChild(node);
+  };
+  if (isSharedStrings) {
+    const entries = elements(doc, SSML_NS, "si");
+    // Highest index first: removing one shifts the positions of those after it,
+    // and every index in `held` was read against the untouched table.
+    for (const index of held.flatMap((h) => ("si" in h ? [h.si] : [])).sort((a, b) => b - a)) {
+      take(entries[index]);
+    }
+    return out;
+  }
+  for (const hold of held) {
+    if ("si" in hold || hold.sheet !== partName) continue;
+    take(cellAt(doc, hold.ref));
+  }
+  return out;
+}
+
+async function mergeWorkbook(pkg: Pkg, path: string, resolve: Resolve, held: HeldCell[]): Promise<boolean> {
   let zip: JSZip;
   try {
     zip = await JSZip.loadAsync(await pkg.bytes(path));
   } catch {
     return false;
   }
+  // Refused before a byte is inflated, and reported as unreadable — which is
+  // what an unparseable workbook already gets. See `withinInflatedBudget`: this
+  // read happens once per merged row, so a bomb costs the row count times its
+  // inflated size.
+  if (!withinInflatedBudget(zip)) return false;
 
   // The parts that hold text a merge can fill, taken from what the workbook
   // DECLARES rather than from their names.
@@ -151,7 +223,18 @@ async function mergeWorkbook(pkg: Pkg, path: string, resolve: Resolve): Promise<
       // value the reader sees.
       continue;
     }
-    if (mergeDocument(doc, resolve) === 0) continue;
+    // LIFTED OUT before the merge and put back after, so a node the numeric
+    // pass refused is not merged here.
+    //
+    // Detached rather than skipped, because `mergeDocument` merges a whole
+    // document and has no notion of a cell — and detaching is exact where
+    // copying the text back would flatten the runs a formatted placeholder is
+    // split across. The parent and the next sibling are remembered, so each
+    // node returns to the position it left.
+    const lifted = liftHeld(doc, name, parts.sharedStrings === name, held);
+    const merged = mergeDocument(doc, resolve);
+    for (const { node, parent, next } of lifted) parent.insertBefore(node, next);
+    if (merged === 0) continue;
     zip.file(name, serializeXml(doc));
     changed = true;
   }

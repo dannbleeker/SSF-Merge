@@ -90,6 +90,43 @@ export const x = 1;`;
   });
 });
 
+describe("a comment at the END of a line of code", () => {
+  /**
+   * The position the stripper did not cover, found on 2026-09-01. Block
+   * comments went, and lines that BEGIN with `//` or `*` went, and a comment
+   * written after code stayed — so `test/architecture.test.ts` went red on a
+   * file whose only offence was the sentence `// the engine never calls
+   * PowerPoint.run`. That is precisely the failure this module was written to
+   * end, in the one place it was not looking.
+   *
+   * It belongs to `withoutTsProse` and not to `withoutTsComments`, which keeps
+   * literals deliberately: a URL in a string is full of `//`, and there is no
+   * way to tell one from a comment without first removing the strings.
+   */
+  it("goes, so a sentence after code cannot fail a guard", () => {
+    expect(withoutTsProse("const x = 1; // never calls PowerPoint.run")).not.toMatch(/PowerPoint/);
+  });
+
+  it("does not take a URL inside a string with it", () => {
+    // The reason this cannot live in `withoutTsComments`. The literal is
+    // blanked first, so by the time comments are cut there is no URL left to
+    // mistake for one — and the code around it survives.
+    const stripped = withoutTsProse('const u = "https://example.com/a";\nconst after = 2;');
+    expect(stripped).toContain("const after = 2");
+    expect(stripped).toContain("const u =");
+  });
+
+  it("does not truncate a regex that ends in an escaped slash", () => {
+    // `/https:\/\//` puts two slashes together — the escaped one and the
+    // terminator — and a regex literal is not blanked. The first version of the
+    // trailing-comment rule cut the file from there to the end of the line, and
+    // its comment claimed that could not happen.
+    const stripped = withoutTsProse("const re = /https:\\/\\//;\nconst after = 2;");
+    expect(stripped).toContain("const after = 2");
+    expect(stripped).toContain("/;");
+  });
+});
+
 describe("withoutTsComments", () => {
   it("drops the comments and KEEPS the strings", () => {
     // The split that made this a separate export. `read-answers.mjs` reads half

@@ -174,6 +174,30 @@ describe("a condition decides before an empty cell does", () => {
     expect(plan.steps).toEqual([]);
   });
 
+  it("counts a cell of nothing but spaces as empty, which is what a paste gives you", () => {
+    /**
+     * "Blank" means blank after trimming, and one `.trim()` in `hasEmptyField`
+     * is the whole of that rule — removing it left the suite green, because
+     * every `onEmpty: "skip"` fixture here uses `""`.
+     *
+     * A pasted spreadsheet does not. A cell somebody cleared by pressing space,
+     * or an export that pads a column, arrives as `"   "` — and under `skip`
+     * the difference is between leaving a row out and building three slides for
+     * a recipient with no name.
+     *
+     * It has to sit in a row that is otherwise filled: `toRecordSet` drops a
+     * wholly blank row before any of this, which is why the ordinary fixture
+     * cannot reach the rule.
+     */
+    const padded = toRecordSet([
+      ["Name", "HasExtra", "ExtraNote"],
+      ["   ", "no", ""],
+      ["Ada", "no", ""],
+    ]);
+    const plan = buildPlan(block, padded, { runId: "r", onEmpty: "skip" });
+    expect(plan.skippedRecords, "the padded row is as empty as an empty one").toEqual([0]);
+  });
+
   it("says nothing about the slides of a record it dropped whole", () => {
     // A record that contributed nothing reporting two absences as well would
     // be two answers about one record.

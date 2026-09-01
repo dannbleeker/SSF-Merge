@@ -36,8 +36,9 @@ import {
   type Supports,
 } from "../host/capability.js";
 import { insertVerdict, type InsertVerdict } from "../host/verdicts.js";
-import { sweepPlan } from "../host/undo.js";
+import { provenSweep, sweepPlan } from "../host/undo.js";
 import { BUDGET, withTimeout } from "../host/timeout.js";
+import { TAG_RUN } from "../core/pptx/tags.js";
 
 /**
  * What the host says it supports, as the pure layer wants it.
@@ -342,18 +343,77 @@ export interface UndoOutcome {
 }
 
 /**
- * Take back the slides a run added, by position.
+ * The run id each slide in a range says it belongs to.
+ *
+ * One entry per index, in order; `undefined` where the slide carries no run tag
+ * or the host would not answer. Every merged slide gets `SSF_MERGE_RUN` written
+ * into the package before the insert, so this is a question the file can answer
+ * about itself.
+ *
+ * Positional throughout — `getItemAt`, never `getItem(id)` — because a slide a
+ * run has just added does not round-trip through an id on the web, which is the
+ * finding the whole undo path is built around.
+ *
+ * A host below PowerPointApi 1.3 has no `Slide.tags` at all, and one that does
+ * may still refuse. Both come back as "nothing answered", which `provenSweep`
+ * reads as "no evidence" rather than as "not ours".
+ */
+async function runTagsAt(from: number, count: number): Promise<(string | undefined)[]> {
+  // ASKED ONLY WHERE IT EXISTS. `Slide.tags` is PowerPointApi 1.3 and this
+  // add-in's floor is 1.2, deliberately: the floor is read off the calls the
+  // add-in must make, and declaring a higher one turns away hosts that would
+  // have run it. This call is not one of those — an undo works without it, just
+  // with position as its only evidence — so it is gated rather than required,
+  // and a 1.2 host takes the same path as a host that refuses.
+  if (!hostSupports("1.3")) return [];
+  try {
+    return await withTimeout(
+      PowerPoint.run(async (context) => {
+        const asked = [];
+        for (let i = from; i < from + count; i++) {
+          const tag = context.presentation.slides.getItemAt(i).tags.getItemOrNullObject(TAG_RUN);
+          tag.load("value,isNullObject");
+          asked.push(tag);
+        }
+        await context.sync();
+        return asked.map((t) => (t.isNullObject ? undefined : (t.value ?? undefined)));
+      }),
+      BUDGET.read,
+      "asking which slides this run made",
+    );
+  } catch {
+    // Not a failure of the undo. The sweep goes on with position alone, which
+    // is what it did before this call existed.
+    return [];
+  }
+}
+
+/**
+ * Take back the slides a run added, by position — and only the ones it made.
  *
  * `deckAtStart` must be the count taken BEFORE the run inserted anything, and
  * `added` what it believes it added. `sweepPlan` refuses any plan whose first
  * index is not at or after `deckAtStart`, so nothing the user owned before the
  * run can be reached even if both numbers are wrong.
+ *
+ * That is a bound on the RANGE and it is not identity. Every clamp in
+ * `sweepPlan` compares sizes, so a deck the user has edited to the same total —
+ * two merged slides deleted, two of their own appended — passes all of them and
+ * yields a plan whose last two entries are slides the user made. `provenSweep`
+ * asks the slides themselves, through the run tag the package carries.
  */
-export async function undoInsert(deckAtStart: number, added: number): Promise<UndoOutcome> {
+export async function undoInsert(deckAtStart: number, added: number, runId: string): Promise<UndoOutcome> {
   const deckNow = await slideCount();
   const plan = sweepPlan({ deckAtStart, deckNow, added });
   if (!plan) {
     return { removed: 0, detail: `nothing to take back (deck was ${deckAtStart}, is ${deckNow})` };
+  }
+  const targets = provenSweep(plan, await runTagsAt(plan.from, plan.count), runId);
+  if (targets.length === 0) {
+    return {
+      removed: 0,
+      detail: `nothing to take back — none of slides ${plan.from + 1} to ${plan.from + plan.count} carries this merge's mark`,
+    };
   }
   let error: string | undefined;
   try {
@@ -361,9 +421,8 @@ export async function undoInsert(deckAtStart: number, added: number): Promise<Un
       PowerPoint.run(async (context) => {
         // Highest index first: removing a slide shifts every index after it, so
         // walking upward would delete the wrong slides after the first.
-        for (let i = plan.from + plan.count - 1; i >= plan.from; i--) {
-          context.presentation.slides.getItemAt(i).delete();
-        }
+        // `provenSweep` returns them in that order.
+        for (const i of targets) context.presentation.slides.getItemAt(i).delete();
         await context.sync();
       }),
       BUDGET.undo,
@@ -384,12 +443,17 @@ export async function undoInsert(deckAtStart: number, added: number): Promise<Un
   const deckAfter = await slideCount();
   const removed = deckNow - deckAfter;
   const note = error === undefined ? "" : ` (the call raised: ${error})`;
+  // Against what was ASKED FOR, which is the proven set and not the whole
+  // range: a plan of six that proved four is a complete sweep at four.
+  const wanted = targets.length;
+  const held = plan.count - wanted;
+  const kept = held === 0 ? "" : `; ${held} slide(s) in the range are not this merge's and were left alone`;
   return {
     removed,
     detail:
-      removed === plan.count
-        ? `removed ${removed} slide(s) from index ${plan.from}${note}`
-        : `asked for ${plan.count} slide(s) from index ${plan.from} and the deck shrank by ${removed}${note}`,
+      removed === wanted
+        ? `removed ${removed} slide(s) from index ${plan.from}${kept}${note}`
+        : `asked for ${wanted} slide(s) from index ${plan.from} and the deck shrank by ${removed}${kept}${note}`,
   };
 }
 

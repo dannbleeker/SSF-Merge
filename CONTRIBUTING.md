@@ -9,6 +9,21 @@ npm test
 
 Node 22 (`.nvmrc`).
 
+`npm run dev` serves the pane over plain HTTP, which is what you want for
+looking at it in a browser. Sideloading it into PowerPoint needs HTTPS on
+`localhost:3000`, because that is the URL the dev manifest names — so install a
+development certificate once and point Vite at it:
+
+```bash
+npx office-addin-dev-certs install
+npx vite --https.key <key> --https.cert <cert>
+```
+
+The first command generates and trusts the pair and prints where it put them;
+put those two paths into the second. It is the only reason this repository needs
+a tool it does not depend on, which is why it is written down here rather than
+in a script.
+
 ## The checks
 
 | Command | What it holds |
@@ -19,9 +34,10 @@ Node 22 (`.nvmrc`).
 | `npm run format:check` | Prettier, on code only. Prose is not reformatted |
 | `npm run coverage` | Coverage floors on `src/core` |
 | `npm run test:count` | A floor under the number of tests |
+| `npm run build:lib` | The library build. `tsc --noEmit` cannot see it fail, and the two scripts that import `dist-lib/` are only ever read as text by the suite — so a broken build here goes green everywhere else |
 
-CI runs all of them. `npm run lint -- --fix` and `npm run format` fix most of
-what the first two find.
+CI runs all of them, `npm run coverage` standing in for `npm test`. `npm run
+lint -- --fix` and `npm run format` fix most of what the check commands find.
 
 ## Rules worth knowing before your first change
 

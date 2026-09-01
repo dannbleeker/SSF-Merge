@@ -297,11 +297,49 @@ describe("describeMerge says what the merge DID", () => {
    * the merged label: a chart that is wrong and looks right. It counted those
    * refusals for a reader that did not exist.
    */
-  const values = (filled: number, refused: number) => ({
+  const values = (filled: number, refused: number, unreadable = 0, unplotted = 0) => ({
     added: 6,
     deckAtStart: 3,
     paragraphsMerged: 12,
-    chartValues: { filled, refused },
+    chartValues: { filled, refused, unreadable, unplotted },
+  });
+
+  it("says when a chart's data could not be read at all", () => {
+    /**
+     * The third outcome, which had no clause because it had no count. A series
+     * whose range cannot be read, or which names a sheet the workbook does not
+     * declare, was abandoned with a bare `continue` — no fill and no refusal —
+     * so the pane was handed `{filled: 0, refused: 0}` and said nothing.
+     *
+     * The comment above this block reasoned from exactly that pair: "every
+     * value placeholder either fills or refuses, so a zero here is ALWAYS a
+     * refusal". It was not, and the case it missed is the one where the user
+     * gets no signal of any kind.
+     */
+    expect(describeMerge(values(0, 0, 1))).toContain("could not be read");
+    // And it says so beside the ones that did work, rather than instead of them.
+    const both = describeMerge(values(4, 0, 2));
+    expect(both).toContain("4 chart values filled");
+    expect(both).toContain("could not be read");
+  });
+
+  it("stays quiet when every series was read", () => {
+    expect(describeMerge(values(9, 0))).not.toContain("could not be read");
+  });
+
+  it("says when a value reached the data sheet but not the chart", () => {
+    /**
+     * The third silent outcome, and the only one with a remedy the user can
+     * act on: a chart's cached point list is sparse, so a writer omits the
+     * point for a cell it has no number for — which is the cell a placeholder
+     * was typed into. The merge fills the data sheet and has nowhere to put the
+     * value in the chart.
+     *
+     * So the sentence says where the value IS, not only where it is not.
+     */
+    const line = describeMerge(values(0, 0, 0, 2));
+    expect(line).toContain("data sheet");
+    expect(line, "and what to do about it").toContain("Edit Data");
   });
 
   it("counts the chart values it filled", () => {

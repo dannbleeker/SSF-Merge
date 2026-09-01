@@ -57,6 +57,16 @@ jobs:
       # 2 while every gate stayed green. See ci.yml.
       - name: Library build
         run: npm run build:lib
+      # The PANE build, which is the artifact a user actually loads.
+      #
+      # Everything above checks the source; `npm run build` is what turns it
+      # into `dist/`, and until 2026-09-01 no required check ran it. The only
+      # place it happened was the Pages DEPLOY job, which is `push: main` only —
+      # so a pull request that broke the bundle went green, merged, and failed
+      # after the fact, with the deploy as the first thing to notice. That is
+      # the same shape as the library build above, one artifact further out.
+      - name: Pane build
+        run: npm run build
       - name: Tests and coverage
         run: npm run coverage
       - name: Test count
@@ -97,3 +107,24 @@ jobs:
           path: dist
       - id: deploy
         uses: actions/deploy-pages@v5
+
+      # ASK THE LIVE SITE, because nothing else ever does between releases.
+      #
+      # The manifest points at four URLs on this host, and the failure mode when
+      # a deploy publishes a broken or empty `dist` is "installs perfectly,
+      # blank ribbon button, empty pane" — which nobody reports as a deploy
+      # problem. `manifest-urls.mjs` + `curl` already does this on the RELEASE
+      # workflow, so it only ran on a manual release; a deploy between two
+      # releases was invisible.
+      #
+      # Into a variable rather than through a pipe, for the reason
+      # `release.yml` gives at its own copy: a pipe runs in a subshell, and a
+      # `curl` that fails inside one does not fail the step.
+      - name: The deploy actually serves the pane
+        run: |
+          page="${{ steps.deploy.outputs.page_url }}"
+          for path in taskpane.html assets/icon-32.png; do
+            echo "checking ${page}${path}"
+            curl --fail --silent --show-error --location --retry 5 --retry-delay 5 --retry-all-errors \
+              --output /dev/null "${page}${path}"
+          done

@@ -7,6 +7,215 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a chart value could reach the data sheet and never the chart, in silence
+
+A chart keeps its own copy of the numbers it draws, and that copy can have no
+slot for a cell which held no number when the template was made — which is
+exactly the cell you type a placeholder into. Programs that generate decks omit
+it by design.
+
+The merge walked that copy rather than the cells, so such a placeholder was
+never looked at: not filled, not refused, not counted, and not offered in the
+fields list. The data sheet was filled anyway, so the sheet ended up holding the
+row's figure under a chart with nowhere to draw it — and on a PowerPoint that
+refreshes the chart from the sheet, the bar appeared later out of nowhere.
+
+It is counted now, and the sentence carries the remedy: the value is in the
+sheet, and pressing Edit Data on that chart and closing it brings the chart into
+line. Writing the missing slot is deliberately not done — that changes what
+PowerPoint draws, and it is a question for a real host rather than a guess.
+
+### Fixed — a tag from another add-in could make the merged deck unopenable
+
+A merge carries through any tags another add-in left on your slides, which is a
+promise this manual makes. The values were escaped for the five markup
+characters and for the whitespace an XML parser would otherwise normalise — and
+not for the characters XML cannot hold at all, which have no escape: writing
+`&#11;` is exactly as broken as writing the character. One of those in a
+carried-through tag produced a part PowerPoint refuses, on every merged slide,
+reported as a damaged file with nothing naming the cause.
+
+The rule already existed for slide text. It is now in one place that both
+writers share, because those two are the only places this engine builds XML by
+hand and two copies of "what XML can hold" is two things to drift apart.
+
+### Fixed — a deck from another generator could not be merged at all
+
+An XML part may legally begin with a UTF-8 byte order mark, and .NET's default
+`UTF8Encoding` writes one — so a template produced by a third-party tool
+carries one on every part it wrote, and PowerPoint opens such a deck without a
+murmur. The parser here refused it outright and the merge died on the first
+slide it read, with a message about processing instructions that named neither
+the part nor anything a user could act on. The mark is now stripped before
+parsing, at the one door every part comes through.
+
+### Fixed — a chart whose workbook was not an ordinary .xlsx produced a damaged file
+
+Giving a merged chart its own copy of the workbook behind it named the copy
+after the original's file extension, and declared a content type only when that
+extension was exactly `xlsx`. A chart carrying a legacy `.xls` embedding — one
+pasted out of an older Office, or a deck saved down — therefore got a copy that
+no content type covered, and PowerPoint refuses such a file without saying
+which part it could not classify. An embedding whose name had no extension at
+all was worse: the whole path was read as the extension and the copy was
+written under a name no declaration could ever cover. The copy is now declared
+the way the package declares the original, whatever the extension is, and an
+embedding with no extension is left shared rather than copied under an invented
+name.
+
+### Fixed — a slide could be dropped from a run, or the run made untraceable, by a stale tag reference
+
+A slide can name a tag part that is not in the package — PowerPoint leaves
+exactly this behind when it repairs a file. Reading such a slide's tags
+degrades quietly; writing to it did not. It threw, and took the whole merge
+with it. In the related case where the reference names a relationship the slide
+does not have, it silently added a SECOND `<p:tags>` to a list the schema caps
+at one — and since the first one is what any reader sees, the run's own tag
+became invisible, so the summary could not report the slides it had made and
+undo could not find them to take back. The stale reference is now replaced
+rather than added to.
+
+### Fixed — removing a slide could delete parts a surviving slide still needed
+
+Deciding which of a removed slide's charts and diagrams nothing else needs
+skipped the relationships of every candidate while that decision was still
+being made. So a chart another slide still shows was correctly kept — and its
+embedded workbook, whose only referrer is the chart itself, was swept anyway.
+What came out was a surviving chart pointing at a part that is not in the file,
+which is what PowerPoint calls damage. Two slides sharing one chart is all it
+took. The decision now settles rather than assumes: a part is only an orphan
+while everything naming it is itself going.
+
+### Fixed — a long merge froze the pane for several seconds after it had finished
+
+Taking the template block back out of the deck resolved the whole slide id list
+once per slide removed, and each resolution re-read every relationship in the
+presentation. On a 100-slide deck plus 400 merged copies that is four and a
+half seconds of blocking work in the task pane, after the merge was already
+done and with nothing on screen to explain it. The relationships are read once
+per removal now. The file that comes out is identical, part for part.
+
+### Fixed — a chart could end up disagreeing with its own data sheet
+
+A value cell holding a placeholder that will not become a number is left as you
+typed it — that is the promise, and the chart keeps the template's figure. But
+the pass that merges the workbook's text runs afterwards and rewrote the very
+cell the first pass had declined: `{{Notes}}` became the row's words, and an
+empty cell became nothing at all. So Edit Data showed something the chart was
+not drawing, and closing Excel refreshes the chart from the sheet — which
+changes the bar you were just looking at.
+
+The refused cell is now held back from that second pass. Where the same text is
+used as a label too, the label keeps its placeholder as well: Excel stores one
+copy of a repeated string, so the two cannot be told apart, and a visibly
+unmerged label is better than a chart that quietly contradicts its own data.
+
+### Fixed — a chart naming its sheet in a different case merged nothing
+
+Sheet names in Excel are case-insensitive; the lookup was not. A chart whose
+range read `SHEET2!$B$2` against a sheet declared `Sheet2` found no sheet, so
+none of its values merged. A workbook with one sheet hides this completely,
+which is why it has gone unnoticed — it needs a workbook somebody added a sheet
+to.
+
+### Fixed — a chart whose data could not be read said nothing at all
+
+When a chart's range cannot be read, or names a sheet the workbook does not
+have, nothing can be filled — and the merge passed over it in silence. The
+finished-merge line reported neither a fill nor a failure, so a chart that had
+been left completely untouched looked exactly like a chart with nothing to
+merge. It is counted now and the summary says so.
+
+### Fixed — the unified manifest did not say it was a PowerPoint add-in
+
+The XML manifest, which a person sideloads, declares its host. The unified JSON
+manifest, which an administrator deploys to a whole tenant, declared nothing —
+so the two files disagreed about the one thing every reader of them needs
+first. It now carries the same statement in the JSON spelling.
+
+The requirement-set floor is still deliberately not declared, in either file:
+a host that does not meet a declared floor shows nothing at all, no ribbon
+entry and no message, where the add-in's own check can say which version is
+missing and what it costs. The repo's rule refused the whole block that both
+things live in, under a message about the floor, which is what kept the host
+undeclared.
+
+**No re-install.** Only the JSON manifests changed; the XML files a sideload
+points at are byte-identical.
+
+### Fixed — a big template deck could exhaust the pane before merging anything
+
+Preparing the first copy gathers the slide identifiers already in the deck, so
+a new copy cannot collide with one. It read each slide through the cache that
+keeps edits, which retains — so the merge parsed and held every slide in the
+presentation before it had merged a single row.
+
+That is worst exactly where it is least affordable. On versions of PowerPoint
+below the one that can hand over a slide range, the add-in receives the whole
+presentation, so a three-hundred-slide deck meant three hundred held documents
+on the first copy. Measured on a modest 120-slide deck it was 125 held parts
+and 23 MB before any work; it is now 5 parts and 3 MB, and what is held no
+longer grows with the deck at all.
+
+### Fixed — the security page advertised a denial of service that was already fixed
+
+`SECURITY.md` carried the sweep of 2026-08-30 twice, and the two copies
+disagreed about the same finding: one said the placeholder pattern's quadratic
+backtracking had been fixed, the other said it had been left standing
+deliberately and printed the inputs that trigger it. The fix is the one that
+shipped — the reader is a linear scan and there is no pattern left to
+backtrack — so the second copy was a public page handing out a recipe against
+code that no longer exists. It is gone.
+
+The rest of the documentation was read against the source in the same pass, and
+several sentences that had stopped being true were corrected: what the tags on a
+merged slide are actually used for, which characters a field name may contain,
+what the pane says when a merge fills nothing, and the limits of taking a merge
+back.
+
+### Fixed — an undo could remove slides you made yourself
+
+"Remove these slides" worked out what to delete from how big the deck was
+before the merge and how big it is now. Those are sizes, and a size cannot tell
+one slide from another. Delete two merged slides you did not want, add two of
+your own, and the deck is back to the same total — every check passed, and the
+offer was the last six slides, two of which were yours. The offer survives the
+session in a stored record, so it could be made the next day on a deck edited
+in between.
+
+Every merged slide carries a mark written into the file before it is inserted.
+The add-in reads it now and deletes only the slides that carry this merge's,
+leaving the rest alone and saying how many it left. A merge of six you have
+half tidied up takes back the four that are still there.
+
+On a PowerPoint too old to answer that question — the mark needs a version
+above the one this add-in requires — the offer falls back to counting
+positions, exactly as before. Nothing gets less capable; a host that can answer
+gets safer.
+
+### Fixed — a wide paste of repeated column headers froze the pane
+
+Naming the columns scanned everything named so far and restarted its counter
+for every column, so a header row repeating one name cost time proportional to
+the cube of the width. Four thousand repeated columns took 25 seconds — of a
+frozen tab, on every keystroke in the paste box, because the work happens as
+you type. It is now about a millisecond, and the names it produces are
+unchanged.
+
+### Fixed — a misspelt picture format printed the file name on the slide
+
+`{{Photo|image}}`, `{{Photo|image-fit}}` and `{{Photo|image-stretch}}` are the
+three picture formats. Anything else was treated as an unknown text format,
+whose documented answer is to print the cell unchanged — and the cell is a file
+name, so `{{Photo|image-cover}}` put `ada.png` as text in the frame that should
+have held the portrait, on every merged slide. `image-cover` is the likeliest
+of these, because "covers" is how this manual describes what `image` does.
+
+A format named `image`-something is now recognised as a picture format this
+add-in does not have, and its placeholder stays on the slide where you can see
+it — which is what a placeholder with no column already does. An unknown format
+that is not about pictures still prints the cell, as documented.
+
 ### Fixed — a number Excel grouped with a space was read as text
 
 The locales that group thousands with a space — Swedish, Norwegian, Finnish,

@@ -60,7 +60,37 @@ describe("the rules this project would be bitten by", () => {
         xml.replace(`<Version>${DEFINITION.version}</Version>`, "<Version>0.1.0</Version>"),
         "manifest-prod.xml",
       ),
-    ).toEqual([expect.stringContaining("below 1.0")]);
+    ).toEqual([expect.stringContaining("must be a number from 1.0 up")]);
+
+    // And a version that is not a NUMBER at all, which both rules used to let
+    // through. They coerced with `Number` and compared `< 1`, and `NaN < 1` is
+    // false — so `draft`, `v1.0.0` and a missing version each walked past the
+    // check that exists to catch a version Office rejects. The one input either
+    // caught by accident was the empty string, because `Number("")` is zero.
+    //
+    // This test's name claims it "would still catch each of them being broken",
+    // and it exercised the version rule with a single numeric input; that
+    // narrowness is what left the hole.
+    for (const bad of ["draft", "v1.0.0", "1.0.0-beta"]) {
+      expect(
+        checkManifest(
+          xml.replace(`<Version>${DEFINITION.version}</Version>`, `<Version>${bad}</Version>`),
+          "manifest-prod.xml",
+        ),
+        bad,
+      ).toEqual([expect.stringContaining("must be a number from 1.0 up")]);
+      expect(checkManifest(json.replace(`"${DEFINITION.version}"`, `"${bad}"`), "manifest-prod.json"), bad).toEqual([
+        expect.stringContaining("must be a number from 1.0 up"),
+      ]);
+    }
+
+    // The JSON path had no counterpart to the XML's "has no version" at all, so
+    // a manifest with none passed.
+    const noVersion: Record<string, unknown> = JSON.parse(json);
+    delete noVersion.version;
+    expect(checkManifest(JSON.stringify(noVersion), "manifest-prod.json")).toEqual([
+      expect.stringContaining("has no version"),
+    ]);
 
     // A changed GUID is a different add-in: every sideload orphaned, with
     // nothing anywhere saying why.
@@ -128,8 +158,37 @@ describe("the requirement floor is checked at runtime, never declared", () => {
       expect(checkManifest(text, name), name).toEqual([]);
       if (name.endsWith(".json")) {
         for (const extension of JSON.parse(text).extensions) {
-          expect(extension.requirements, name).toBeUndefined();
+          // `capabilities` is the requirement SET, and it is the one that must
+          // never be declared. This used to assert the whole `requirements`
+          // block was absent, which is a wider claim than the rule it stands
+          // for — and it forbade `scopes`, the JSON spelling of which host the
+          // add-in runs in, so the unified manifest did not say it was a
+          // PowerPoint add-in while the XML did.
+          expect(extension.requirements?.capabilities, name).toBeUndefined();
         }
+      }
+    }
+  });
+
+  it("says which host it is for, in the JSON as well as the XML", () => {
+    /**
+     * `<Hosts><Host Name="Presentation"/></Hosts>` in the XML, and nothing at
+     * all in the JSON until 2026-09-01 — so the file a tenant administrator
+     * deploys did not name its host while the file a person sideloads did.
+     *
+     * Checked against Microsoft's own validator rather than reasoned about:
+     * `office-addin-manifest validate` accepts `presentation` and rejects a
+     * scope outside its enum, which is what makes this a spelling that exists
+     * rather than one that looked plausible.
+     */
+    for (const name of NAMES) {
+      const text = read(name);
+      if (name.endsWith(".xml")) {
+        expect(text, name).toContain('<Host Name="Presentation"');
+        continue;
+      }
+      for (const extension of JSON.parse(text).extensions) {
+        expect(extension.requirements?.scopes, name).toEqual(["presentation"]);
       }
     }
   });

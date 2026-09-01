@@ -175,6 +175,77 @@ describe("a value cell that holds its string inline", () => {
     expect((await sheetCells(zip))["B2"]).toEqual({ type: "n", value: "1250000" });
   });
 
+  it("counts a value the cache has no point for, instead of passing over it", async () => {
+    /**
+     * A cached point list is SPARSE by design: `<c:ptCount>` covers the range
+     * and each `<c:pt>` carries an index, so a writer omits the point for a
+     * cell it has no number for — which is exactly the cell somebody typed a
+     * placeholder into. python-pptx, which authored this repo's own test-kit
+     * chart, does that for a `None`; so does xlsxwriter.
+     *
+     * The numeric walk is over the POINTS, so such a cell was never opened:
+     * not filled, not refused, not counted, not offered to the pane as a field.
+     * The workbook's text pass fills it all the same, so the data sheet ends up
+     * holding the row's figure under a chart with nowhere to draw it — and on a
+     * host that refreshes the cache from the sheet, the bar appears later out
+     * of nowhere.
+     *
+     * Counted rather than repaired, and the sentence carries the remedy: the
+     * value is in the sheet, and Edit Data brings the chart into line. Writing
+     * the missing point changes what PowerPoint draws, and whether the
+     * documented Edit Data route produces a gap at all is unproven.
+     */
+    const deck = await makeDeck([
+      { paragraphs: [["{{Name}}"]], chart: { categories: ["a", "b"], workbook: ["x"], values: ["10", "{{Revenue}}"] } },
+    ]);
+    const zip = await JSZip.loadAsync(deck);
+    // Remove the cached point for index 1 — the placeholder's own cell — while
+    // leaving `ptCount` at 2. That is the shape the writers above produce.
+    const chart = await zip.file("ppt/charts/chart1.xml")!.async("string");
+    // Scoped to the NUMBER cache. A chart holds a category cache too and it
+    // comes first, so an unscoped replace takes a category point and the test
+    // then measures nothing — which is what the first version of this did.
+    const holed = chart.replace(/<c:numCache>[\s\S]*?<\/c:numCache>/, (cache) =>
+      cache.replace(/<c:pt idx="1">[\s\S]*?<\/c:pt>/, ""),
+    );
+    expect(holed, "the fixture's cached points moved; this patches them by hand").not.toBe(chart);
+    expect(holed, "the count still covers the cell").toContain('<c:ptCount val="2"/>');
+    expect(holed, "and the placeholder's own point is the one gone").not.toContain("{{Revenue}}</c:v>");
+    zip.file("ppt/charts/chart1.xml", holed);
+
+    const pkg = await Pkg.open(await zip.generateAsync({ type: "uint8array" }));
+    const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "h");
+    if (!prepared.ok) throw new Error(prepared.why);
+    const records = toRecordSet(ROWS);
+    const out = await runPlan(pkg, buildPlan(prepared.block, records, { runId: "h" }), records);
+
+    expect(out.graphics.numbers.filled, "there is no point to fill").toBe(0);
+    expect(out.graphics.numbers.unplotted, "and the run says so").toBe(1);
+  });
+
+  it("holds an INLINE value cell it refused, which shares no string with anything", async () => {
+    /**
+     * The other half of holding a refused cell. A shared-string cell is held by
+     * the `<si>` it reads through, because that is the node the workbook's text
+     * pass reaches; a cell that carries its own text has no `<si>`, so it is
+     * held by sheet and reference instead.
+     *
+     * Inline is what a generator writes when it never built a string table —
+     * the same population `mergeGraphics` reads worksheets for at all — so this
+     * is not a corner of the format, it is the other kind of producer.
+     *
+     * `{{Notes}}` against a `Notes` column holding a word: the numeric pass
+     * refuses it, and the text pass must not then merge it.
+     */
+    const zip = await withValueCell('<c r="B2" t="inlineStr"><is><t>{{Notes}}</t></is></c>');
+    const rels = await zip.file("ppt/charts/_rels/chart2.xml.rels")!.async("string");
+    const target = /Target="([^"]*\.xlsx)"/.exec(rels)![1]!;
+    const book = await JSZip.loadAsync(await zip.file(`ppt/${target.replace(/^\.\.\//, "")}`)!.async("nodebuffer"));
+    const sheet = await book.file("xl/worksheets/sheet1.xml")!.async("string");
+    expect(sheet, "the placeholder is what stays").toContain("{{Notes}}");
+    expect(sheet, "and the row's words did not replace it").not.toContain("hello");
+  });
+
   it("leaves a FORMULA cell and its formula alone", async () => {
     // `t="str"` is a formula's cached string result, and it keeps that result
     // in `<v>`. The reader used to name `str` alongside `inlineStr` and then
@@ -217,6 +288,60 @@ describe("what it leaves alone", () => {
     expect(out.graphics.numbers.filled).toBe(0);
     const cells = await sheetCells(zip);
     expect(cells["B2"]!.type, "a refused cell was rewritten anyway").toBe("s");
+    // The VALUE, which is what the promise is about. Asserting only the type
+    // was vacuous against the defect this case describes: the workbook's text
+    // pass runs after the numeric one and rewrites the shared string the
+    // refused cell still points at — same type, different words. The manual
+    // says `{{Notes}}` in a value cell "stays exactly as you typed it", and the
+    // chart it belongs to still draws the template's number, so a workbook that
+    // says something else is the two halves of one chart contradicting each
+    // other — which is the half-merge `numbers.ts` exists to prevent.
+    expect(cells["B2"]!.value, "the placeholder is what stays").toBe("{{Notes}}");
+  });
+
+  it("holds the whole shared string, and that costs a label that shares it", async () => {
+    /**
+     * The trade this makes, stated so it is a decision rather than a surprise.
+     *
+     * Excel keeps one `<si>` per distinct string, so a workbook where the same
+     * placeholder appears in a value cell AND in a label cell has both pointing
+     * at one entry. Holding it back keeps the value cell honest and leaves the
+     * label unmerged.
+     *
+     * That is the right way round. A refused value cell whose sheet says
+     * something else is a chart contradicting its own data — invisible until
+     * somebody opens Edit Data, and it changes the drawing when they close it.
+     * A label still reading `{{Notes}}` is wrong in a way the author can see on
+     * the slide, which is the outcome this engine chooses everywhere else.
+     */
+    const { out, zip } = await merge({
+      // Both cells hold the same text, so the fixture's workbook gives them one
+      // shared entry — the case Excel produces by deduplicating.
+      workbook: ["{{Notes}}"],
+      values: ["{{Notes}}", "42"],
+      categories: ["{{Name}}", "Everyone else"],
+    });
+    expect(out.graphics.numbers.refused).toBe(1);
+    const cells = await sheetCells(zip);
+    expect(cells["B2"]!.value, "the value cell keeps what the author typed").toBe("{{Notes}}");
+  });
+
+  it("and a value cell left EMPTY is not blanked in the sheet either", async () => {
+    // The commoner shape, and the default policy. `onEmpty: "blank"` writes an
+    // empty string for a missing cell, which through the workbook's text pass
+    // emptied the shared string the refused value cell points at — so Edit Data
+    // showed nothing where the placeholder had been, under a chart still
+    // drawing the template's number.
+    const { out, zip } = await merge(
+      { workbook: ["{{Name}}"], values: ["{{Revenue}}", "42"], categories: ["{{Name}}", "Everyone else"] },
+      [
+        ["Name", "Revenue"],
+        ["Ada", ""],
+      ],
+    );
+    expect(out.graphics.numbers.refused).toBe(1);
+    const cells = await sheetCells(zip);
+    expect(cells["B2"]!.value, "the placeholder is what stays").toBe("{{Revenue}}");
   });
 });
 
@@ -313,7 +438,58 @@ describe("which sheet the formula names", () => {
     expect(sheetOfFormula("$B$2")).toBeNull();
   });
 
-  it("writes into the sheet the chart points at, not the first one holding the address", async () => {
+  it("counts a series whose sheet the workbook does not have, rather than skipping it in silence", async () => {
+    /**
+     * Giving up is right — there is no safe guess between two sheets — but it
+     * was a bare `continue`: no fill, no refusal, nothing. So a chart whose
+     * values were never even looked at reported the same two zeros as a chart
+     * with no values at all, and `summary.ts` reasoned from that pair that a
+     * zero fill always means a refusal. It did not, and this was the case with
+     * no signal of any kind.
+     */
+    const pkg = await Pkg.open(
+      await makeDeck([
+        {
+          paragraphs: [["{{Name}}"]],
+          chart: { categories: ["{{Name}}", "Other"], workbook: ["{{Name}}"], values: ["{{Revenue}}", "42"] },
+        },
+      ]),
+    );
+    // Two sheets declared and the formula naming neither, which is what stops
+    // the single-sheet fallback from carrying it.
+    const S = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"';
+    const embedding = pkg.partNames().find((n) => /^ppt\/embeddings\/.+\.xlsx$/.test(n))!;
+    const book = await JSZip.loadAsync(await pkg.bytes(embedding));
+    const rels = await book.file("xl/_rels/workbook.xml.rels")!.async("string");
+    book.file(
+      "xl/workbook.xml",
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n` +
+        `<workbook ${S} xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>` +
+        `<sheet name="Alpha" sheetId="1" r:id="${/Id="([^"]+)"[^>]*worksheet/.exec(rels)?.[1] ?? "rId1"}"/>` +
+        `<sheet name="Beta" sheetId="2" r:id="${/Id="([^"]+)"[^>]*worksheet/.exec(rels)?.[1] ?? "rId1"}"/>` +
+        `</sheets></workbook>`,
+    );
+    pkg.setBytes(embedding, await book.generateAsync({ type: "uint8array" }));
+
+    const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "s");
+    if (!prepared.ok) throw new Error(prepared.why);
+    const records = toRecordSet(ROWS);
+    const out = await runPlan(pkg, buildPlan(prepared.block, records, { runId: "s" }), records);
+
+    expect(out.graphics.numbers.filled, "nothing could be filled").toBe(0);
+    expect(out.graphics.numbers.unreadable, "and the run says so").toBeGreaterThan(0);
+  });
+
+  it.each([
+    ["exactly as declared", "Sheet2!$B$2:$B$3"],
+    // Excel sheet names are case-INSENSITIVE — a workbook cannot hold both
+    // `Data` and `data` — and the lookup was a plain `Map`, which is not. A
+    // formula spelling the title differently from the declaration found
+    // nothing, wrote nothing, and counted nothing. The single-sheet fallback
+    // hides it completely, so it only appears on a workbook somebody added a
+    // sheet to, which is why no round has met it.
+    ["in a different case", "SHEET2!$B$2:$B$3"],
+  ])("writes into the sheet the chart names %s", async (_what, formula) => {
     /**
      * The first version of this pass searched every sheet for the address and
      * took the first hit, reasoning that an embedded chart workbook has one
@@ -372,7 +548,7 @@ describe("which sheet the formula names", () => {
     pkg.setBytes(embedding, await book.generateAsync({ type: "uint8array" }));
     pkg.setText(
       "ppt/charts/chart1.xml",
-      (await pkg.text("ppt/charts/chart1.xml")).replace("Sheet1!$B$2:$B$3", "Sheet2!$B$2:$B$3"),
+      (await pkg.text("ppt/charts/chart1.xml")).replace("Sheet1!$B$2:$B$3", formula),
     );
 
     const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "s");
@@ -442,6 +618,8 @@ describe("a workbook whose worksheet part is not named sheet1.xml", () => {
     expect(out.graphics.numbers, "the sheet was found by its file name, not its declaration").toEqual({
       filled: 1,
       refused: 0,
+      unreadable: 0,
+      unplotted: 0,
     });
   });
 
@@ -449,7 +627,7 @@ describe("a workbook whose worksheet part is not named sheet1.xml", () => {
     // The relationship target decides the path. Nothing in the format says a
     // worksheet lives in that folder either.
     const out = await mergeRenamed("xl/data.xml");
-    expect(out.graphics.numbers).toEqual({ filled: 1, refused: 0 });
+    expect(out.graphics.numbers).toEqual({ filled: 1, refused: 0, unreadable: 0, unplotted: 0 });
   });
 });
 

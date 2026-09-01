@@ -91,14 +91,46 @@ export function dropCrumb(c: Omit<Crumb, "kind" | "startedAt">): void {
   }
 }
 
-/** Forget it — the run finished, or the user took the slides back. */
-export function clearCrumb(): void {
+/**
+ * Forget it — the run finished, or the user took the slides back.
+ *
+ * `here` is the open document's key, and it is asked for the same reason
+ * `readCrumb` asks: the store is ONE key for every deck the user opens, because
+ * `localStorage` belongs to the add-in's origin. Without it, a run in one deck
+ * deleted the recovery record of another — the read side refused a stranger's
+ * crumb at length and the write side deleted it without looking, which is the
+ * asymmetry that makes a careful check worthless.
+ *
+ * A crumb this build cannot identify — no `doc`, an older build's shape, or
+ * anything unparseable — IS cleared. Refusing what cannot be matched would make
+ * the key unreclaimable: nothing could ever remove it and every future run
+ * would step around it. The rule is "another deck's crumb is safe", not "only a
+ * crumb I can name may go".
+ */
+export function clearCrumb(here: string): void {
   const s = store();
   if (!s) return;
   try {
+    const raw = s.getItem(KEY);
+    // Read through `readCrumb` rather than re-implementing the shape check, so
+    // "a crumb this build understands" cannot come to mean two different things
+    // in the two functions that ask it.
+    if (raw && readCrumb(here) === undefined && belongsToAnotherDeck(raw, here)) return;
     s.removeItem(KEY);
   } catch {
     /* nothing to be done, and nothing worth failing over */
+  }
+}
+
+/** Whether a stored record names a deck, and names a different one from `here`. */
+function belongsToAnotherDeck(raw: string, here: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null) return false;
+    const doc = (parsed as Partial<Crumb>).doc;
+    return typeof doc === "string" && doc !== "" && doc !== here;
+  } catch {
+    return false;
   }
 }
 

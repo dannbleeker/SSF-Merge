@@ -3,10 +3,11 @@
 Mail merge for PowerPoint. You build one slide, or one block of slides, put
 placeholders where the data goes, and SSF Merge produces one copy per row.
 
-> **Status.** Everything described here is built and shipped, with two
-> exceptions, both marked where they appear: two things that could happen to
-> your template after a merge, and two data sources that are not the paste box.
-> Neither is on the backlog — `docs/BACKLOG.md` is empty — so read them as
+> **Status.** Everything described here is built and shipped, with three
+> exceptions, each marked where it appears: two things that could happen to your
+> template after a merge, two data sources that are not the paste box, and two
+> places the merged slides could go instead of the end of your deck. None of
+> them is on the backlog — `docs/BACKLOG.md` is empty — so read them as
 > *designed and not scheduled*, not as *coming soon*.
 >
 > Nothing here is aspirational: a line moves out of *not scheduled* in the same
@@ -201,6 +202,19 @@ The card names the slides it would take — *Remove slides 9 to 11, which this
 merge added* — and the button under it reads **Remove these slides**. It is
 still there if you close the pane and reopen it.
 
+**It only removes slides this merge made.** The card works out which slides to
+offer from how big the deck was before and after, and those numbers cannot tell
+one slide from another — so if you have edited the deck since, the positions it
+names may no longer hold only merged slides. Before deleting anything, the
+add-in asks each of those slides whether this merge made it: every merged slide
+carries a mark written into the file. A slide that does not carry it is left
+alone, and the message says how many were left and why.
+
+So a merge of six that you have half tidied up already takes back the four that
+are still there, not six slides counted off the end. On a PowerPoint too old to
+answer the question the offer falls back to counting positions, which is what
+it always did.
+
 ### If a placeholder has no column
 
 The commonest thing a first merge gets wrong is a spelling. `{{Roel}}` against
@@ -243,8 +257,11 @@ Write a field where the value should appear:
 {{Name}}
 ```
 
-Field names may contain letters, digits, underscores and dots, so `{{Customer.Name}}`
-works if your columns are named that way.
+A field name can be almost anything your column headers are: letters, digits,
+spaces, underscores, dots and punctuation all work, so `{{Customer.Name}}` and
+`{{Min. of cost}}` are both fields. The exceptions are set out a few paragraphs
+below — a brace, a pipe, a line break, and a name with no letter or digit in it
+at all.
 
 **A placeholder split across formatting still works.** PowerPoint constantly
 stores `{{FirstName}}` as `{{Fir` + `stName}}` after an edit or a spellcheck
@@ -688,9 +705,17 @@ say so in an issue — that is what puts something back on the backlog.
 
 ## Tags SSF Merge writes
 
-Merged slides carry metadata inside the file. You never need to touch it, but it
-is what makes undo and re-run possible, and it is visible to any tool that reads
-PowerPoint tags.
+Merged slides carry metadata inside the file. You never need to touch it, and it
+is visible to any tool that reads PowerPoint tags.
+
+One of these tags is read back by the add-in itself. Before an undo deletes
+anything it asks each slide in the range whether this merge made it, and
+`SSF_MERGE_RUN` is the answer — so a slide you added yourself, sitting where a
+merged one used to be, is left alone. The range it asks about comes from the
+deck's size before and after the run, not from the tags; the tags decide which
+slides inside that range may go. The other three are written for you and for
+other tools, and nothing in the add-in reads them back. Re-run needs none of
+them: it works because the template stays exactly where it is.
 
 | Tag | On | Meaning |
 | --- | --- | --- |
@@ -818,6 +843,13 @@ added cannot be found by id on PowerPoint for the web. The sweep is clamped so
 it can never reach an index below the deck's size when the merge started, so
 nothing you had before the run can be touched.
 
+Position decides which slides are even considered; the slides themselves decide
+which of those go. Every merged slide carries a mark inside the file saying
+which merge made it, and the undo removes only the ones that carry this merge's.
+Where PowerPoint will not answer that question — an older host, or one having a
+bad minute — the clamps above are the whole of the protection, which is why they
+are drawn as tightly as they are.
+
 **If your deck grew after the merge, the offer goes away.** Add slides yourself,
 or have a co-author add some, and the last slides in the deck are no longer the
 ones the merge added — so there is no range anybody can name, and the card stops
@@ -874,10 +906,12 @@ reaches anybody. If a merge goes wrong, this is the thing worth sending.
 A call that never came back shows its `issued` line with no `answered` after it,
 which names the step that stopped.
 
-**"No placeholders were filled."** The merge added the slides and changed
-nothing on them, which almost always means the placeholder names in your
-template do not match your column headers. Check the spelling and the braces —
-`{{First name}}` matches a column headed `First name`, and nothing else does.
+**"no {{fields}} were filled — check the spelling in your template".** That
+clause appears in the outcome line beside the slide count, and it means the
+merge added the slides and changed nothing on them — which almost always means
+the placeholder names in your template do not match your column headers. Check
+the spelling and the braces: `{{First name}}` matches a column headed
+`First name`, and nothing else does.
 
 ## Installing it
 
@@ -1003,9 +1037,30 @@ anything else. Two things are worth knowing.
   number goes in and the chart formats its own axis.
 - **A value that will not be a number is left alone.** `{{Notes}}` in a value
   cell stays exactly as you typed it rather than becoming a zero, because a zero
-  is a bar the data never asked for. The merge counts those and says so when it
-  finishes — this is the one failure you cannot see on the slide, because the
-  point keeps the template's number under a label that merged correctly.
+  is a bar the data never asked for. It stays in the data sheet too, so Edit
+  Data still shows you the placeholder that did not merge. The merge counts
+  those and says so when it finishes — this is the one failure you cannot see on
+  the slide, because the point keeps the template's number under a label that
+  merged correctly.
+
+  If the same text is also used as a label somewhere in that sheet, the label
+  keeps its placeholder as well. Excel stores one copy of a repeated string, so
+  the two cannot be treated differently, and leaving both is the safer way
+  round: a label you can see is wrong beats a chart that quietly disagrees with
+  its own data.
+- **A value that reaches the data sheet but not the chart is counted.** A chart
+  stores its own copy of the numbers, and that copy can have no slot for a cell
+  that held no number when the template was made — which is exactly the cell you
+  typed a placeholder into. The merge fills the data sheet and has nowhere to
+  put the value in the chart, so the merge says so and tells you the remedy:
+  press **Edit Data** on that chart and close it, and PowerPoint brings the
+  chart into line with the sheet. This is likelier on a template a program
+  generated than on one made in PowerPoint.
+- **A chart whose data sheet cannot be found is counted too.** If the chart
+  names a sheet the workbook does not have, nothing can be filled and the chart
+  keeps the template's numbers. The merge says so when it finishes rather than
+  passing over it in silence, which is what it used to do — leaving a chart
+  that looked merged and was not, with nothing anywhere to say why.
 
 While you are still editing the template that cell holds text, so its bar shows
 as nothing until you merge. That is the same as a slide reading `{{Name}}` until
@@ -1026,9 +1081,16 @@ so once. Only the chart's Edit Data will still show your placeholders.
   instead.** See "Modern charts" above: those versions cannot draw one at all,
   and what they fall back to is a picture this add-in cannot redraw for each
   row. Anything newer shows the chart itself.
-- **Cut and paste on PowerPoint for the web loses shape tags**
-  ([office-js#3784](https://github.com/OfficeDev/office-js/issues/3784)). A
-  merged slide cut and pasted into another deck loses its run tag, so undo will
-  no longer find it.
+- **A merged slide moved into another deck cannot be taken back by undo.** The
+  offer is scoped to the presentation the merge ran in, and inside it the sweep
+  works by position, so a slide that has been cut and pasted somewhere else is
+  out of its reach. Delete it by hand. (The tags SSF Merge writes are on the
+  SLIDE, in the file, not on its shapes, so the shape-tag loss reported in
+  [office-js#3784](https://github.com/OfficeDev/office-js/issues/3784) is not
+  what is happening here — this limit is the scope of the undo itself.)
 - **A very long deck is slow to edit**, which is PowerPoint's behaviour and not
-  something an add-in can fix. Merging into a separate presentation avoids it.
+  something an add-in can fix. There is no way around it inside SSF Merge:
+  merging into a separate presentation would avoid it and was designed and
+  declined — see [Where the merged slides
+  go](#where-the-merged-slides-go) — so the remedy today is a smaller run, or
+  splitting the rows across decks yourself.

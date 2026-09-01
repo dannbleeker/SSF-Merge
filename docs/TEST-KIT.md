@@ -219,6 +219,60 @@ added after slide 3"*, and *"Remove slides 4 to 7"* on the skip run.
 Nothing here needs a re-install: the add-in is served from GitHub Pages and only
 a change to the manifest itself would.
 
+## New on 2026-09-01, and worth a round of their own
+
+Three changes landed that a suite cannot judge, because each is about what a
+real PowerPoint does with a file. They are quick and they are the ones to do
+first if there is only time for a few.
+
+**1. An undo that must leave your own slides alone.** This is the one that
+matters most, because it is the only place this add-in deletes anything.
+
+Merge as usual — three rows, six slides. Then edit the deck the way somebody
+reviewing the output would:
+
+1. Delete **two** of the merged slides you do not want.
+2. Add **two** slides of your own after them — a summary and a thank-you, or two
+   blank ones; anything you would mind losing.
+
+The deck is now exactly the size it was after the merge, which is what used to
+fool it. Press **Remove these slides**.
+
+- It should remove the **four** merged slides that are still there, and leave
+  the two you made.
+- The message should say four were removed and that some slides in the range
+  were left alone because they are not this merge's.
+
+If your two slides disappear, stop and say so — that is the defect this change
+was made for, and it means the check is not working on your host.
+
+Then do it once more without editing anything in between: an ordinary merge and
+an immediate take-back should still remove all six, with no mention of anything
+left behind. A guard that refuses everything would pass the first half of this
+and fail the product.
+
+**2. A chart value cell that cannot become a number.** Right-click a chart ▸
+**Edit Data**, and put `{{Notes}}` into one of the VALUE cells — a number cell,
+not a label. Merge.
+
+- The chart should keep the template's number for that point, as before.
+- Press **Edit Data** on a merged copy: the cell should still read `{{Notes}}`,
+  exactly as you typed it.
+- Close the workbook. **The chart must not change.**
+
+That last step is the whole point. The cell used to be overwritten with the
+row's text while the chart went on drawing the template's figure, and closing
+Excel refreshes the chart from the sheet — so the bar moved on its own, after
+the merge, with nothing anywhere saying why.
+
+If the same text also appears as a LABEL somewhere in that sheet, the label will
+keep its placeholder too. That is deliberate, not a second bug: Excel stores one
+copy of a repeated string, so the two cannot be told apart.
+
+**3. Nothing to re-install.** The JSON manifests changed and both XML files did
+not, which was verified by hashing them either side of the regeneration. If you
+are sideloading `manifest-prod.xml`, it is the same file you already have.
+
 ## What still has no real-host answer
 
 This is the list to read when somebody asks what is open, so it is kept short

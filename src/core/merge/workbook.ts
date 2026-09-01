@@ -47,6 +47,79 @@ const SHARED_STRINGS = `${REL}/sharedStrings`;
 const CONVENTIONAL_MAIN = "xl/workbook.xml";
 const CONVENTIONAL_SST = "xl/sharedStrings.xml";
 
+/**
+ * A sheet title as `byTitle` keys it.
+ *
+ * Case-folded, because Excel treats two titles differing only in case as one
+ * name: a workbook cannot hold both `Data` and `data`.
+ *
+ * Private. Nothing outside this file may key that map by hand — `sheetNamed`
+ * is the one way to read it, so the fold cannot be applied on one side and
+ * forgotten on the other. That is the shape of the defect it replaced.
+ */
+function foldTitle(title: string): string {
+  return title.toLowerCase();
+}
+
+/**
+ * The part holding the sheet a formula names, or nothing.
+ *
+ * The ONE reader of `byTitle`, so the way a title is keyed and the way it is
+ * looked up cannot come apart. They had: the map was keyed by the declared
+ * name and matched exactly, so a chart whose `<c:f>` spelled the title in a
+ * different case found no sheet at all — no fill, no refusal, nothing counted,
+ * and a workbook with one sheet hid it behind the fallback.
+ */
+export function sheetNamed(parts: WorkbookParts, title: string): string | undefined {
+  return parts.byTitle.get(foldTitle(title));
+}
+
+/**
+ * How much inflated XML one embedded workbook may cost, in characters.
+ *
+ * A chart's data sheet is tens of kilobytes; Excel writes nothing near this.
+ * The number is three orders of magnitude of headroom, and it is here to bound
+ * a DECOMPRESSION BOMB rather than to judge a big workbook.
+ *
+ * A `.pptx` arrives from wherever the user got it, and a zip entry declares its
+ * inflated size before anything inflates it. Measured: 19 KB of deflate becomes
+ * 20 MB of text at a ratio of about 1000:1 — and this read happens ONCE PER
+ * MERGED ROW, because every clone gets its own copy of the chart's workbook. At
+ * 240 rows that is a pane doing gigabytes of work inside a WebView, from a deck
+ * somebody was sent.
+ *
+ * Refusing is the same answer an unparseable workbook already gets: the chart
+ * keeps its cached values, the run finishes, and the pane says the data behind
+ * it could not be opened. That is a sentence the user can act on, where a
+ * frozen tab is not.
+ */
+export const INFLATED_BUDGET = 64 * 1024 * 1024;
+
+/**
+ * Whether a workbook's XML is small enough to read at all.
+ *
+ * Asked of the zip's own DECLARED sizes, which is the point: it costs nothing
+ * and it is answered before a single byte is inflated. Only the XML parts are
+ * counted — an embedded image inside a workbook is not something either pass
+ * reads, so its size is not this budget's business.
+ *
+ * `budget` is a parameter so a test can ask the real question — does it sum the
+ * declared sizes and refuse past the line — without building a workbook the
+ * size of the real budget. The first version of that test allocated eighty
+ * megabytes and timed out in CI, which is a slow test rather than a strict one.
+ * The constant itself is asserted separately.
+ */
+export function withinInflatedBudget(book: JSZip, budget = INFLATED_BUDGET): boolean {
+  let total = 0;
+  for (const name of Object.keys(book.files)) {
+    if (!/\.(xml|rels)$/i.test(name)) continue;
+    const declared = (book.files[name] as { _data?: { uncompressedSize?: number } })._data?.uncompressedSize;
+    if (typeof declared === "number") total += declared;
+    if (total > budget) return false;
+  }
+  return true;
+}
+
 export interface WorkbookParts {
   /** Worksheet parts, in the order the workbook declares its sheets. */
   sheets: string[];
@@ -110,10 +183,20 @@ export async function workbookParts(book: JSZip): Promise<WorkbookParts> {
     const path = rels.get(rId)?.path;
     if (!path) continue;
     const title = sheet.getAttribute("name");
+    // Keyed by a FOLDED title, because Excel's sheet names are
+    // case-insensitive: a workbook cannot hold both `Data` and `data`, and a
+    // chart whose formula spells the title differently from the declaration
+    // means the same sheet. A plain `Map` said otherwise, so such a chart's
+    // values were never looked at — no fill, no refusal, nothing counted.
+    //
+    // The single-sheet fallback below hides it entirely, which is why this only
+    // shows on a workbook somebody added a sheet to.
+    //
     // First declaration wins: two sheets cannot share a title in a workbook
     // Excel will open, and picking the later one for a file that broke that
     // rule would pair a chart's formula with the wrong cells.
-    if (title !== null && !byTitle.has(title)) byTitle.set(title, path);
+    const key = title === null ? null : foldTitle(title);
+    if (key !== null && !byTitle.has(key)) byTitle.set(key, path);
     sheets.push(path);
   }
 

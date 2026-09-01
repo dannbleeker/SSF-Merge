@@ -967,6 +967,21 @@ describe("taking a real merge back", () => {
   const undoButton = (): HTMLButtonElement | null =>
     document.querySelector<HTMLButtonElement>('.card.undo button[data-action="undo"]');
 
+  /**
+   * Put the merge button back within reach.
+   *
+   * A landed merge disarms it — pressing it twice by accident is the thing that
+   * guard exists to stop — so a second run needs the user to change something
+   * first. Taking a row out is the cheapest change that does it, and it is what
+   * somebody who has just looked at the output would actually do.
+   */
+  async function rearm(): Promise<void> {
+    (pane().querySelector('[data-action="rows"]') as HTMLElement).click();
+    await settle();
+    (pane().querySelector('[data-row="1"]') as HTMLInputElement).click();
+    await settle();
+  }
+
   it("offers the way back once a merge has landed", async () => {
     // `undoInsert` and `sweepPlan` were built and tested before this and were
     // reachable from nothing — the numbers were kept, the sentence was
@@ -995,6 +1010,157 @@ describe("taking a real merge back", () => {
     await settle();
     expect(undoButton()).toBeNull();
     expect(document.body.textContent).toContain("back to 12");
+  });
+
+  it("does not let a second merge that added NOTHING destroy the way back", async () => {
+    /**
+     * The card and the button read from two different places — the sentence
+     * from `state.added`, the sweep from the module's `last` — and only one of
+     * them was guarded. A run that added nothing overwrote `last` and cleared
+     * the crumb, while `state.added` correctly kept the first run's numbers.
+     *
+     * So the card went on offering "Remove slides 13 to 18", the button stayed
+     * live, and pressing it swept with the second run's numbers and removed
+     * nothing, forever. Six slides in the deck, no way back to them, and no
+     * crumb either if the tab then died. Two sources of truth for one offer.
+     */
+    await afterMerge();
+    expect(undoButton(), "the first run is offered").not.toBeNull();
+
+    // The user changes their mind about a row, which re-arms the button, and
+    // merges again. The host refuses and nothing lands.
+    await rearm();
+    office.runMerge.mockResolvedValueOnce({ ...OUTCOME, ok: false, added: 0, deckAtStart: 18, runId: "r2" });
+    primary().click();
+    await settle();
+    expect(office.runMerge, "the second merge really ran").toHaveBeenCalledTimes(2);
+
+    office.undoMerge.mockResolvedValueOnce({ removed: 6, detail: "removed 6 slide(s) from index 12" });
+    undoButton()?.click();
+    await settle();
+    expect(office.undoMerge.mock.calls[0]?.[0], "the six slides that are actually there").toMatchObject({
+      deckAtStart: 12,
+      added: 6,
+    });
+  });
+
+  it("keeps the crumb for slides that are still in the deck", async () => {
+    // Same defect, seen from the record a dead tab leaves behind. The pending
+    // marker written at the start of every run overwrote a crumb describing
+    // six slides nobody had taken back yet.
+    await afterMerge();
+    await rearm();
+    office.runMerge.mockResolvedValueOnce({ ...OUTCOME, ok: false, added: 0, deckAtStart: 18, runId: "r2" });
+    primary().click();
+    await settle();
+
+    const stored: unknown = JSON.parse(globalThis.localStorage.getItem("ssf-merge.run.v1") ?? "null");
+    expect(stored, "the first run's six slides are still recorded").toMatchObject({ deckAtStart: 12, added: 6 });
+  });
+
+  it("will not offer to remove more slides than the merge could possibly have added", async () => {
+    /**
+     * `runMerge` caps `added` at the size of the package it sent, and the
+     * comment at that line says why: an uncapped count absorbs whatever else
+     * arrived, so `grew` and `added` are equal by construction and the clamp
+     * keeping an undo off a stranger's slides can never fire.
+     *
+     * The RAISE path recomputed the same quantity from the deck with no cap at
+     * all — and it is the likelier path for this, because a co-author's slides
+     * arriving is exactly the kind of thing that also makes a call time out.
+     * Deck of 12, a merge of six slides that raises, twelve slides from
+     * somebody else landing meanwhile: the pane counted 30, called it 18, and
+     * offered to remove eighteen.
+     */
+    const root = await openPane();
+    await settle();
+    type("from", "4");
+    type("to", "6");
+    office.inspectBlock.mockResolvedValueOnce(REPORT);
+    primary().click();
+    await settle();
+    type("paste", "First\tLast\nAda\tLovelace\nGrace\tHopper");
+    primary().click();
+    office.inspectBlock.mockResolvedValueOnce(REPORT);
+    primary().click();
+    await settle();
+    document.querySelector<HTMLButtonElement>('[data-forward="merge"]')?.click();
+    expect(primary().textContent, "two rows over a three-slide block").toBe("Add 6 slides");
+
+    // The insert raises. The deck is 30 by the time the pane counts again:
+    // this run's six, and twelve from somebody else.
+    office.slideCount.mockResolvedValueOnce(12).mockResolvedValueOnce(30);
+    office.runMerge.mockRejectedValueOnce(new Error("gave up waiting for: inserting the merged deck"));
+    primary().click();
+    await settle();
+    expect(root.textContent, "the raise is reported").toContain("landed anyway");
+
+    // Whatever it offers, it may never claim more than the merge could build.
+    office.undoMerge.mockResolvedValueOnce({ removed: 0, detail: "nothing to take back" });
+    undoButton()?.click();
+    await settle();
+    const asked = office.undoMerge.mock.calls[0]?.[0] as { added: number } | undefined;
+    expect(asked?.added ?? 0, "never more than the six slides this merge builds").toBeLessThanOrEqual(6);
+  });
+
+  it("does not leave a recovered run's card over a LATER merge's steps", async () => {
+    /**
+     * `recovered` says the offer follows the SLIDES rather than the merge step,
+     * because a run whose pane died leaves the user wherever they happen to be.
+     * It was set at boot and never cleared, so it stayed true for the rest of
+     * the session — including for an ORDINARY merge started afterwards, whose
+     * card then drew on every step of the wizard.
+     *
+     * A button that deletes slides out of a presentation belongs on the step
+     * that made them. On the template step it is a control with no context at
+     * all, one press from removing part of the deck the user is choosing from.
+     */
+    localStorage.setItem(
+      "ssf-merge.run.v1",
+      JSON.stringify({
+        kind: "ssf-merge-run",
+        deckAtStart: 12,
+        added: 6,
+        runId: "died",
+        startedAt: "2026-08-27T10:00:00.000Z",
+        doc: "https://example-my.sharepoint.com/personal/x/Documents/deck.pptx",
+      }),
+    );
+    office.slideCount.mockReset().mockResolvedValue(18);
+    await openPane();
+    await settle();
+    expect(undoButton(), "the dead run is offered, wherever the user is").not.toBeNull();
+
+    // The user takes those slides back, and then does an ordinary merge.
+    office.undoMerge.mockResolvedValueOnce({ removed: 6, detail: "removed 6 slide(s) from index 12" });
+    undoButton()?.click();
+    await settle();
+    office.slideCount.mockReset().mockResolvedValue(12);
+
+    // An ordinary merge, in the SAME pane. Re-opening would reset the module's
+    // state and with it the flag under test, so the walk is done by hand.
+    type("from", "4");
+    type("to", "6");
+    office.inspectBlock.mockResolvedValueOnce(REPORT);
+    primary().click();
+    await settle();
+    type("paste", "First\tLast\nAda\tLovelace\nGrace\tHopper");
+    primary().click();
+    office.inspectBlock.mockResolvedValueOnce(REPORT);
+    primary().click();
+    await settle();
+    document.querySelector<HTMLButtonElement>('[data-forward="merge"]')?.click();
+    office.runMerge.mockResolvedValueOnce(OUTCOME);
+    primary().click();
+    await settle();
+    expect(undoButton(), "the new merge's own way back").not.toBeNull();
+
+    for (let i = 0; i < STEP_COUNT; i++) {
+      pane().querySelector<HTMLElement>("[data-back]")?.click();
+      await settle();
+    }
+    expect(document.body.textContent, "walked all the way back").toContain("Step 1 of 5");
+    expect(undoButton(), "not on the template step").toBeNull();
   });
 
   it("KEEPS the way back when the sweep only got some of them", async () => {

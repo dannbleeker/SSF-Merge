@@ -11,6 +11,15 @@
  * moves by hand drifts behind and stops catching a partial deletion. A
  * deliberate DROP is re-recorded with `--update`, so it lands in a commit where
  * a reviewer sees it rather than being absorbed silently.
+ *
+ * **What counts is a test that RAN.** `numTotalTests` includes pending ones, so
+ * this gate was blind to the commonest way a suite quietly loses cases: `it(` →
+ * `it.skip(`. Switching off all 23 tests of `test/plan.test.ts` — the merge
+ * plan's whole decision engine — left the count identical, this script exiting
+ * 0, the recorded floor untouched and coverage nowhere near its thresholds, so
+ * every CI step went green over a suite that had stopped asking. A guard
+ * against a suite losing cases has to be measured in cases that were actually
+ * put.
  */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -35,7 +44,12 @@ execFileSync(
   },
 );
 
-const total = JSON.parse(readFileSync(out, "utf8")).numTotalTests;
+const report = JSON.parse(readFileSync(out, "utf8"));
+// Pending tests subtracted: a skipped test is one the suite is not asking, and
+// counting it here is what let 23 of them be switched off with every gate
+// green. See the docstring.
+const pending = Number.isInteger(report.numPendingTests) ? report.numPendingTests : 0;
+const total = report.numTotalTests - pending;
 const recorded = JSON.parse(readFileSync(RECORD, "utf8")).min;
 
 if (!Number.isInteger(total) || total <= 0) {
@@ -46,7 +60,9 @@ if (!Number.isInteger(total) || total <= 0) {
 if (total < recorded) {
   if (!update) {
     console.error(
-      `test-count: the suite has ${total} tests, down from ${recorded}.\n` +
+      `test-count: the suite RAN ${total} tests, down from ${recorded}.` +
+        (pending > 0 ? ` (${pending} skipped, which do not count.)` : "") +
+        `\n` +
         `If you deliberately removed tests, re-record it with:  node scripts/test-count.mjs --update`,
     );
     process.exit(1);
@@ -58,5 +74,5 @@ if (total > recorded || (update && total !== recorded)) {
   writeFileSync(RECORD, `${JSON.stringify({ min: total }, null, 2)}\n`);
   if (total > recorded) console.log(`test-count: floor raised to ${total}. Commit ${RECORD}.`);
 } else {
-  console.log(`test-count: ${total} tests, floor ${recorded}.`);
+  console.log(`test-count: ${total} tests, floor ${recorded}.${pending > 0 ? ` ${pending} skipped.` : ""}`);
 }

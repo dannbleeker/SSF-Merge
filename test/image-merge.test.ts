@@ -7,6 +7,8 @@ import { toRecordSet } from "../src/core/data/recordset.js";
 import { Pkg } from "../src/core/pptx/pkg.js";
 import { A_NS, elements } from "../src/core/pptx/xml.js";
 import { makeDeck, xfrm } from "./fixtures/deck.js";
+import { makeResolver } from "../src/core/merge/resolve.js";
+import { imageMode } from "../src/core/merge/images.js";
 
 const WIDE = new Uint8Array(readFileSync("test/fixtures/wide.png")); // 64 x 32
 const TALL = new Uint8Array(readFileSync("test/fixtures/tall.jpg")); // 30 x 90
@@ -138,6 +140,38 @@ describe("a picture where the placeholder was", () => {
     expect(order.slice(0, 2)).toEqual(["xfrm", "prstGeom"]);
   });
 
+  it("STRETCHES on image-stretch, filling the box and distorting on purpose", async () => {
+    /**
+     * The third documented mode, and it had no test at all — `image-stretch`
+     * appeared in `docs/MANUAL.md` and in the `MODES` table and nowhere in this
+     * suite. `test/docs.test.ts` holds the other direction (every format the
+     * engine has is documented) and nothing held this one, so a mode a user can
+     * type could have stopped working with the whole suite green.
+     *
+     * It is distinguishable from the two neighbours by what it does NOT write:
+     * a crop is a `srcRect`, a letterbox is a `fillRect` carrying insets, and
+     * filling the box exactly is neither. The `<a:fillRect/>` itself is still
+     * there and empty, which is what `<a:stretch>` normally holds — asserting
+     * its absence was this test's first mistake, and the element is the
+     * codec's, not the mode's.
+     *
+     * It must also not be confused with the stretch a shape falls back to when
+     * it states no size. That one is REPORTED, because it is a failure to
+     * honour what was asked for; this one is the ask.
+     */
+    const pkg = await template("{{Photo|image-stretch}}", xfrm(200, 200));
+    const out = await merge(pkg, [["Photo"], ["ada.png"]], new Map([["ada.png", WIDE]]));
+    const fill = (await blipFill(pkg, out.slides[0] as string)) as Element;
+    expect(elements(fill, A_NS, "srcRect")[0], "a stretch crops nothing").toBeUndefined();
+    const fillRect = elements(fill, A_NS, "fillRect")[0] as Element;
+    expect(fillRect, "a stretch still writes the element").toBeDefined();
+    for (const edge of ["l", "t", "r", "b"]) {
+      expect(fillRect.getAttribute(edge), `letterboxed on ${edge}`).toBeNull();
+    }
+    expect(out.images.placed).toBe(1);
+    expect(out.images.stretched, "asked for, so not reported as a shortfall").toEqual([]);
+  });
+
   it("matches a photo whose cell the spreadsheet padded", async () => {
     // `resolveImage` trims the cell before matching it against the files, and
     // that `.trim()` is the whole rule. Removing it left the suite green —
@@ -161,6 +195,47 @@ describe("a picture where the placeholder was", () => {
     expect(out.images.stretched).toEqual(["Photo"]);
     const fill = (await blipFill(pkg, out.slides[0] as string)) as Element;
     expect(elements(fill, A_NS, "srcRect")[0], "cropped without a ratio to crop by").toBeUndefined();
+  });
+});
+
+describe("a picture format this engine does not have", () => {
+  /**
+   * `image`, `image-fit` and `image-stretch` are the three modes, and anything
+   * else fell through to `applyFormat`, whose documented answer for a format it
+   * does not know is to return the cell unchanged. For a number that is the
+   * right answer. For a picture it is not: the cell is a FILE NAME, so a single
+   * transposed letter printed `ada.png` as text in the frame that was supposed
+   * to hold the portrait, on every merged slide.
+   *
+   * `image-cover` is the likeliest of them, because the manual's own words for
+   * what `image` does are "covers".
+   *
+   * The rule is about this engine's own namespace rather than a guess at what
+   * the author meant: a format named `image`-something is an image format we do
+   * not have, so the placeholder stays visible and the author sees their typo —
+   * which is what a field with no column already does.
+   */
+  const MISSPELLINGS = ["image-cover", "images", "image-crop", "image-fill", "Image-Cover", " image-cover "];
+
+  it("leaves the placeholder alone instead of printing the file name", () => {
+    for (const spec of MISSPELLINGS) {
+      const resolve = makeResolver({ Photo: "ada.png" });
+      expect(resolve("Photo", spec), spec).toBeNull();
+    }
+  });
+
+  it("still answers for a format that is not about pictures at all", () => {
+    // The neighbouring rule this must not disturb: an unknown TEXT format
+    // prints the cell, which is what the manual promises.
+    const resolve = makeResolver({ Total: "1234.5" });
+    expect(resolve("Total", "nubmer:2")).toBe("1234.5");
+    expect(resolve("Total", "imagination")).toBe("1234.5");
+  });
+
+  it("and the three real ones still place a picture", () => {
+    for (const spec of ["image", "image-fit", "image-stretch"]) {
+      expect(imageMode(spec), spec).toBeDefined();
+    }
   });
 });
 

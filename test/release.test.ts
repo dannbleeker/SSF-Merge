@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 // @ts-expect-error — plain .mjs tools with no types. The rules live THERE so the
 // workflow and this test cannot read different ones.
-import { RELEASE_ASSETS, assetsPromisedByDocs, releaseProblems } from "../scripts/release-assets.mjs";
+import { RELEASE_ASSETS, assetsPromisedByDocs, releaseProblems, versionProblems } from "../scripts/release-assets.mjs";
 // @ts-expect-error — as above.
 import { withoutHashComments } from "../scripts/without-prose.mjs";
 // @ts-expect-error — as above. Imported so the mutation below anchors on the
@@ -79,7 +79,9 @@ describe("what a release must never ship", () => {
     // not only to the one in the tree.
     const broken = (name: string) =>
       read(name).replace(`<Version>${DEFINITION.version}</Version>`, "<Version>0.1.0</Version>");
-    expect(releaseProblems(broken, ["manifest-prod.xml"], [])).toEqual([expect.stringContaining("below 1.0")]);
+    expect(releaseProblems(broken, ["manifest-prod.xml"], [])).toEqual([
+      expect.stringContaining("must be a number from 1.0 up"),
+    ]);
   });
 
   it("refuses an asset that is not there at all", () => {
@@ -87,6 +89,53 @@ describe("what a release must never ship", () => {
       throw new Error("no such file");
     };
     expect(releaseProblems(missing, ["manifest-prod.xml"], [])).toEqual([expect.stringContaining("is not there")]);
+  });
+});
+
+describe("the version a release is cut as", () => {
+  /**
+   * The workflow takes it as free text from a dispatch box, and nothing ever
+   * looked at it — so `v9.9.9` would have been tagged, published and attached
+   * to manifests saying something else, reconcilable afterwards only by
+   * deleting a released tag.
+   *
+   * Both questions are arithmetic rather than judgement: does it match the
+   * version this repo is at, and is there a changelog section to read. A
+   * release nobody can read the changes of is a release that gets asked about.
+   */
+  const read = (name: string) => readFileSync(name, "utf8");
+
+  it("says nothing when no version is being cut", () => {
+    // `npm run release:check` stays a useful thing to run by hand.
+    expect(versionProblems(read, "")).toEqual([]);
+  });
+
+  it("agrees with the version this repo is at", () => {
+    const pkg = JSON.parse(readFileSync("package.json", "utf8")) as { version: string };
+    expect(versionProblems(read, pkg.version), "the repo as it stands is releasable").toEqual([]);
+    // A leading v is what somebody types; it is the same version.
+    expect(versionProblems(read, `v${pkg.version}`)).toEqual([]);
+  });
+
+  it("refuses a version this repo has never heard of", () => {
+    expect(versionProblems(read, "9.9.9")).toEqual([
+      expect.stringContaining("package.json says"),
+      expect.stringContaining('no "## [9.9.9]" section'),
+    ]);
+  });
+
+  it("refuses something that is not a version at all", () => {
+    for (const bad of ["draft", "0.3", "1.0.0-rc1", "latest"]) {
+      expect(versionProblems(read, bad), bad).toEqual([expect.stringContaining("is not a version")]);
+    }
+  });
+
+  it("is asked by the pre-flight, from the workflow's own input", () => {
+    // The wiring, because a check nothing calls is not a check. Both halves:
+    // the script reads the variable, and the workflow sets it from the box.
+    expect(readFileSync("scripts/check-release.mjs", "utf8")).toContain("RELEASE_VERSION");
+    const workflow = readFileSync(".github/workflows/release.yml", "utf8");
+    expect(workflow).toMatch(/RELEASE_VERSION:\s*\$\{\{\s*inputs\.version\s*\}\}/);
   });
 });
 

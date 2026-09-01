@@ -21,13 +21,13 @@ one set of slides per row. All five steps of the pane are built.
 | Data parsing, type detection, formatting | done |
 | Merge plan (blocks, records, conditional slides) | done |
 | Running a plan against a package, end to end | done |
-| Host probe, for the questions only a real PowerPoint answers | done, [three sheets read](docs/PROBE.md) |
+| Host probe, for the questions only a real PowerPoint answers | done — every answer sheet it has read is filed and [read back in `docs/PROBE.md`](docs/PROBE.md) |
 | Office.js host layer (capability floor, template read, insert, positional undo) | done |
 | Task pane — five steps, the block control, the paste box, the field buttons, the merge button | done |
 | Manifests — XML and unified JSON, dev and prod, from one source | done |
 | Release workflow — manual, validated, assets checked against the docs | done |
 | Picking the template block by selecting slides | done |
-| Ribbon icons, drawn in code rather than checked in as binaries | done |
+| Ribbon icons, drawn by a script rather than by hand — the PNGs are committed, and a test redraws them and fails on a byte of difference | done |
 | Preview: the first row merged into the deck, then swept | done |
 | Row filters — a searchable checkbox list picking which rows merge | done |
 | Run record — every host call named and timed, readable in the pane | done |
@@ -112,8 +112,12 @@ npm run probe      # regenerate the Script Lab probe in probe/
 npm run answers -- sheet.json --save   # read an answer sheet the probe produced
 ```
 
-CI runs all of these. [CONTRIBUTING.md](CONTRIBUTING.md) explains the rules they
-hold.
+CI runs the first group as gates, with `format:check` in place of `format` and
+`coverage` standing in for `test`, and it runs `build:lib` too — the library
+build is a gate, because the two scripts under it import what it produces.
+`probe` and `answers` are run by hand: one regenerates a snippet you paste into
+Script Lab, the other reads a sheet that snippet produced.
+[CONTRIBUTING.md](CONTRIBUTING.md) explains the rules they hold.
 
 ## Licence
 

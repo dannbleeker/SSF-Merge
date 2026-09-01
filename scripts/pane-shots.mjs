@@ -33,7 +33,7 @@
  * which is what WCAG 1.4.3 says and not a convenience: a greyed-out button is
  * meant to read as unavailable.
  */
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { chromium } from "playwright";
 
 /**
@@ -228,9 +228,12 @@ const STATES = [
     // slides are in the deck and the numbers were the only thing missing.
     name: "5-merge-recovered",
     step: "merge",
+    // The whole point of this state is the way back, so it must draw one.
+    shows: ["undo"],
     state: {
       ...full,
       added: 720,
+      deckAtStart: 12,
       deckSize: 732,
       notice: "A merge from 2026-08-27 added 720 slide(s) and the pane closed before you could take them back.",
     },
@@ -238,7 +241,36 @@ const STATES = [
   {
     name: "5-merge-done-undo",
     step: "merge",
-    state: { ...full, added: 720, deckSize: 732, notice: "720 slides added after slide 12 · 480 placeholders filled." },
+    shows: ["undo"],
+    state: {
+      ...full,
+      added: 720,
+      // REQUIRED by the undo card, and absent from every fixture here until
+      // 2026-09-01 — so "Remove these slides" was rendered by no shot and
+      // measured by no audit, on the one control that deletes slides out of
+      // somebody's presentation. Its contrast is named in this repo's own
+      // memory as a finding this sweep once made; the coverage was lost when
+      // the card started requiring a third number and no fixture grew one.
+      deckAtStart: 12,
+      deckSize: 732,
+      notice: "720 slides added after slide 12 · 480 placeholders filled.",
+    },
+  },
+  {
+    // The card while its own press is in flight. A live control has a second
+    // label, and a label nothing renders is a label nothing measures.
+    name: "5-merge-undoing",
+    step: "merge",
+    shows: ["undo"],
+    state: {
+      ...full,
+      added: 720,
+      deckAtStart: 12,
+      deckSize: 732,
+      running: "undo",
+      inFlight: "removing the slides this merge added",
+      notice: "720 slides added after slide 12 · 480 placeholders filled.",
+    },
   },
   {
     name: "5-merge-done-with-log",
@@ -279,7 +311,12 @@ const STATES = [
     // it, so offering it would be a promise the next press breaks.
     name: "5-merge-nothing-to-take-back",
     step: "merge",
-    state: { ...full, added: 720, deckSize: 12, notice: "720 slides added after slide 12." },
+    // The NEGATIVE case, and it carries `deckAtStart` for the same reason the
+    // positive ones do: without it the card is refused for want of a number
+    // rather than because the deck cannot give the slides back, and the
+    // fixture would be asserting nothing.
+    hides: ["undo"],
+    state: { ...full, added: 720, deckAtStart: 12, deckSize: 12, notice: "720 slides added after slide 12." },
   },
   {
     // The record while the host has not answered — the state a wedged run sits
@@ -670,15 +707,28 @@ function audit() {
   return findings;
 }
 
+// EMPTIED first, not merely created. This directory is read by a person
+// comparing renders, and a PNG left by an earlier run is indistinguishable from
+// one this run produced — same name, same place, days older. It cost a false
+// defect report on 2026-09-01: a shot from an earlier build showed the undo
+// card, the current build's shot did not, and the difference read as a theme
+// bug for twenty minutes. A stale artifact is not clutter, it is a wrong
+// answer that looks like a right one.
+rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
 const browser = await chromium.launch(EXECUTABLE ? { executablePath: EXECUTABLE } : {});
 let taken = 0;
 // Deduplicated across states: the same chip is on eight screens, and eight
 // copies of one finding is a report nobody reads to the end.
 const found = new Map();
+// Fixture claims that failed, kept apart from `found`: a broken fixture is a
+// fact about this file, and reporting it beside a contrast failure would read
+// as a defect in the pane.
+/** @type {string[]} */
+const claims = [];
 for (const width of [320, 512]) {
   for (const theme of ["light", "dark"]) {
-    for (const { name, step, state, paste, files } of STATES) {
+    for (const { name, step, state, paste, files, shows, hides } of STATES) {
       const page = await browser.newPage({ viewport: { width, height: 620 } });
       // Office.js is fetched from Microsoft by `taskpane.html` and is not what
       // is being measured here — `render` is called directly. Refused rather
@@ -705,6 +755,30 @@ for (const width of [320, 512]) {
         },
         { state, step, paste, files, theme },
       );
+      // WHAT THE FIXTURE CLAIMS TO BE, asserted before anything is measured.
+      //
+      // A state named for a control it does not render is a shot of the wrong
+      // screen, and every measurement taken from it is about something else.
+      // `5-merge-done-undo` was exactly that for an unknown number of runs: the
+      // undo card needs `deckAtStart` and no fixture set one, so the audit
+      // reported clean on a pane with no undo card in it, under a name that
+      // says there is. Names are documentation; this makes them a check.
+      //
+      // `hides` is the same rule for a fixture whose subject is a control being
+      // WITHHELD — without it, a negative case passes when the control is
+      // missing for a reason the fixture was not testing.
+      const drawn = new Set(
+        await page.evaluate(() =>
+          [...document.querySelectorAll("[data-action]")].map((e) => e.getAttribute("data-action")),
+        ),
+      );
+      for (const action of shows ?? []) {
+        if (!drawn.has(action)) claims.push(`${name}: claims to show "${action}" and does not`);
+      }
+      for (const action of hides ?? []) {
+        if (drawn.has(action)) claims.push(`${name}: claims to withhold "${action}" and shows it`);
+      }
+
       await page.screenshot({ path: `${OUT}/${width}-${theme}-${name}.png` });
       // BEFORE the Tab below: a focus ring in the accessibility tree is not
       // what axe is being asked about, and the shot above is the clean state.
@@ -737,6 +811,14 @@ for (const width of [320, 512]) {
 }
 await browser.close();
 console.log(`${taken} shots in ${OUT}`);
+// BEFORE the audit's own verdict. A fixture that did not render its subject
+// makes every measurement taken from it meaningless, so it is not a finding
+// among findings — it is a reason to distrust the run.
+if (claims.length) {
+  console.log("these fixtures did not render what their names claim:");
+  for (const claim of [...new Set(claims)]) console.log(`  ${claim}`);
+  process.exit(1);
+}
 if (found.size === 0) {
   console.log(
     "audit: nothing overflows, every live label clears its contrast floor, every control shows where the keyboard is, " +

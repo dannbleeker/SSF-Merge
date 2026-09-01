@@ -20,6 +20,25 @@ export function isProd(name) {
   return name.includes("-prod");
 }
 
+/**
+ * Whether a manifest version is a number Office will accept.
+ *
+ * Both rules used to be `Number(first part) < 1`, and `Number` answers `NaN`
+ * for anything that is not a number at all — `NaN < 1` is FALSE, so `draft`,
+ * `v1.0.0` and a missing version each walked straight through the check that
+ * exists to catch a version Office rejects. The one input either rule caught
+ * by accident was the empty string, because `Number("")` is zero.
+ *
+ * So the shape is asserted rather than coerced: dot-separated digits, and a
+ * first part of at least 1. Office's own message is "Manifest Version Too Low",
+ * and a sibling project shipped a version below 1.0 in four manifests for
+ * months with a fully green suite.
+ */
+function versionIsAtLeastOne(version) {
+  if (!/^\d+(\.\d+)*$/.test(version)) return false;
+  return Number(version.split(".")[0]) >= 1;
+}
+
 function xmlRules(raw, name, out) {
   const text = withoutXmlComments(raw);
   if (!text.includes("<OfficeApp")) {
@@ -28,11 +47,11 @@ function xmlRules(raw, name, out) {
   }
   const version = /<Version>([^<]+)<\/Version>/.exec(text)?.[1];
   if (!version) out.push(`${name} has no <Version>`);
-  else if (Number(version.split(".")[0]) < 1) {
+  else if (!versionIsAtLeastOne(version)) {
     // "Manifest Version Too Low: The manifest has unsupported version number
     // less than 1.0." An ERROR, and a sibling project shipped it in four
     // manifests for months with a fully green suite.
-    out.push(`${name} has <Version>${version}</Version>, which is below 1.0 and Office rejects outright`);
+    out.push(`${name} has <Version>${version}</Version>, which Office will not take — it must be a number from 1.0 up`);
   }
   const id = /<Id>([^<]+)<\/Id>/.exec(text)?.[1];
   if (id !== REQUIRED_ID) {
@@ -65,12 +84,24 @@ function jsonRules(text, name, out) {
       `${name} carries id ${doc.id ?? "(none)"}, not ${REQUIRED_ID} — every existing sideload would be orphaned`,
     );
   }
-  if (Number(String(doc.version).split(".")[0]) < 1) {
-    out.push(`${name} has version ${doc.version}, which is below 1.0 and Office rejects outright`);
+  if (typeof doc.version !== "string" || doc.version === "") {
+    // The XML path has always said so and this one had no counterpart, so a
+    // manifest with no version at all passed.
+    out.push(`${name} has no version`);
+  } else if (!versionIsAtLeastOne(doc.version)) {
+    out.push(`${name} has version ${doc.version}, which Office will not take — it must be a number from 1.0 up`);
   }
   for (const extension of doc.extensions ?? []) {
-    if (extension.requirements) {
-      out.push(`${name} declares requirements; the PowerPointApi floor is checked at runtime by checkFloor instead`);
+    // `capabilities`, not the whole block. `requirements` also carries
+    // `scopes` — which host the add-in runs in, the JSON spelling of the XML's
+    // <Hosts> — and `formFactors`. Refusing the block outright forbade a
+    // correct declaration under a message about a floor that only the one field
+    // is about, and for a while the unified manifest did not say it was a
+    // PowerPoint add-in because of it.
+    if (extension.requirements?.capabilities) {
+      out.push(
+        `${name} declares requirement-set capabilities; the PowerPointApi floor is checked at runtime by checkFloor instead`,
+      );
     }
   }
   const asked = (doc.authorization?.permissions?.resourceSpecific ?? []).map((p) => p.name);
