@@ -163,15 +163,22 @@ export interface MergeReport {
    */
   landedAfter?: number;
   /**
-   * Why this run cannot say which of the deck's new slides are its own.
+   * Whether this run can say which of the deck's new slides are its own.
    *
-   * Set only when it cannot. `accountable` already withholds the undo card on
-   * this condition; without the sentence, the card is withheld SILENTLY and the
-   * user reads a plain success above the space where it used to be. The engine
-   * composed this sentence for its own `detail`, which the pane discards on the
-   * success path — so it was written, tested, and shown to nobody.
+   * Absent means yes, which is every ordinary run. False withholds the undo
+   * card — and without a sentence it withholds it SILENTLY, leaving a plain
+   * success above the space where the card used to be. The engine composes a
+   * sentence naming the two deck sizes for its own `detail`, and the pane
+   * discards `detail` on the success path, so that sentence was written, tested
+   * and shown to nobody.
+   *
+   * Said here in the pane's own voice rather than by carrying the engine's
+   * string through: the host layer writes `slide(s)` by house convention
+   * because its strings go to a run log, and the numbers are diagnostic where
+   * the fact is not. What the reader needs is that the deck moved and there is
+   * no way back.
    */
-  unaccounted?: string;
+  accountable?: boolean;
   paragraphsMerged?: number;
   /**
    * Workbooks behind a chart that could not be opened.
@@ -225,10 +232,10 @@ export function describeMerge(r: MergeReport): string {
   const parts = [`${plural(r.added, "slide")} added after slide ${r.landedAfter ?? r.deckAtStart}`];
   // FIRST after the count, because it changes what the rest of the sentence is
   // worth: the slides are there and there is no way to take them back.
-  if (r.unaccounted !== undefined) {
+  if (r.accountable === false) {
     parts.push(
-      `the deck also changed while the merge was being built (${r.unaccounted}), ` +
-        `so there is no offer to take these slides back`,
+      "the deck also changed while the merge was being built, so this run cannot say which of the new " +
+        "slides are its own — there is no offer to take them back",
     );
   }
   if (r.paragraphsMerged !== undefined) {

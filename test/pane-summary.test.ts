@@ -172,11 +172,15 @@ describe("a merge the deck changed underneath", () => {
       added: 6,
       deckAtStart: 12,
       landedAfter: 13,
-      unaccounted: "the deck was 12 slide(s) when this run was planned and 13 when it inserted",
+      accountable: false,
       paragraphsMerged: 6,
     });
-    expect(line).toContain("no offer to take these slides back");
-    expect(line).toContain("when this run was planned");
+    expect(line).toContain("no offer to take them back");
+    expect(line).toContain("cannot say which of the new slides are its own");
+    // The pane's own voice, not the engine's diagnostic string carried through.
+    // The host layer writes `slide(s)` by house convention because its
+    // sentences go to a run log; this one goes on a screen.
+    expect(line, "a run log's spelling on a user's screen").not.toContain("slide(s)");
   });
 
   it("anchors the count where the slides actually landed", () => {

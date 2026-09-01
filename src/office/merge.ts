@@ -81,15 +81,7 @@ export interface MergeOutcome {
    * no such moment to name. `describeMerge` falls back to `deckAtStart`.
    */
   landedAfter?: number;
-  /**
-   * Why this run cannot say which of the deck's new slides are its own, in
-   * words, when it cannot.
-   *
-   * Carried rather than left in `detail`: the pane shows `describeMerge` on the
-   * success path and discards `detail` entirely, so the explanation for a
-   * missing undo card had no route to a user.
-   */
-  unaccounted?: string;
+
   runId: string;
   /** Placeholders found in the block, for the pane to report on. */
   fields: string[];
@@ -445,7 +437,6 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
     // `describeMerge(outcome)` there — so a sentence composed here and not
     // carried is a sentence nobody reads.
     landedAfter: insert.before,
-    ...(unaccounted !== undefined ? { unaccounted } : {}),
     runId,
     fields: prepared.fields,
     imageFields: prepared.imageFields,
