@@ -14,6 +14,7 @@
  */
 import { describe, expect, it } from "vitest";
 import JSZip from "jszip";
+import { prepareBlock } from "../src/core/merge/prepare.js";
 import { buildPlan } from "../src/core/merge/plan.js";
 import { runPlan } from "../src/core/merge/run.js";
 import { toRecordSet } from "../src/core/data/recordset.js";
@@ -312,6 +313,45 @@ describe("a workbook a generator wrote", () => {
  * A rule no test can drive is a rule nobody can check — and a mutation sweep
  * proved both were exactly that.
  */
+describe("one unparseable part inside an otherwise good workbook", () => {
+  /**
+   * A template arrives from wherever the user got it, and a workbook it carries
+   * may have a part this parser will not take. The recovery is a `continue` —
+   * the other parts are still worth merging, and the chart's own cache already
+   * holds the number a reader sees — and the branch had never been executed.
+   *
+   * If it regressed, an ordinary sender's deck would throw out of the middle of
+   * a merge rather than finishing with the chart intact. That is the whole
+   * difference between a run that reports a shortfall and one that reports
+   * nothing at all.
+   */
+  it("does not lose the merge over it", async () => {
+    const pkg = await Pkg.open(
+      await makeDeck([
+        {
+          paragraphs: [["{{Name}}"]],
+          chart: { title: "{{Name}}", categories: ["{{Name}}"], workbook: ["{{Name}}"] },
+        },
+      ]),
+    );
+    const embedding = pkg.partNames().find((n) => /^ppt\/embeddings\/.+\.xlsx$/.test(n))!;
+    const book = await JSZip.loadAsync(await pkg.bytes(embedding));
+    // A worksheet the workbook still DECLARES, holding markup no parser takes.
+    const sheets = Object.keys(book.files).filter((n) => /worksheets\/.*\.xml$/.test(n));
+    expect(sheets.length, "the fixture has a worksheet to break").toBeGreaterThan(0);
+    book.file(sheets[0]!, "<worksheet><sheetData><row></worksheet>");
+    pkg.setBytes(embedding, await book.generateAsync({ type: "uint8array" }));
+
+    const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "r");
+    if (!prepared.ok) throw new Error(prepared.why);
+    const records = toRecordSet([["Name"], ["Ada"]]);
+    // The merge finishes. That is the assertion — the shape of the failure this
+    // guards is a throw, not a wrong answer.
+    const out = await runPlan(pkg, buildPlan(prepared.block, records, { runId: "r" }), records);
+    expect(out.slides.length, "the slide was still produced").toBe(1);
+  });
+});
+
 describe("an embedded workbook that would inflate to gigabytes", () => {
   /**
    * A `.pptx` arrives from wherever the user got it, and a chart's data is a

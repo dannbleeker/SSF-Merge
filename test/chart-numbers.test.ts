@@ -175,6 +175,29 @@ describe("a value cell that holds its string inline", () => {
     expect((await sheetCells(zip))["B2"]).toEqual({ type: "n", value: "1250000" });
   });
 
+  it("holds an INLINE value cell it refused, which shares no string with anything", async () => {
+    /**
+     * The other half of holding a refused cell. A shared-string cell is held by
+     * the `<si>` it reads through, because that is the node the workbook's text
+     * pass reaches; a cell that carries its own text has no `<si>`, so it is
+     * held by sheet and reference instead.
+     *
+     * Inline is what a generator writes when it never built a string table —
+     * the same population `mergeGraphics` reads worksheets for at all — so this
+     * is not a corner of the format, it is the other kind of producer.
+     *
+     * `{{Notes}}` against a `Notes` column holding a word: the numeric pass
+     * refuses it, and the text pass must not then merge it.
+     */
+    const zip = await withValueCell('<c r="B2" t="inlineStr"><is><t>{{Notes}}</t></is></c>');
+    const rels = await zip.file("ppt/charts/_rels/chart2.xml.rels")!.async("string");
+    const target = /Target="([^"]*\.xlsx)"/.exec(rels)![1]!;
+    const book = await JSZip.loadAsync(await zip.file(`ppt/${target.replace(/^\.\.\//, "")}`)!.async("nodebuffer"));
+    const sheet = await book.file("xl/worksheets/sheet1.xml")!.async("string");
+    expect(sheet, "the placeholder is what stays").toContain("{{Notes}}");
+    expect(sheet, "and the row's words did not replace it").not.toContain("hello");
+  });
+
   it("leaves a FORMULA cell and its formula alone", async () => {
     // `t="str"` is a formula's cached string result, and it keeps that result
     // in `<v>`. The reader used to name `str` alongside `inlineStr` and then
