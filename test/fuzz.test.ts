@@ -423,7 +423,7 @@ describe("the text boundaries, over input nobody wrote by hand", () => {
     // every slide with the wrong column and satisfies every assertion in the
     // loop, and so does a resolver that fills nothing at all.
     const split = parseXml(`<a:p ${A}><a:r><a:t>Dear {{Fi</a:t></a:r><a:r><a:t>rst}} of {{City}}</a:t></a:r></a:p>`);
-    mergeParagraph(split.documentElement as unknown as Element, makeResolver(row));
+    mergeParagraph(split.documentElement, makeResolver(row));
     expect(
       elements(split, A_NS, "t")
         .map((t) => t.textContent ?? "")
