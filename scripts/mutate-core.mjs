@@ -79,40 +79,54 @@ const RULES = [
  * linked rather than copied: it is most of the bytes, and a junction works on
  * Windows without privileges as well as on POSIX.
  *
- * `.git` is left out, so the few tests that shell out to git (`docprops`) do
- * not run in the copy: the sweep measures 1337 of the suite's 1342 as of
- * 2026-09-01. They are about committed FILES rather than about `src/core`, so
- * no mutant here could reach them — but the count differing from a plain
- * `vitest run` is otherwise a puzzle, and a reader who thinks the suite is
- * short will not trust the verdict.
+ * `.git` IS copied, and that is not incidental. It was left out at first — it
+ * is 27M and no mutant in `src/core` could reach a test about committed files —
+ * and the omission made the whole tool vacuous: `test/docprops.test.ts` calls
+ * `git ls-files` at collection time, which throws outside a repository, so the
+ * copy's suite was red before any mutant was written. Every mutant then read
+ * "caught", `survivors` stayed empty, and the run ended on a line that looked
+ * like a perfect score. A commit shipped claiming that control had been checked;
+ * it had not, and the check that would have caught it read `tail`'s exit code
+ * rather than vitest's.
  *
- * **Check the control before believing a clean sweep.** If the copy's suite
- * were red for a reason of its own, every mutant would read "caught" and the
- * run would report zero survivors — the vacuous measurement this repo keeps
- * catching elsewhere. Copy the tree the same way and run the suite with nothing
- * mutated; it must be green.
+ * So the control is RUN, here, by this script, and it is not advice to the
+ * reader: `main` copies the tree, runs the suite with nothing mutated, and
+ * refuses to report survivors at all if that comes back red. A sweep whose
+ * baseline is red cannot distinguish a killed mutant from a broken copy, and
+ * the failure mode is a clean-looking result rather than an error.
  */
 function workingCopy() {
   const dir = mkdtempSync(join(tmpdir(), "ssf-mutate-"));
   cpSync(".", dir, {
     recursive: true,
-    filter: (from) => !/(^|[\\/])(node_modules|\.git|dist|dist-lib|coverage)([\\/]|$)/.test(from),
+    filter: (from) => !/(^|[\\/])(node_modules|dist|dist-lib|coverage)([\\/]|$)/.test(from),
   });
   symlinkSync(join(process.cwd(), "node_modules"), join(dir, "node_modules"), "junction");
   return dir;
 }
 
-/** @param {string} cwd */
-function suiteGreen(cwd) {
+/**
+ * The suite, run in the copy.
+ *
+ * Returns the output as well as the verdict, because the CONTROL has to be able
+ * to say why it is red. A bare boolean is what let a broken copy read as a
+ * flawless sweep.
+ *
+ * @param {string} cwd
+ * @returns {{ green: boolean; output: string }}
+ */
+function runSuite(cwd) {
   try {
-    execFileSync("node", ["./node_modules/vitest/vitest.mjs", "run", "--silent"], {
+    const out = execFileSync("node", ["./node_modules/vitest/vitest.mjs", "run", "--silent"], {
       cwd,
       stdio: "pipe",
+      encoding: "utf8",
       timeout: 600000,
     });
-    return true;
-  } catch {
-    return false;
+    return { green: true, output: out };
+  } catch (e) {
+    const err = /** @type {{ stdout?: string; stderr?: string; message?: string }} */ (e);
+    return { green: false, output: `${err.stdout ?? ""}${err.stderr ?? ""}` || (err.message ?? "") };
   }
 }
 
@@ -132,6 +146,20 @@ function inComment(source, at) {
   return /^\s*(\*|\/\/|\/\*)/.test(line);
 }
 
+/**
+ * How many tests the control ran, read out of vitest's own summary.
+ *
+ * Printed so a reader can compare it with a plain `vitest run`. A copy that
+ * quietly collects fewer files is the same vacuous measurement as a red one,
+ * one step less obvious.
+ *
+ * @param {string} output
+ */
+function countedTests(output) {
+  const m = /Tests\s+(\d+) passed/.exec(output);
+  return m ? Number(m[1]) : undefined;
+}
+
 function main() {
   const cap = Number(process.argv[2] ?? 40);
   /** @type {string[]} */
@@ -141,6 +169,18 @@ function main() {
   console.log(`mutating a copy at ${copy}`);
 
   try {
+    // The control, run rather than recommended. Nothing is mutated yet, so this
+    // is the copy answering for itself: if it is red here, every mutant below
+    // reads "caught" and the run reports a flawless sweep it has not measured.
+    const control = runSuite(copy);
+    if (!control.green) {
+      console.log("the copy's suite is RED with nothing mutated — no sweep is possible from here");
+      console.log(control.output.split("\n").slice(-25).join("\n"));
+      process.exitCode = 1;
+      return;
+    }
+    console.log(`control: the unmutated copy is green — ${countedTests(control.output) ?? "?"} test(s)`);
+
     outer: for (const file of TARGETS) {
       const original = readFileSync(file, "utf8");
       for (const rule of RULES) {
@@ -159,7 +199,7 @@ function main() {
         writeFileSync(join(copy, file), mutated);
         let green;
         try {
-          green = suiteGreen(copy);
+          green = runSuite(copy).green;
         } finally {
           // Restored inside the COPY. Nothing here can leave the repository
           // mutated, however this run ends.
