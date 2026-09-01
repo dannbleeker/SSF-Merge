@@ -74,6 +74,59 @@ describe("Pkg", () => {
     expect(pkg.nextSlideNumber()).toBe(2);
   });
 
+  it("reads a part's relationships once, not once per relationship added", async () => {
+    /**
+     * `addRel` re-read every `<Relationship>` in the part to find the highest
+     * id, and the presentation's rels is the part that grows by one per merged
+     * slide — so a merge was quadratic in the rows. Measured before the fix:
+     * 250 rows took 353 ms and 2000 took 7364, eight times the work for
+     * twenty-one times the time; after it, 4000 rows take 2705 ms.
+     *
+     * The assertion is on WORK rather than wall clock, which measures the
+     * machine it happens to run on. One walk of the list is all this needs, and
+     * the ids must still be distinct and ascending.
+     */
+    const pkg = await deck(ONE);
+    const path = Pkg.relsPathFor("ppt/presentation.xml");
+    const doc = await pkg.doc(path);
+    let walks = 0;
+    const real = doc.getElementsByTagNameNS.bind(doc);
+    doc.getElementsByTagNameNS = ((ns: string, local: string) => {
+      if (local === "Relationship") walks++;
+      return real(ns, local);
+    }) as typeof doc.getElementsByTagNameNS;
+
+    const ids: string[] = [];
+    for (let i = 0; i < 40; i++) ids.push(await pkg.addRel("ppt/presentation.xml", "http://example/t", `x${i}.xml`));
+    expect(walks, "one walk per relationship added is what made a merge quadratic").toBeLessThanOrEqual(1);
+    expect(new Set(ids).size, "two relationships were given one id").toBe(ids.length);
+    const numbers = ids.map((id) => Number(id.slice(3)));
+    expect([...numbers].sort((a, b) => a - b)).toEqual(numbers);
+  });
+
+  it("declares a content type once, without re-reading the whole list each time", async () => {
+    // `addContentTypeOverride` asked `.some()` over a list it is itself
+    // appending to, once per cloned chart or notes page.
+    const pkg = await deck(ONE);
+    const types = await pkg.doc("[Content_Types].xml");
+    let walks = 0;
+    const real = types.getElementsByTagNameNS.bind(types);
+    types.getElementsByTagNameNS = ((ns: string, local: string) => {
+      if (local === "Override") walks++;
+      return real(ns, local);
+    }) as typeof types.getElementsByTagNameNS;
+
+    for (let i = 0; i < 40; i++) {
+      await pkg.addContentTypeOverride(`/ppt/charts/chart${i}.xml`, "application/example");
+    }
+    expect(walks).toBeLessThanOrEqual(1);
+    // Every one declared, and asking again does not add a second.
+    await pkg.addContentTypeOverride("/ppt/charts/chart7.xml", "application/example");
+    const declared = [...(await pkg.text("[Content_Types].xml")).matchAll(/PartName="([^"]+)"/g)].map((m) => m[1]);
+    expect(declared.filter((n) => n === "/ppt/charts/chart7.xml")).toHaveLength(1);
+    expect(declared).toContain("/ppt/charts/chart39.xml");
+  });
+
   it("survives a round trip through base64", async () => {
     const pkg = await deck(ONE);
     const again = await Pkg.open(await pkg.toBase64());
