@@ -441,7 +441,11 @@ function body(doc: Document, state: PaneState, current: StepId, orange: OrangeHo
     // where it would otherwise be discovered: `{{Photo|image}}` on a notes page
     // is filled by nothing and printed as written, on presenter view and every
     // handout.
-    const offSlide = state.imageFieldsOffSlide ?? [];
+    // MINUS the ones that are also on a slide, where they will be filled. The
+    // same field on a slide and in its notes was told to "put the field in a
+    // shape on the slide instead" about a field already in one.
+    const onSlide = new Set(state.imageFields ?? []);
+    const offSlide = (state.imageFieldsOffSlide ?? []).filter((f) => !onSlide.has(f));
     if (offSlide.length > 0) {
       out.push(
         el(doc, "p", {

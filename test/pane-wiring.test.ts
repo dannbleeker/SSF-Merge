@@ -118,6 +118,16 @@ async function openPane(): Promise<HTMLElement> {
 function pane(): HTMLElement {
   return document.getElementById("pane") as HTMLElement;
 }
+/**
+ * Where THIS deck's crash record lives.
+ *
+ * One key per deck: a single key made every write a choice between destroying
+ * another deck's record of slides still sitting in it and denying this deck a
+ * record at all. The literal is repeated rather than shared with the mock
+ * above, because `vi.mock` is hoisted above every `const` in this file.
+ */
+const CRUMB_KEY = "ssf-merge.run.v1:https://example-my.sharepoint.com/personal/x/Documents/deck.pptx";
+
 function primary(): HTMLButtonElement {
   return pane().querySelector("button.primary") as HTMLButtonElement;
 }
@@ -226,7 +236,7 @@ describe("the boot crumb read", () => {
     office.runMerge.mockReturnValueOnce(new Promise((res) => (landed = res)));
     primary().click();
     await settle();
-    const during = localStorage.getItem("ssf-merge.run.v1");
+    const during = localStorage.getItem(CRUMB_KEY);
     expect(during, "the run wrote its pending marker").not.toBeNull();
 
     // Now the boot count finally answers, mid-merge.
@@ -234,11 +244,53 @@ describe("the boot crumb read", () => {
     await settle();
 
     expect(document.body.textContent, "about a merge that is running").not.toContain("did not finish");
-    expect(localStorage.getItem("ssf-merge.run.v1"), "the record the run may need").not.toBeNull();
+    expect(localStorage.getItem(CRUMB_KEY), "the record the run may need").not.toBeNull();
 
     landed({ ...OUTCOME, deckAtStart: 12 });
     await settle();
   });
+});
+
+it("still reports a genuine crash record while an unrelated read is running", async () => {
+  /**
+   * The first guard was `!state.running`, which is too wide: this branch is
+   * never retried, so ANY run in flight when the boot count lands — the
+   * "Reading the slides…" a user is most likely to start first — swallowed a
+   * real crash record for the whole session.
+   *
+   * The marker's id is unique per run now, so the pane recognises its OWN and
+   * says nothing only about that.
+   */
+  localStorage.setItem(
+    CRUMB_KEY,
+    JSON.stringify({
+      kind: "ssf-merge-run",
+      deckAtStart: 12,
+      added: 0,
+      runId: "died-in-another-session",
+      startedAt: "2026-08-27T10:00:00.000Z",
+      doc: "https://example-my.sharepoint.com/personal/x/Documents/deck.pptx",
+    }),
+  );
+  let count: (n: number) => void = () => undefined;
+  office.slideCount.mockReset().mockReturnValueOnce(new Promise((res) => (count = res)));
+  await openPane();
+  await settle();
+
+  // An ordinary template read is in flight when the boot count answers.
+  office.slideCount.mockResolvedValue(12);
+  type("from", "4");
+  type("to", "6");
+  let read: (r: unknown) => void = () => undefined;
+  office.inspectBlock.mockReturnValueOnce(new Promise((res) => (read = res)));
+  primary().click();
+  await settle();
+  count(18);
+  await settle();
+
+  expect(document.body.textContent, "a crash record this pane did not write").toContain("did not finish");
+  read(REPORT);
+  await settle();
 });
 
 describe("a read that answers after the user has moved", () => {
@@ -1470,7 +1522,7 @@ describe("taking a real merge back", () => {
     primary().click();
     await settle();
 
-    const stored: unknown = JSON.parse(globalThis.localStorage.getItem("ssf-merge.run.v1") ?? "null");
+    const stored: unknown = JSON.parse(globalThis.localStorage.getItem(CRUMB_KEY) ?? "null");
     expect(stored, "the first run's six slides are still recorded").toMatchObject({ deckAtStart: 12, added: 6 });
   });
 
@@ -1532,7 +1584,7 @@ describe("taking a real merge back", () => {
      * all, one press from removing part of the deck the user is choosing from.
      */
     localStorage.setItem(
-      "ssf-merge.run.v1",
+      CRUMB_KEY,
       JSON.stringify({
         kind: "ssf-merge-run",
         deckAtStart: 12,
@@ -1665,7 +1717,7 @@ describe("taking a real merge back", () => {
      * open, indefinitely, under a sentence that was not true.
      */
     localStorage.setItem(
-      "ssf-merge.run.v1",
+      CRUMB_KEY,
       JSON.stringify({
         kind: "ssf-merge-run",
         deckAtStart: 12,
@@ -1762,6 +1814,60 @@ describe("taking a real merge back", () => {
     await settle();
     expect(undoButton(), "twice is a state, not a minute").toBeNull();
     expect(document.body.textContent).toContain("thumbnail rail");
+  });
+
+  it("counts a press the host swallowed, not only one that disowned something", async () => {
+    /**
+     * The other case `FRUITLESS_LIMIT` exists for. PowerPoint accepts the
+     * deletes and performs none: `undoInsert` proved the whole plan, so nothing
+     * is disowned and nothing came out — `removed: 0, disowned: 0`. Counting
+     * only the disowned shape meant this one never advanced the counter, and
+     * the offer stood over slides no press could take for the rest of the
+     * session.
+     */
+    await afterMerge();
+    const swallowed = {
+      removed: 0,
+      disowned: 0,
+      detail: "asked for 6 slide(s) from slides 13 to 18 and the deck shrank by 0",
+    };
+    office.undoMerge.mockResolvedValueOnce(swallowed);
+    office.slideCount.mockResolvedValueOnce(18);
+    undoButton()?.click();
+    await settle();
+    expect(undoButton(), "once may be a bad minute").not.toBeNull();
+
+    office.undoMerge.mockResolvedValueOnce(swallowed);
+    office.slideCount.mockResolvedValueOnce(18);
+    undoButton()?.click();
+    await settle();
+    expect(undoButton(), "twice is a host that will not do it").toBeNull();
+  });
+
+  it("gives the budget back after a press that worked", async () => {
+    /**
+     * `fruitless` was spread through the success path with the rest of the
+     * outcome, so a fruitless press, a working one, and a second fruitless one
+     * withdrew the card — a press short of the budget the changelog and the
+     * manual both promise, with three merged slides still in the deck.
+     */
+    await afterMerge();
+    office.undoMerge.mockResolvedValueOnce({ removed: 0, disowned: 6, detail: "nothing to take back" });
+    office.slideCount.mockResolvedValueOnce(18);
+    undoButton()?.click();
+    await settle();
+
+    office.undoMerge.mockResolvedValueOnce({ removed: 3, disowned: 0, detail: "removed 3 slide(s)" });
+    office.slideCount.mockResolvedValueOnce(15);
+    undoButton()?.click();
+    await settle();
+    expect(undoButton(), "slides are still owed").not.toBeNull();
+
+    office.undoMerge.mockResolvedValueOnce({ removed: 0, disowned: 3, detail: "nothing to take back" });
+    office.slideCount.mockResolvedValueOnce(15);
+    undoButton()?.click();
+    await settle();
+    expect(undoButton(), "the count was not given back by the press that worked").not.toBeNull();
   });
 
   it("does not carry a withdrawal into the next merge, on either path out of a run", async () => {

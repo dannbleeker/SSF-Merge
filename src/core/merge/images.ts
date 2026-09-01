@@ -18,7 +18,7 @@ import type { FillMode } from "../image/fill.js";
 import type { Pkg } from "../pptx/pkg.js";
 import { REL_TYPE } from "../pptx/parts.js";
 import { A_NS, elements } from "../pptx/xml.js";
-import { editRuns, fieldsInText, type Edit } from "./text.js";
+import { editRuns, fieldsInText, textGroups, type Edit } from "./text.js";
 
 /**
  * The formats that mean "this is a picture", and which fill they ask for.
@@ -66,15 +66,26 @@ export function imageMode(format: string | undefined): FillMode | undefined {
     : undefined;
 }
 
-/** Every image field a part refers to, in first-seen order. */
+/**
+ * Every image field a part refers to, in first-seen order.
+ *
+ * The SAME reader `mergeDocument` uses, never a second walk of its own. This
+ * had one — DrawingML paragraphs only — so it could not see the places a
+ * chart's text actually lives: a category label in a `<c:strCache>`, a series
+ * name, a cell in the embedded workbook. A `{{Photo|image}}` written there was
+ * reported by nothing and printed verbatim onto the slide.
+ *
+ * `asksForImage` rather than `imageMode`, for the same reason the resolver uses
+ * it: `{{Photo|images}}` and `{{Photo|image-cover}}` are picture requests with
+ * the mode misspelled, and reading them as text prints the file name where a
+ * picture belongs.
+ */
 export function imageFieldsIn(doc: Document): string[] {
   const seen = new Set<string>();
-  for (const paragraph of elements(doc, A_NS, "p")) {
-    const joined = elements(paragraph, A_NS, "t")
-      .map((t) => t.textContent ?? "")
-      .join("");
+  for (const group of textGroups(doc)) {
+    const joined = group.map((node) => node.textContent ?? "").join("");
     for (const hit of fieldsInText(joined)) {
-      if (imageMode(hit.format)) seen.add(hit.name);
+      if (asksForImage(hit.format)) seen.add(hit.name);
     }
   }
   return [...seen];

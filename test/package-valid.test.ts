@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import JSZip from "jszip";
 import { readFileSync } from "node:fs";
 import { DOMParser } from "@xmldom/xmldom";
-import { Pkg, resolveTarget } from "../src/core/pptx/pkg.js";
+import { Pkg, resolveTargetSpellings } from "../src/core/pptx/pkg.js";
 import { prepareBlock } from "../src/core/merge/prepare.js";
 import { buildPlan } from "../src/core/merge/plan.js";
 import { runPlan } from "../src/core/merge/run.js";
@@ -38,6 +38,9 @@ async function problemsIn(bytes: Uint8Array): Promise<string[]> {
   const zip = await JSZip.loadAsync(bytes);
   const names = Object.keys(zip.files).filter((n) => !zip.files[n]?.dir);
   const has = (p: string): boolean => names.includes(p);
+  /** Whichever spelling of a resolved target this package holds — see `Pkg.resolved`. */
+  const held = (asWritten: string, decoded: string): string =>
+    asWritten !== decoded && has(asWritten) ? asWritten : decoded;
   const read = async (p: string): Promise<Document> => parse(await zip.file(p)!.async("string"));
   const problems: string[] = [];
 
@@ -50,7 +53,11 @@ async function problemsIn(bytes: Uint8Array): Promise<string[]> {
       // An external target is a URL and is not a package path.
       if ((rel.getAttribute("TargetMode") ?? "") === "External") continue;
       const target = rel.getAttribute("Target") ?? "";
-      const path = resolveTarget(owner, target);
+      // BOTH spellings, like the engine. OPC maps a part name to a ZIP item by
+      // stripping the leading `/` and nothing else, so a percent-encoded name is
+      // stored verbatim — an oracle that only decoded would report every
+      // legitimately encoded package as broken.
+      const path = held(...resolveTargetSpellings(owner, target));
       if (!has(path))
         problems.push(`${name}: ${rel.getAttribute("Id")} points at ${target}, which is not in the package`);
     }
@@ -117,7 +124,7 @@ async function problemsIn(bytes: Uint8Array): Promise<string[]> {
     const to = rId === null ? undefined : target.get(rId);
     if (to === undefined) problems.push(`the deck lists a slide whose relationship ${rId ?? "(none)"} does not exist`);
     else {
-      const path = resolveTarget("ppt/presentation.xml", to ?? "");
+      const path = held(...resolveTargetSpellings("ppt/presentation.xml", to ?? ""));
       listed.add(path);
       if (!has(path)) problems.push(`the deck lists ${path}, which is not in the package`);
     }

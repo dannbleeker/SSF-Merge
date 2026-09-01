@@ -922,9 +922,10 @@ then offers the ones that are left, not the number the merge originally added.
 A sweep that removed only some of them keeps the offer up, because the rest are
 still there and only you can finish. If pressing again proves nothing, the card
 goes rather than standing over slides it cannot remove, and the slides stay in
-the deck for you to delete by hand. The merge button is still the one that
-landed — "Added 6 slides", not "Add 6 slides" — until you change the block or
-the data, which is a different merge and arms it again.
+the deck for you to delete by hand. The merge button stays disarmed while any of
+those slides are there — it reads "3 of 6 slides still there" after a partial
+sweep — until you change the block or the data, which is a different merge and
+arms it again.
 
 **If the pane closes before you take them back, the offer comes with you.**
 Reopen the add-in and it says which merge left slides in your deck and offers to

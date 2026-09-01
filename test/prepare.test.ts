@@ -297,6 +297,38 @@ describe("placeholders in the speaker notes", () => {
     expect(prepared.imageFields).toEqual([]);
   });
 
+  it("sees a picture field in a chart's own labels, where a chart keeps its text", async () => {
+    // The scan walked DrawingML paragraphs only, so it could not see the place
+    // a chart's text actually lives — a category label in `<c:strCache>`, a
+    // series name, a cell in the embedded workbook. The pane's sentence named
+    // "a chart" and a chart's labels were exactly what it missed.
+    const deck = await makeDeck([
+      { paragraphs: [["Quarterly review"]], chart: { categories: ["{{Photo|image}}"] } },
+      { paragraphs: [["after"]] },
+    ]);
+    const pkg = await Pkg.open(deck);
+    const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "run1");
+    expect(prepared.ok, prepared.ok ? "" : prepared.why).toBe(true);
+    if (!prepared.ok) return;
+    expect(prepared.imageFieldsOffSlide).toEqual(["Photo"]);
+  });
+
+  it("reads a misspelled picture mode as a picture request, as the merge does", async () => {
+    // `{{Photo|images}}` is a picture request with the mode misspelled, and
+    // `makeResolver` already treats it as one — so the merge leaves the
+    // placeholder visible rather than printing a file name. A scan gating on
+    // the exact mode called it ordinary text and said nothing.
+    const deck = await makeDeck([
+      { paragraphs: [["Quarterly review"]], notes: "Bring {{Photo|images}}" },
+      { paragraphs: [["after"]] },
+    ]);
+    const pkg = await Pkg.open(deck);
+    const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "run1");
+    expect(prepared.ok).toBe(true);
+    if (!prepared.ok) return;
+    expect(prepared.imageFieldsOffSlide).toEqual(["Photo"]);
+  });
+
   it("does not call a picture field on a SLIDE off-slide", async () => {
     const deck = await makeDeck([{ paragraphs: [["{{Photo|image}}"]] }, { paragraphs: [["after"]] }]);
     const pkg = await Pkg.open(deck);

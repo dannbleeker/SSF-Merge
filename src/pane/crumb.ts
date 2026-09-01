@@ -29,6 +29,43 @@
 
 const KEY = "ssf-merge.run.v1";
 
+/**
+ * How many decks' records the store will hold.
+ *
+ * One key per deck the user has merged in, so a run in one deck can never
+ * destroy another's — the single key was a choice between overwriting a
+ * stranger's record and denying them one, and both are losses. Bounded because
+ * `localStorage` is not: a user who merges into a hundred decks should not
+ * carry a hundred records for ever, and the oldest is the one least likely to
+ * still have slides in it.
+ */
+const KEEP_DECKS = 8;
+
+/** The key a deck's record lives under. */
+function keyFor(doc: string): string {
+  return `${KEY}:${doc}`;
+}
+
+/** Every deck key this store holds, oldest write first. */
+function deckKeys(s: Storage): string[] {
+  const keys: string[] = [];
+  for (let i = 0; i < s.length; i++) {
+    const k = s.key(i);
+    if (k !== null && k.startsWith(`${KEY}:`)) keys.push(k);
+  }
+  const at = (k: string): number => {
+    try {
+      const parsed: unknown = JSON.parse(s.getItem(k) ?? "");
+      const when = typeof parsed === "object" && parsed !== null ? (parsed as Partial<Crumb>).startedAt : undefined;
+      const t = typeof when === "string" ? Date.parse(when) : Number.NaN;
+      return Number.isFinite(t) ? t : 0;
+    } catch {
+      return 0;
+    }
+  };
+  return keys.sort((a, b) => at(a) - at(b));
+}
+
 /** What a run left behind, if it did not get to finish. */
 export interface Crumb {
   /** Names the shape for whatever reads it, and dates it for whoever changes it. */
@@ -140,18 +177,12 @@ export function dropCrumb(c: Omit<Crumb, "kind" | "startedAt">): void {
   const s = store();
   if (!s) return;
   try {
-    // ANOTHER DECK'S record is not this run's to destroy. The read side refuses
-    // a stranger's crumb at length and `clearCrumb` was taught the same check;
-    // the write side had none, so opening a second deck and pressing Merge
-    // erased the first deck's record of slides that are still sitting in it —
-    // the asymmetry that makes a careful check on one side worthless.
-    //
-    // Only a crumb that is HOLDING something is protected. One written with
-    // `added: 0` is a pending marker for a run that may never have landed
-    // anything, and refusing to overwrite that would make the key unreclaimable
-    // by any other deck — the same trap `clearCrumb`'s docstring names.
-    const raw = s.getItem(KEY);
-    if (raw && belongsToAnotherDeck(raw, c.doc) && holdingSlides(raw)) return;
+    // ONE KEY PER DECK. A single key made every write a choice between
+    // destroying another deck's record of slides still sitting in it and
+    // denying this deck one at all — the first was the defect, and refusing the
+    // write was the fix that produced the second: a deck whose merge was never
+    // swept locked every other deck out of crash recovery for the life of the
+    // browser profile. Keyed by document, neither happens.
     const prior = readCrumb(c.doc);
     // The SAME run, and a date that is one. Two of the pane's writes use a
     // shared id — "pending" before an insert answers, and "recovered" for a run
@@ -163,7 +194,12 @@ export function dropCrumb(c: Omit<Crumb, "kind" | "startedAt">): void {
     const sameRun = prior !== undefined && prior.runId === c.runId && prior.deckAtStart === c.deckAtStart;
     const startedAt = sameRun && prior !== undefined && isStamp(prior.startedAt) ? prior.startedAt : now();
     const crumb: Crumb = { kind: "ssf-merge-run", startedAt, ...c };
-    s.setItem(KEY, JSON.stringify(crumb));
+    s.setItem(keyFor(c.doc), JSON.stringify(crumb));
+    // Oldest first, because a record whose deck has not been opened in a
+    // hundred merges is the one least likely to still describe slides that are
+    // there.
+    const keys = deckKeys(s);
+    for (const key of keys.slice(0, Math.max(0, keys.length - KEEP_DECKS))) s.removeItem(key);
   } catch {
     /* a merge does not fail because a browser would not remember something */
   }
@@ -189,26 +225,16 @@ export function clearCrumb(here: string): void {
   const s = store();
   if (!s) return;
   try {
+    s.removeItem(keyFor(here));
+    // The build before this one kept every deck's record under ONE key, so a
+    // crumb written then may still be sitting there. Removed only when it names
+    // THIS deck — or cannot be identified at all, because a record nothing can
+    // match would otherwise sit in the store for ever.
     const raw = s.getItem(KEY);
-    // Read through `readCrumb` rather than re-implementing the shape check, so
-    // "a crumb this build understands" cannot come to mean two different things
-    // in the two functions that ask it.
-    if (raw && readCrumb(here) === undefined && belongsToAnotherDeck(raw, here)) return;
+    if (raw && belongsToAnotherDeck(raw, here)) return;
     s.removeItem(KEY);
   } catch {
     /* nothing to be done, and nothing worth failing over */
-  }
-}
-
-/** Whether a stored record says a run left slides behind that nobody has taken back. */
-function holdingSlides(raw: string): boolean {
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null) return false;
-    const added = (parsed as Partial<Crumb>).added;
-    return typeof added === "number" && added > 0;
-  } catch {
-    return false;
   }
 }
 
@@ -242,7 +268,9 @@ export function readCrumb(here: string): Crumb | undefined {
   const s = store();
   if (!s) return undefined;
   try {
-    const raw = s.getItem(KEY);
+    // This deck's own key, and — for a crumb written by the build that kept one
+    // key for every deck — the old one, which `doc` still has to match below.
+    const raw = s.getItem(keyFor(here)) ?? s.getItem(KEY);
     if (!raw) return undefined;
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed !== "object" || parsed === null) return undefined;

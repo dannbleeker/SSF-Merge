@@ -1287,3 +1287,28 @@ describe("the collapsible controls agree with the table that names them", () => 
     }
   });
 });
+describe("a picture field where a picture cannot go", () => {
+  const withFields = { ...ready, fields: ["Name", "Photo"], block: { from: 1, to: 2 } };
+
+  it("names it, so the user hears it before the merge rather than off a printout", () => {
+    // `placeImages` fills a shape on a slide. On a notes page, in a chart's
+    // text or inside SmartArt the field is filled by nothing and printed as
+    // written — onto presenter view and every handout.
+    const pane = paneFor({ ...withFields, imageFieldsOffSlide: ["Photo"] }, "fields");
+    expect(pane.textContent).toContain("{{Photo}}");
+    expect(pane.textContent).toContain("cannot go");
+  });
+
+  it("says nothing about a field that is ALSO on a slide, where it will be filled", () => {
+    // The same field in a shape and in that slide's notes. Telling the user to
+    // "put the field in a shape on the slide instead" is advice about a field
+    // already in one.
+    const pane = paneFor({ ...withFields, imageFields: ["Photo"], imageFieldsOffSlide: ["Photo"] }, "fields");
+    expect(pane.textContent, "advice about a field that is already placed").not.toContain("cannot go");
+  });
+
+  it("is silent when every picture field is on a slide", () => {
+    const pane = paneFor({ ...withFields, imageFields: ["Photo"], imageFieldsOffSlide: [] }, "fields");
+    expect(pane.textContent).not.toContain("cannot go");
+  });
+});

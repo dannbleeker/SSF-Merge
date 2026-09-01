@@ -96,6 +96,16 @@ function root(): HTMLElement {
 const FRUITLESS_LIMIT = 2;
 
 /**
+ * The id of the pending marker THIS pane wrote, if it has written one.
+ *
+ * The boot deck count can answer minutes after it was issued, by which time the
+ * user may have pressed Merge — and the crumb it then reads is that run's own
+ * marker. Recognising it by id is what lets the recovery notice stay silent
+ * about a run that is happening, without going silent about a genuine one.
+ */
+let pendingRunId: string | undefined;
+
+/**
  * An id for a crumb written by a run that has no id of its own yet.
  *
  * "pending" is written before the insert answers, "recovered" after a raise —
@@ -840,8 +850,10 @@ async function merge(): Promise<void> {
       // no record of them anywhere.
       const outstanding = readCrumb(documentKey());
       const holding = outstanding !== undefined && outstanding.added > 0;
-      if (deckBefore !== undefined && !holding)
-        dropCrumb({ deckAtStart: deckBefore, added: 0, runId: placeholderRunId("pending"), doc: documentKey() });
+      if (deckBefore !== undefined && !holding) {
+        pendingRunId = placeholderRunId("pending");
+        dropCrumb({ deckAtStart: deckBefore, added: 0, runId: pendingRunId, doc: documentKey() });
+      }
       const outcome = await runMerge({
         from: block.from,
         to: block.to,
@@ -1143,8 +1155,14 @@ async function undoRun(): Promise<void> {
         // button, so clearing it re-armed "Add 6 slides" over six slides that
         // were still there.
         const deckNow = await slideCount().catch(() => undefined);
-        const proved = (disowned ?? 0) > 0;
-        const fruitless = proved ? (outcome.fruitless ?? 0) + 1 : 0;
+        // EVERY press that reaches here is fruitless — nothing came out. The
+        // first version counted only the presses that also disowned something,
+        // which left out the other case `FRUITLESS_LIMIT` was written for: a
+        // host that accepts the deletes and performs none answers `removed: 0,
+        // disowned: 0`, so the offer stood over slides no press could take for
+        // the rest of the session. Resetting belongs on the path that actually
+        // removed something, and is done there.
+        const fruitless = (outcome.fruitless ?? 0) + 1;
         const done = unprovable === true || fruitless >= FRUITLESS_LIMIT;
         last = done ? undefined : { ...outcome, pressed: true, fruitless };
         // The crumb is KEPT — it is the record that stops the next merge
@@ -1182,7 +1200,12 @@ async function undoRun(): Promise<void> {
       // `pressed`, so the next sweep refuses the pre-tags fall-through: the deck
       // has provably changed shape by now, and the window a size clamp produces
       // can hold a slide the user made since. See `provenSweep`.
-      last = offer !== null ? { ...outcome, added: offer, pressed: true } : undefined;
+      // `fruitless: 0`, because this press removed slides. Spreading the old
+      // outcome carried the count through a success, so one fruitless press
+      // before a working one and one after it withdrew the card on the second
+      // — a press short of the budget the changelog and the manual both
+      // promise, with merged slides still in the deck.
+      last = offer !== null ? { ...outcome, added: offer, pressed: true, fruitless: 0 } : undefined;
       // The slides are the crumb's whole reason. Gone, and it is noise that would
       // offer a stale recovery on the next open.
       // `pressed` travels in the crumb too. The guard it feeds is about the
@@ -1510,20 +1533,25 @@ void Office.onReady(() => {
           // user's screen; that spelling is a house convention for the run log.
           notice: `A merge from ${crumb.startedAt.slice(0, 10)} added ${plural(crumb.added, "slide")} and the pane closed before you could take them back.`,
         };
-      } else if (crumb && !state.running) {
+      } else if (crumb && crumb.runId !== pendingRunId) {
         // A run that died DURING the insert, which is the window the crumb was
         // built for and the one it served least: it is written with `added: 0`
         // before the call, and the tab never comes back to write the real
         // number.
         //
-        // NOT while a run is in flight in this very pane. The deck count this
-        // handler waits on is issued at boot and can answer minutes later — long
-        // enough for the user to have walked the wizard and pressed Merge — and
-        // the crumb it then found was the pending marker THAT run had just
-        // written. It told the user the merge "did not finish" while it was
-        // visibly running, and deleted the record in the one window it exists
-        // for: if the tab died a moment later there would be nothing left to
-        // recover from.
+        // NOT the marker THIS pane's own run has just written. The deck count
+        // this handler waits on is issued at boot and can answer minutes later —
+        // long enough for the user to have walked the wizard and pressed Merge —
+        // and the crumb it then found was that run's pending marker. It told the
+        // user the merge "did not finish" while it was visibly running, and
+        // deleted the record in the one window it exists for.
+        //
+        // Named rather than gated on `state.running`, which was the first fix
+        // and is too wide: ANY run in flight — the "Reading the slides…" a user
+        // is most likely to start first — suppressed a genuine crash record for
+        // the whole session, because this branch is never retried.
+        // `placeholderRunId` makes the marker's id unique, so the pane can
+        // recognise its own.
         //
         // Told, not offered. The slides may well be in the deck, but nothing
         // here knows how many: taking the deck's growth as the answer would

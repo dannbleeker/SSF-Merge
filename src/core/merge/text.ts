@@ -386,7 +386,7 @@ export function mergeDocument(doc: Document, resolve: Resolve): number {
  * about what a placeholder is — the pane counts what the engine will fill by
  * asking the engine.
  */
-function textGroups(doc: Document): Element[][] {
+export function textGroups(doc: Document): Element[][] {
   const out: Element[][] = [];
   for (const paragraph of elements(doc, A_NS, "p")) out.push(runsOf(paragraph));
   for (const cache of [...elements(doc, C_NS, "strCache"), ...elements(doc, C_NS, "strLit")]) {

@@ -584,6 +584,58 @@ describe("a deck whose notes parts are numbered ahead of its slides", () => {
     return Pkg.open(await zip.generateAsync({ type: "uint8array" }));
   }
 
+  /** The same deck, with the notes part stored under a percent-encoded name. */
+  async function encodedNotesDeck(): Promise<Pkg> {
+    const bytes = await makeDeck([
+      { paragraphs: [["Hello {{First}}"]], notes: "Ring {{First}}" },
+      { paragraphs: [["after"]] },
+    ]);
+    const zip = await JSZip.loadAsync(bytes);
+    const notes = await zip.file("ppt/notesSlides/notesSlide1.xml")!.async("uint8array");
+    const rels = await zip.file("ppt/notesSlides/_rels/notesSlide1.xml.rels")!.async("uint8array");
+    zip.remove("ppt/notesSlides/notesSlide1.xml");
+    zip.remove("ppt/notesSlides/_rels/notesSlide1.xml.rels");
+    zip.file("ppt/notesSlides/notes%20slide1.xml", notes);
+    zip.file("ppt/notesSlides/_rels/notes%20slide1.xml.rels", rels);
+    for (const path of ["ppt/slides/_rels/slide1.xml.rels", "[Content_Types].xml"]) {
+      const text = await zip.file(path)!.async("string");
+      zip.file(path, text.replaceAll("notesSlide1.xml", "notes%20slide1.xml"));
+    }
+    return Pkg.open(await zip.generateAsync({ type: "uint8array" }));
+  }
+
+  it("clones a notes page whose part name is percent-encoded, and leaves nothing dangling", async () => {
+    /**
+     * The two resolvers came apart for one commit. `removeSlide` asked the
+     * PACKAGE which spelling it holds; `cloneSlide` still decoded — so it could
+     * not find the notes part, returned early, and every copy kept the
+     * template's own `Target`. Removing the template then deleted the part all
+     * of them pointed at: two dangling relationships and no content type, which
+     * is a deck PowerPoint opens as "repaired".
+     *
+     * OPC maps a part name to a ZIP item by stripping the leading `/` and
+     * nothing else, so this spelling is legal and third-party writers produce
+     * it.
+     */
+    const pkg = await encodedNotesDeck();
+    const records = toRecordSet([["First"], ["Ada"], ["Grace"]]);
+    const block = { id: "b", slides: [{ path: "ppt/slides/slide1.xml", seq: 1 }] };
+    const result = await runPlan(pkg, buildPlan(block, records, { runId: "r" }), records);
+
+    const keep = new Set(result.slides);
+    for (const path of await pkg.slidePaths()) if (!keep.has(path)) await pkg.removeSlide(path);
+
+    for (const slide of result.slides) {
+      const notes = await notesPathFor(pkg, slide);
+      expect(notes, `${slide} lost its notes page`).toBeDefined();
+      expect(pkg.has(notes as string), `${slide} points at a notes part that is gone`).toBe(true);
+    }
+    // And each copy got its OWN, so the notes are merged per record rather than
+    // shared — the second half of what the early return cost.
+    const paths = await Promise.all(result.slides.map((s) => notesPathFor(pkg, s)));
+    expect(new Set(paths).size, "the copies share a notes page").toBe(result.slides.length);
+  });
+
   it("gives the clone a notes page of its own rather than sharing the template's", async () => {
     const pkg = await collidingDeck();
     const template = await notesPathFor(pkg, "ppt/slides/slide1.xml");

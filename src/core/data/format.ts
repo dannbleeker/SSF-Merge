@@ -214,6 +214,22 @@ const GROUPED_DOT = /^-?[1-9]\d{0,2}(?:\.\d{3})+$/;
 
 /** Parse the number forms a spreadsheet actually produces, including the European one. */
 export function numericValue(raw: string): number | undefined {
+  const text = numericText(raw);
+  if (text === undefined) return undefined;
+  const n = Number(text);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+/**
+ * The plain decimal a cell spells, with its grouping resolved — the string
+ * `numericValue` parses.
+ *
+ * Exposed because the DIGITS matter to one caller and the double does not. A
+ * cell can hold more significant digits than a double carries, and the only way
+ * to know whether formatting changed the value is to compare what was written
+ * with what came back. See `applyFormat`.
+ */
+function numericText(raw: string): string | undefined {
   const v = raw.trim();
   if (v === "") return undefined;
   // The same question `detectType` asks, asked once. Without this the two
@@ -252,8 +268,7 @@ export function numericValue(raw: string): number | undefined {
     // written down.
     normalised = normalised.replace(/\./g, "");
   }
-  const n = Number(normalised);
-  return Number.isFinite(n) ? n : undefined;
+  return Number.isFinite(Number(normalised)) ? normalised : undefined;
 }
 
 export function parseDate(raw: string): Date | undefined {
@@ -771,16 +786,45 @@ function fixedDecimal(n: number, decimals: number): string {
   return decimals === 0 ? digits : `${digits.slice(0, cut) || "0"}.${digits.slice(cut)}`;
 }
 
+/**
+ * Whether a decimal string and a number are the same value.
+ *
+ * Both are canonicalised — sign, integer digits without leading zeros, fraction
+ * without trailing zeros — and compared as text, because that is the only
+ * comparison a double cannot silently win. `Number(a) === n` is always true:
+ * the digits that were lost were lost in the parse.
+ *
+ * A number JavaScript spells with an exponent has no plain form to compare, and
+ * answers false: those are refused for the separate reason that there is
+ * nothing to group.
+ */
+function sameNumber(wrote: string, n: number): boolean {
+  const spelled = String(n);
+  if (spelled.includes("e") || spelled.includes("E")) return false;
+  const canon = (s: string): string => {
+    const negative = s.startsWith("-");
+    const [whole = "", fraction = ""] = s.replace(/^[+-]/, "").split(".");
+    const digits = whole.replace(/^0+(?=\d)/, "");
+    const frac = fraction.replace(/0+$/, "");
+    const body = frac === "" ? digits : `${digits}.${frac}`;
+    return negative && body !== "0" ? `-${body}` : body;
+  };
+  return canon(wrote) === canon(spelled);
+}
+
 export function formatNumber(n: number, decimals: number, group: string, point: string): string {
-  // Nothing to group, and nothing worth grouping. Above 1e21 JavaScript spells a
-  // number with an exponent, and `1.2345678901234568e+24` split on its dot and
-  // grouped comes out as `1,2345678901234568e+24` — a European decimal, on a
-  // slide, from a whole number. Past 2^53 the spelling is fine and the digits
-  // are already wrong, and grouping them lends that confidence. `applyFormat`
-  // returns the cell unchanged before it gets here, which is its own contract;
-  // this is the same defect reached through the PUBLIC export, which has no
-  // cell to fall back to and answers the value as JavaScript spells it.
-  if (!Number.isFinite(n) || !Number.isSafeInteger(Math.trunc(n))) return String(n);
+  // Nothing to group. Above 1e21 JavaScript spells a number with an exponent,
+  // and `1.2345678901234568e+24` split on its dot and grouped comes out as
+  // `1,2345678901234568e+24` — a European decimal, on a slide, from a whole
+  // number. `applyFormat` returns the cell unchanged before it gets here, which
+  // is its own contract; this is the same defect reached through the PUBLIC
+  // export, which has no cell to fall back to and answers the value as
+  // JavaScript spells it.
+  //
+  // The digits-changed test that `applyFormat` applies CANNOT be made here: it
+  // compares the value against the cell it was read from, and this entry point
+  // has no cell.
+  if (!Number.isFinite(n) || Math.abs(n) >= 1e21) return String(n);
   const fixed = fixedDecimal(n, decimals);
   const [whole = "0", frac] = fixed.split(".");
   const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, group);
@@ -828,20 +872,25 @@ export function applyFormat(raw: string, spec: string | undefined): string {
       if (trimmed !== "" && !/^\d+$/.test(trimmed)) return raw;
       const decimals = trimmed === "" ? 0 : Number(trimmed);
       if (decimals > 100) return raw;
-      // A magnitude a double cannot carry EXACTLY is returned unchanged, which
-      // is this function's own contract for a value that does not match its
-      // format: the cell says what it says.
+      // A cell the double CHANGED is returned unchanged, which is this
+      // function's own contract for a value that does not match its format.
       //
-      // Two shapes, one rule. Above 1e21 JavaScript spells a number with an
-      // exponent, so `1e21` printed "1e+21" and a 25-digit cell printed
+      // Two shapes. Above 1e21 JavaScript spells a number with an exponent, so
+      // `1e21` printed "1e+21" and a 25-digit cell printed
       // "1,2345678901234568e+24" — a European decimal, on a slide, from an
-      // integer. Below that but past 2^53 the spelling is fine and the DIGITS
-      // are wrong: `1234567890123456789` came out as `1 234 567 890 123 456
-      // 800`, which is not the number in the cell, printed with the confidence
-      // of a formatted one. An order number, an IBAN typed without spaces and a
-      // 19-digit identifier all land there, and silently changing one is worse
-      // than leaving it unformatted.
-      if (!Number.isSafeInteger(Math.trunc(n))) return raw;
+      // integer. Below that the spelling is fine and the DIGITS can be wrong:
+      // `1234567890123456789` came out as `1 234 567 890 123 456 800`, which is
+      // not the number in the cell, printed with the confidence of a formatted
+      // one. An order number, an IBAN typed without spaces and a 19-digit
+      // identifier all land there.
+      //
+      // The test is the CELL against the value, not a bound on the value.
+      // `Number.isSafeInteger` was the first rule and it refuses exact
+      // magnitudes too — 2^53 itself, `1e18`, `1e20` — which a double carries
+      // perfectly and which a user has every right to see grouped. Compare what
+      // was written with what came back and refuse only a disagreement.
+      const wrote = numericText(raw);
+      if (wrote !== undefined && !sameNumber(wrote, n)) return raw;
       return formatNumber(n, decimals, " ", ",");
     }
     case "date": {

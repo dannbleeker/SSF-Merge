@@ -203,8 +203,19 @@ describe("applyFormat", () => {
     // lands here, and changing one silently is worse than leaving it alone.
     expect(applyFormat("1234567890123456789", "number:0")).toBe("1234567890123456789");
     expect(applyFormat("9007199254740993", "number:0")).toBe("9007199254740993");
-    // The last exactly-representable integer still formats.
+    // And an exactly-representable magnitude still formats, however large. The
+    // first rule was `Number.isSafeInteger`, which refuses 2^53 itself and
+    // every exact power above it — a bound on the VALUE where the question is
+    // whether the double changed the CELL. Compare what was written with what
+    // came back, and refuse only a disagreement.
     expect(applyFormat("9007199254740991", "number:0")).toBe("9 007 199 254 740 991");
+    expect(applyFormat("9007199254740992", "number:0")).toBe("9 007 199 254 740 992");
+    expect(applyFormat("-9007199254740992", "number:0")).toBe("-9 007 199 254 740 992");
+    expect(applyFormat("1000000000000000000", "number:0")).toBe("1 000 000 000 000 000 000");
+    expect(applyFormat("100000000000000000000", "number:0")).toBe("100 000 000 000 000 000 000");
+    // A grouped cell still reads, and a fraction still rounds.
+    expect(applyFormat("1.234.567", "number:0")).toBe("1 234 567");
+    expect(applyFormat("12345678901234.5", "number:0")).toBe("12 345 678 901 235");
     expect(applyFormat("1234567890123456789012345", "number:2")).toBe("1234567890123456789012345");
     // And the ordinary case is untouched.
     expect(applyFormat("1234567.891", "number:2")).toBe("1 234 567,89");

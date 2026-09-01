@@ -65,7 +65,10 @@ describe("the numbers an undo cannot be done without", () => {
     // every open under a sentence that is not true.
     dropCrumb({ deckAtStart: 12, added: 6, runId: "r1", doc: DECK, pressed: true, unremovable: true });
     expect(readCrumb(DECK)).toMatchObject({ added: 6, pressed: true, unremovable: true });
-    // An older build's crumb carries neither, and reads as neither.
+    // An older build's crumb carries neither, and reads as neither. Written
+    // under the OLD single key, which is where that build put it — and the
+    // per-deck one has to be out of the way, or it answers first.
+    real.clear();
     real.setItem(KEY, JSON.stringify({ kind: "ssf-merge-run", deckAtStart: 12, added: 6, runId: "r1", doc: DECK }));
     expect(readCrumb(DECK)?.unremovable).toBeUndefined();
   });
@@ -143,6 +146,46 @@ describe("the numbers an undo cannot be done without", () => {
     dropCrumb({ deckAtStart: 3, added: 6, runId: "r3-3-huqtal", doc: DECK });
     expect(readCrumb(DECK), "the deck it was written on still answers").toMatchObject({ added: 6 });
     expect(readCrumb(OTHER_DECK)).toBeUndefined();
+  });
+
+  it("gives every deck a record of its own", () => {
+    // ONE KEY PER DECK. A single key made every write a choice between
+    // destroying another deck's record of slides still sitting in it and
+    // refusing to write at all — and the refusal was its own defect: a deck
+    // whose merge was never swept locked every other deck out of crash
+    // recovery for the life of the browser profile.
+    dropCrumb({ deckAtStart: 12, added: 6, runId: "r1", doc: DECK, unremovable: true });
+    dropCrumb({ deckAtStart: 3, added: 2, runId: "r2", doc: OTHER_DECK });
+    expect(readCrumb(DECK), "the first deck keeps its record").toMatchObject({ added: 6, runId: "r1" });
+    expect(readCrumb(OTHER_DECK), "and the second deck gets one").toMatchObject({ added: 2, runId: "r2" });
+    // Clearing one leaves the other alone.
+    clearCrumb(DECK);
+    expect(readCrumb(DECK)).toBeUndefined();
+    expect(readCrumb(OTHER_DECK)).toMatchObject({ added: 2 });
+  });
+
+  it("does not keep a record for every deck the user has ever merged in", () => {
+    // `localStorage` is not unbounded and neither is this. The oldest goes,
+    // because a record whose deck has not been opened in a hundred merges is
+    // the one least likely to still describe slides that are there.
+    for (let i = 0; i < 12; i++) {
+      real.setItem(
+        `ssf-merge.run.v1:deck-${i}`,
+        JSON.stringify({
+          kind: "ssf-merge-run",
+          deckAtStart: 1,
+          added: 1,
+          runId: `r${i}`,
+          startedAt: `2026-08-${String(i + 1).padStart(2, "0")}T09:00:00.000Z`,
+          doc: `deck-${i}`,
+        }),
+      );
+    }
+    dropCrumb({ deckAtStart: 12, added: 6, runId: "new", doc: DECK });
+    const keys = Object.keys(real).filter((k) => k.startsWith("ssf-merge.run.v1:"));
+    expect(keys.length, "the store grew without bound").toBeLessThanOrEqual(8);
+    expect(readCrumb(DECK), "and the newest is kept").toMatchObject({ runId: "new" });
+    expect(readCrumb("deck-0"), "the oldest went first").toBeUndefined();
   });
 
   it("does not overwrite another deck's record of slides that are still there", () => {
