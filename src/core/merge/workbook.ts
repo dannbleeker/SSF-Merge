@@ -34,7 +34,7 @@
  * always did.
  */
 import type JSZip from "jszip";
-import { Pkg, resolveTarget } from "../pptx/pkg.js";
+import { Pkg, resolveTargetSpellings } from "../pptx/pkg.js";
 import { PKG_REL_NS, R_NS, SSML_NS, elements, parseXml } from "../pptx/xml.js";
 
 const REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
@@ -163,12 +163,17 @@ async function targetsOf(book: JSZip, ownerPart: string): Promise<Map<string, { 
     if ((rel.getAttribute("TargetMode") ?? "") === "External") continue;
     const target = rel.getAttribute("Target");
     if (!target) continue;
+    // The package's own resolver, never a second reading of what a relationship
+    // target means. This had `xl/` glued on by hand once, which is right for the
+    // target Excel writes and wrong for the two other shapes one is allowed to
+    // take.
+    //
+    // Both spellings, and the WORKBOOK decides — the same rule `Pkg.resolved`
+    // applies one level out. A percent-encoded sheet name is stored under
+    // exactly that name, and decoding it made the lookup miss.
+    const [asWritten, decoded] = resolveTargetSpellings(ownerPart, target);
     out.set(rel.getAttribute("Id") ?? "", {
-      // The package's own resolver, never a second reading of what a
-      // relationship target means. This had `xl/` glued on by hand once, which
-      // is right for the target Excel writes and wrong for the two other
-      // shapes one is allowed to take.
-      path: resolveTarget(ownerPart, target),
+      path: asWritten !== decoded && book.file(asWritten) ? asWritten : decoded,
       type: rel.getAttribute("Type") ?? "",
     });
   }

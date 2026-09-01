@@ -211,6 +211,17 @@ export interface BlockReport {
   /** Of those, the ones written as a picture. The pane's picker needs these. */
   imageFields: string[];
   /**
+   * Picture fields written where no picture can be placed.
+   *
+   * `placeImages` fills a SHAPE on a slide. A `{{Photo|image}}` on a notes page,
+   * in a chart's text or inside SmartArt is filled by nothing and printed
+   * verbatim — so the raw placeholder reaches presenter view and every handout,
+   * and if it is the block's only picture field the pane never offers the file
+   * picker at all. Reported so the user hears it before the merge rather than
+   * finding it on a printout.
+   */
+  imageFieldsOffSlide?: string[];
+  /**
    * The fields on each slide of the block, in order.
    *
    * The pane needs the per-slide breakdown, not just the flat set, to answer
@@ -265,6 +276,7 @@ export async function inspectBlock(req: { from: number; to: number }): Promise<B
       detail: `${prepared.fields.length} placeholder${prepared.fields.length === 1 ? "" : "s"} in slides ${req.from} to ${req.to}.`,
       fields: prepared.fields,
       imageFields: prepared.imageFields,
+      imageFieldsOffSlide: prepared.imageFieldsOffSlide,
       slideFields: prepared.slideFields,
     };
   } catch (e) {

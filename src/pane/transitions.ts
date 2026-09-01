@@ -41,6 +41,9 @@ export function blockMoved(state: PaneState): PaneState {
     block: undefined,
     fields: [],
     imageFields: [],
+    // Read off the same slides, and just as stale — a warning about a picture
+    // field on the notes page of a slide this state no longer names.
+    imageFieldsOffSlide: undefined,
     // Read off the same slides in the same pass, and just as stale. Left
     // standing, `skippedRows` went on counting rows against the OLD block's
     // per-slide fields — dropping a row for a blank in a `{{Note}}` that is on

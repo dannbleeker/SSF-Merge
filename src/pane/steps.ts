@@ -67,6 +67,15 @@ export interface PaneState {
    * `pictureColumns`.
    */
   imageFields?: string[];
+  /**
+   * Picture fields written where no picture can be placed — a notes page, a
+   * chart's text, a SmartArt node.
+   *
+   * Shown rather than filled: `placeImages` fills a shape on a slide, and none
+   * of those is one. Left unsaid, the merge printed `{{Photo|image}}` verbatim
+   * onto presenter view and every handout.
+   */
+  imageFieldsOffSlide?: string[];
   /** Column names in the data the user attached, if any. */
   columns?: string[];
   /** Rows in that data. */

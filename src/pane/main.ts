@@ -553,6 +553,7 @@ async function useBlock(from: StepId): Promise<void> {
           block,
           fields: report.fields,
           imageFields: report.imageFields,
+          imageFieldsOffSlide: report.imageFieldsOffSlide,
           // Per slide, because `skippedRows` cannot answer from the flat list.
           slideFields: report.slideFields,
           notice: undefined,

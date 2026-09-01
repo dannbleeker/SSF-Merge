@@ -26,7 +26,7 @@
  * alone and the deck is right until somebody clicks the button, at which point
  * the merged labels revert to `{{Region}}` in front of them.
  */
-import { Pkg, extensionOf, resolveTarget as resolve } from "./pkg.js";
+import { Pkg, extensionOf } from "./pkg.js";
 import { REL_TYPE } from "./parts.js";
 import { A_NS, MC_NS, PKG_REL_NS, P_NS, child, element, elements, relationshipIdsIn } from "./xml.js";
 
@@ -89,7 +89,7 @@ export async function cloneSlideGraphics(pkg: Pkg, slidePath: string): Promise<v
     const target = rel.getAttribute("Target");
     const rId = rel.getAttribute("Id");
     if (!target || !rId) continue;
-    const source = resolve(slidePath, target);
+    const source = pkg.resolved(slidePath, target);
     if (!pkg.has(source)) continue;
 
     if (type === REL_TYPE.chart) {
@@ -170,7 +170,7 @@ async function cloneChartUserShapes(pkg: Pkg, chartPath: string): Promise<void> 
     if (rel.getAttribute("Type") !== REL_TYPE.chartUserShapes) continue;
     const target = rel.getAttribute("Target");
     if (!target || (rel.getAttribute("TargetMode") ?? "") === "External") continue;
-    const source = resolve(chartPath, target);
+    const source = pkg.resolved(chartPath, target);
     if (!pkg.has(source)) continue;
     const n = pkg.nextNumber("ppt/drawings/drawing");
     const path = `ppt/drawings/drawing${n}.xml`;
@@ -184,7 +184,7 @@ async function cloneChartWorkbook(pkg: Pkg, chartPath: string): Promise<void> {
     if (rel.getAttribute("Type") !== REL_TYPE.package) continue;
     const target = rel.getAttribute("Target");
     if (!target || (rel.getAttribute("TargetMode") ?? "") === "External") continue;
-    const source = resolve(chartPath, target);
+    const source = pkg.resolved(chartPath, target);
     if (!pkg.has(source)) continue;
     const extension = extensionOf(source);
     // A target with no extension at all. The copy's NAME is built from it, so
@@ -270,7 +270,7 @@ async function cloneDiagramDrawing(pkg: Pkg, dataPath: string): Promise<void> {
     if (rel.getAttribute("Type") !== REL_TYPE.diagramDrawing) continue;
     const target = rel.getAttribute("Target");
     if (!target) continue;
-    const source = resolve(dataPath, target);
+    const source = pkg.resolved(dataPath, target);
     if (!pkg.has(source)) continue;
     rel.setAttribute("Target", `${await copyDiagramDrawing(pkg, source)}`);
   }
@@ -318,7 +318,7 @@ export async function graphicPartsOf(pkg: Pkg, slidePath: string): Promise<strin
     ) {
       continue;
     }
-    const path = resolve(slidePath, target);
+    const path = pkg.resolved(slidePath, target);
     if (!pkg.has(path) || out.includes(path)) continue;
     out.push(path);
     // A DRAWING hanging off this part, which both a SmartArt data part and a
@@ -336,7 +336,7 @@ export async function graphicPartsOf(pkg: Pkg, slidePath: string): Promise<strin
       if (drawing.getAttribute("Type") !== chases) continue;
       const drawingTarget = drawing.getAttribute("Target");
       if (!drawingTarget) continue;
-      const drawingPath = resolve(path, drawingTarget);
+      const drawingPath = pkg.resolved(path, drawingTarget);
       if (pkg.has(drawingPath) && !out.includes(drawingPath)) out.push(drawingPath);
     }
   }
@@ -374,7 +374,7 @@ export async function packagesOfChart(pkg: Pkg, chartPath: string): Promise<stri
     if ((rel.getAttribute("TargetMode") ?? "") === "External") continue;
     const target = rel.getAttribute("Target");
     if (!target) continue;
-    const path = resolve(chartPath, target);
+    const path = pkg.resolved(chartPath, target);
     if (pkg.has(path) && !out.includes(path)) out.push(path);
   }
   return out;

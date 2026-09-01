@@ -60,6 +60,8 @@ export type Prepared =
        * FIELD's format. See `imagesWanted`.
        */
       imageFields: string[];
+      /** Picture fields written where no picture can be placed — a notes page, a chart, SmartArt. */
+      imageFieldsOffSlide: string[];
       /**
        * The fields on each slide of the block, in `seq` order.
        *
@@ -122,6 +124,10 @@ export async function prepareBlock(pkg: Pkg, req: BlockRequest, runId: string): 
   const slides: BlockSlide[] = [];
   const fields: string[] = [];
   const imageFields: string[] = [];
+  // Picture fields written somewhere `placeImages` cannot fill: a notes page, a
+  // chart's text, a SmartArt node. They are collected so they can be REPORTED —
+  // see `imageFieldsOffSlide`.
+  const imageFieldsOffSlide: string[] = [];
   for (let i = 0; i < count; i++) {
     const path = paths[start + i];
     if (!path)
@@ -152,6 +158,14 @@ export async function prepareBlock(pkg: Pkg, req: BlockRequest, runId: string): 
       // chart part has none.
       if (site.kind === "slide") {
         for (const name of imageFieldsIn(doc)) if (!imageFields.includes(name)) imageFields.push(name);
+      } else {
+        // NAMED rather than ignored. `{{Photo|image}}` on a notes page merges as
+        // nothing and prints itself: the raw placeholder reaches presenter view
+        // and every handout, and if it is the block's only picture field the
+        // pane never even offers the file picker. Filling it is not on the
+        // table — `placeImages` fills a shape and a notes page is not one — so
+        // the answer is to say so before the merge rather than after it.
+        for (const name of imageFieldsIn(doc)) if (!imageFieldsOffSlide.includes(name)) imageFieldsOffSlide.push(name);
       }
       // A chart's VALUE cells live in the workbook it relates to, and the
       // reader is a dry run of the merge's own walk, so the two cannot hold
@@ -204,6 +218,7 @@ export async function prepareBlock(pkg: Pkg, req: BlockRequest, runId: string): 
     block: { id: runId, slides },
     fields,
     imageFields,
+    imageFieldsOffSlide,
     slideFields: slides.map((s) => s.fields ?? []),
   };
 }

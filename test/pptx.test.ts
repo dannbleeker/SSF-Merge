@@ -652,6 +652,44 @@ describe("a template slide someone has commented on", () => {
    * decks, from one template.
    */
   const MODERN = "http://schemas.microsoft.com/office/2018/10/relationships/comments";
+  it("finds a part whose name is percent-encoded, the way OPC stores it", async () => {
+    /**
+     * OPC maps a part name to a ZIP item name by stripping the leading `/` and
+     * nothing else, so `ppt/charts/my%20chart.xml` is stored under exactly that
+     * name. The resolver percent-DECODED every segment, answered
+     * `ppt/charts/my chart.xml`, and `has` said no — and `cloneSlideGraphics`
+     * reads "not in the package" as "skip", so every merged copy silently went
+     * on pointing at the template's own chart.
+     *
+     * Both spellings are produced now and the package decides. A writer whose
+     * zip entries carry the decoded name still resolves: that is the second
+     * assertion, and it is why decoding could not simply be removed.
+     */
+    const bytes = await makeDeck([{ paragraphs: [["Hello {{First}}"]] }]);
+    const zip = await JSZip.loadAsync(bytes);
+    zip.file("ppt/charts/my%20chart.xml", '<?xml version="1.0"?><c/>');
+    zip.file("ppt/charts/other chart.xml", '<?xml version="1.0"?><c/>');
+    const rels = await zip.file("ppt/slides/_rels/slide1.xml.rels")!.async("string");
+    zip.file(
+      "ppt/slides/_rels/slide1.xml.rels",
+      rels.replace(
+        "</Relationships>",
+        `<Relationship Id="rIdA" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="../charts/my%20chart.xml"/>` +
+          `<Relationship Id="rIdB" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="../charts/other%20chart.xml"/></Relationships>`,
+      ),
+    );
+    const pkg = await Pkg.open(await zip.generateAsync({ type: "uint8array" }));
+
+    const encoded = await pkg.relTarget("ppt/slides/slide1.xml", "rIdA");
+    expect(encoded, "the spelling the package actually holds").toBe("ppt/charts/my%20chart.xml");
+    expect(pkg.has(encoded ?? "")).toBe(true);
+
+    // The other direction: a package whose entry carries the decoded name.
+    const decoded = await pkg.relTarget("ppt/slides/slide1.xml", "rIdB");
+    expect(decoded).toBe("ppt/charts/other chart.xml");
+    expect(pkg.has(decoded ?? "")).toBe(true);
+  });
+
   const CLASSIC = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments";
 
   async function deckWithComment(relType: string, part: string): Promise<Pkg> {

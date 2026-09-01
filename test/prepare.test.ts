@@ -245,6 +245,40 @@ describe("placeholders in the speaker notes", () => {
     expect(prepared.fields).toEqual(["Name"]);
   });
 
+  it("names a picture field written where no picture can go", async () => {
+    /**
+     * `placeImages` fills a SHAPE on a slide. A `{{Photo|image}}` on the notes
+     * page is filled by nothing and printed as written, so the raw placeholder
+     * reaches presenter view and every printed handout — and if it is the
+     * block's only picture field, the pane never even offers the file picker,
+     * because `imageFields` is what turns that on.
+     *
+     * Filling it is not on the table; saying so before the merge is.
+     */
+    const deck = await makeDeck([
+      { paragraphs: [["Quarterly review"]], notes: "Bring {{Photo|image}} to the meeting" },
+      { paragraphs: [["after"]] },
+    ]);
+    const pkg = await Pkg.open(deck);
+    const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "run1");
+    expect(prepared.ok, prepared.ok ? "" : prepared.why).toBe(true);
+    if (!prepared.ok) return;
+    expect(prepared.imageFieldsOffSlide, "a field nothing will fill, said out loud").toEqual(["Photo"]);
+    // And it is NOT offered as one the picker can serve, which would promise a
+    // placement that cannot happen.
+    expect(prepared.imageFields).toEqual([]);
+  });
+
+  it("does not call a picture field on a SLIDE off-slide", async () => {
+    const deck = await makeDeck([{ paragraphs: [["{{Photo|image}}"]] }, { paragraphs: [["after"]] }]);
+    const pkg = await Pkg.open(deck);
+    const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "run1");
+    expect(prepared.ok).toBe(true);
+    if (!prepared.ok) return;
+    expect(prepared.imageFields).toEqual(["Photo"]);
+    expect(prepared.imageFieldsOffSlide).toEqual([]);
+  });
+
   it("merges the slide's and the notes' fields into one list, without duplicates", async () => {
     const deck = await makeDeck([
       { paragraphs: [["Hello {{First}}"]], notes: "Ring {{First}} about {{Topic}}" },

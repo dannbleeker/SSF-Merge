@@ -436,6 +436,23 @@ function body(doc: Document, state: PaneState, current: StepId, orange: OrangeHo
     // the only report the clipboard fallback has — an insert lands visibly on
     // the slide, a copy lands nowhere the user can see.
     if (state.fieldNote) out.push(el(doc, "p", { class: "muted note", text: state.fieldNote }));
+    // A picture field somewhere a picture cannot go. Said HERE, on the step
+    // where the fields are, because the merge cannot fix it and the printout is
+    // where it would otherwise be discovered: `{{Photo|image}}` on a notes page
+    // is filled by nothing and printed as written, on presenter view and every
+    // handout.
+    const offSlide = state.imageFieldsOffSlide ?? [];
+    if (offSlide.length > 0) {
+      out.push(
+        el(doc, "p", {
+          class: "blocked",
+          text:
+            `${offSlide.map((f) => `{{${f}}}`).join(", ")} ${offSlide.length === 1 ? "asks" : "ask"} for a picture ` +
+            `somewhere a picture cannot go — a notes page, a chart or SmartArt. ${offSlide.length === 1 ? "It" : "They"} ` +
+            `will be printed as written. Put the field in a shape on the slide instead.`,
+        }),
+      );
+    }
     const missing = new Set(unmatchedFields(state));
     const list = el(doc, "ul", { class: "fields" });
     for (const field of state.fields) {
