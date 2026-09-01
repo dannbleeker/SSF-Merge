@@ -18,7 +18,7 @@ import {
 import { inspectBlock, runMerge, undoMerge, type MergeOutcome } from "../office/merge.js";
 import { readable } from "../host/errors.js";
 import { clearCrumb, dropCrumb, readCrumb } from "./crumb.js";
-import { blockMoved, dataChanged } from "./transitions.js";
+import { blockMoved, blockTyped, dataChanged } from "./transitions.js";
 import type { EmptyPolicy } from "../core/merge/resolve.js";
 import { beginRun, onTrace, trace, traceText } from "../core/trace.js";
 import { render } from "./render.js";
@@ -374,7 +374,7 @@ function onInput(event: Event): void {
     // `chosenBlock` fall back to slides the boxes no longer name. The fields
     // read off it go with it for the same reason, and `added` goes because a
     // changed block is a different merge.
-    state = { ...blockMoved(state), draft, notice: undefined };
+    state = { ...blockTyped(state, draft), notice: undefined };
     draw();
     return;
   }

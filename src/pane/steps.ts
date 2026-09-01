@@ -138,6 +138,18 @@ export interface PaneState {
   conditionsOpen?: boolean;
   /** Conditions the user set, keyed by SLIDE NUMBER — the numbering they can see. */
   conditions?: Record<number, string>;
+  /**
+   * The block those conditions are keyed to.
+   *
+   * Only `blockTyped` reads it, and only to tell an INCOMPLETE draft from a
+   * different one. While a slide-number box is empty the state names no block
+   * at all, so "has the block moved?" cannot be answered from the state alone —
+   * and answering it wrongly either loses the user's conditions on a keystroke
+   * that moved nothing, or keeps conditions keyed to slides that are no longer
+   * in the block. This is the anchor that makes the question answerable across
+   * the empty box in the middle.
+   */
+  conditionsFor?: Block;
   /** What the two slide-number boxes hold right now, as typed. */
   draft?: BlockDraft;
   /** What the user pasted into the data box, unparsed. */

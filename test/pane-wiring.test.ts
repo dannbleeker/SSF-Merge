@@ -1454,6 +1454,45 @@ describe("the conditional slide control", () => {
     expect((office.runMerge.mock.calls[0]?.[0] as { conditions?: unknown }).conditions).toBeUndefined();
   });
 
+  it("keeps conditions when the numbers are retyped to the SAME block", async () => {
+    /**
+     * The path a careful user takes: they set a condition, go back to check the
+     * slide numbers, retype the same last slide, and walk forward again. Every
+     * keystroke in those boxes ran the block-moved rule, so the conditions were
+     * gone — silently, with the merge button quietly offering more slides than
+     * they had asked for.
+     *
+     * The empty box in the middle is the part that makes this hard: after the
+     * first keystroke the pane names no block at all, so "has the block moved?"
+     * cannot be answered from the state and every later keystroke read as a
+     * move. The test types it the way a person does, one field at a time.
+     */
+    await toMergeWithData();
+    openConditions();
+    choose(5, "Last");
+    backToTemplate();
+    type("to", "");
+    type("to", "6");
+    office.inspectBlock.mockResolvedValueOnce(REPORT);
+    primary().click(); // template -> data
+    await settle();
+    office.inspectBlock.mockResolvedValueOnce(REPORT);
+    primary().click(); // data -> fields
+    primary().click(); // fields -> preview
+    await settle();
+    (pane().querySelector("[data-forward]") as HTMLElement).click(); // -> merge
+
+    const values = Array.from(pane().querySelectorAll("[data-condition]")).map((s) => (s as HTMLSelectElement).value);
+    expect(values, "the control is not open").toHaveLength(3);
+    expect(values, "the block did not move, so the condition should still be set").toEqual(["", "Last", ""]);
+
+    // And it is what reaches the engine, which is where it matters.
+    office.runMerge.mockResolvedValueOnce(OUTCOME);
+    primary().click();
+    await settle();
+    expect((office.runMerge.mock.calls[0]?.[0] as { conditions?: unknown }).conditions).toEqual({ 5: "Last" });
+  });
+
   it("keeps a condition across a new paste, and says the column is gone", async () => {
     /**
      * The opposite decision from the row filter, and deliberately: a filter is

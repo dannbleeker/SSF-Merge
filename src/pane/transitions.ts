@@ -14,7 +14,7 @@
  *
  * Pure, so each rule can be checked without a DOM.
  */
-import type { PaneState } from "./steps.js";
+import { chosenBlock, readBlockDraft, type BlockDraft, type PaneState } from "./steps.js";
 
 /**
  * Everything that stops being true when the block moves.
@@ -47,11 +47,44 @@ export function blockMoved(state: PaneState): PaneState {
     // a slide this state no longer names, and saying so above the button.
     slideFields: undefined,
     conditions: undefined,
+    // With the conditions, always: an anchor for conditions that are gone would
+    // let the next keystroke keep conditions this one deliberately dropped.
+    conditionsFor: undefined,
     changedSinceMerge: true,
     // The note names a token that was put on a slide in the OLD block. Left
     // standing it reports an insert into slides this state no longer names.
     fieldNote: undefined,
   };
+}
+
+/**
+ * A keystroke in the slide-number boxes.
+ *
+ * `blockMoved` is right for its own contract, and this is about WHEN it should
+ * fire. It ran on every keystroke, so a user who set "slide 5 only when
+ * Renewal", went back to check the slide numbers, retyped the same last slide
+ * and walked forward again found the conditions gone — silently, with the merge
+ * button quietly offering more slides than they had asked for.
+ *
+ * The conditions are keyed by SLIDE NUMBER, so what makes them stale is the
+ * block naming different slides. Typing does not do that on its own: while a
+ * box is empty the draft names no block at all, which is INCOMPLETE rather than
+ * different, and a draft that resolves back to the same two numbers has not
+ * moved anything. Only conditions are kept — the fields, the picture fields and
+ * the per-slide lists were read off the slides themselves, and this pane has no
+ * way to know the slides were not edited in between.
+ */
+export function blockTyped(state: PaneState, draft: BlockDraft): PaneState {
+  // The block the conditions are KEYED to, which outlives the empty box in the
+  // middle of retyping a number. `chosenBlock` cannot answer for the second
+  // keystroke: the first one already cleared the committed block, so from there
+  // on the state names no block and every later keystroke would read as a move.
+  const was = state.conditionsFor ?? chosenBlock(state);
+  const now = readBlockDraft(draft, state.deckSize).block;
+  const moved = was !== undefined && now !== null && (now.from !== was.from || now.to !== was.to);
+  const next = { ...blockMoved(state), draft };
+  if (moved || state.conditions === undefined || was === undefined) return next;
+  return { ...next, conditions: state.conditions, conditionsFor: was };
 }
 
 /**
