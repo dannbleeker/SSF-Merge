@@ -110,7 +110,9 @@ describe("what blocks a step", () => {
      * 4" correctly — and both callers appended a verb written for a range.
      */
     const one: PaneState = { ...ready, block: { from: 4, to: 4 }, fields: [] };
-    expect(blockedReason(one, "merge")).toBe("Slide 4 carries no fields yet. Go back to Fields and put one on a slide.");
+    expect(blockedReason(one, "merge")).toBe(
+      "Slide 4 carries no fields yet. Go back to Fields and put one on a slide.",
+    );
     expect(noFieldsHere(one)).toContain("Slide 4 carries no fields yet.");
 
     const many: PaneState = { ...ready, fields: [] };

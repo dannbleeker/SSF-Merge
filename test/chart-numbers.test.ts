@@ -197,7 +197,10 @@ describe("finding a cell in a sheet", () => {
       .filter((f) => f.endsWith(".ts"))
       .map((f) => [f, readFileSync(join(dir, f), "utf8")] as const)
       .filter(([, source]) => /\bcellAt\s*\(/.test(source));
-    expect(readers.map(([f]) => f), "the index has a reader this scan does not watch").toContain("graphics.ts");
+    expect(
+      readers.map(([f]) => f),
+      "the index has a reader this scan does not watch",
+    ).toContain("graphics.ts");
     for (const [file, source] of readers) {
       const created = [...source.matchAll(/createElementNS\(\s*SSML_NS\s*,\s*"([^"]+)"/g)].map((m) => m[1]);
       expect(created, `a cell created in ${file} would be invisible to the index above`).not.toContain("c");
@@ -267,7 +270,10 @@ describe("a value cell that holds its string inline", () => {
     // what index 0 says.
     if (sharedStrings !== undefined) {
       const S = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"';
-      book.file("xl/sharedStrings.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n<sst ${S}>${sharedStrings}</sst>`);
+      book.file(
+        "xl/sharedStrings.xml",
+        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n<sst ${S}>${sharedStrings}</sst>`,
+      );
     }
     zip.file(emb, await book.generateAsync({ type: "nodebuffer" }));
 

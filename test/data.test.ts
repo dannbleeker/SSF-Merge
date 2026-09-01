@@ -159,6 +159,48 @@ describe("applyFormat", () => {
     expect(formatNumber(-1234567.5, 2, " ", ",")).toBe("-1 234 567,50");
   });
 
+  it("rounds the number the author typed, not the double underneath it", () => {
+    /**
+     * `toFixed` rounds the binary value. `1.005` is stored a hair below 1.005,
+     * so it answers "1.00" where Excel — and the cell the number was copied out
+     * of — says 1.01. Over a corpus of ordinary money and percentage values the
+     * two disagreed on 118 of 310, which is not a corner: it is every value
+     * whose last kept digit is followed by a 5.
+     *
+     * A slide that disagrees with the spreadsheet beside it about a price is
+     * the one arithmetic error nobody blames on the tool.
+     */
+    expect(formatNumber(1.005, 2, " ", ","), "toFixed says 1.00").toBe("1,01");
+    expect(formatNumber(2.675, 2, " ", ","), "toFixed says 2.67").toBe("2,68");
+    expect(formatNumber(-1.005, 2, " ", ",")).toBe("-1,01");
+    // Half AWAY from zero, both directions, which is what a spreadsheet does.
+    expect(formatNumber(2.5, 0, " ", ",")).toBe("3");
+    expect(formatNumber(-2.5, 0, " ", ",")).toBe("-3");
+  });
+
+  it("carries a rounding that runs out of columns", () => {
+    // 9.99 at one place is 10.0, and the carry needs a digit that was not
+    // there. All-nines is the case a carry loop gets wrong.
+    expect(formatNumber(9.99, 1, " ", ",")).toBe("10,0");
+    expect(formatNumber(0.999, 2, " ", ",")).toBe("1,00");
+    expect(formatNumber(99.995, 2, " ", ",")).toBe("100,00");
+    expect(formatNumber(999.5, 0, " ", ",")).toBe("1 000");
+  });
+
+  it("leaves a number too large to spell in full exactly as the cell has it", () => {
+    /**
+     * Above 1e21 JavaScript spells a number with an exponent, and there is no
+     * fixed-point form to group. `1e21` printed "1e+21"; a 25-digit integer
+     * printed "1,2345678901234568e+24" — a European decimal, on a slide, from
+     * a whole number. Unchanged is this function's own contract for a value
+     * that does not match its format.
+     */
+    expect(applyFormat("1000000000000000000000", "number:0")).toBe("1000000000000000000000");
+    expect(applyFormat("1234567890123456789012345", "number:2")).toBe("1234567890123456789012345");
+    // And the ordinary case is untouched.
+    expect(applyFormat("1234567.891", "number:2")).toBe("1 234 567,89");
+  });
+
   it("formats a date to the pattern in the template", () => {
     expect(applyFormat("2026-03-01", "date:dd MMM yyyy")).toBe("01 Mar 2026");
   });

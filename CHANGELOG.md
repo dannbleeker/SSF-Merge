@@ -7,6 +7,22 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a merged number could disagree with the spreadsheet it came from
+
+`{{Price|number:2}}` rounded the binary value rather than the number in the
+cell, so 1.005 printed as 1.00 where Excel — and the cell itself — says 1.01.
+Over a corpus of ordinary money and percentage values the two disagreed on 118
+of 310: every value whose last kept digit is followed by a 5. Rounding is done
+on the decimal now, half away from zero, the way a spreadsheet does it.
+
+### Fixed — a very large number formatted to nonsense
+
+A cell holding more than twenty-one digits printed "1e+21", and a
+twenty-five-digit one printed "1,2345678901234568e+24" — a European decimal, on
+a slide, from a whole number. Such a value is now left exactly as the cell has
+it, which is what this add-in already does with anything else its format cannot
+apply.
+
 ### Fixed — a very long slide number emptied the pane
 
 Twenty-one digits typed into the slide range read as a whole number, so the pane

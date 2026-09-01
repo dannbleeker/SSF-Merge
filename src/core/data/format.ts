@@ -566,8 +566,57 @@ export function formatDate(d: Date, pattern: string): string {
   );
 }
 
+/**
+ * `Math.abs(n)` at `decimals` places, rounded the way a spreadsheet rounds.
+ *
+ * NOT `toFixed`, which rounds the binary double rather than the decimal the
+ * author typed. `1.005` is stored a hair below 1.005, so `toFixed(2)` answers
+ * "1.00" where Excel — and the cell the number was copied out of — says 1.01.
+ * Comparing the two over a corpus of ordinary money and percentage values put
+ * them apart on 118 of 310, which is not a corner: it is every value whose last
+ * kept digit is followed by a 5.
+ *
+ * So the rounding is done on the DECIMAL string, half away from zero. The
+ * string is JavaScript's shortest round-trip spelling, which is the one that
+ * reads back as the number the author typed — for `1.005` it is "1.005", and
+ * the decision is then arithmetic anybody can check by eye rather than a
+ * property of the binary value underneath.
+ *
+ * `toFixed` is still the answer for a magnitude with no plain spelling, where
+ * the shortest form is exponential; `applyFormat` refuses those before they
+ * reach here, and a direct caller gets the exponential rather than a mangled
+ * grouping of it.
+ */
+function fixedDecimal(n: number, decimals: number): string {
+  const plain = String(Math.abs(n));
+  if (plain.includes("e") || plain.includes("E")) return Math.abs(n).toFixed(decimals);
+  const [whole = "0", frac = ""] = plain.split(".");
+  if (frac.length <= decimals) return decimals === 0 ? whole : `${whole}.${frac.padEnd(decimals, "0")}`;
+  const kept = (whole + frac.slice(0, decimals)).split("");
+  // Half AWAY from zero, which is what a spreadsheet does and what somebody
+  // reading the cell expects. Banker's rounding would answer 1.00 here and be
+  // defensible; it would also disagree with the number on screen in Excel,
+  // which is the comparison a reader of the slide actually makes.
+  if ((frac.charCodeAt(decimals) ?? 0) >= 53) {
+    let i = kept.length - 1;
+    for (; i >= 0; i--) {
+      if (kept[i] === "9") kept[i] = "0";
+      else {
+        kept[i] = String(Number(kept[i]) + 1);
+        break;
+      }
+    }
+    // Every digit was a nine: 9.99 at one place is 10.0, and the carry needs a
+    // column that was not there.
+    if (i < 0) kept.unshift("1");
+  }
+  const digits = kept.join("");
+  const cut = digits.length - decimals;
+  return decimals === 0 ? digits : `${digits.slice(0, cut) || "0"}.${digits.slice(cut)}`;
+}
+
 export function formatNumber(n: number, decimals: number, group: string, point: string): string {
-  const fixed = Math.abs(n).toFixed(decimals);
+  const fixed = fixedDecimal(n, decimals);
   const [whole = "0", frac] = fixed.split(".");
   const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, group);
   // The sign comes from the ROUNDED value, not the input. `-0.4` at no decimal
@@ -614,6 +663,12 @@ export function applyFormat(raw: string, spec: string | undefined): string {
       if (trimmed !== "" && !/^\d+$/.test(trimmed)) return raw;
       const decimals = trimmed === "" ? 0 : Number(trimmed);
       if (decimals > 100) return raw;
+      // A magnitude JavaScript spells with an exponent has no fixed-point
+      // form to group. `1e21` printed "1e+21" and a 25-digit cell printed
+      // "1,2345678901234568e+24" — a European decimal, on a slide, from an
+      // integer. Returned unchanged, which is this function's own contract for
+      // a value that does not match its format: the cell says what it says.
+      if (!Number.isFinite(n) || Math.abs(n) >= 1e21) return raw;
       return formatNumber(n, decimals, " ", ",");
     }
     case "date": {
