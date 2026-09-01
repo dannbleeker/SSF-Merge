@@ -79,7 +79,9 @@ describe("what a release must never ship", () => {
     // not only to the one in the tree.
     const broken = (name: string) =>
       read(name).replace(`<Version>${DEFINITION.version}</Version>`, "<Version>0.1.0</Version>");
-    expect(releaseProblems(broken, ["manifest-prod.xml"], [])).toEqual([expect.stringContaining("below 1.0")]);
+    expect(releaseProblems(broken, ["manifest-prod.xml"], [])).toEqual([
+      expect.stringContaining("must be a number from 1.0 up"),
+    ]);
   });
 
   it("refuses an asset that is not there at all", () => {

@@ -60,7 +60,37 @@ describe("the rules this project would be bitten by", () => {
         xml.replace(`<Version>${DEFINITION.version}</Version>`, "<Version>0.1.0</Version>"),
         "manifest-prod.xml",
       ),
-    ).toEqual([expect.stringContaining("below 1.0")]);
+    ).toEqual([expect.stringContaining("must be a number from 1.0 up")]);
+
+    // And a version that is not a NUMBER at all, which both rules used to let
+    // through. They coerced with `Number` and compared `< 1`, and `NaN < 1` is
+    // false — so `draft`, `v1.0.0` and a missing version each walked past the
+    // check that exists to catch a version Office rejects. The one input either
+    // caught by accident was the empty string, because `Number("")` is zero.
+    //
+    // This test's name claims it "would still catch each of them being broken",
+    // and it exercised the version rule with a single numeric input; that
+    // narrowness is what left the hole.
+    for (const bad of ["draft", "v1.0.0", "1.0.0-beta"]) {
+      expect(
+        checkManifest(
+          xml.replace(`<Version>${DEFINITION.version}</Version>`, `<Version>${bad}</Version>`),
+          "manifest-prod.xml",
+        ),
+        bad,
+      ).toEqual([expect.stringContaining("must be a number from 1.0 up")]);
+      expect(checkManifest(json.replace(`"${DEFINITION.version}"`, `"${bad}"`), "manifest-prod.json"), bad).toEqual([
+        expect.stringContaining("must be a number from 1.0 up"),
+      ]);
+    }
+
+    // The JSON path had no counterpart to the XML's "has no version" at all, so
+    // a manifest with none passed.
+    const noVersion: Record<string, unknown> = JSON.parse(json);
+    delete noVersion.version;
+    expect(checkManifest(JSON.stringify(noVersion), "manifest-prod.json")).toEqual([
+      expect.stringContaining("has no version"),
+    ]);
 
     // A changed GUID is a different add-in: every sideload orphaned, with
     // nothing anywhere saying why.
