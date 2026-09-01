@@ -98,10 +98,33 @@ export async function writeSlideTags(pkg: Pkg, slidePath: string, entries: [stri
   if (existing) {
     const rId = existing.getAttributeNS(R_NS, "id") ?? existing.getAttribute("r:id");
     const target = rId ? await pkg.relTarget(slidePath, rId) : undefined;
-    if (target) {
+    // `pkg.has`, not just a resolved target. `relTarget` answers what the
+    // relationship POINTS AT, and a relationship can point at a part that is
+    // not in the package — a deck another tool wrote, or one PowerPoint
+    // repaired by dropping the part and leaving the reference. `pkg.text`
+    // throws by name for a missing part, so a slide like that killed the whole
+    // merge here while `readSlideTags` two functions down guarded with exactly
+    // this test and returned an empty map. A reader that degrades and a writer
+    // that throws on the same markup is the pair worth never shipping.
+    if (target && pkg.has(target)) {
       pkg.setText(target, mergeTagPart(await pkg.text(target), entries));
       return;
     }
+    // The reference is there and leads nowhere. It has to GO before a fresh
+    // one is written, because `CT_CustomerDataList` allows at most one
+    // `<p:tags>` child and the fall-through below appends into this same
+    // `<p:custDataLst>` — so leaving it produced two, which is schema-invalid,
+    // and `readSlideTags` reads the FIRST. The run's own tag was then
+    // invisible to every reader of it: the pane could not report the slides it
+    // had made and undo could not find them to take back, on a deck that
+    // opened perfectly well.
+    //
+    // The dangling RELATIONSHIP is deliberately left alone. It was in the deck
+    // before this ran and removing relationships is the operation that has
+    // twice produced damage here — an id freed by a delete is handed to the
+    // next thing that asks for one — so this writer repairs what it is
+    // responsible for and nothing else.
+    existing.parentNode?.removeChild(existing);
   }
 
   const n = nextTagNumber(pkg);
@@ -116,8 +139,9 @@ export async function writeSlideTags(pkg: Pkg, slidePath: string, entries: [stri
   tags.setAttributeNS(R_NS, "r:id", rId);
   const already = custData;
   if (already) {
-    // CT_CustomerDataList allows one <p:tags>, and we established above there
-    // is none; a list holding only <p:custData> children is legal and common.
+    // CT_CustomerDataList allows one <p:tags>, and by here there is none —
+    // either the list never had one, or the one that led nowhere was taken out
+    // above. A list holding only <p:custData> children is legal and common.
     already.appendChild(tags);
     return;
   }

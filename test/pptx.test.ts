@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import JSZip from "jszip";
 import { cloneSlide, creationIdOf, notesPathFor, setCreationId } from "../src/core/pptx/clone.js";
 import { buildPlan } from "../src/core/merge/plan.js";
 import { runPlan } from "../src/core/merge/run.js";
 import { toRecordSet } from "../src/core/data/recordset.js";
+import { prepareBlock } from "../src/core/merge/prepare.js";
 import { Pkg } from "../src/core/pptx/pkg.js";
 import {
   TAG_BLOCK,
@@ -15,7 +16,7 @@ import {
   readSlideTags,
   writeSlideTags,
 } from "../src/core/pptx/tags.js";
-import { P_NS, R_NS, child, children, element, elements, parseXml } from "../src/core/pptx/xml.js";
+import { A_NS, P_NS, R_NS, child, children, element, elements, parseXml } from "../src/core/pptx/xml.js";
 
 const P14 = "http://schemas.microsoft.com/office/powerpoint/2010/main";
 import { makeDeck } from "./fixtures/deck.js";
@@ -758,5 +759,160 @@ describe("a creation id the template carries in the wrong place", () => {
     await setCreationId(pkg, "ppt/slides/slide1.xml", 222);
     const ids = idsIn(await pkg.doc("ppt/slides/slide1.xml"));
     expect(ids).toEqual([{ val: "222", under: "cSld" }]);
+  });
+});
+
+describe("a part that arrives with a byte order mark", () => {
+  /**
+   * OPC permits a BOM on an XML part and .NET's default `UTF8Encoding` emits
+   * one, so any deck from a third-party generator built on it carries one on
+   * every part that generator wrote. PowerPoint opens such a deck without a
+   * murmur.
+   *
+   * `@xmldom/xmldom` does not: a leading `U+FEFF` puts the XML declaration at
+   * position 1 and it throws `processing instruction at position 1 is an xml
+   * declaration which is only at the start of the document`. JSZip's
+   * `async("string")` hands the character through — it decodes UTF-8 and has
+   * no opinion about what the first code point means — so the mark reaches the
+   * parser as content and the merge dies on the first slide it reads, naming
+   * neither the part nor the reason a user could act on.
+   */
+  async function deckWithBom(part: string): Promise<Uint8Array> {
+    const zip = await JSZip.loadAsync(await makeDeck([{ paragraphs: [["Hello {{Name}}"]] }]));
+    const file = zip.file(part);
+    if (!file) throw new Error(`the fixture has no ${part}, so this test proves nothing`);
+    zip.file(part, `\uFEFF${await file.async("string")}`);
+    return zip.generateAsync({ type: "uint8array" });
+  }
+
+  it("reads a slide whose markup starts with one", async () => {
+    const pkg = await Pkg.open(await deckWithBom("ppt/slides/slide1.xml"));
+    // The mark really is still in the bytes — if JSZip ever started stripping
+    // it, this test would pass while proving nothing.
+    expect((await pkg.text("ppt/slides/slide1.xml")).charCodeAt(0)).toBe(0xfeff);
+    expect(elements(await pkg.doc("ppt/slides/slide1.xml"), P_NS, "cSld")).toHaveLength(1);
+  });
+
+  it("merges a deck whose slide, presentation and content types all carry one", async () => {
+    // Every part a merge has to parse, marked at once, which is what a whole
+    // deck written by such a generator looks like.
+    let bytes = await makeDeck([{ paragraphs: [["Hello {{Name}}"]] }]);
+    for (const part of ["ppt/slides/slide1.xml", "ppt/presentation.xml", "[Content_Types].xml"]) {
+      const zip = await JSZip.loadAsync(bytes);
+      const file = zip.file(part);
+      if (!file) throw new Error(`the fixture has no ${part}, so this test proves nothing`);
+      zip.file(part, `\uFEFF${await file.async("string")}`);
+      bytes = await zip.generateAsync({ type: "uint8array" });
+    }
+    const pkg = await Pkg.open(bytes);
+    const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "bom");
+    if (!prepared.ok) throw new Error(`refused: ${prepared.why}`);
+    const records = toRecordSet([["Name"], ["Ada"], ["Bo"]]);
+    const result = await runPlan(pkg, buildPlan(prepared.block, records, { runId: "bom" }), records, {});
+    expect(result.slides).toHaveLength(2);
+    const said = await Promise.all(
+      result.slides.map(async (s) => elements(await pkg.doc(s), A_NS, "t")[0]?.textContent ?? ""),
+    );
+    expect(said.join("|")).toContain("Ada");
+  });
+});
+
+describe("a slide whose <p:tags> leads nowhere", () => {
+  const P = 'xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"';
+  const A = 'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"';
+  const R = 'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
+
+  /**
+   * A slide-level `<p:tags>` reference that does not resolve to a part, in the
+   * two shapes a deck can carry it.
+   *
+   * `"no-part"` — the relationship is there and names a part the package does
+   * not hold. PowerPoint writes this itself when it repairs a file: the part
+   * goes and the reference stays.
+   *
+   * `"no-rel"` — the markup names a relationship id the slide's `.rels` does
+   * not have, which is what a tool that deleted a relationship without
+   * touching the markup leaves behind.
+   *
+   * `readSlideTags` degrades on both and answers an empty map. `writeSlideTags`
+   * did not: it THREW on the first, because `Pkg.text` throws by name for a
+   * missing part, and it silently appended a SECOND `<p:tags>` on the second.
+   * `CT_CustomerDataList` caps that list at one, and `readSlideTags` reads the
+   * first child — so the run's own tag became invisible to every reader of it,
+   * which is the read undo depends on to find the slides it made.
+   */
+  async function slideWithBrokenTagRef(shape: "no-part" | "no-rel"): Promise<Pkg> {
+    const zip = await JSZip.loadAsync(await makeDeck([{ paragraphs: [["hello"]] }]));
+    zip.file(
+      "ppt/slides/slide1.xml",
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n` +
+        `<p:sld ${P} ${A} ${R}><p:cSld><p:spTree>` +
+        `<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>` +
+        `</p:spTree>` +
+        `<p:custDataLst><p:custData r:id="rId9"/><p:tags r:id="rId50"/></p:custDataLst>` +
+        `</p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`,
+    );
+    if (shape === "no-part") {
+      const rels = zip.file("ppt/slides/_rels/slide1.xml.rels");
+      if (!rels) throw new Error("the fixture wrote no slide rels, so this test proves nothing");
+      zip.file(
+        "ppt/slides/_rels/slide1.xml.rels",
+        (await rels.async("string")).replace(
+          "</Relationships>",
+          `<Relationship Id="rId50" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/tags"` +
+            ` Target="../tags/tagGone.xml"/></Relationships>`,
+        ),
+      );
+    }
+    return Pkg.open(await zip.generateAsync({ type: "uint8array" }));
+  }
+
+  for (const shape of ["no-part", "no-rel"] as const) {
+    it(`writes tags a reader can find again (${shape})`, async () => {
+      const pkg = await slideWithBrokenTagRef(shape);
+      // The reader's answer first, so the two halves of the pair are on record
+      // together: it degrades, and the writer must not do worse than that.
+      expect(await readSlideTags(pkg, "ppt/slides/slide1.xml")).toEqual(new Map());
+      await writeSlideTags(pkg, "ppt/slides/slide1.xml", [[TAG_RUN, "run-1"]]);
+
+      const again = await Pkg.open(await pkg.toBytes());
+      const cSld = element(await again.doc("ppt/slides/slide1.xml"), P_NS, "cSld");
+      const custDataLst = child(cSld as Element, P_NS, "custDataLst");
+      expect(
+        children(custDataLst as Element, P_NS, "tags"),
+        "CT_CustomerDataList allows one <p:tags>; a second makes the run's own tag unreadable",
+      ).toHaveLength(1);
+      // The other tool's entry in the same list is not collateral.
+      expect(children(custDataLst as Element, P_NS, "custData")).toHaveLength(1);
+      expect((await readSlideTags(again, "ppt/slides/slide1.xml")).get(TAG_RUN)).toBe("run-1");
+    });
+  }
+});
+
+describe("sweeping the template block off a long deck", () => {
+  /**
+   * `removeSlide` used to resolve every `<p:sldId>` in the deck through
+   * `relTarget`, which re-walks the presentation's whole relationship list for
+   * one id — so a single removal cost `deck x deck`, and `src/office/merge.ts`
+   * removes the template block one slide at a time. Measured on a 100-slide
+   * user deck plus 400 clones: 4.5 SECONDS of blocking work in a task-pane
+   * WebView, after the merge had already finished and with nothing on screen to
+   * say why.
+   *
+   * Asserted as work rather than as wall clock, because a timing threshold on a
+   * shared runner is a test that fails for reasons nobody can act on. The
+   * property is that resolving the id list is not a per-slide question: the
+   * relationships are read once for the whole sweep. Pre-fix this counts one
+   * `relTarget` call per `<p:sldId>` per removal — 4 950 of them for the deck
+   * below — and the number is what the seconds were made of.
+   */
+  it("does not re-resolve the whole slide id list once per slide", async () => {
+    const pkg = await Pkg.open(await makeDeck(Array.from({ length: 100 }, () => ({ paragraphs: [["a"]] }))));
+    const paths = await pkg.slidePaths();
+    const seen = vi.spyOn(pkg, "relTarget");
+    for (const path of paths.slice(0, 50)) await pkg.removeSlide(path);
+    expect(await pkg.slidePaths()).toHaveLength(50);
+    expect(seen.mock.calls.length, "the id list is being re-resolved per slide").toBeLessThanOrEqual(paths.length);
+    seen.mockRestore();
   });
 });

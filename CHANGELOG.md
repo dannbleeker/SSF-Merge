@@ -7,6 +7,62 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a deck from another generator could not be merged at all
+
+An XML part may legally begin with a UTF-8 byte order mark, and .NET's default
+`UTF8Encoding` writes one — so a template produced by a third-party tool
+carries one on every part it wrote, and PowerPoint opens such a deck without a
+murmur. The parser here refused it outright and the merge died on the first
+slide it read, with a message about processing instructions that named neither
+the part nor anything a user could act on. The mark is now stripped before
+parsing, at the one door every part comes through.
+
+### Fixed — a chart whose workbook was not an ordinary .xlsx produced a damaged file
+
+Giving a merged chart its own copy of the workbook behind it named the copy
+after the original's file extension, and declared a content type only when that
+extension was exactly `xlsx`. A chart carrying a legacy `.xls` embedding — one
+pasted out of an older Office, or a deck saved down — therefore got a copy that
+no content type covered, and PowerPoint refuses such a file without saying
+which part it could not classify. An embedding whose name had no extension at
+all was worse: the whole path was read as the extension and the copy was
+written under a name no declaration could ever cover. The copy is now declared
+the way the package declares the original, whatever the extension is, and an
+embedding with no extension is left shared rather than copied under an invented
+name.
+
+### Fixed — a slide could be dropped from a run, or the run made untraceable, by a stale tag reference
+
+A slide can name a tag part that is not in the package — PowerPoint leaves
+exactly this behind when it repairs a file. Reading such a slide's tags
+degrades quietly; writing to it did not. It threw, and took the whole merge
+with it. In the related case where the reference names a relationship the slide
+does not have, it silently added a SECOND `<p:tags>` to a list the schema caps
+at one — and since the first one is what any reader sees, the run's own tag
+became invisible, so the summary could not report the slides it had made and
+undo could not find them to take back. The stale reference is now replaced
+rather than added to.
+
+### Fixed — removing a slide could delete parts a surviving slide still needed
+
+Deciding which of a removed slide's charts and diagrams nothing else needs
+skipped the relationships of every candidate while that decision was still
+being made. So a chart another slide still shows was correctly kept — and its
+embedded workbook, whose only referrer is the chart itself, was swept anyway.
+What came out was a surviving chart pointing at a part that is not in the file,
+which is what PowerPoint calls damage. Two slides sharing one chart is all it
+took. The decision now settles rather than assumes: a part is only an orphan
+while everything naming it is itself going.
+
+### Fixed — a long merge froze the pane for several seconds after it had finished
+
+Taking the template block back out of the deck resolved the whole slide id list
+once per slide removed, and each resolution re-read every relationship in the
+presentation. On a 100-slide deck plus 400 merged copies that is four and a
+half seconds of blocking work in the task pane, after the merge was already
+done and with nothing on screen to explain it. The relationships are read once
+per removal now. The file that comes out is identical, part for part.
+
 ### Fixed — a chart could end up disagreeing with its own data sheet
 
 A value cell holding a placeholder that will not become a number is left as you

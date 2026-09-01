@@ -40,8 +40,38 @@ export const SSML_NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/mai
 /** `[Content_Types].xml`. */
 export const CT_NS = "http://schemas.openxmlformats.org/package/2006/content-types";
 
+/**
+ * A UTF-8 byte order mark at the very start of an XML part.
+ *
+ * Legal in an OPC package and emitted by default: .NET's `UTF8Encoding` writes
+ * one unless it is explicitly told not to, so a deck from any third-party
+ * generator built on it carries one on every part it wrote. JSZip's
+ * `async("string")` hands the character straight through — it decodes UTF-8 and
+ * has no opinion about what the first code point means — so the mark reaches
+ * the parser as content.
+ */
+const BOM = "\uFEFF";
+
+/**
+ * Parse a part, tolerating a leading byte order mark.
+ *
+ * `@xmldom/xmldom` refuses one outright: with a `U+FEFF` in front of the XML
+ * declaration it reports "processing instruction at position 1 is an xml
+ * declaration which is only at the start of the document" and THROWS out of
+ * whatever was reading the part. On a slide that is the whole merge, from a
+ * deck PowerPoint opens without a murmur — the mark is the producer's, not the
+ * user's, and nothing in the pane could have told them which part carried it.
+ *
+ * Stripped here rather than at each reader because this is the one door every
+ * part in the package comes through, and a second reader would be free to
+ * forget. The mark is not written back: `serializeXml` emits the document, and
+ * a part that keeps its own bytes keeps its own mark, which is equally legal.
+ */
 export function parseXml(xml: string): Document {
-  return new DOMParser().parseFromString(xml, "text/xml") as unknown as Document;
+  return new DOMParser().parseFromString(
+    xml.startsWith(BOM) ? xml.slice(BOM.length) : xml,
+    "text/xml",
+  ) as unknown as Document;
 }
 
 export function serializeXml(doc: Document): string {

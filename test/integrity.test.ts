@@ -419,3 +419,128 @@ describe("the engine and the checker resolve a relationship the same way", () =>
     expect(resolvePart("ppt/slides/slide1.xml", "/ppt/media/image1.png")).toBe("ppt/media/image1.png");
   });
 });
+
+describe("a chart whose workbook is not an ordinary .xlsx", () => {
+  /**
+   * `cloneChartWorkbook` names the copy after the SOURCE's extension, and it
+   * took that extension with `slice(lastIndexOf(".") + 1)` over the whole path
+   * while declaring a content type only when the answer was exactly `xlsx`.
+   * Two decks that are not this engine's own fall through it:
+   *
+   * - a legacy `.xls` embedding — a chart pasted out of an older Office, or a
+   *   deck saved down — got a copy no content type covers;
+   * - a target with NO dot in it made `lastIndexOf` answer -1, so the whole
+   *   path became the "extension" and the copy was written as
+   *   `ppt/embeddings/workbook1.ppt/embeddings/workbook`, a name no `Default`
+   *   could ever cover.
+   *
+   * Both are the same damage from PowerPoint's side: it refuses the file and
+   * does not say which part it could not classify.
+   */
+  async function deckWhoseEmbeddingIsCalled(name: string, contentType: string): Promise<Uint8Array> {
+    const zip = await JSZip.loadAsync(
+      await makeDeck([
+        { paragraphs: [["{{Name}}"]], chart: { title: "{{Name}}", categories: ["{{Name}}"], workbook: ["{{Name}}"] } },
+        { paragraphs: [["after"]] },
+      ]),
+    );
+    const original = zip.file("ppt/embeddings/Microsoft_Excel_Worksheet1.xlsx");
+    const rels = zip.file("ppt/charts/_rels/chart1.xml.rels");
+    const types = zip.file("[Content_Types].xml");
+    if (!original || !rels || !types) throw new Error("the fixture built no embedded workbook to rename");
+    zip.remove("ppt/embeddings/Microsoft_Excel_Worksheet1.xlsx");
+    zip.file(`ppt/embeddings/${name}`, await original.async("uint8array"));
+    zip.file(
+      "ppt/charts/_rels/chart1.xml.rels",
+      (await rels.async("string")).replace("../embeddings/Microsoft_Excel_Worksheet1.xlsx", `../embeddings/${name}`),
+    );
+    // The ORIGINAL is declared, so the deck going in is sound and any problem
+    // the checker reports afterwards is one the merge introduced.
+    zip.file(
+      "[Content_Types].xml",
+      (await types.async("string")).replace(
+        "<Override",
+        `<Override PartName="/ppt/embeddings/${name}" ContentType="${contentType}"/><Override`,
+      ),
+    );
+    return zip.generateAsync({ type: "uint8array" });
+  }
+
+  it("declares the copy of a legacy .xls embedding", async () => {
+    const deck = await deckWhoseEmbeddingIsCalled("Book1.xls", "application/vnd.ms-excel");
+    expect(problems(await partsOf(deck)), "the deck going in").toEqual([]);
+    const parts = await partsOf(await merged(deck, 1, 1, true));
+    expect(problems(parts)).toEqual([]);
+    // And it really did take a copy, rather than passing by leaving every
+    // merged chart on the template's one workbook.
+    expect([...parts.keys()].filter((n) => n.startsWith("ppt/embeddings/"))).toContain("ppt/embeddings/workbook1.xls");
+  });
+
+  it("leaves a target with no extension alone rather than inventing a part name", async () => {
+    const deck = await deckWhoseEmbeddingIsCalled("ChartData", "application/vnd.ms-excel");
+    expect(problems(await partsOf(deck)), "the deck going in").toEqual([]);
+    const parts = await partsOf(await merged(deck, 1, 1, true));
+    expect(problems(parts)).toEqual([]);
+    // Refused, not renamed: the sharing costs an "Edit Data" that shows the
+    // last record, where the invented name cost a file that does not open.
+    expect([...parts.keys()].filter((n) => n.startsWith("ppt/embeddings/"))).toEqual(["ppt/embeddings/ChartData"]);
+  });
+});
+
+describe("removing one of two slides that share a chart", () => {
+  /**
+   * `orphanedParts` decides which of a removed slide's parts nothing else needs
+   * — and it used to skip the `.rels` of every CANDIDATE while the scan was
+   * running, which is the answer the scan is computing. So a chart another
+   * slide still references was kept, its own relationships were skipped all the
+   * same, and its embedded workbook finished the scan with no referrer at all
+   * and was swept.
+   *
+   * What comes out is a surviving chart pointing at a part that is not in the
+   * package, which is exactly what PowerPoint calls damaged — from a merge that
+   * reported success. Two slides sharing one chart is all it takes, and a deck
+   * where somebody duplicated a slide by hand has them.
+   */
+  it("keeps the workbook the surviving slide's chart still needs", async () => {
+    const zip = await JSZip.loadAsync(
+      await makeDeck([
+        { paragraphs: [["a"]], chart: { title: "shared", workbook: ["shared"] } },
+        { paragraphs: [["b"]] },
+      ]),
+    );
+    const rels = zip.file("ppt/slides/_rels/slide2.xml.rels");
+    if (!rels) throw new Error("the fixture wrote no rels for slide 2");
+    zip.file(
+      "ppt/slides/_rels/slide2.xml.rels",
+      (await rels.async("string")).replace(
+        "</Relationships>",
+        `<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart"` +
+          ` Target="../charts/chart1.xml"/></Relationships>`,
+      ),
+    );
+    const bytes = await zip.generateAsync({ type: "uint8array" });
+    expect(problems(await partsOf(bytes)), "the deck going in").toEqual([]);
+
+    const pkg = await Pkg.open(bytes);
+    await pkg.removeSlide("ppt/slides/slide1.xml");
+    const parts = await partsOf(await pkg.toBytes());
+
+    expect(problems(parts)).toEqual([]);
+    // The chart survives because slide 2 names it, and so must everything it
+    // needs — asserted by name, because "no problems" would also be satisfied
+    // by the chart and its rels having gone too.
+    expect(parts.has("ppt/charts/chart1.xml")).toBe(true);
+    expect(parts.has("ppt/embeddings/Microsoft_Excel_Worksheet1.xlsx")).toBe(true);
+  });
+
+  it("still takes the whole chart when the slide really was the last owner", async () => {
+    // The other direction, because a fix that keeps everything is not a fix.
+    const pkg = await Pkg.open(
+      await makeDeck([{ paragraphs: [["a"]], chart: { title: "own", workbook: ["own"] } }, { paragraphs: [["b"]] }]),
+    );
+    await pkg.removeSlide("ppt/slides/slide1.xml");
+    const parts = await partsOf(await pkg.toBytes());
+    expect(problems(parts)).toEqual([]);
+    expect([...parts.keys()].filter((n) => n.includes("chart") || n.includes("embeddings"))).toEqual([]);
+  });
+});

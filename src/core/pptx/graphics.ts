@@ -26,7 +26,7 @@
  * alone and the deck is right until somebody clicks the button, at which point
  * the merged labels revert to `{{Region}}` in front of them.
  */
-import { Pkg, resolveTarget as resolve } from "./pkg.js";
+import { Pkg, extensionOf, resolveTarget as resolve } from "./pkg.js";
 import { REL_TYPE } from "./parts.js";
 import { A_NS, MC_NS, PKG_REL_NS, P_NS, child, element, elements, relationshipIdsIn } from "./xml.js";
 
@@ -151,7 +151,22 @@ async function cloneChartWorkbook(pkg: Pkg, chartPath: string): Promise<void> {
     if (!target || (rel.getAttribute("TargetMode") ?? "") === "External") continue;
     const source = resolve(chartPath, target);
     if (!pkg.has(source)) continue;
-    const extension = source.slice(source.lastIndexOf(".") + 1);
+    const extension = extensionOf(source);
+    // A target with no extension at all. The copy's NAME is built from it, so
+    // this used to produce `ppt/embeddings/workbook1.ppt/embeddings/workbook`
+    // — the whole path read as an extension, because `lastIndexOf(".")` had
+    // answered -1 — and a part under a name like that is covered by no content
+    // type and never will be. PowerPoint calls the file damaged and does not
+    // say which part it could not classify.
+    //
+    // Refused rather than guessed at. The cost is real and it is the smaller
+    // one: this chart's copies go on sharing the template's embedding, so
+    // "Edit Data" shows the last record's numbers, where the alternative is a
+    // file that does not open at all. Nothing PowerPoint writes lands here —
+    // an embedding is `Microsoft_Excel_Worksheet1.xlsx` or the like — so this
+    // is a deck from somewhere else, and the safe direction is to leave its
+    // relationship exactly as it was.
+    if (!extension) continue;
     const n = pkg.nextNumber("ppt/embeddings/workbook", `.${extension}`);
     const path = `ppt/embeddings/workbook${n}.${extension}`;
     await pkg.copyPart(source, path);
@@ -160,7 +175,26 @@ async function cloneChartWorkbook(pkg: Pkg, chartPath: string): Promise<void> {
     // already there in the ordinary case. Adding it is for the case where the
     // template declared the original with an Override and this copy's name is
     // not covered by it.
-    if (extension.toLowerCase() === "xlsx") await pkg.addContentTypeDefault(extension, XLSX_TYPE);
+    //
+    // Whatever the extension IS, not only `xlsx`. A chart's `package`
+    // relationship can perfectly well name a legacy `.xls` — a deck saved down
+    // from an older Office, or a chart pasted out of one — and the copy was
+    // then written with nothing covering it, which is the same undeclared-part
+    // damage the paragraph above describes. The type comes from what the
+    // package already says about the ORIGINAL, because the copy is the same
+    // bytes; `XLSX_TYPE` is the fallback for the one case this engine knows by
+    // heart, a deck that carries an `.xlsx` embedding and forgot to declare it.
+    const declared = (await pkg.contentTypeOf(source)) ?? (extension.toLowerCase() === "xlsx" ? XLSX_TYPE : undefined);
+    if (declared) {
+      await pkg.addContentTypeDefault(extension, declared);
+      // A Default cannot say two things about one extension, and one may
+      // already be there saying something else — the original was then
+      // declared by an Override, and the copy would silently inherit the
+      // extension's type instead of its own. Asked rather than reasoned about:
+      // if the package does not now answer for the copy with the type the
+      // original has, the copy gets an Override of its own.
+      if ((await pkg.contentTypeOf(path)) !== declared) await pkg.addContentTypeOverride(`/${path}`, declared);
+    }
     rel.setAttribute("Target", `../embeddings/workbook${n}.${extension}`);
   }
 }
