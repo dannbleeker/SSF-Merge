@@ -13,11 +13,17 @@
  * unhandled one, and the user is left looking at a button that never comes back.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { InsertOutcome } from "../src/office/powerpoint.js";
 
 const host = vi.hoisted(() => ({
   readTemplate: vi.fn<(b: { from: number; to: number }) => Promise<{ base64: string; offset: number }>>(),
   slideCount: vi.fn<() => Promise<number>>(),
-  insertDeck: vi.fn(),
+  // TYPED, and the type is load-bearing. A bare `vi.fn()` let a test set
+  // `verdict: "ok"` — not a member of `Verdict` — so `"ok" !== "yes"` routed it
+  // into the REFUSAL branch and the test asserted the one path it was not
+  // about. The mock has to be as strict as the function it stands in for, or a
+  // fixture can put the code under test in a state production cannot reach.
+  insertDeck: vi.fn<(base64: string, expected: number) => Promise<InsertOutcome>>(),
   undoInsert: vi.fn(),
 }));
 
@@ -362,7 +368,7 @@ describe("a torn insert is reported in rows", () => {
     host.slideCount.mockReset().mockResolvedValue(3);
     host.readTemplate.mockResolvedValueOnce({ base64: await block(), offset: 0 });
     host.insertDeck.mockResolvedValueOnce({
-      verdict: "ok",
+      verdict: "yes",
       detail: "all 6 slide(s) landed",
       landed: 6,
       // Three when the run was planned; four when it inserted.
@@ -372,7 +378,15 @@ describe("a torn insert is reported in rows", () => {
 
     const out = await runMerge({ from: 1, to: 2, records: rows });
     expect(out.accountable, "the pane may not offer to sweep slides this run cannot identify").toBe(false);
+    // The slides all landed, so this is not a failure — what is gone is the way
+    // back, and the user has to be told that rather than shown a plain success
+    // above the space where the undo card would have been.
+    expect(out.ok, "every slide the package held is in the deck").toBe(true);
     expect(out.detail).toContain("cannot say which of them are its own");
+    expect(out.detail, "and why there is no offer").toContain("no offer to take these slides back");
+    // Anchored where the slides actually landed. `deckAtStart` is 3 here and
+    // names the wrong slide in exactly this case.
+    expect(out.detail, "the anchor is the deck when the call went out").toContain("added after slide 4");
   });
 
   it("does not read an over-grown deck as accountable just because the call also raised", async () => {

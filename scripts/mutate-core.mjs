@@ -37,6 +37,8 @@ import { isMain } from "./is-main.mjs";
 
 /** Where a wrong answer costs the most: the engine, and the undo that deletes slides. */
 const TARGETS = [
+  "src/core/data/format.ts",
+  "src/core/pptx/pkg.ts",
   "src/host/undo.ts",
   "src/core/pptx/clone.ts",
   "src/core/merge/numbers.ts",
@@ -179,7 +181,20 @@ function main() {
       process.exitCode = 1;
       return;
     }
-    console.log(`control: the unmutated copy is green — ${countedTests(control.output) ?? "?"} test(s)`);
+    // The count as well as the colour. A copy that collects FEWER test files
+    // and is green is the same vacuous sweep one step less obvious, and the
+    // repo already keeps the number to check it against — `test-count.mjs`
+    // holds a floor that rises on its own. Printed and asserted, not printed
+    // and left for a reader to notice.
+    const ran = countedTests(control.output);
+    const floor = JSON.parse(readFileSync("test/fixtures/test-count.json", "utf8")).min;
+    if (ran === undefined || ran < floor) {
+      console.log(`the copy ran ${ran ?? "an unreadable number of"} test(s) against a floor of ${floor}`);
+      console.log("a copy that collects less than the repo does cannot answer for the repo");
+      process.exitCode = 1;
+      return;
+    }
+    console.log(`control: the unmutated copy is green — ${ran} test(s), floor ${floor}`);
 
     outer: for (const file of TARGETS) {
       const original = readFileSync(file, "utf8");

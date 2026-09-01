@@ -437,6 +437,54 @@ const MONTH_NAMES: Readonly<Record<string, number>> = Object.freeze({
   outubro: 10,
   novembro: 11,
   dezembro: 12,
+  // The SHORT forms for the six languages that were named in the manual and
+  // whose abbreviations this table did not hold. Ten languages were claimed;
+  // only the English and Scandinavian abbreviations were here, so a German
+  // column of `1 dez 2026` typed as a date on shape and then printed as the raw
+  // cell — a merged deck with some slides formatted and some not, and nothing
+  // saying why. That is precisely the pathology `dateShape` exists to avoid,
+  // arriving through the table rather than around it.
+  //
+  // Every word below maps to the month it means in EVERY language that writes
+  // it — `mar` is March in English, Spanish and Portuguese; `dez` is December
+  // in German and Portuguese; `set` is September in Italian and Portuguese —
+  // which is the property that lets one table serve them all, and it is
+  // asserted over the whole table rather than trusted.
+  //
+  // German
+  "m\u00e4r": 3,
+  dez: 12,
+  // Dutch
+  mrt: 3,
+  // French. Four letters where the language writes four: `janv`, `f\u00e9vr`,
+  // `juil` and `sept` are what a French spreadsheet exports, and a three-letter
+  // truncation of them is not a form anybody writes.
+  janv: 1,
+  "f\u00e9vr": 2,
+  avr: 4,
+  juil: 7,
+  sept: 9,
+  "d\u00e9c": 12,
+  // Spanish. `may` is the English full name and is already above — the two
+  // spell May the same way, which is the shared-word property this table rests
+  // on rather than an omission.
+  ene: 1,
+  abr: 4,
+  ago: 8,
+  dic: 12,
+  // Italian
+  gen: 1,
+  mag: 5,
+  giu: 6,
+  lug: 7,
+  set: 9,
+  ott: 10,
+  // Portuguese. `out` is an English word as well as October in Portuguese, and
+  // it is safe here because `NAMED_DATE` admits a month word only between a
+  // one-or-two-digit number and a two-to-four-digit year: "2 out 3" is not a
+  // date shape and never reaches this table.
+  fev: 2,
+  out: 10,
 });
 
 /**
@@ -532,38 +580,70 @@ function pad(n: number): string {
 /**
  * A date written to a pattern.
  *
- * The replacements run LONGEST TOKEN FIRST, which is what keeps them from
- * eating each other: `yyyy` before `yy`, `MMMM` before `MMM` before `MM`, `dd`
- * before `d`. Reorder them and `yyyy` becomes `2626`.
+ * ONE PASS over the pattern's letter runs, rather than seven `replace` calls.
+ * The chain it replaces went wrong twice in opposite directions.
  *
- * The single `d` is bounded by `\b` so a literal keeps its letters — a pattern
- * of `Ends d` prints "Ends 1" and not "En1s 1". The multi-letter tokens need no
- * such guard: nobody writes `MM` inside a word.
+ * Unbounded, a token matched inside an ordinary word: `Odds: d MMM yyyy`
+ * printed `O01s: 1 Mar 2026`, and `dddd` — the Excel and .NET spelling of a
+ * weekday name, which a template author reaches for — printed `0101`.
  *
- * Only the tokens the manual lists are tokens. `MMMM` was not one until
- * 2026-08-27 and printed `MarM` — `MMM` replaced and the fourth `M` left
- * standing — which is the shape of every undocumented repeat here.
+ * Bounded against any letter, a pattern made only of tokens stopped matching
+ * at all: `yyyyMMdd`, the ISO-basic spelling used for file names, printed
+ * itself, and every token in it is one the manual lists. A pattern of nothing
+ * but tokens printed as written is precisely what the manual says will not
+ * happen.
+ *
+ * So the unit is the LETTER RUN. A run is read greedily, longest token first —
+ * `yyyy` before `yy`, `MMMM` before `MMM` before `MM`, `dd` before `d`, because
+ * reordering them turns `yyyy` into `2626` — and:
+ *
+ * - a run that does not START with a token is literal, which is what keeps
+ *   `Odds`, `address` and `Wedding` intact;
+ * - two adjacent tokens spelling the same letter make the whole run literal,
+ *   which is what keeps `dddd` a weekday name rather than two days of the
+ *   month;
+ * - letters after the last token are literal, so `yyyy-MM-ddTHH:mm` still
+ *   prints its date and leaves `THH:mm` alone.
+ *
+ * No lookbehind, deliberately. The seven-`replace` version was this file's only
+ * use of one, and a lookbehind in a regex LITERAL is a parse-time SyntaxError
+ * on WebKit below Safari 16.4 — which is a module that fails to load, i.e. a
+ * blank pane, rather than a date printed wrong.
  */
+const DATE_TOKENS: readonly [token: string, letter: string, value: (d: Date) => string][] = [
+  ["yyyy", "y", (d) => String(d.getUTCFullYear())],
+  ["yy", "y", (d) => pad(d.getUTCFullYear() % 100)],
+  ["MMMM", "M", (d) => MONTHS_FULL_EN[d.getUTCMonth()] ?? ""],
+  ["MMM", "M", (d) => MONTHS_EN[d.getUTCMonth()] ?? ""],
+  ["MM", "M", (d) => pad(d.getUTCMonth() + 1)],
+  ["dd", "d", (d) => pad(d.getUTCDate())],
+  ["d", "d", (d) => String(d.getUTCDate())],
+];
+
+/** One run of ASCII letters, tokenized — or nothing, meaning print it as written. */
+function tokenizeRun(run: string, d: Date): string | undefined {
+  let out = "";
+  let at = 0;
+  let previous: string | undefined;
+  for (;;) {
+    const hit = DATE_TOKENS.find(([token]) => run.startsWith(token, at));
+    if (!hit) break;
+    // `dddd` is `dd` twice, and it is a weekday name rather than the day of
+    // the month written out. Same for `yyyyyy`. A run that repeats a token's
+    // letter is not a pattern this add-in knows.
+    if (hit[1] === previous) return undefined;
+    out += hit[2](d);
+    previous = hit[1];
+    at += hit[0].length;
+  }
+  // Nothing matched at the START of the run, so this is a word with a token's
+  // letters in it rather than a token.
+  if (at === 0) return undefined;
+  return out + run.slice(at);
+}
+
 export function formatDate(d: Date, pattern: string): string {
-  return (
-    pattern
-      // Each token bounded, not only the single `d`. The manual promises that
-      // "any other text in the pattern is printed as written", and `dd` sits
-      // inside add, odd, middle, wedding and address: `Odds: d MMM yyyy` printed
-      // `O01s: 1 Mar 2026`. `dddd` — the Excel and .NET spelling of a weekday
-      // name, which a template author reaches for — printed `0101`.
-      //
-      // The bound is "not next to another letter of the same token", which is
-      // what makes the longer spellings win: `MMMM` is matched before `MMM`, and
-      // `MMM` cannot match inside `MMMM` because the character after it is `M`.
-      .replace(/(?<![A-Za-z])yyyy(?![A-Za-z])/g, String(d.getUTCFullYear()))
-      .replace(/(?<![A-Za-z])yy(?![A-Za-z])/g, pad(d.getUTCFullYear() % 100))
-      .replace(/(?<![A-Za-z])MMMM(?![A-Za-z])/g, MONTHS_FULL_EN[d.getUTCMonth()] ?? "")
-      .replace(/(?<![A-Za-z])MMM(?![A-Za-z])/g, MONTHS_EN[d.getUTCMonth()] ?? "")
-      .replace(/(?<![A-Za-z])MM(?![A-Za-z])/g, pad(d.getUTCMonth() + 1))
-      .replace(/(?<![A-Za-z])dd(?![A-Za-z])/g, pad(d.getUTCDate()))
-      .replace(/(?<![A-Za-z])d(?![A-Za-z])/g, String(d.getUTCDate()))
-  );
+  return pattern.replace(/[A-Za-z]+/g, (run) => tokenizeRun(run, d) ?? run);
 }
 
 /**
@@ -582,10 +662,9 @@ export function formatDate(d: Date, pattern: string): string {
  * the decision is then arithmetic anybody can check by eye rather than a
  * property of the binary value underneath.
  *
- * `toFixed` is still the answer for a magnitude with no plain spelling, where
- * the shortest form is exponential; `applyFormat` refuses those before they
- * reach here, and a direct caller gets the exponential rather than a mangled
- * grouping of it.
+ * A magnitude with no plain spelling — above 1e21, where JavaScript's shortest
+ * form is exponential — has no fixed-point digits to round or to group, and is
+ * handled in `formatNumber` rather than here.
  */
 function fixedDecimal(n: number, decimals: number): string {
   const plain = String(Math.abs(n));
@@ -616,6 +695,14 @@ function fixedDecimal(n: number, decimals: number): string {
 }
 
 export function formatNumber(n: number, decimals: number, group: string, point: string): string {
+  // Nothing to group. Above 1e21 JavaScript spells a number with an exponent,
+  // and `1.2345678901234568e+24` split on its dot and grouped comes out as
+  // `1,2345678901234568e+24` — a European decimal, on a slide, from a whole
+  // number. `applyFormat` returns the cell unchanged before it gets here, which
+  // is its own contract; this is the same defect reached through the PUBLIC
+  // export, which has no cell to fall back to and answers the value as
+  // JavaScript spells it.
+  if (!Number.isFinite(n) || Math.abs(n) >= 1e21) return String(n);
   const fixed = fixedDecimal(n, decimals);
   const [whole = "0", frac] = fixed.split(".");
   const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, group);
@@ -668,7 +755,9 @@ export function applyFormat(raw: string, spec: string | undefined): string {
       // "1,2345678901234568e+24" — a European decimal, on a slide, from an
       // integer. Returned unchanged, which is this function's own contract for
       // a value that does not match its format: the cell says what it says.
-      if (!Number.isFinite(n) || Math.abs(n) >= 1e21) return raw;
+      // `numericValue` has already refused anything non-finite, so the only
+      // case left is a magnitude too large to spell in full.
+      if (Math.abs(n) >= 1e21) return raw;
       return formatNumber(n, decimals, " ", ",");
     }
     case "date": {

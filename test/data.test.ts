@@ -199,6 +199,11 @@ describe("applyFormat", () => {
     expect(applyFormat("1234567890123456789012345", "number:2")).toBe("1234567890123456789012345");
     // And the ordinary case is untouched.
     expect(applyFormat("1234567.891", "number:2")).toBe("1 234 567,89");
+    // The PUBLIC formatter has no cell to fall back to, and must not mangle it
+    // either: it answered "1,2345678901234568e+24", a European decimal made out
+    // of an exponent.
+    expect(formatNumber(1.234_567_890_123_456_8e24, 2, " ", ",")).toBe("1.2345678901234568e+24");
+    expect(formatNumber(Number.POSITIVE_INFINITY, 2, " ", ",")).toBe("Infinity");
   });
 
   it("formats a date to the pattern in the template", () => {
@@ -830,6 +835,61 @@ describe("month names the date gate already admits", () => {
     expect(meaning.size).toBeGreaterThan(25);
   });
 
+  it("reads the SHORT month for every language the manual names", () => {
+    /**
+     * The manual claimed ten languages "in full or in the three-letter form a
+     * spreadsheet writes", and only the English and Scandinavian abbreviations
+     * were in the table. So a German column of `1 dez 2026` typed as a date on
+     * SHAPE and then printed as the raw cell — half a deck formatted and half
+     * not, with nothing saying why, which is the exact outcome the table was
+     * added to prevent, arriving through it rather than around it.
+     *
+     * Same property as the full names above, asserted the same way: no short
+     * form means a different month in a different language. `mar` is March in
+     * three of them, `dez` is December in two, `set` is September in two.
+     */
+    const shortForms = [
+      "jan feb mar apr may jun jul aug sep oct nov dec",
+      "jan feb mar apr maj jun jul aug sep okt nov dec",
+      "jan feb mar apr mai jun jul aug sep okt nov des",
+      // German, Dutch, Spanish, Italian, Portuguese — the accented `m\u00e4r`
+      // has its own line below, with the other accented forms.
+      "jan feb mrt apr mei jun jul aug sep okt nov dez",
+      "ene feb mar abr may jun jul ago sep oct nov dic",
+      "gen feb mar apr mag giu lug ago set ott nov dic",
+      "jan fev mar abr mai jun jul ago set out nov dez",
+      // French writes four letters for four of them, and a three-letter
+      // truncation is not a form anybody exports.
+      "janv f\u00e9vr mars avr mai juin juil ao\u00fbt sept oct nov d\u00e9c",
+    ];
+    const meaning = new Map<string, number>();
+    for (const line of shortForms) {
+      line.split(" ").forEach((word, i) => {
+        const already = meaning.get(word);
+        expect(already ?? i + 1, `${word} means two different months`).toBe(i + 1);
+        meaning.set(word, i + 1);
+        expect(parseDate(`1 ${word} 2026`)?.getUTCMonth(), `1 ${word} 2026`).toBe(i);
+      });
+    }
+    expect(parseDate("1 m\u00e4r 2026")?.getUTCMonth(), "the German March").toBe(2);
+    // And a whole column of one language formats, rather than half of it.
+    expect(applyFormat("1 dez 2026", "date")).toBe("01-12-2026");
+    expect(applyFormat("1 gen 2026", "date")).toBe("01-01-2026");
+    expect(applyFormat("1 out 2026", "date")).toBe("01-10-2026");
+  });
+
+  it("does not turn an ordinary English phrase into a date", () => {
+    // `out` is October in Portuguese and an English word, and `set` and `ago`
+    // are the same shape. They are safe because `NAMED_DATE` admits a month
+    // word only between a one-or-two-digit number and a two-to-four-digit
+    // year — so the phrase has to look exactly like a date before the table is
+    // ever asked.
+    expect(parseDate("2 out 3")).toBeUndefined();
+    expect(parseDate("5 set 9")).toBeUndefined();
+    expect(parseDate("2 days ago")).toBeUndefined();
+    expect(detectType(["2 out 3", "5 set 9"])).toBe("text");
+  });
+
   it("still refuses a day that month does not have, whatever the language", () => {
     // The table must not become a way round the guard added with it.
     expect(parseDate("31 apr 2026")).toBeUndefined();
@@ -1235,5 +1295,32 @@ describe("dates a spreadsheet actually writes", () => {
     // And the tokens themselves still work, longest first.
     expect(applyFormat("2026-03-01", "date:dd/MM/yyyy")).toBe("01/03/2026");
     expect(applyFormat("2026-03-01", "date:d MMMM yy")).toBe("1 March 26");
+  });
+
+  it("reads a pattern made of nothing but tokens", () => {
+    /**
+     * The other direction, and the one the bound broke. Written as a lookbehind
+     * for "not next to any letter", a pattern of ADJACENT tokens refused to
+     * match at all: `yyyyMMdd` — the ISO-basic spelling used for file names,
+     * and every token in it one the manual lists — printed itself. A pattern of
+     * nothing but tokens printed as written is exactly what the manual says
+     * will not happen.
+     */
+    expect(applyFormat("2026-03-01", "date:yyyyMMdd")).toBe("20260301");
+    expect(applyFormat("2026-03-01", "date:ddMMyyyy")).toBe("01032026");
+    expect(applyFormat("2026-03-01", "date:yyMMdd")).toBe("260301");
+    // Letters after the last token stay: a token run does not swallow the text
+    // that follows it.
+    expect(applyFormat("2026-03-01", "date:yyyy-MM-ddTHH:mm")).toBe("2026-03-01THH:mm");
+  });
+
+  it("leaves a weekday spelling alone rather than reading it as two days", () => {
+    // `dddd` is how Excel and .NET spell a weekday name, and this add-in has no
+    // such token. Read greedily it is `dd` twice and prints "0101" — a number
+    // that means nothing, where the pattern printed as written at least shows
+    // the author what was not understood.
+    expect(applyFormat("2026-03-01", "date:dddd")).toBe("dddd");
+    expect(applyFormat("2026-03-01", "date:dddd d MMM")).toBe("dddd 1 Mar");
+    expect(applyFormat("2026-03-01", "date:yyyyyy")).toBe("yyyyyy");
   });
 });

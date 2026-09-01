@@ -77,6 +77,17 @@ async function sheetCells(zip: JSZip): Promise<Record<string, { type: string; va
   return out;
 }
 
+/** Every `.ts` file under a directory, recursively. */
+function tsFiles(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...tsFiles(full));
+    else if (entry.name.endsWith(".ts")) out.push(full);
+  }
+  return out;
+}
+
 describe("reading which cell a cached point came from", () => {
   it("walks a column, a row and a single cell", () => {
     expect(cellsOfFormula("Sheet1!$B$2:$B$4")).toEqual(["B2", "B3", "B4"]);
@@ -191,16 +202,19 @@ describe("finding a cell in a sheet", () => {
      * index, so half the call sites were watched by a guard whose name says
      * all of them — and the file list is derived here so a third reader is
      * covered the day it is written rather than the day somebody remembers.
+     *
+     * The whole of `src/core`, not one directory. `cellAt` is EXPORTED, so a
+     * reader could as easily live in `src/core/pptx`; a scan over
+     * `src/core/merge` alone would have said "every file that calls it" while
+     * watching one directory, which is the same overstatement one level up.
      */
-    const dir = "src/core/merge";
-    const readers = readdirSync(dir)
-      .filter((f) => f.endsWith(".ts"))
-      .map((f) => [f, readFileSync(join(dir, f), "utf8")] as const)
+    const readers = tsFiles("src/core")
+      .map((f) => [f, readFileSync(f, "utf8")] as const)
       .filter(([, source]) => /\bcellAt\s*\(/.test(source));
     expect(
-      readers.map(([f]) => f),
+      readers.map(([f]) => f.replace(/\\/g, "/")),
       "the index has a reader this scan does not watch",
-    ).toContain("graphics.ts");
+    ).toContain("src/core/merge/graphics.ts");
     for (const [file, source] of readers) {
       const created = [...source.matchAll(/createElementNS\(\s*SSML_NS\s*,\s*"([^"]+)"/g)].map((m) => m[1]);
       expect(created, `a cell created in ${file} would be invisible to the index above`).not.toContain("c");

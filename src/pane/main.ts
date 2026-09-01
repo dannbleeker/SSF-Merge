@@ -1059,11 +1059,17 @@ async function undoRun(): Promise<void> {
         };
         return;
       }
-      // What the sweep DISOWNED is not still owed. A slide it left because the
-      // slide carries no mark of this run is not one the user is waiting for
+      // What the sweep DECLINED is not still owed. A slide it left because it
+      // would not claim it as this run's is not one the user is waiting for
       // this pane to remove, and counting it here kept the card up saying
       // "remove the slides this merge added" over slides the same sentence had
       // just called not this merge's.
+      //
+      // `disowned` cannot tell "not ours" from "the host would not say" — see
+      // `UndoOutcome` — so this is a floor on what is settled rather than a
+      // count of somebody else's slides. Taken the other way it is the defect
+      // above, a delete button standing over slides the sweep refuses, which is
+      // the worse of the two.
       const remaining = Math.max(0, outcome.added - removed - (disowned ?? 0));
       last = remaining > 0 ? { ...outcome, added: remaining } : undefined;
       // The slides are the crumb's whole reason. Gone, and it is noise that would
@@ -1100,8 +1106,17 @@ async function endPreview(): Promise<void> {
   const outcome = shown;
   if (!outcome) return;
   await duringRun("preview", { whenItRaises: (e) => `The preview could not be removed: ${readable(e)}` }, async () => {
-    const { removed, detail } = await undoMerge(outcome);
-    if (removed < outcome.added) {
+    const { removed, disowned, detail } = await undoMerge(outcome);
+    // `disowned` as well as `removed`, which the merge undo twenty lines above
+    // already does and this did not. A slide the sweep declined because it
+    // carries no mark of this run is not one the pane is still waiting to take
+    // back — counted as outstanding it produced "Some of the preview is still
+    // there" about a slide the same sweep had just called not the preview's,
+    // and held the user on the preview step with a button offering to delete
+    // it. The same two-things-at-once defect as the merge card, in the sibling
+    // screen.
+    const outstanding = Math.max(0, outcome.added - removed - (disowned ?? 0));
+    if (outstanding > 0) {
       // ASK THE DECK before claiming anything. The commonest way to reach here
       // is that the user did what the card told them the button does — deleted
       // the preview slides themselves — so the deck never grew, the sweep
@@ -1127,7 +1142,7 @@ async function endPreview(): Promise<void> {
         // `shown` shrinks by what actually went, so the next press asks for
         // what is left rather than for the original count — the same correction
         // the merge undo makes with `remaining`.
-        shown = { ...outcome, added: outcome.added - removed };
+        shown = { ...outcome, added: outstanding };
         state = {
           ...state,
           previewSlides: undefined,
@@ -1142,7 +1157,15 @@ async function endPreview(): Promise<void> {
         previewing: false,
         previewSlides: undefined,
         deckSize: deckNow,
-        notice: "Those slides are already gone — the preview is out of the deck.",
+        // SIZE, not identity, and the sentence may not claim more than that.
+        // `undo.ts`'s own docstring says every quantity there is a size — so a
+        // deck back to the size it started at is consistent with the preview
+        // being gone AND with the user having deleted three of their own
+        // slides instead, and this said the first outright. Saying what was
+        // measured leaves `previewing` cleared either way, which is the half
+        // that matters: a preview that cannot be ended is a pane with no way
+        // on.
+        notice: `Your deck is back to the ${outcome.deckAtStart} slide(s) it had before the preview, so there is nothing here to take back.`,
       };
       return;
     }
@@ -1151,7 +1174,12 @@ async function endPreview(): Promise<void> {
       ...state,
       previewing: false,
       previewSlides: undefined,
-      deckSize: outcome.deckAtStart,
+      // What the sweep DISOWNED is still in the deck — it is simply not the
+      // preview's, so the deck does not come all the way back. Counting it is
+      // arithmetic on numbers already in hand rather than another host call,
+      // and a deck size one too small makes the next undo's clamp refuse a
+      // sweep it should allow.
+      deckSize: outcome.deckAtStart + (disowned ?? 0),
       notice: undefined,
     };
   });

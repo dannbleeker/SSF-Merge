@@ -318,6 +318,30 @@ describe("reading the two slide-number boxes", () => {
     expect(readBlockDraft({ from: " 4 ", to: "\t6" }).block).toEqual({ from: 4, to: 6 });
   });
 
+  it("refuses a number too large to count exactly, and says which refusal it is", () => {
+    /**
+     * Twenty-one digits pass the decimal shape and `Number.isInteger`, and the
+     * pane then showed a slide number appearing nowhere in what was typed —
+     * "Slide 1e+21 is past the end of the deck" — beside a live "Use slides 1
+     * to 1e+21". Pressing it took the merge step down with `RangeError: Invalid
+     * array length` out of `blockSlides`: a BLANK PANE rather than a sentence.
+     *
+     * And the refusal has to be the right one. "1000000000000000000000 is not a
+     * whole number" is false — it IS one, it is simply larger than this can
+     * count — and sending somebody to check a thing that is already right is
+     * the same defect as no message at all.
+     */
+    const read = readBlockDraft({ from: "1", to: "1000000000000000000000" });
+    expect(read.block, "a block this wide takes the pane down when it is used").toBeNull();
+    expect(read.why).toContain("1000000000000000000000");
+    expect(read.why, "it is a whole number").not.toContain("not one");
+    expect(read.why).toContain("bigger number than a deck can have");
+    // The other refusal still says what it says: `0x10` is not a decimal at
+    // all, and neither is 1.5.
+    expect(readBlockDraft({ from: "0x10", to: "9" }).why).toContain("not one");
+    expect(readBlockDraft({ from: "1.5", to: "9" }).why).toContain("not one");
+  });
+
   it("refuses a block that ends before it starts, naming both slides", () => {
     const read = readBlockDraft({ from: "6", to: "4" });
     expect(read.block).toBeNull();

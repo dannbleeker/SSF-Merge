@@ -7,6 +7,56 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — six languages' short month names were not read
+
+The manual says month names are read in ten languages, "in full or in the short
+form a spreadsheet writes". Only the English and Scandinavian abbreviations were
+in the list, so a German column of `1 dez 2026` was recognised as a date column
+on its shape and then printed as the raw cell — half a deck formatted, half of
+it not, with nothing saying why. German, Dutch, French, Spanish, Italian and
+Portuguese short forms are read now, including the four-letter French ones.
+
+### Fixed — a date pattern made only of tokens printed itself
+
+`{{When|date:yyyyMMdd}}` — the spelling used for file names, and every token in
+it one the manual lists — printed `yyyyMMdd`. Bounding each token against its
+neighbours to keep `Odds:` and `Wedding` intact had made every token in a run of
+adjacent tokens refuse to match.
+
+### Fixed — a merge that landed while the deck changed said nothing
+
+A slide arriving between the moment a run is planned and the moment it inserts
+leaves every count agreeing while the undo can no longer tell which slides are
+the run's. The card was withheld — correctly — with a plain success message
+above the space where it used to be and nothing to explain it. The summary now
+says the deck changed, and anchors the count where the slides actually landed.
+
+### Fixed — the preview could not be ended over a slide it did not own
+
+Delete one preview slide by hand and the sweep declines it: it will not claim a
+slide carrying no mark of the run. Counted as still outstanding, that left "Some
+of the preview is still there" on screen with the wizard held on the preview
+step — and while a preview is up the merge step refuses, so there was no way on
+for the rest of the session.
+
+### Fixed — "those slides are already gone" was a guess
+
+Said whenever the deck was back to the size it started at, which is equally true
+of a user who deleted three of their own slides instead. It says what was
+measured now.
+
+### Fixed — three date and number readings that were wrong before this release
+
+A two-digit year was read as the year 85 rather than 1985; a cell holding a date
+RANGE was typed as a date and formatted as its first half, with the rest
+discarded; and a one-column paste of `1,5` split into two columns, while `0,500`
+was read as five hundred.
+
+### Fixed — a very long slide number said the wrong thing about itself
+
+"1000000000000000000000 is not a whole number" — it is one; it is simply larger
+than the pane can count exactly.
+
 ### Fixed — picking a second folder of pictures threw away the first
 
 A browser's file picker returns one directory's selection, and a spreadsheet

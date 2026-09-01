@@ -363,13 +363,25 @@ export async function insertDeck(base64: string, expected: number): Promise<Inse
 export interface UndoOutcome {
   removed: number;
   /**
-   * Slides in the range this run DISOWNED — they carry no mark of its own.
+   * Slides in the range the sweep DECLINED — it would not claim them as this
+   * run's.
    *
    * Not the same as slides it failed to remove, and the pane read them as the
-   * same thing: `added - removed` counted a disowned slide as still owed, so
+   * same thing: `added - removed` counted a declined slide as still owed, so
    * the card went on offering to "remove the slides this merge added" over
    * slides the sweep had just said were not this merge's, with a live delete
    * button on them. The notice said both halves at once.
+   *
+   * **It cannot tell "not ours" from "the host would not say".** `runTagsAt`
+   * answers `undefined` for a slide whose tag read came back a null object as
+   * well as for one carrying no tag, and `provenSweep`'s own docstring says an
+   * unanswered read is not evidence that a slide is not ours. So a host that
+   * refuses two of six tag reads produces `disowned: 2`, the pane treats those
+   * two as settled, and two of this run's slides stay in the deck with the card
+   * gone. The alternative — counting them as still owed — is the defect above,
+   * a delete button standing over somebody else's slides, which is worse; but
+   * the number is a floor on what is settled rather than a fact about
+   * ownership, and nothing downstream may read it as one.
    */
   disowned: number;
   detail: string;

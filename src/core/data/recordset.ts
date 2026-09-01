@@ -62,9 +62,15 @@ export function looksLikeDate(value: string): boolean {
  * time, which is worse than never offering it. The name may carry a path,
  * because a spreadsheet built from a folder listing routinely does.
  *
- * Deliberately NOT a URL. The bytes come from files the user picks, so a column
- * of `https://…` is text as far as this is concerned, and the pane does not
- * offer to fetch anything.
+ * Nothing is FETCHED, ever: the bytes come from files the user picks, and the
+ * pane offers no way to download anything.
+ *
+ * A URL ending in one of these extensions still types as an image, and that is
+ * right rather than an oversight — `https://intranet/photos/ada.png` names the
+ * file `ada.png`, `imageNamesIn` matches by base name, and the picture is
+ * placed from the file the user attached. This comment used to say such a
+ * column "is text as far as this is concerned", which is simply not what the
+ * pattern does, and the manual has always described the behaviour correctly.
  */
 const IMAGE_NAME = /\.(png|jpe?g|gif|bmp)$/i;
 

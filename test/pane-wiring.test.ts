@@ -694,6 +694,40 @@ describe("the preview", () => {
     expect(pane().textContent).toContain("A preview is in your deck.");
   });
 
+  it("does not hold the user on the preview over a slide the sweep DISOWNED", async () => {
+    /**
+     * The merge undo subtracts `disowned` — a slide the sweep declined because
+     * it carries no mark of this run is not one the pane is waiting to take
+     * back — and this screen did not. Preview three slides, delete one of them
+     * by hand and append one of your own: two come back, one is disowned, and
+     * the pane said "Some of the preview is still there" about the slide it had
+     * just called not the preview's, with `previewing` left set.
+     *
+     * That is terminal. While a preview is up the forward link is withheld and
+     * the merge step refuses, so the user could not reach the merge again for
+     * the rest of the session, over a slide nothing was ever going to remove.
+     */
+    await reachPreview();
+    office.runMerge.mockResolvedValueOnce(PREVIEW);
+    primary().click();
+    await settle();
+
+    office.undoMerge.mockResolvedValueOnce({
+      removed: 2,
+      disowned: 1,
+      detail: "removed 2 slide(s); 1 was not this run's",
+    });
+    // The deck says the disowned slide is still there, so the "already gone"
+    // branch is not what carries this — without the `disowned` subtraction the
+    // pane takes the partial branch and stays put.
+    office.slideCount.mockResolvedValueOnce(13);
+    primary().click();
+    await settle();
+
+    expect(pane().textContent, "about a slide the sweep called not the preview's").not.toContain("still there");
+    expect(pane().querySelector(".step-of")?.textContent, "the way on").toBe("Step 5 of 5 · Merge");
+  });
+
   it("carries on when the slides the sweep could not take are already gone", async () => {
     /**
      * The commonest way to reach a partial removal: the user did what the card
@@ -717,7 +751,12 @@ describe("the preview", () => {
     primary().click();
     await settle();
 
-    expect(pane().textContent).toContain("already gone");
+    // SIZE, not identity. "Those slides are already gone" was a claim about
+    // WHICH slides, made from a count — and a deck back to twelve is equally
+    // consistent with the user having deleted three of their own. The sentence
+    // says what was measured.
+    expect(pane().textContent).toContain("back to the 12 slide(s) it had before the preview");
+    expect(pane().textContent, "a claim of identity taken from a size").not.toContain("already gone");
     expect(pane().textContent, "a sentence contradicting itself").not.toContain("still there");
     // And the wizard is usable again, which is the half that was terminal.
     expect(pane().querySelector(".step-of")?.textContent).toBe("Step 5 of 5 · Merge");

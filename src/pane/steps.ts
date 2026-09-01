@@ -345,7 +345,17 @@ export function readBlockDraft(draft: BlockDraft, deckSize?: number): BlockRead 
   // reached by a route that guard cannot see.
   if (!Number.isSafeInteger(a) || !Number.isSafeInteger(b)) {
     const bad = !Number.isSafeInteger(a) ? from : to;
-    return { block: null, why: `Slide numbers are whole numbers, and "${bad}" is not one.` };
+    // Two different refusals in one sentence, and it said the wrong one for a
+    // 21-digit number: that IS a whole number, it is simply not one this can
+    // count exactly. Telling somebody their whole number is not whole sends
+    // them to check a thing that is already right.
+    return {
+      block: null,
+      why:
+        DECIMAL.test(bad) && Number.isInteger(Number(bad))
+          ? `Slide ${bad} is a bigger number than a deck can have slides.`
+          : `Slide numbers are whole numbers, and "${bad}" is not one.`,
+    };
   }
   if (a < 1) return { block: null, why: `Slides are numbered from 1, so slide ${a} is not one.` };
   if (b < a) return { block: null, why: `The block ends before it starts: slide ${a} to ${b}.` };

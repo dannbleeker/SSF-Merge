@@ -490,7 +490,23 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
 
   return {
     ok: true,
-    detail: `${added} slide${added === 1 ? "" : "s"} added after slide ${deckAtStart}. ${insert.detail}`,
+    // Anchored on `insert.before`, the deck's size when the call actually went
+    // out, NOT on `deckAtStart`. The two are the same on every ordinary run and
+    // differ in exactly the case below, where `deckAtStart` names the wrong
+    // slide — "6 slides added after slide 12" when they landed after 13.
+    //
+    // And a deck that changed under the merge is said out loud on the SUCCESS
+    // path too. The slides all landed, so this is not a failure; what is gone
+    // is the way back, because the run can no longer say which of the deck's
+    // new slides are its own. `accountable` already withholds the undo card —
+    // it was withholding it silently, with a success sentence above the space
+    // where the card used to be and nothing to explain it.
+    detail:
+      unaccounted !== undefined
+        ? `${added} slide${added === 1 ? "" : "s"} added after slide ${insert.before}. ${insert.detail} ` +
+          `The deck also changed while the merge was being built: ${unaccounted}. ` +
+          `So there is no offer to take these slides back — check the deck before running it again.`
+        : `${added} slide${added === 1 ? "" : "s"} added after slide ${insert.before}. ${insert.detail}`,
     ...landed,
   };
 }
