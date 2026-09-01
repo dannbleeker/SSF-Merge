@@ -299,6 +299,11 @@ describe("the text boundaries, over input nobody wrote by hand", () => {
     }
     // And the corpus changed a value often enough for that to mean something.
     expect(formatted, "no draw ever changed a value, so nothing above was tested").toBeGreaterThan(10);
+    // The two formatters whose answer is not a pure function of the input get
+    // an ANCHOR, because nothing in the loop constrains them: `number` and
+    // `date` gutted to return the cell satisfy every assertion above.
+    expect(applyFormat("1234567.891", "number:2"), "the number formatter").toBe("1 234 567,89");
+    expect(applyFormat("2026-03-01", "date:d MMM yyyy"), "the date formatter").toBe("1 Mar 2026");
   });
 
   it("builds a record set whose rows only ever answer for its own columns", () => {
@@ -411,6 +416,20 @@ describe("the text boundaries, over input nobody wrote by hand", () => {
         .join("");
       expect(got, `seed ${seed}: text=${JSON.stringify(text)} cut at ${cuts.join(",")}`).toBe(normalise(want));
     }
+    // The ANCHOR, for the reason the type property has one. The oracle above is
+    // built from the same `fieldsInText` and the same `makeResolver` as the
+    // code under test, so any CONSISTENT misreading is invisible to it: a
+    // scanner that finds every placeholder and reports every name as `""` fills
+    // every slide with the wrong column and satisfies every assertion in the
+    // loop, and so does a resolver that fills nothing at all.
+    const split = parseXml(`<a:p ${A}><a:r><a:t>Dear {{Fi</a:t></a:r><a:r><a:t>rst}} of {{City}}</a:t></a:r></a:p>`);
+    mergeParagraph(split.documentElement as unknown as Element, makeResolver(row));
+    expect(
+      elements(split, A_NS, "t")
+        .map((t) => t.textContent ?? "")
+        .join(""),
+      "a placeholder split across runs, resolved to the column it names",
+    ).toBe("Dear Ada of Cairo");
   });
 
   it("never reads a number out of something a spreadsheet would not", () => {

@@ -7,6 +7,14 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — the preview card named the wrong slides when the deck had moved
+
+The card exists so you can find the preview slides and delete them by hand, and
+it took their numbers from the deck's size when the run was PLANNED rather than
+when it inserted. A slide arriving in between moved every number by one, so the
+card named a slide that was not the preview's and left the last of the
+preview's own out.
+
 ### Fixed — pressing "Remove the preview" twice could delete slides you had added
 
 If the first press met a slide it would not claim as the preview's — one you had
@@ -40,16 +48,21 @@ left the wizard on the preview step permanently: the forward link is withheld
 and the merge step refuses while a preview is up, so there was no route to the
 merge for the rest of the session. Introduced by the previous fix in this same
 release, which subtracted that slide from a count the sweep measures against the
-deck.
+deck. Two further routes to the same state — a deck a co-author grew, and a deck
+back to the size it started at with preview slides still in it — are fixed in
+the entries above, and the rule is swept rather than tested case by case.
 
 ### Fixed — a date pattern ate an ordinary word beginning with d, M or y
 
 `{{Signed|date:Berlin, den d. MMMM yyyy}}` printed `Berlin, 1en 1. March 2026` —
 `den` is the ordinary Danish, German and Swedish long-date word, and `dato`,
 `due` and `deadline` went the same way. A pattern is now read a word at a time
-and a word is either all tokens or none, which is what the manual has always
-said. `MMMMM` and `yyy` print as written again too, rather than `MarchM` and
-`26y`.
+and a word is either all tokens or none, which is what the manual's "any other
+text in the pattern is printed as written" has always promised. `MMMMM` and
+`yyy` print as written again too, rather than `MarchM` and `26y`. An accented
+word counts as one word: `día`, `décembre` and `d'échéance` are printed as
+written, where matching ASCII alone cut them at the accent and left a bare `d`
+to be read as a token.
 
 ### Fixed — German March was still not read
 

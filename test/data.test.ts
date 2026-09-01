@@ -1374,6 +1374,28 @@ describe("dates a spreadsheet actually writes", () => {
     expect(applyFormat("2026-03-01", "date:den d. MMMM yyyy")).toBe("den 1. March 2026");
   });
 
+  it("leaves an ACCENTED word that begins with a token's letter alone", () => {
+    /**
+     * The rule is about words, and matching ASCII letters alone cut a word into
+     * runs at its own accent — leaving a one-character run of `d`, which is a
+     * whole token. `día d de MMMM` printed `1ía 1 de March` and
+     * `Date d'échéance dd/MM/yyyy` printed `Date 1'échéance 01/03/2026`.
+     *
+     * Spanish, French, Danish and Swedish all write ordinary date words that
+     * begin with a token's letter and continue past ASCII, and the manual
+     * promises text in a pattern prints as written.
+     */
+    expect(applyFormat("2026-03-01", "date:día d de MMMM")).toBe("día 1 de March");
+    expect(applyFormat("2026-03-01", "date:décembre yyyy")).toBe("décembre 2026");
+    expect(applyFormat("2026-03-01", "date:Date d'échéance dd/MM/yyyy")).toBe("Date d'échéance 01/03/2026");
+    expect(applyFormat("2026-03-01", "date:dåb d MMM")).toBe("dåb 1 Mar");
+    expect(applyFormat("2026-03-01", "date:död d MMM")).toBe("död 1 Mar");
+    // And nothing that used to tokenize stopped: the tokens are ASCII, so
+    // widening what counts as a word can only make a run stop matching.
+    expect(applyFormat("2026-03-01", "date:yyyyMMdd")).toBe("20260301");
+    expect(applyFormat("2026-03-01", "date:dd-MM-yyyy")).toBe("01-03-2026");
+  });
+
   it("leaves an ordinary word that begins with a token's letter alone", () => {
     /**
      * `den`, `dato`, `due` and `deadline` all start with a `d`, and `M` and `y`

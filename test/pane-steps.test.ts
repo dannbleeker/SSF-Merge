@@ -345,6 +345,13 @@ describe("reading the two slide-number boxes", () => {
     // `1e21` once read, which is an integer; a huge NEGATIVE is not bigger than
     // anything, it is below 1.
     expect(readBlockDraft({ from: "1000000000000000000000.5", to: "9" }).why, "a decimal").toContain("whole numbers");
+    // And a trailing fraction of ZEROS is a whole number at any size, which is
+    // the rule the small case already follows: `4.0` is admitted, so
+    // "1000000000000000000000.0 is not a whole number" is a false sentence.
+    expect(readBlockDraft({ from: "1000000000000000000000.0", to: "9" }).why, "a whole number").toContain(
+      "bigger number than a deck can have",
+    );
+    expect(readBlockDraft({ from: "4.0", to: "9" }).block, "the small case it follows").toEqual({ from: 4, to: 9 });
     expect(readBlockDraft({ from: "-1000000000000000000000", to: "9" }).why, "a negative").toContain("numbered from 1");
   });
 

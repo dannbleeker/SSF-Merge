@@ -351,13 +351,19 @@ export function readBlockDraft(draft: BlockDraft, deckSize?: number): BlockRead 
     // them to check a thing that is already right.
     return {
       block: null,
-      // Three refusals, not two. `Number.isInteger` is asked of the DOUBLE, and
-      // `Number("1000000000000000000000.5")` is `1e21`, an integer — so a
-      // decimal was told it was too big, which is the branch this split exists
-      // to keep off it. And a huge NEGATIVE is not bigger than anything; it is
-      // a slide number below 1, which is the refusal the guard further down
-      // would give if the number were small enough to reach it.
-      why: !/^[+-]?\d+$/.test(bad)
+      // Three refusals, not two, and each asked of what was TYPED rather than
+      // of the double it reads as. `Number("1000000000000000000000.5")` is
+      // `1e21`, an integer, so asking `Number.isInteger` told a decimal it was
+      // too big — the branch this split exists to keep off it. A trailing
+      // fraction of zeros is admitted here for the reason the `DECIMAL` comment
+      // above gives: `4.0` IS a whole number, and refusing it with "4.0 is not
+      // one" would be a false sentence at any size.
+      //
+      // A huge NEGATIVE is not bigger than anything — it is a slide number
+      // below 1. (The `to` box reaches "the block ends before it starts" for a
+      // small negative and this for a large one; both are true of the input and
+      // which one bites is decided by magnitude.)
+      why: !/^[+-]?\d+(?:\.0+)?$/.test(bad)
         ? `Slide numbers are whole numbers, and "${bad}" is not one.`
         : bad.startsWith("-")
           ? `Slides are numbered from 1, so slide ${bad} is not one.`

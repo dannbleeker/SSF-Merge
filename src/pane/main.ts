@@ -1005,12 +1005,28 @@ async function preview(): Promise<void> {
       shown = outcome;
       // Where they landed, so the card can name them. The insert is anchored
       // after the last slide, so they are the last `added` in the deck.
-      const from = outcome.deckAtStart + 1;
+      //
+      // From `landedAfter` — the deck's size when the call actually went out —
+      // not from `deckAtStart`, which is its size when the run was PLANNED. A
+      // slide arriving in between moves every number here by one, and this card
+      // exists so a user who closes the pane can find those slides and delete
+      // them by hand: it named the co-author's slide and omitted the last of
+      // the preview's own. The merge summary was given this anchor and its
+      // sibling one function up was not.
+      //
+      // `accountable` is deliberately NOT checked here, where the merge step
+      // checks it before arming its card. A preview whose run cannot say which
+      // slides are its own has still put slides in the deck, and the user has
+      // to be told; the button then meets `sweepPlan`'s refusal on its first
+      // press and ends the preview with a sentence saying so, which is a better
+      // outcome than a preview that is on screen with no way to end it.
+      const anchor = outcome.landedAfter ?? outcome.deckAtStart;
+      const from = anchor + 1;
       state = {
         ...state,
         previewing: true,
-        previewSlides: { from, to: outcome.deckAtStart + outcome.added },
-        deckSize: outcome.deckAtStart + outcome.added,
+        previewSlides: { from, to: anchor + outcome.added },
+        deckSize: anchor + outcome.added,
         ...(outcome.fields.length > 0
           ? { fields: outcome.fields, imageFields: outcome.imageFields, slideFields: outcome.slideFields }
           : {}),

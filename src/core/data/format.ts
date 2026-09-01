@@ -605,8 +605,12 @@ function pad(n: number): string {
  * - a run is tokenized only if the WHOLE of it is tokens, which is what keeps
  *   `Odds`, `address`, `Wedding`, `den`, `dato` and `due` intact;
  * - two adjacent tokens spelling the same letter make the run literal, which is
- *   what keeps `dddd` a weekday name rather than two days of the month, and
- *   `MMMMM` from printing `MarchM`.
+ *   what keeps `dddd` a weekday name rather than two days of the month. (Only
+ *   the EXACT multiples need it: `dddd` is `dd` twice and `yyyyyy` is `yy`
+ *   three times, where `MMMMM` and `yyy` are already refused by the whole-run
+ *   rule because their last letter matches no token. This paragraph used to
+ *   credit `MMMMM` to the same-letter check; removing that check and running it
+ *   says otherwise.)
  *
  * "Starts with a token, tail printed as written" was tried and is worse. It
  * reads `yyyy-MM-ddTHH:mm` as a date with `THH:mm` after it — which is nice —
@@ -654,8 +658,25 @@ function tokenizeRun(run: string, d: Date): string | undefined {
   return out;
 }
 
+/**
+ * A WORD, for the purpose of the rule above.
+ *
+ * Any Unicode letter, plus the apostrophe that sits inside one. Matching ASCII
+ * alone cut a word into runs at its own accent, and a one-character run of `d`
+ * is a whole token — so `día d de MMMM` printed `1ía 1 de March`,
+ * `décembre yyyy` printed `1écembre 2026`, and `Date d'échéance dd/MM/yyyy`
+ * printed `Date 1'échéance 01/03/2026`. Spanish, French, Danish and Swedish all
+ * write ordinary date words beginning with a token's letter and continuing past
+ * ASCII, and the manual promises text in a pattern prints as written.
+ *
+ * The tokens themselves are ASCII, so widening what counts as a word cannot
+ * make a run tokenize that did not before — it can only make one STOP, which is
+ * the direction that keeps a promise.
+ */
+const PATTERN_WORD = /[\p{L}]+(?:'[\p{L}]+)*/gu;
+
 export function formatDate(d: Date, pattern: string): string {
-  return pattern.replace(/[A-Za-z]+/g, (run) => tokenizeRun(run, d) ?? run);
+  return pattern.replace(PATTERN_WORD, (run) => tokenizeRun(run, d) ?? run);
 }
 
 /**

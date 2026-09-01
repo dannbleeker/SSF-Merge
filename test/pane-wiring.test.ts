@@ -600,6 +600,27 @@ describe("the preview", () => {
 
   const PREVIEW = { ...OUTCOME, added: 3, detail: "3 slides added after slide 12." };
 
+  it("names the slides the preview actually landed on", async () => {
+    /**
+     * The card exists so a user who closes the pane can find the preview slides
+     * and delete them by hand, so the numbers on it have to be the numbers on
+     * the rail. It took them from `deckAtStart` — the deck's size when the run
+     * was PLANNED — and a slide arriving between then and the insert moves
+     * every one of them by one: the card named the co-author's slide and left
+     * the last of the preview's own out.
+     *
+     * The merge summary was given this anchor in the same round; its sibling
+     * one function up was not.
+     */
+    await reachPreview();
+    office.runMerge.mockResolvedValueOnce({ ...PREVIEW, landedAfter: 13 });
+    primary().click();
+    await settle();
+
+    expect(pane().textContent).toContain("Slides 14 to 16 are a preview");
+    expect(pane().textContent, "the slide a co-author added is not the preview's").not.toContain("Slides 13 to 15");
+  });
+
   it("runs the ORDINARY merge over one row", async () => {
     // The whole value of the step. A preview rendered by some other route is a
     // preview of something nobody is going to get — and writing the row onto
