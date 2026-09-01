@@ -347,6 +347,29 @@ learn to satisfy without meaning it. The honest fix is the heading.
   and permanent); and never pair figures from two measurements, which is how
   `docs/BACKLOG.md` came to carry a count from the run that measured 29.2s
   beside a maximum of 31.1s from a later one. `docs/SIBLING.md` has the sort.
+- **A tool that edits the working tree will eventually commit into your work.**
+  `scripts/mutate-core.mjs` wrote its mutants into the real source and restored
+  them in a `finally`, which holds for a run that fails and not for one that is
+  killed. On 2026-09-01 a run under `timeout` was interrupted, an unrelated
+  `git add -A` swept the live mutant into a commit, and a dropped `.trim()`
+  reached the branch inside a commit whose message was about a changelog entry.
+  The script copies the tree now — but the general rule is the one that
+  survives: `git add -A` commits whatever else is touching the tree, so stage
+  paths when anything else is running, and check `git status` before a commit
+  you did not build file by file.
+
+  It cost nothing here only because the mutation run had itself reported that
+  line as a SURVIVOR, so the gap it opened was already named.
+
+- **Review the review.** Three rounds landed on 2026-09-01: six sweeps, then an
+  adversarial review of those fixes, then a seventh sweep. The review found that
+  two of the first round's fixes were INCOMPLETE — a crash still reachable
+  because a magnitude bound cannot see an infinity, and a flag derived from a
+  verdict string that hides the shape it was meant to detect — and the seventh
+  sweep found a throw that killed a whole merge. A fix is not evidence that the
+  defect is closed; the second pair of eyes is where that evidence comes from,
+  and it is cheapest immediately after the work rather than a week later.
+
 - **Record a diagnostic on BOTH populations, or it is not yet a measurement.**
   A value written only when something failed cannot be compared against
   anything. This repo shipped it twice: `withTimeout`'s call name reached only a
