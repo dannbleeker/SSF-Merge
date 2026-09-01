@@ -107,3 +107,24 @@ jobs:
           path: dist
       - id: deploy
         uses: actions/deploy-pages@v5
+
+      # ASK THE LIVE SITE, because nothing else ever does between releases.
+      #
+      # The manifest points at four URLs on this host, and the failure mode when
+      # a deploy publishes a broken or empty `dist` is "installs perfectly,
+      # blank ribbon button, empty pane" — which nobody reports as a deploy
+      # problem. `manifest-urls.mjs` + `curl` already does this on the RELEASE
+      # workflow, so it only ran on a manual release; a deploy between two
+      # releases was invisible.
+      #
+      # Into a variable rather than through a pipe, for the reason
+      # `release.yml` gives at its own copy: a pipe runs in a subshell, and a
+      # `curl` that fails inside one does not fail the step.
+      - name: The deploy actually serves the pane
+        run: |
+          page="${{ steps.deploy.outputs.page_url }}"
+          for path in taskpane.html assets/icon-32.png; do
+            echo "checking ${page}${path}"
+            curl --fail --silent --show-error --location --retry 5 --retry-delay 5 --retry-all-errors \
+              --output /dev/null "${page}${path}"
+          done

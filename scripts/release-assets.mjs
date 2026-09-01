@@ -42,8 +42,61 @@ export function assetsPromisedByDocs(docs = ["docs/MANUAL.md", "README.md"]) {
  * working tree here, and in the workflow the very files about to be uploaded.
  * Checking the tree and shipping something else is the whole failure mode.
  */
-export function releaseProblems(read, assets = RELEASE_ASSETS, promised = assetsPromisedByDocs()) {
+/**
+ * Whether the version a release is being cut AS is one this repo agrees with.
+ *
+ * The workflow takes it as free text from a dispatch box and nothing looked at
+ * it: `v9.9.9` would have been tagged, released and attached to assets that say
+ * something else, with no way to reconcile the three afterwards except by
+ * deleting a published tag.
+ *
+ * Two questions, and both are arithmetic rather than judgement. Does it match
+ * the version this repo is at — `package.json` is where a release number lives
+ * here, and the manifests deliberately carry a separate sequence, which is
+ * stated in `manifest-source.mjs` and in the release notes. And does the
+ * changelog have a section under that heading — a release nobody can read the
+ * changes of is a release that will be asked about.
+ *
+ * Skipped entirely when no version is supplied, so `npm run release:check` goes
+ * on being a useful thing to run by hand.
+ */
+export function versionProblems(read, version) {
   const out = [];
+  if (!version) return out;
+  const wanted = version.replace(/^v/, "");
+  if (!/^\d+\.\d+\.\d+$/.test(wanted)) {
+    out.push(`"${version}" is not a version — three numbers separated by dots, with no leading v`);
+    return out;
+  }
+  let pkg;
+  try {
+    pkg = JSON.parse(read("package.json"));
+  } catch {
+    out.push("package.json could not be read, so the release version cannot be checked against it");
+    return out;
+  }
+  if (pkg.version !== wanted) {
+    out.push(
+      `releasing as ${wanted} while package.json says ${pkg.version} — bump one to match the other before releasing`,
+    );
+  }
+  let changelog;
+  try {
+    changelog = read("CHANGELOG.md");
+  } catch {
+    out.push("CHANGELOG.md could not be read");
+    return out;
+  }
+  if (!new RegExp(`^## \\[${wanted.replace(/\./g, "\\.")}\\]`, "m").test(changelog)) {
+    out.push(
+      `CHANGELOG.md has no "## [${wanted}]" section — move what is under [Unreleased] into one before releasing`,
+    );
+  }
+  return out;
+}
+
+export function releaseProblems(read, assets = RELEASE_ASSETS, promised = assetsPromisedByDocs(), version = "") {
+  const out = [...versionProblems(read, version)];
 
   for (const name of assets) {
     if (!isProd(name)) {

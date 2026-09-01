@@ -41,7 +41,28 @@ Checked, so it is not re-litigated later.
 | Proportionate permissions | Met — `ReadWriteDocument`, not full control |
 | No unexpected transmission of customer data | **Met outright.** The product makes no network calls: `fetch`, `XMLHttpRequest`, `sendBeacon` and `WebSocket` appear nowhere in `src/`. Nothing leaves the pane |
 | No pop-ups, no external navigation | Met — hence no `AppDomains` needed |
-| Accessibility groundwork | Partly met — live region, focus restore, visible focus in both themes. Not audited against a standard |
+| Accessibility groundwork | Partly met — live region, focus restore, visible focus in both themes. axe-core (a WCAG 2 A/AA rule engine) runs over every pane state at both widths in both themes, weekly and on every release; no third-party audit |
+
+## What the release workflow will not let you do
+
+Added 2026-09-01, after an audit found each of them open. None needs a decision
+from you; they are here so a refusal is recognisable rather than mysterious.
+
+- **A version this repo has not heard of.** The dispatch box is free text and
+  nothing looked at it, so `9.9.9` would have been tagged and published against
+  manifests saying something else. The pre-flight now checks it against
+  `package.json` and against the changelog having a `## [x.y.z]` section to
+  read. If it refuses, bump one to match the other and move what is under
+  `[Unreleased]` into its own heading.
+- **A pane that fails the accessibility audit.** It runs on a release now as
+  well as weekly. Minutes of work, which is why it is still not a required
+  check on every merge — but a release is manual and rare, and accessibility is
+  a certification criterion.
+- **A deploy that serves nothing.** `pages.yml` now asks the live site for the
+  pane and an icon after publishing. The failure it catches is "installs
+  perfectly, blank ribbon button, empty pane", which nobody reports as a deploy
+  problem; the release workflow already checked the live URLs, so between two
+  releases it was invisible.
 
 ## Blocking — a submission fails without these
 
