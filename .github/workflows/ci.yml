@@ -32,6 +32,15 @@ jobs:
         run: npm run lint
       - name: Types
         run: npm run typecheck
+      # `typecheck` is `tsc --noEmit` and cannot see this: TypeScript 6 refused
+      # to infer `rootDir` for the library build, so `npm run build:lib` exited
+      # 2 while every gate stayed green. Nothing else here builds it, `dist-lib/`
+      # is gitignored, and the two scripts that import it — `build-probe.mjs`
+      # and `read-answers.mjs` — are only ever read as TEXT by the suite. So
+      # `npm run probe` and `npm run answers` were dead on a fresh clone from
+      # 2026-09-01, and no run said so.
+      - name: Library build
+        run: npm run build:lib
       - name: Tests and coverage
         run: npm run coverage
       - name: Test count

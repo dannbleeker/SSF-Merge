@@ -52,6 +52,11 @@ jobs:
         run: npm run lint
       - name: Types
         run: npm run typecheck
+      # `typecheck` is `tsc --noEmit` and cannot see this: TypeScript 6 refused
+      # to infer `rootDir` for the library build, so `npm run build:lib` exited
+      # 2 while every gate stayed green. See ci.yml.
+      - name: Library build
+        run: npm run build:lib
       - name: Tests and coverage
         run: npm run coverage
       - name: Test count

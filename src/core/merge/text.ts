@@ -349,8 +349,19 @@ export function editRuns(nodes: Element[], edits: Edit[]): boolean {
  * no message naming the cell that did it.
  *
  * Reachable from an ordinary paste rather than from anything exotic.
- * `CHAR(11)` is the soft line break Word and Excel keep INSIDE a cell, and a
- * NUL is what a mis-decoded UTF-16 export leaves behind.
+ * `CHAR(11)` is the line break WORD keeps inside a cell, and a NUL is what a
+ * mis-decoded UTF-16 export leaves behind.
+ *
+ * **Not Excel's, and this sentence used to say it was.** Alt+Enter puts
+ * `CHAR(10)` in the cell and a bare LF on the clipboard, and LF is LEGAL XML —
+ * so it never reaches this set, passed every gate in this repo, and DrawingML
+ * rendered it as a hard break across five parts of a merged deck until the
+ * desktop round of 2026-08-31 looked at one. A wrong sentence here is what sent
+ * that round's own check at the wrong character.
+ *
+ * The rule for a legal-but-unwanted break is `foldCellBreaks` in `resolve.ts`,
+ * and the two are apart on purpose: this is about what XML cannot carry from
+ * any source, that is about what a CELL may hold.
  *
  * Replaced with a SPACE rather than dropped, because the likeliest one is a
  * line break: dropping it joins two words that were separate — "AdaLovelace" —
