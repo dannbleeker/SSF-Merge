@@ -20,7 +20,7 @@ import { toRecordSet } from "../src/core/data/recordset.js";
 import { Pkg } from "../src/core/pptx/pkg.js";
 import { REL_TYPE } from "../src/core/pptx/parts.js";
 import { A_NS, C_NS, PKG_REL_NS, SSML_NS, elements, parseXml } from "../src/core/pptx/xml.js";
-import { sheetNamed, withinInflatedBudget, workbookParts } from "../src/core/merge/workbook.js";
+import { INFLATED_BUDGET, sheetNamed, withinInflatedBudget, workbookParts } from "../src/core/merge/workbook.js";
 import { makeDeck, type SlideSpec } from "./fixtures/deck.js";
 
 const ROWS = "Name\tRegion\nAda\tNordics\nGrace\tBenelux";
@@ -329,23 +329,57 @@ describe("an embedded workbook that would inflate to gigabytes", () => {
    * behind it could not be opened — a sentence the user can act on, where a
    * frozen tab is not.
    */
-  it("is refused rather than inflated", async () => {
+  /**
+   * A real deflated workbook, small on disk and large inflated.
+   *
+   * One megabyte of repetition rather than the eighty the budget is set at: the
+   * question is whether the declared sizes are summed and compared, and the
+   * budget is a parameter so the test can ask that without allocating what a
+   * real bomb would. The first version built eighty megabytes and TIMED OUT in
+   * CI — a slow test, not a strict one.
+   */
+  const bomb = async (chars: number) => {
     const book = new JSZip();
     book.file("xl/workbook.xml", `<workbook><sheets/></workbook>`);
-    // Bigger than the budget, and it costs a few kilobytes on disk.
-    book.file("xl/sharedStrings.xml", `<sst>${"a".repeat(80 * 1024 * 1024)}</sst>`);
-    const bytes = await book.generateAsync({ type: "uint8array", compression: "DEFLATE" });
-    expect(bytes.length, "a bomb is small on disk").toBeLessThan(1024 * 1024);
-    expect(withinInflatedBudget(await JSZip.loadAsync(bytes)), "refused").toBe(false);
+    book.file("xl/sharedStrings.xml", `<sst>${"a".repeat(chars)}</sst>`);
+    return JSZip.loadAsync(await book.generateAsync({ type: "uint8array", compression: "DEFLATE" }));
+  };
+
+  it("is refused rather than inflated", async () => {
+    const zip = await bomb(1024 * 1024);
+    expect(withinInflatedBudget(zip, 256 * 1024), "past the budget").toBe(false);
+    expect(withinInflatedBudget(zip, 4 * 1024 * 1024), "inside it").toBe(true);
   });
 
-  it("and an ordinary one is not", async () => {
+  it("sums the parts rather than judging them one at a time", async () => {
+    // A bomb split across many entries is the same bomb. Each of these is well
+    // under the budget and together they are over it.
+    const book = new JSZip();
+    for (let i = 0; i < 8; i++) book.file(`xl/part${i}.xml`, `<x>${"a".repeat(100_000)}</x>`);
+    const zip = await JSZip.loadAsync(await book.generateAsync({ type: "uint8array", compression: "DEFLATE" }));
+    expect(withinInflatedBudget(zip, 200_000), "eight parts of 100 KB are 800 KB").toBe(false);
+  });
+
+  it("counts only the XML, because a picture is not read", async () => {
+    // An image inside a workbook is not something either pass parses, so its
+    // size is not this budget's business — and counting it would refuse an
+    // ordinary workbook with a logo in it.
+    const book = new JSZip();
+    book.file("xl/workbook.xml", "<workbook><sheets/></workbook>");
+    book.file("xl/media/image1.png", new Uint8Array(2_000_000));
+    const zip = await JSZip.loadAsync(await book.generateAsync({ type: "uint8array", compression: "DEFLATE" }));
+    expect(withinInflatedBudget(zip, 100_000), "the picture is not counted").toBe(true);
+  });
+
+  it("and an ordinary one is not refused", async () => {
     // The other half, because a budget that refuses everything is not a budget.
+    // At the REAL budget, which is what ships.
     const book = new JSZip();
     book.file("xl/workbook.xml", `<workbook><sheets/></workbook>`);
     book.file("xl/sharedStrings.xml", `<sst>${"<si><t>Ada Lovelace</t></si>".repeat(20000)}</sst>`);
-    const bytes = await book.generateAsync({ type: "uint8array", compression: "DEFLATE" });
-    expect(withinInflatedBudget(await JSZip.loadAsync(bytes)), "a real workbook passes").toBe(true);
+    const zip = await JSZip.loadAsync(await book.generateAsync({ type: "uint8array", compression: "DEFLATE" }));
+    expect(withinInflatedBudget(zip), "a real workbook passes").toBe(true);
+    expect(INFLATED_BUDGET, "and the shipped budget is what we think it is").toBe(64 * 1024 * 1024);
   });
 });
 

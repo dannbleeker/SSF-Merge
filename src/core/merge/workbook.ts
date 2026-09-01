@@ -93,7 +93,7 @@ export function sheetNamed(parts: WorkbookParts, title: string): string | undefi
  * it could not be opened. That is a sentence the user can act on, where a
  * frozen tab is not.
  */
-const INFLATED_BUDGET = 64 * 1024 * 1024;
+export const INFLATED_BUDGET = 64 * 1024 * 1024;
 
 /**
  * Whether a workbook's XML is small enough to read at all.
@@ -102,14 +102,20 @@ const INFLATED_BUDGET = 64 * 1024 * 1024;
  * and it is answered before a single byte is inflated. Only the XML parts are
  * counted — an embedded image inside a workbook is not something either pass
  * reads, so its size is not this budget's business.
+ *
+ * `budget` is a parameter so a test can ask the real question — does it sum the
+ * declared sizes and refuse past the line — without building a workbook the
+ * size of the real budget. The first version of that test allocated eighty
+ * megabytes and timed out in CI, which is a slow test rather than a strict one.
+ * The constant itself is asserted separately.
  */
-export function withinInflatedBudget(book: JSZip): boolean {
+export function withinInflatedBudget(book: JSZip, budget = INFLATED_BUDGET): boolean {
   let total = 0;
   for (const name of Object.keys(book.files)) {
     if (!/\.(xml|rels)$/i.test(name)) continue;
     const declared = (book.files[name] as { _data?: { uncompressedSize?: number } })._data?.uncompressedSize;
     if (typeof declared === "number") total += declared;
-    if (total > INFLATED_BUDGET) return false;
+    if (total > budget) return false;
   }
   return true;
 }
