@@ -78,6 +78,19 @@ const RULES = [
  * is the state somebody running this is usually asking about. `node_modules` is
  * linked rather than copied: it is most of the bytes, and a junction works on
  * Windows without privileges as well as on POSIX.
+ *
+ * `.git` is left out, so the few tests that shell out to git (`docprops`) do
+ * not run in the copy: the sweep measures 1337 of the suite's 1342 as of
+ * 2026-09-01. They are about committed FILES rather than about `src/core`, so
+ * no mutant here could reach them — but the count differing from a plain
+ * `vitest run` is otherwise a puzzle, and a reader who thinks the suite is
+ * short will not trust the verdict.
+ *
+ * **Check the control before believing a clean sweep.** If the copy's suite
+ * were red for a reason of its own, every mutant would read "caught" and the
+ * run would report zero survivors — the vacuous measurement this repo keeps
+ * catching elsewhere. Copy the tree the same way and run the suite with nothing
+ * mutated; it must be green.
  */
 function workingCopy() {
   const dir = mkdtempSync(join(tmpdir(), "ssf-mutate-"));
