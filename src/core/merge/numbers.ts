@@ -451,13 +451,27 @@ export async function mergeChartNumbers(
   chartPath: string,
   workbookPath: string | undefined,
   resolve: Resolve,
+  /**
+   * An already-inflated workbook, for a DRY RUN only.
+   *
+   * `prepareBlock` reads every chart workbook twice — once here for the value
+   * cells, once through `workbookFields` for the text — and inflating a
+   * workbook twice per chart is the whole of that step's doubled cost. A caller
+   * that has one may hand it over.
+   *
+   * Only a resolver that writes nothing may pass this. Both readers MUTATE the
+   * zip when they fill something, so a shared book on the merge path would let
+   * one pass see the other's edits and write back a workbook neither intended.
+   * The two dry runs write nothing, which is what makes sharing safe there.
+   */
+  inflated?: JSZip,
 ): Promise<NumberPass> {
   const out = emptyNumberPass();
   if (!workbookPath || !pkg.has(workbookPath)) return out;
 
   let book: JSZip;
   try {
-    book = await JSZip.loadAsync(await pkg.bytes(workbookPath));
+    book = inflated ?? (await JSZip.loadAsync(await pkg.bytes(workbookPath)));
   } catch {
     // The same judgement `mergeWorkbook` makes: an embedding that is not a
     // readable zip is a thing to step over, not to lose the run on.
@@ -668,11 +682,18 @@ export async function chartValueFields(
   pkg: Pkg,
   chartPath: string,
   workbookPath: string | undefined,
+  inflated?: JSZip,
 ): Promise<string[]> {
   const seen: string[] = [];
-  await mergeChartNumbers(pkg, chartPath, workbookPath, (name) => {
-    if (!seen.includes(name)) seen.push(name);
-    return null;
-  });
+  await mergeChartNumbers(
+    pkg,
+    chartPath,
+    workbookPath,
+    (name) => {
+      if (!seen.includes(name)) seen.push(name);
+      return null;
+    },
+    inflated,
+  );
   return seen;
 }

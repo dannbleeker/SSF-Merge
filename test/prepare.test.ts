@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import JSZip from "jszip";
+import { describe, expect, it, vi } from "vitest";
 import { prepareBlock } from "../src/core/merge/prepare.js";
 import { Pkg } from "../src/core/pptx/pkg.js";
 import { makeDeck } from "./fixtures/deck.js";
@@ -127,6 +128,33 @@ describe("placeholders in a chart or SmartArt", () => {
     expect(prepared.ok).toBe(true);
     if (!prepared.ok) return;
     expect(prepared.fields).toEqual(["First", "Region"]);
+  });
+
+  it("inflates each chart workbook once, not once per reader", async () => {
+    /**
+     * Two readers walk the same workbook on this path — the value cells and the
+     * text — and each used to inflate it for itself, doubling the cost of the
+     * step on any deck with charts. They share one inflate now.
+     *
+     * Safe only because both are dry runs whose resolver writes nothing: both
+     * readers MUTATE the zip when they fill something, so a shared book on the
+     * merge path would let one see the other's edits.
+     */
+    const deck = await makeDeck([
+      { paragraphs: [["Hello {{First}}"]], chart: { title: "Sales", workbook: ["{{Region}}"] } },
+      { paragraphs: [["after"]] },
+    ]);
+    const pkg = await Pkg.open(deck);
+    const load = vi.spyOn(JSZip, "loadAsync");
+    try {
+      const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "run1");
+      expect(prepared.ok).toBe(true);
+      const workbooks = load.mock.calls.length;
+      expect(workbooks, "the chart's workbook is opened at all").toBeGreaterThan(0);
+      expect(workbooks, "and only once, by both readers together").toBe(1);
+    } finally {
+      load.mockRestore();
+    }
   });
 
   it("counts one in a chart's category labels, which are not paragraphs", async () => {

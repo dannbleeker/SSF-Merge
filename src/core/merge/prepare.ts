@@ -12,6 +12,8 @@ import type { Block, BlockSlide } from "./plan.js";
 import { fieldsIn } from "./text.js";
 import { chartValueFields } from "./numbers.js";
 import { workbookFields } from "./graphics.js";
+import JSZip from "jszip";
+
 import { imageFieldsIn } from "./images.js";
 import { fieldSites } from "./sites.js";
 
@@ -170,7 +172,25 @@ export async function prepareBlock(pkg: Pkg, req: BlockRequest, runId: string): 
       // A chart's VALUE cells live in the workbook it relates to, and the
       // reader is a dry run of the merge's own walk, so the two cannot hold
       // different opinions about which cells carry a placeholder.
-      if (site.workbooks.length > 0) own.push(...(await chartValueFields(pkg, site.part, site.workbooks[0])));
+      //
+      // ONE inflate per workbook, shared by both readers below. They read
+      // different things — the value cells and the text — out of the same zip,
+      // and inflating it twice doubled the cost of this step on any deck with
+      // charts. Safe only because both are DRY RUNS whose resolver writes
+      // nothing: a shared book on the merge path would let one pass see the
+      // other's edits. See `mergeChartNumbers`.
+      const inflated = new Map<string, JSZip>();
+      for (const book of site.workbooks) {
+        if (!pkg.has(book)) continue;
+        try {
+          inflated.set(book, await JSZip.loadAsync(await pkg.bytes(book)));
+        } catch {
+          // Unreadable here is unreadable in the readers too, and they already
+          // answer for it. Left out of the map so they take their own path.
+        }
+      }
+      if (site.workbooks.length > 0)
+        own.push(...(await chartValueFields(pkg, site.part, site.workbooks[0], inflated.get(site.workbooks[0] ?? ""))));
       // And the workbook's own TEXT, which the numeric walk above does not
       // reach: it opens only the cells a `<c:f>` names and the cache has a
       // point for. A placeholder in any other cell was filled by the run and
@@ -178,7 +198,7 @@ export async function prepareBlock(pkg: Pkg, req: BlockRequest, runId: string): 
       // as though the slide had no fields at all.
       //
       // Every workbook, not `[0]`: the text pass merges the whole set.
-      for (const book of site.workbooks) own.push(...(await workbookFields(pkg, book)));
+      for (const book of site.workbooks) own.push(...(await workbookFields(pkg, book, inflated.get(book))));
     }
     // Deduped here rather than at each push. A chart's label is reported by the
     // chart-part scan AND by its workbook, which is not a disagreement — it is

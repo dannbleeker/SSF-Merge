@@ -42,6 +42,15 @@
  * - `s.from >= edit.end` in `editRuns`. The `>` form differs only for a span
  *   starting exactly where an edit ends, which is an empty intersection either
  *   way.
+ * - `(o.disowned ?? 0) > 0` in `nextSweepOffer`. The two spellings differ only
+ *   when `disowned` is `0`, and `0 || 0` is `0` — so the comparison that
+ *   follows gets the same value either way.
+ * - `MONTHS_EN[d.getUTCMonth()] ?? ""` in `format.ts`. The index is a month
+ *   number and the table has twelve entries, so the fallback is unreachable in
+ *   both spellings.
+ * - `Number(/^rId(\d+)$/.exec(...)?.[1] ?? 0)` in `pkg.ts`. The capture group is
+ *   one or more digits, so it is never `""` — the only value the two spellings
+ *   disagree about.
  *
  * Anything NOT on that list is a gap until somebody says otherwise in writing.
  * Three that were on it are tests now: a value cell reading shared string

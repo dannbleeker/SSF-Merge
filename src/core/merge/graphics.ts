@@ -216,7 +216,7 @@ function liftHeld(
  * with the merge about what a placeholder is, which is the disagreement this
  * whole seam exists to prevent.
  */
-export async function workbookFields(pkg: Pkg, path: string): Promise<string[]> {
+export async function workbookFields(pkg: Pkg, path: string, shared?: JSZip): Promise<string[]> {
   const seen: string[] = [];
   await mergeWorkbook(
     pkg,
@@ -226,14 +226,22 @@ export async function workbookFields(pkg: Pkg, path: string): Promise<string[]> 
       return null;
     },
     [],
+    shared,
   );
   return seen;
 }
 
-async function mergeWorkbook(pkg: Pkg, path: string, resolve: Resolve, held: HeldCell[]): Promise<number | null> {
+async function mergeWorkbook(
+  pkg: Pkg,
+  path: string,
+  resolve: Resolve,
+  held: HeldCell[],
+  /** An already-inflated workbook, for a DRY RUN only. See `mergeChartNumbers`. */
+  shared?: JSZip,
+): Promise<number | null> {
   let zip: JSZip;
   try {
-    zip = await JSZip.loadAsync(await pkg.bytes(path));
+    zip = shared ?? (await JSZip.loadAsync(await pkg.bytes(path)));
   } catch {
     return null;
   }
