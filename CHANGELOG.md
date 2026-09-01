@@ -7,6 +7,37 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a chart could end up disagreeing with its own data sheet
+
+A value cell holding a placeholder that will not become a number is left as you
+typed it — that is the promise, and the chart keeps the template's figure. But
+the pass that merges the workbook's text runs afterwards and rewrote the very
+cell the first pass had declined: `{{Notes}}` became the row's words, and an
+empty cell became nothing at all. So Edit Data showed something the chart was
+not drawing, and closing Excel refreshes the chart from the sheet — which
+changes the bar you were just looking at.
+
+The refused cell is now held back from that second pass. Where the same text is
+used as a label too, the label keeps its placeholder as well: Excel stores one
+copy of a repeated string, so the two cannot be told apart, and a visibly
+unmerged label is better than a chart that quietly contradicts its own data.
+
+### Fixed — a chart naming its sheet in a different case merged nothing
+
+Sheet names in Excel are case-insensitive; the lookup was not. A chart whose
+range read `SHEET2!$B$2` against a sheet declared `Sheet2` found no sheet, so
+none of its values merged. A workbook with one sheet hides this completely,
+which is why it has gone unnoticed — it needs a workbook somebody added a sheet
+to.
+
+### Fixed — a chart whose data could not be read said nothing at all
+
+When a chart's range cannot be read, or names a sheet the workbook does not
+have, nothing can be filled — and the merge passed over it in silence. The
+finished-merge line reported neither a fill nor a failure, so a chart that had
+been left completely untouched looked exactly like a chart with nothing to
+merge. It is counted now and the summary says so.
+
 ### Fixed — the unified manifest did not say it was a PowerPoint add-in
 
 The XML manifest, which a person sideloads, declares its host. The unified JSON

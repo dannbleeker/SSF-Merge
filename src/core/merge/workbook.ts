@@ -47,6 +47,33 @@ const SHARED_STRINGS = `${REL}/sharedStrings`;
 const CONVENTIONAL_MAIN = "xl/workbook.xml";
 const CONVENTIONAL_SST = "xl/sharedStrings.xml";
 
+/**
+ * A sheet title as `byTitle` keys it.
+ *
+ * Case-folded, because Excel treats two titles differing only in case as one
+ * name: a workbook cannot hold both `Data` and `data`.
+ *
+ * Private. Nothing outside this file may key that map by hand — `sheetNamed`
+ * is the one way to read it, so the fold cannot be applied on one side and
+ * forgotten on the other. That is the shape of the defect it replaced.
+ */
+function foldTitle(title: string): string {
+  return title.toLowerCase();
+}
+
+/**
+ * The part holding the sheet a formula names, or nothing.
+ *
+ * The ONE reader of `byTitle`, so the way a title is keyed and the way it is
+ * looked up cannot come apart. They had: the map was keyed by the declared
+ * name and matched exactly, so a chart whose `<c:f>` spelled the title in a
+ * different case found no sheet at all — no fill, no refusal, nothing counted,
+ * and a workbook with one sheet hid it behind the fallback.
+ */
+export function sheetNamed(parts: WorkbookParts, title: string): string | undefined {
+  return parts.byTitle.get(foldTitle(title));
+}
+
 export interface WorkbookParts {
   /** Worksheet parts, in the order the workbook declares its sheets. */
   sheets: string[];
@@ -110,10 +137,20 @@ export async function workbookParts(book: JSZip): Promise<WorkbookParts> {
     const path = rels.get(rId)?.path;
     if (!path) continue;
     const title = sheet.getAttribute("name");
+    // Keyed by a FOLDED title, because Excel's sheet names are
+    // case-insensitive: a workbook cannot hold both `Data` and `data`, and a
+    // chart whose formula spells the title differently from the declaration
+    // means the same sheet. A plain `Map` said otherwise, so such a chart's
+    // values were never looked at — no fill, no refusal, nothing counted.
+    //
+    // The single-sheet fallback below hides it entirely, which is why this only
+    // shows on a workbook somebody added a sheet to.
+    //
     // First declaration wins: two sheets cannot share a title in a workbook
     // Excel will open, and picking the later one for a file that broke that
     // rule would pair a chart's formula with the wrong cells.
-    if (title !== null && !byTitle.has(title)) byTitle.set(title, path);
+    const key = title === null ? null : foldTitle(title);
+    if (key !== null && !byTitle.has(key)) byTitle.set(key, path);
     sheets.push(path);
   }
 

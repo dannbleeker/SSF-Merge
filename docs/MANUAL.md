@@ -1037,9 +1037,22 @@ anything else. Two things are worth knowing.
   number goes in and the chart formats its own axis.
 - **A value that will not be a number is left alone.** `{{Notes}}` in a value
   cell stays exactly as you typed it rather than becoming a zero, because a zero
-  is a bar the data never asked for. The merge counts those and says so when it
-  finishes — this is the one failure you cannot see on the slide, because the
-  point keeps the template's number under a label that merged correctly.
+  is a bar the data never asked for. It stays in the data sheet too, so Edit
+  Data still shows you the placeholder that did not merge. The merge counts
+  those and says so when it finishes — this is the one failure you cannot see on
+  the slide, because the point keeps the template's number under a label that
+  merged correctly.
+
+  If the same text is also used as a label somewhere in that sheet, the label
+  keeps its placeholder as well. Excel stores one copy of a repeated string, so
+  the two cannot be treated differently, and leaving both is the safer way
+  round: a label you can see is wrong beats a chart that quietly disagrees with
+  its own data.
+- **A chart whose data sheet cannot be found is counted too.** If the chart
+  names a sheet the workbook does not have, nothing can be filled and the chart
+  keeps the template's numbers. The merge says so when it finishes rather than
+  passing over it in silence, which is what it used to do — leaving a chart
+  that looked merged and was not, with nothing anywhere to say why.
 
 While you are still editing the template that cell holds text, so its bar shows
 as nothing until you merge. That is the same as a slide reading `{{Name}}` until

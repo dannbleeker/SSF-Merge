@@ -29,7 +29,7 @@
 import JSZip from "jszip";
 import type { Pkg } from "../pptx/pkg.js";
 import { C_NS, CX_NS, SSML_NS, children, elements, parseXml, serializeXml } from "../pptx/xml.js";
-import { workbookParts } from "./workbook.js";
+import { sheetNamed, workbookParts } from "./workbook.js";
 import { numericValue } from "../data/format.js";
 import { fieldsInText, type Resolve } from "./text.js";
 
@@ -45,15 +45,64 @@ export interface NumberOutcome {
    * stays on a slide rather than blanking it.
    */
   refused: number;
+  /**
+   * Series this pass gave up on before it could look at a cell.
+   *
+   * Two ways in: the `<c:f>` range could not be read, or it names a sheet the
+   * workbook does not declare. Both were a bare `continue` — no fill, no
+   * refusal, nothing — so a chart whose values never got as far as being
+   * refused reported `{filled: 0, refused: 0}` and the summary said nothing at
+   * all. `summary.ts` reasoned from that pair that a zero is always a refusal,
+   * and it was not: a third outcome existed and was silent.
+   *
+   * Per SERIES rather than per cell, because that is the only honest
+   * granularity — when the range cannot be read there is no cell to count.
+   */
+  unreadable: number;
 }
 
+/**
+ * The same counts, plus what the workbook's later text pass must not touch.
+ *
+ * Separate from `NumberOutcome` because that one is a REPORT — it reaches the
+ * pane and is spoken about in sentences — while this is plumbing between two
+ * passes of the same merge. Nothing outside `mergeGraphics` has any use for it.
+ */
+export interface NumberPass extends NumberOutcome {
+  /**
+   * A refused value cell, named either by the shared string it reads through
+   * or — when it carries its own text — by sheet and reference.
+   *
+   * Counting a refusal does not by itself stop the pass that runs next from
+   * merging the very placeholder this one declined. See the refusal itself.
+   */
+  held: HeldCell[];
+}
+
+/** A node the numeric pass has claimed: an `<si>` by index, or a cell by address. */
+export type HeldCell = { si: number } | { sheet: string; ref: string };
+
 export function emptyNumberOutcome(): NumberOutcome {
-  return { filled: 0, refused: 0 };
+  return { filled: 0, refused: 0, unreadable: 0 };
+}
+
+/** The same, for the pass that also collects what it declined. */
+export function emptyNumberPass(): NumberPass {
+  return { filled: 0, refused: 0, unreadable: 0, held: [] };
 }
 
 export function tallyNumbers(into: NumberOutcome, from: NumberOutcome): void {
   into.filled += from.filled;
   into.refused += from.refused;
+  into.unreadable += from.unreadable;
+}
+
+/** The shared-string index a cell reads through, or nothing if it holds its own text. */
+function sharedIndexOf(cell: Element): { si: number } | undefined {
+  if ((cell.getAttribute("t") ?? "n") !== "s") return undefined;
+  const v = elements(cell, SSML_NS, "v")[0]?.textContent ?? "";
+  const n = Number(v);
+  return Number.isInteger(n) && n >= 0 ? { si: n } : undefined;
 }
 
 /** `B` → 2, `AA` → 27. Excel's column letters are base-26 with no zero. */
@@ -127,7 +176,7 @@ export function sheetOfFormula(formula: string): string | null {
 }
 
 /** The `<c>` element for one address, or undefined. */
-function cellAt(sheet: Document, ref: string): Element | undefined {
+export function cellAt(sheet: Document, ref: string): Element | undefined {
   return elements(sheet, SSML_NS, "c").find((c) => c.getAttribute("r") === ref);
 }
 
@@ -294,8 +343,8 @@ export async function mergeChartNumbers(
   chartPath: string,
   workbookPath: string | undefined,
   resolve: Resolve,
-): Promise<NumberOutcome> {
-  const out = emptyNumberOutcome();
+): Promise<NumberPass> {
+  const out = emptyNumberPass();
   if (!workbookPath || !pkg.has(workbookPath)) return out;
 
   let book: JSZip;
@@ -331,7 +380,11 @@ export async function mergeChartNumbers(
   for (const series of [...classicSeries(chart), ...modernSeries(chart)]) {
     const { formula } = series;
     const cells = cellsOfFormula(formula);
-    if (!cells) continue;
+    if (!cells) {
+      // Counted, not skipped in silence. See `unreadable`.
+      out.unreadable++;
+      continue;
+    }
     // Resolved once per series rather than per point.
     //
     // A workbook with exactly one sheet falls back to it, because a formula
@@ -341,8 +394,20 @@ export async function mergeChartNumbers(
     // `cellsOfFormula` makes for a range it cannot read, and for the same
     // reason: there is no safe guess between two sheets.
     const title = sheetOfFormula(formula);
-    const named = title === null ? undefined : workbook.byTitle.get(title);
+    // `sheetNamed`, never `byTitle` by hand: the map is keyed by a folded title
+    // because Excel's sheet names are case-insensitive, and one reader is what
+    // keeps the keying and the lookup from parting company. See `workbook.ts`.
+    const named = title === null ? undefined : sheetNamed(workbook, title);
     const sheetPath = named ?? (workbook.sheets.length === 1 ? workbook.sheets[0] : undefined);
+    if (!sheetPath) {
+      // Counted once for the series, and moved out of the point loop where it
+      // used to sit as a bare `continue`. Giving up is the right answer — there
+      // is no safe guess between two sheets — but doing it in silence was not:
+      // the pane was told nothing and `summary.ts` reasoned that a zero fill
+      // with a zero refusal could not happen.
+      out.unreadable++;
+      continue;
+    }
 
     for (const point of series.points) {
       const address = cells[point.idx];
@@ -355,7 +420,6 @@ export async function mergeChartNumbers(
       // in Edit Data and `B2` exists twice; the merge would then write a number
       // into whichever came first and the chart would plot the other. Silently,
       // and no count would catch it: the right NUMBER of cells is written.
-      if (!sheetPath) continue;
       const doc = sheets.get(sheetPath);
       const cell = doc ? cellAt(doc, address) : undefined;
       if (!cell) continue;
@@ -383,6 +447,27 @@ export async function mergeChartNumbers(
       const value = numericValue(filled);
       if (value === undefined) {
         out.refused++;
+        // HELD, so the workbook's text pass cannot merge what this one refused.
+        //
+        // This file's own comment said refusing was enough — "counted rather
+        // than written, and left exactly as they are" — and it was not. The
+        // text pass runs after this one, with the same resolver, over
+        // `sharedStrings.xml` and every sheet; a refused cell is still pointing
+        // at the entry it merges. So the placeholder the chart kept was
+        // rewritten in the sheet: `{{Notes}}` became the row's words, and an
+        // empty cell under the default policy became nothing at all.
+        //
+        // The result is the one thing this pass exists to prevent. The chart
+        // goes on drawing the template's number while Edit Data shows something
+        // else, and closing Excel refreshes the cache from the sheet — so the
+        // bar the user just looked at changes on its own, which the manual
+        // promises it does not.
+        //
+        // What is held is the SHARED STRING where there is one, because that is
+        // the node the text pass reaches: skipping the cell alone would leave
+        // the `<si>` merged, and one `<si>` may serve several cells. An inline
+        // cell holds its own text and is held by reference instead.
+        out.held.push(sharedIndexOf(cell) ?? { sheet: sheetPath, ref: address });
         continue;
       }
 

@@ -66,6 +66,7 @@ describe("what became of the pictures", () => {
     expect(outcome.chartValues, "the merge said nothing about the chart values").toEqual({
       filled: 0,
       refused: 0,
+      unreadable: 0,
     });
   });
 });

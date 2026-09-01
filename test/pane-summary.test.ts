@@ -297,11 +297,34 @@ describe("describeMerge says what the merge DID", () => {
    * the merged label: a chart that is wrong and looks right. It counted those
    * refusals for a reader that did not exist.
    */
-  const values = (filled: number, refused: number) => ({
+  const values = (filled: number, refused: number, unreadable = 0) => ({
     added: 6,
     deckAtStart: 3,
     paragraphsMerged: 12,
-    chartValues: { filled, refused },
+    chartValues: { filled, refused, unreadable },
+  });
+
+  it("says when a chart's data could not be read at all", () => {
+    /**
+     * The third outcome, which had no clause because it had no count. A series
+     * whose range cannot be read, or which names a sheet the workbook does not
+     * declare, was abandoned with a bare `continue` — no fill and no refusal —
+     * so the pane was handed `{filled: 0, refused: 0}` and said nothing.
+     *
+     * The comment above this block reasoned from exactly that pair: "every
+     * value placeholder either fills or refuses, so a zero here is ALWAYS a
+     * refusal". It was not, and the case it missed is the one where the user
+     * gets no signal of any kind.
+     */
+    expect(describeMerge(values(0, 0, 1))).toContain("could not be read");
+    // And it says so beside the ones that did work, rather than instead of them.
+    const both = describeMerge(values(4, 0, 2));
+    expect(both).toContain("4 chart values filled");
+    expect(both).toContain("could not be read");
+  });
+
+  it("stays quiet when every series was read", () => {
+    expect(describeMerge(values(9, 0))).not.toContain("could not be read");
   });
 
   it("counts the chart values it filled", () => {

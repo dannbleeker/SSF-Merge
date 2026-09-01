@@ -20,7 +20,7 @@ import { toRecordSet } from "../src/core/data/recordset.js";
 import { Pkg } from "../src/core/pptx/pkg.js";
 import { REL_TYPE } from "../src/core/pptx/parts.js";
 import { A_NS, C_NS, PKG_REL_NS, SSML_NS, elements, parseXml } from "../src/core/pptx/xml.js";
-import { workbookParts } from "../src/core/merge/workbook.js";
+import { sheetNamed, workbookParts } from "../src/core/merge/workbook.js";
 import { makeDeck, type SlideSpec } from "./fixtures/deck.js";
 
 const ROWS = "Name\tRegion\nAda\tNordics\nGrace\tBenelux";
@@ -353,7 +353,7 @@ describe("workbookParts", () => {
   it("follows the officeDocument relationship rather than a fixed name", async () => {
     const parts = await workbookParts(book("book/main.xml", [["Data", "sheets/one.xml"]]));
     expect(parts.sheets).toEqual(["book/sheets/one.xml"]);
-    expect(parts.byTitle.get("Data")).toBe("book/sheets/one.xml");
+    expect(sheetNamed(parts, "Data")).toBe("book/sheets/one.xml");
     expect(parts.sharedStrings).toBe("book/strings.xml");
   });
 
@@ -368,7 +368,7 @@ describe("workbookParts", () => {
         ["Sheet1", "worksheets/second.xml"],
       ]),
     );
-    expect(parts.byTitle.get("Sheet1")).toBe("xl/worksheets/first.xml");
+    expect(sheetNamed(parts, "Sheet1")).toBe("xl/worksheets/first.xml");
     // Both are still sheets — only the TITLE is claimed once.
     expect(parts.sheets).toEqual(["xl/worksheets/first.xml", "xl/worksheets/second.xml"]);
   });
