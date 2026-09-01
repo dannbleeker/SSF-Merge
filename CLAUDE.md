@@ -381,6 +381,62 @@ learn to satisfy without meaning it. The honest fix is the heading.
   customer lists, and this record is written to be pasted into an issue. Values
   do not change the parts, the relationships or the content types, which is
   where a rejected package goes wrong.
+- **A gate that cannot fail is not a gate, and four here could not.** Found on
+  2026-09-01 by asking of each one "what would I break to make this go red?" —
+  which is the stash-and-re-run rule turned on the checkers themselves.
+
+  - `test-count.mjs` read `numTotalTests`, which counts PENDING tests. All 23
+    tests of `test/plan.test.ts` could be switched to `it.skip` with the count
+    identical, the script exiting 0, the floor untouched and coverage nowhere
+    near its thresholds. It counts tests that RAN now.
+  - The docProps privacy guard asserts an empty list, and an empty list is also
+    what a matcher that has stopped matching returns: `namesIn` could be
+    replaced with `return []` and every case stayed green. The FILE LIST was
+    already anchored against exactly this worry, which is what made the gap easy
+    to miss — a guard can be defended against vacuity in one dimension and open
+    in the other.
+  - The no-Office-imports guard read prose-stripped source, and an import
+    specifier is a STRING LITERAL, so `import "office-js"` in `src/core` could
+    never match. Its own stripper's docstring says a guard that reads imports
+    must read the raw source, and two other guards in the same file do.
+  - `isMain` compared `import.meta.url` with `argv[1]`, and Node resolves the
+    first through a symlink and not the second — so through `npm link` or a
+    `.bin` shim every tool CLI printed nothing and exited 0. It had no test at
+    all.
+
+  The shape they share: each answers a narrower question than its name, and each
+  answers it in a way that degrades to "fine". Ask what a broken input looks
+  like, then feed it one.
+
+- **`test-count` reads the working tree, so do not run it beside work in
+  progress.** `--update` banked scratch files from a parallel agent into the
+  floor, which CI then reads as tests having been deleted. Count against the
+  committed tree — `git worktree add --detach /tmp/x HEAD` and run it there.
+
+- **Held documents must not grow with the DECK either.** `Pkg.release` keeps the
+  count flat against the record count and two tests pin that; nothing pinned it
+  against the size of the template deck, and gathering the creation ids read
+  every slide through the retaining cache. On the file route, where the template
+  is the user's entire presentation, that is one parsed document per slide
+  before a single record is merged. `Pkg.peek` reads without keeping. Both axes
+  are pinned now — a gate whose name is wider than its coverage is the commonest
+  defect this repo finds in itself.
+
+- **Two passes over one file must agree about what the other has claimed.** The
+  numeric pass refuses a chart value cell and the workbook's text pass ran
+  afterwards and merged it — so the chart drew the template's figure while Edit
+  Data showed something else, and closing Excel refreshed one from the other.
+  Refusing is not the same as protecting: a pass that declines something has to
+  say so to whatever runs next, or the decline is undone.
+
+- **A fixture must prove it renders its own subject.** `scripts/pane-shots.mjs`
+  had a state called `5-merge-done-undo` that drew no undo card, because the
+  card needs a field no fixture set — so the one control that deletes slides was
+  measured by nothing, under a name that says otherwise. Fixtures declare
+  `shows` and `hides` now and the run fails when one stops being true. And the
+  output directory is EMPTIED first: a PNG from an earlier build is
+  indistinguishable from this run's, and one cost a false defect report.
+
 - **Test files are named by topic, never by increment.**
 - **Compare a .pptx by its PARTS, never by the archive's bytes.** JSZip stamps an
   entry time whenever a file is written, so two builds of identical content hash
