@@ -30,7 +30,9 @@
  * looks good and you do not believe it.
  */
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { isMain } from "./is-main.mjs";
 
 /** Where a wrong answer costs the most: the engine, and the undo that deletes slides. */
@@ -60,13 +62,61 @@ const RULES = [
   { name: "?? to ||", find: / \?\? /g, to: () => " || " },
 ];
 
-function suiteGreen() {
+/**
+ * A COPY of the tree to mutate, so the repository is never edited.
+ *
+ * This wrote its mutants into the working repository and restored them in a
+ * `finally`. That holds for a run that fails; it does not hold for one that is
+ * KILLED — a `timeout`, a cancelled session, the machine going away — and a
+ * skipped restore leaves a mutated engine on disk, which is the outcome the
+ * comment on that `finally` calls worse than any finding this script could
+ * produce. It happened on 2026-09-01: a run under `timeout` was interrupted, an
+ * unrelated `git add -A` swept the live mutant into a commit, and a dropped
+ * `.trim()` reached the branch inside a commit about a changelog entry.
+ *
+ * Copied rather than checked out, so uncommitted work is measured too — which
+ * is the state somebody running this is usually asking about. `node_modules` is
+ * linked rather than copied: it is most of the bytes, and a junction works on
+ * Windows without privileges as well as on POSIX.
+ */
+function workingCopy() {
+  const dir = mkdtempSync(join(tmpdir(), "ssf-mutate-"));
+  cpSync(".", dir, {
+    recursive: true,
+    filter: (from) => !/(^|[\\/])(node_modules|\.git|dist|dist-lib|coverage)([\\/]|$)/.test(from),
+  });
+  symlinkSync(join(process.cwd(), "node_modules"), join(dir, "node_modules"), "junction");
+  return dir;
+}
+
+/** @param {string} cwd */
+function suiteGreen(cwd) {
   try {
-    execFileSync("node", ["./node_modules/vitest/vitest.mjs", "run", "--silent"], { stdio: "pipe", timeout: 600000 });
+    execFileSync("node", ["./node_modules/vitest/vitest.mjs", "run", "--silent"], {
+      cwd,
+      stdio: "pipe",
+      timeout: 600000,
+    });
     return true;
   } catch {
     return false;
   }
+}
+
+/**
+ * Whether this hit is inside a comment.
+ *
+ * A mutant in a doc comment changes nothing, so the suite stays green and the
+ * run reports a SURVIVOR that names no gap at all — one run's list held
+ * `plan.ts:242 ?? to || — * Only a field the data has a COLUMN for`, which is
+ * prose. The middle-hit rule was chosen precisely to avoid a doc comment's
+ * example and it only moved the problem along.
+ *
+ * @param {string} source @param {number} at
+ */
+function inComment(source, at) {
+  const line = (source.slice(0, at).split("\n").pop() ?? "") + (source.slice(at).split("\n")[0] ?? "");
+  return /^\s*(\*|\/\/|\/\*)/.test(line);
 }
 
 function main() {
@@ -74,36 +124,46 @@ function main() {
   /** @type {string[]} */
   const survivors = [];
   let applied = 0;
+  const copy = workingCopy();
+  console.log(`mutating a copy at ${copy}`);
 
-  outer: for (const file of TARGETS) {
-    const original = readFileSync(file, "utf8");
-    for (const rule of RULES) {
-      const hits = [...original.matchAll(rule.find)];
-      if (!hits.length) continue;
-      // One site per rule per file: enough to ask the question without a
-      // combinatorial sweep nobody would wait for. The middle hit rather than
-      // the first, because the first is often in a doc comment's example.
-      const hit = hits[Math.floor(hits.length / 2)];
-      const at = hit.index ?? 0;
-      const mutated = original.slice(0, at) + rule.to(hit[0], hit[1] ?? "") + original.slice(at + hit[0].length);
-      if (mutated === original) continue;
+  try {
+    outer: for (const file of TARGETS) {
+      const original = readFileSync(file, "utf8");
+      for (const rule of RULES) {
+        // Code only. A mutant in a doc comment changes nothing, so it survives
+        // and names a gap that is not there.
+        const hits = [...original.matchAll(rule.find)].filter((h) => !inComment(original, h.index ?? 0));
+        if (!hits.length) continue;
+        // One site per rule per file: enough to ask the question without a
+        // combinatorial sweep nobody would wait for. The middle hit rather than
+        // the first, because the first is often in a doc comment's example.
+        const hit = hits[Math.floor(hits.length / 2)];
+        const at = hit.index ?? 0;
+        const mutated = original.slice(0, at) + rule.to(hit[0], hit[1] ?? "") + original.slice(at + hit[0].length);
+        if (mutated === original) continue;
 
-      writeFileSync(file, mutated);
-      let green;
-      try {
-        green = suiteGreen();
-      } finally {
-        // Restored even if the run throws: leaving a mutated engine on disk is
-        // a worse outcome than any finding this script could produce.
-        writeFileSync(file, original);
+        writeFileSync(join(copy, file), mutated);
+        let green;
+        try {
+          green = suiteGreen(copy);
+        } finally {
+          // Restored inside the COPY. Nothing here can leave the repository
+          // mutated, however this run ends.
+          writeFileSync(join(copy, file), original);
+        }
+        applied++;
+        const line = original.slice(0, at).split("\n").length;
+        console.log(`${green ? "SURVIVED " : "caught   "} ${file}:${line}  ${rule.name}`);
+        if (green)
+          survivors.push(
+            `${file}:${line} ${rule.name} — ${(original.split("\n")[line - 1] ?? "").trim().slice(0, 90)}`,
+          );
+        if (applied >= cap) break outer;
       }
-      applied++;
-      const line = original.slice(0, at).split("\n").length;
-      console.log(`${green ? "SURVIVED " : "caught   "} ${file}:${line}  ${rule.name}`);
-      if (green)
-        survivors.push(`${file}:${line} ${rule.name} — ${(original.split("\n")[line - 1] ?? "").trim().slice(0, 90)}`);
-      if (applied >= cap) break outer;
     }
+  } finally {
+    rmSync(copy, { recursive: true, force: true });
   }
 
   console.log(`\n${applied} mutant(s), ${survivors.length} survived. Read each before believing it.`);
