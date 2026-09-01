@@ -185,6 +185,20 @@ export function cellsOfFormula(formula: string): string[] | null {
 
   const [c1, r1] = [columnNumber(from[1]!), Number(from[2])];
   const [c2, r2] = [columnNumber(to[1]!), Number(to[2])];
+  // FINITE first, and this is not belt and braces — the bound below cannot see
+  // an infinity. `Number("999…9")` overflows to Infinity for a long enough run
+  // of digits, and `columnNumber` is unbounded base-26 so about 250 letters
+  // does the same; `Math.abs(Infinity - Infinity)` is NaN, and `NaN > 32000` is
+  // FALSE, so the guard waves it through. What follows then never terminates:
+  // `for (let r = Infinity; r <= Infinity; r++)` does not advance, and
+  // `columnLetters(Infinity)` appends a character forever.
+  //
+  // Both were still fatal aborts of the pane after the magnitude bound landed —
+  // same signature, same exit code, same route through `prepareBlock` as the
+  // defect that bound was written for. A number too large to count exactly is
+  // not a cell address, and this answers null for it like any other range it
+  // cannot read.
+  if (![c1, r1, c2, r2].every((n) => Number.isSafeInteger(n) && n > 0)) return null;
   const out: string[] = [];
   if (c1 === c2) {
     // Refused BEFORE the loop, never by capping it: a truncated range is a

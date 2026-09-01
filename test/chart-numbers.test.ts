@@ -103,6 +103,26 @@ describe("reading which cell a cached point came from", () => {
     expect(cellsOfFormula("Sheet1!$A$1:$A$1048576")).toBeNull();
   });
 
+  it("refuses an address too large to count, which the size bound cannot see", () => {
+    /**
+     * The bound above compares magnitudes, and an infinity defeats it:
+     * `Number("999…9")` overflows for a long enough run of digits, and
+     * `columnNumber` is unbounded base-26 so about 250 letters does the same.
+     * `Math.abs(Infinity - Infinity)` is NaN and `NaN > 32000` is FALSE, so the
+     * range was waved through — and what followed never terminated, either as
+     * a loop that does not advance or as one appending a character forever.
+     *
+     * Both were still fatal aborts of the pane AFTER the size bound landed,
+     * with the same signature and the same route through `prepareBlock`. This
+     * is the case the first fix missed, so it is asserted on its own.
+     */
+    const nines = "9".repeat(400);
+    expect(cellsOfFormula(`Sheet1!A${nines}:A${nines}`)).toBeNull();
+    expect(cellsOfFormula(`Sheet1!${"Z".repeat(250)}1:${"Z".repeat(250)}1`)).toBeNull();
+    // And the ordinary addresses either side of it still read.
+    expect(cellsOfFormula("Sheet1!$B$2:$B$4")).toEqual(["B2", "B3", "B4"]);
+  });
+
   it("takes a series right up to the bound and refuses one cell past it", () => {
     // The boundary itself, so the bound cannot be quietly widened or narrowed
     // without this saying so.
