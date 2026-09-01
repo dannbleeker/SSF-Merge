@@ -2,6 +2,10 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": false,
+    // TypeScript 6 refuses to infer this: TS5011, "the common source directory
+    // is './src'. The 'rootDir' setting must be explicitly set." Without it
+    // `npm run build:lib` exits 2 and `dist-lib/` is never written.
+    "rootDir": "src",
     "outDir": "dist-lib",
     "declaration": true
   },
