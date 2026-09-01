@@ -452,6 +452,22 @@ button.back {
   color: var(--link);
   text-decoration: underline;
   font-size: 12.5px;
+  /*
+   * A button centres its label by default, and these are written to read as
+   * links. While a label fits on one line the button shrinks to it and the
+   * difference is invisible; the moment one WRAPS, its second line is centred
+   * under the first while every other label on the pane is flush left.
+   *
+   * It is reachable in the shipped pane, not a hypothetical: at 320px — the
+   * narrowest width supported, and the touch surface AppSource asks about —
+   * "A blank cell leaves a blank — change what happens" wraps, and sat centred
+   * directly beneath two of its own siblings that did not.
+   *
+   * Left rather than per-class, `button.forward` included. It is the reading
+   * direction and it is what every other label here does; a control aligned to
+   * the right edge of its row is still a line of text that starts on the left.
+   */
+  text-align: left;
 }
 
 /* What the host said, as opposed to what the step needs. */
