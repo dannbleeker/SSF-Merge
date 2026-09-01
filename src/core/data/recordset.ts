@@ -174,7 +174,7 @@ const SNIFF_ROWS = 10;
  * the rest of the paste. Both are now handled by construction, because the
  * thing being scored IS the parse. The tests for them are kept and still pass.
  */
-function chooseDelimiter(src: string): string {
+function chooseDelimiter(src: string): string | undefined {
   let best: { d: string; cells: number } | undefined;
   for (const d of DELIMITERS) {
     // A BLANK LINE is not evidence about the delimiter, and counting it as a
@@ -193,11 +193,25 @@ function chooseDelimiter(src: string): string {
     if (cells < 2 || !rows.every((r) => r.length === cells)) continue;
     if (!best || cells > best.cells) best = { d, cells };
   }
-  return best?.d ?? ",";
+  // UNDEFINED, not a comma. This fell back to the comma, and `splitOn` then
+  // split on it — so a one-column paste of European decimals came apart:
+  // `Beløb / 1,5 / 2,5` parsed as two columns holding `1`, `5` and `2`, `5`,
+  // and every slide printed `1`. A name with a comma in it did the same:
+  // `Contoso, Ltd` became two cells.
+  //
+  // The docstring above already said what this should do — "a one-column paste
+  // has no separator to find, and every caller wants one column rather than a
+  // refusal" — and the fallback defeated it by choosing a character that is
+  // present in the data. Its own tests show the asymmetry: `Notes; extra` stays
+  // one column and `Notes, extra` did not.
+  //
+  // No delimiter means no cell boundary: `splitOn` still ends a row at a
+  // newline, so the answer is one column, which is what the caller wants.
+  return best?.d;
 }
 
 /** The whole parse, given the delimiter. Stops after `limit` rows when asked. */
-function splitOn(src: string, d: string, limit?: number): string[][] {
+function splitOn(src: string, d: string | undefined, limit?: number): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
   let cell = "";

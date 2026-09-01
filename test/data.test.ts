@@ -20,6 +20,30 @@ describe("parseDelimited", () => {
   it("reads a doubled quote as one quote", () => {
     expect(parseDelimited('a\n"say ""hi"""')).toEqual([["a"], ['say "hi"']]);
   });
+
+  it("leaves a ONE-COLUMN paste in one column, whatever it contains", () => {
+    /**
+     * `chooseDelimiter` scores each candidate and correctly finds that none of
+     * them separates anything here — and then fell back to the comma, which
+     * `splitOn` duly split on. A column of European decimals came apart:
+     * `1,5` became `1` and `5`, and every slide printed `1`. A column of
+     * company names did the same to `Contoso, Ltd`.
+     *
+     * Its own docstring already said what should happen — "a one-column paste
+     * has no separator to find, and every caller wants one column rather than a
+     * refusal" — and the fallback defeated it by choosing a character that is
+     * in the data. The asymmetry was visible in this file: the semicolon case
+     * was pinned as working while the identical comma case was not.
+     */
+    expect(parseDelimited("Bel\u00f8b\n1,5\n2,5")).toEqual([["Bel\u00f8b"], ["1,5"], ["2,5"]]);
+    expect(parseDelimited("Kunde\nContoso, Ltd")).toEqual([["Kunde"], ["Contoso, Ltd"]]);
+    expect(parseDelimited("Notes; extra\nfine\nalso")).toEqual([["Notes; extra"], ["fine"], ["also"]]);
+    // And a real comma-separated table is still read as one.
+    expect(parseDelimited("Name,Region\nAda,Nordics")).toEqual([
+      ["Name", "Region"],
+      ["Ada", "Nordics"],
+    ]);
+  });
 });
 
 describe("toRecordSet", () => {
@@ -94,6 +118,30 @@ describe("numericValue", () => {
 
   it("reads an American thousands group", () => {
     expect(numericValue("1,500")).toBe(1500);
+  });
+
+  it("reads a LEADING ZERO group as a decimal, because no other reading exists", () => {
+    /**
+     * `1,500` is genuinely ambiguous — fifteen hundred or one-and-a-half — and
+     * this engine reads it as grouping, which is decided and written down.
+     * `0,500` is not ambiguous at all: no spreadsheet writes a leading `0`
+     * group for five hundred. It was read as 500.
+     *
+     * A factor of a thousand on ordinary Danish and German data — a rate, a
+     * share, a percentage shown to three decimals — and one column could hold
+     * both readings at once, which is the pathology this file's own docstrings
+     * say they exist to prevent. The value goes straight into charts too, so
+     * the bar plotted 250 where the sheet said a quarter.
+     */
+    expect(numericValue("0,500")).toBe(0.5);
+    expect(numericValue("0.500")).toBe(0.5);
+    expect(numericValue("-0,004")).toBeCloseTo(-0.004);
+    // The whole column reads one way now.
+    expect(numericValue("0,250")).toBe(0.25);
+    expect(numericValue("0,05")).toBe(0.05);
+    // And the ambiguous case is untouched, which is the decision that stands.
+    expect(numericValue("1,500")).toBe(1500);
+    expect(numericValue("1.234")).toBe(1234);
   });
 
   it("reads a mixed form by whichever separator comes last", () => {

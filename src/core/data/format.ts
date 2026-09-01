@@ -169,6 +169,28 @@ export function dateShape(value: string): boolean {
   return !(a <= 12 && b <= 12 && a !== b);
 }
 
+/**
+ * A number written with thousands groups: `1,234`, `1.234.567`, `-12,345`.
+ *
+ * The FIRST group may not be zero, and that is the whole of the difference
+ * between an ambiguous cell and a wrong answer. `1,500` is genuinely ambiguous
+ * — fifteen hundred or one-and-a-half — and this engine reads it as grouping,
+ * which is decided and written down. `0,500` is not ambiguous at all: no
+ * spreadsheet writes a leading `0` group for five hundred, so it can only be
+ * the decimal five tenths. It was read as 500.
+ *
+ * That is a factor of a thousand on ordinary Danish and German data — a rate,
+ * a share, a percentage shown to three decimals — and the same column could
+ * hold both readings at once: `0,250` came back 250 while `0,05` came back
+ * 0.05, one column, typed `number`, two answers a thousandfold apart. The value
+ * also goes straight into a chart, so the bar plots 250 where the sheet says a
+ * quarter.
+ */
+const GROUPED_COMMA = /^-?[1-9]\d{0,2}(?:,\d{3})+$/;
+
+/** The same rule for the European spelling: `1.234`, `12.345.678`. */
+const GROUPED_DOT = /^-?[1-9]\d{0,2}(?:\.\d{3})+$/;
+
 /** Parse the number forms a spreadsheet actually produces, including the European one. */
 export function numericValue(raw: string): number | undefined {
   const v = raw.trim();
@@ -195,10 +217,8 @@ export function numericValue(raw: string): number | undefined {
     // "1,234,567" became "1234,567" and then NaN — while `detectType` still
     // called the column a number, so half of it rendered formatted and half
     // rendered raw.
-    normalised = /^-?\d{1,3}(?:,\d{3})+$/.test(normalised)
-      ? normalised.replace(/,/g, "")
-      : normalised.replace(",", ".");
-  } else if (hasDot && /^-?\d{1,3}(?:\.\d{3})+$/.test(normalised)) {
+    normalised = GROUPED_COMMA.test(normalised) ? normalised.replace(/,/g, "") : normalised.replace(",", ".");
+  } else if (hasDot && GROUPED_DOT.test(normalised)) {
     // The European grouping spelling, "1.234.567" — and "1.234" with it, which
     // this comment used to claim stayed a decimal. It never did: `+` is one or
     // more, so a single group has always been read as grouping.
