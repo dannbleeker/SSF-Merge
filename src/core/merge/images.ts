@@ -141,6 +141,23 @@ export interface ImageOutcome {
  */
 export class MediaCache {
   private readonly byContent = new Map<string, string>();
+  /**
+   * The same buffer OBJECT, already answered.
+   *
+   * The content key is computed before the lookup, so a picture already in the
+   * cache was hashed in full on every row — and the digest deliberately walks
+   * every byte. A logo on 240 rows, which is the case this class exists for,
+   * cost 12.3 seconds of blocking work in a task-pane WebView to produce one
+   * media part; the same run answered a repeat lookup in 57 ms once the hash
+   * was skipped.
+   *
+   * `resolveImage` hands back the same `Uint8Array` instance for every row that
+   * names one file, so identity is free and needs no arithmetic. The content
+   * key stays — it is what makes two NAMES for one picture share a part, which
+   * identity alone cannot see — and this only decides whether the digest has to
+   * run at all. Weak, so a buffer the run has finished with is collectable.
+   */
+  private readonly byBuffer = new WeakMap<Uint8Array, string>();
 
   constructor(private readonly pkg: Pkg) {}
 
@@ -154,13 +171,22 @@ export class MediaCache {
    * buffer rather than a sample.
    */
   async part(bytes: Uint8Array, extension: string, contentType: string): Promise<string> {
+    // Identity first, so the repeat case never reaches the digest. Keyed on the
+    // extension too, because the same bytes asked for under two extensions are
+    // two parts — the content key has always said so and this must agree.
+    const seen = this.byBuffer.get(bytes);
+    if (seen !== undefined && seen.endsWith(`.${extension}`)) return seen;
     const key = `${bytes.length}:${digest(bytes)}:${extension}`;
     const already = this.byContent.get(key);
-    if (already) return already;
+    if (already) {
+      this.byBuffer.set(bytes, already);
+      return already;
+    }
     const path = `ppt/media/image${this.pkg.nextMediaNumber()}.${extension}`;
     this.pkg.setBytes(path, bytes);
     await this.pkg.addContentTypeDefault(extension, contentType);
     this.byContent.set(key, path);
+    this.byBuffer.set(bytes, path);
     return path;
   }
 }
