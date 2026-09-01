@@ -239,3 +239,59 @@ they answer no format. That last sentence is a test rather than a claim.
   bytes are host-produced; the residual case is a hostile chart in a deck
   somebody was sent, and the impact is the same frozen tab as above.
 - **The host, delivery, and the two unbuilt network features**, all as before.
+
+## The sweep of 2026-09-01
+
+A fuzz run against the pure engine: 1,239 end-to-end cases through
+`Pkg.open` → `prepareBlock` → `buildPlan` → `runPlan` → re-parse, plus about 1.2
+million direct calls into the parsers, each in a forked child under a watchdog.
+Inputs were built rather than reasoned about — truncated archives, corrupt
+parts, duplicate zip entries, paths escaping the root, entity bombs, external
+entities, 20,000 levels of nesting, `__proto__` as a column name, lone
+surrogates, and 800 randomised merges.
+
+### One — a chart's cell range could exhaust memory, fixed
+
+`cellsOfFormula` reads the range a chart series names. Its pattern bounds the
+SHAPE of an address (`A1`, `$B$2`) and not its magnitude, so the one range shape
+it accepts had no ceiling: `Sheet1!A1:A99999999` built one string per cell until
+the process died. Not a hang and not an exception the pane could show — a fatal
+out-of-memory abort. `A1:ZZZZZZ1` is the same defect along the column axis.
+
+**Reachable from a deck, before the user does anything.** It runs when the
+template block is picked, and again per row during a merge. The deck reaching it
+is exported by PowerPoint from a presentation the user already had open, so the
+realistic case is a deck somebody was sent, or a chart pasted from one.
+
+A range longer than a chart series can hold is refused now, which is what
+already happens for any range this engine cannot read: the series keeps its
+cached numbers and the run counts it. The bound is Excel's own ceiling of 32,000
+points in a 2-D data series. It is checked before the loop rather than by
+capping it — a truncated range is a different range, and pairing a cache index
+with the wrong cell is the outcome that whole pass exists to avoid.
+
+### Two — a legal deck could take thirteen minutes, fixed
+
+`Sheet1!$A$1:$A$1048576` is what Excel writes when somebody selects a whole
+column as a chart's series. Reading it walked the entire worksheet once per
+address: 67 seconds over twenty rows of data, against 194 ms for the same chart
+with a two-cell range, and a 240-row merge of it extrapolates past thirteen
+minutes with nothing on screen. Not memory exhaustion and not a crash, but the
+same denial of service from the same input. The sheet is indexed once now.
+
+### Three — a part number could collide, fixed
+
+Above 2^53, "the highest existing number plus one" stops being that: `max + 1
+=== max`. A deck carrying a part with such a number in its name made the merge
+answer a number already in use, and the copy overwrote it — leaving two slides
+sharing one chart, in a file that still opens and reports nothing. It needs an
+adversarial part name; no producer writes one. Digit runs too large to count
+exactly are ignored now, and the answer is checked against the numbers actually
+in use.
+
+### What this sweep did not cover
+
+- **The decompression bomb above**, which is bounded but not eliminated.
+- **The host, delivery, and the two unbuilt network features**, all as before.
+- **Timing, memory-residency and side channels.** Nothing here measures them,
+  and the threat model has not asked for it.
