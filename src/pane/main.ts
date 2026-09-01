@@ -801,7 +801,11 @@ async function merge(): Promise<void> {
       // second run's numbers, and it removed nothing — forever. The raise path
       // below already guarded this; the success path did not, and that
       // asymmetry was the whole defect.
-      if (outcome.added > 0) {
+      // `accountable` as well as `added`: a run that cannot say which of the
+      // new slides are its own must not offer to remove them. The sweep
+      // refuses that shape anyway, so the offer was a button that answered
+      // "nothing to take back" every time it was pressed.
+      if (outcome.added > 0 && outcome.accountable) {
         last = outcome;
         dropCrumb({ deckAtStart: outcome.deckAtStart, added: outcome.added, runId: outcome.runId, doc: documentKey() });
       } else if (!holding) {
@@ -822,7 +826,7 @@ async function merge(): Promise<void> {
         // `deckAtStart` travels with `added` everywhere, because the undo card
         // asks `sweepPlan` and a positional offer needs both: `added` says how
         // many slides, this says which.
-        ...(outcome.added > 0
+        ...(outcome.added > 0 && outcome.accountable
           ? {
               added: outcome.added,
               deckAtStart: outcome.deckAtStart,
@@ -881,6 +885,10 @@ async function merge(): Promise<void> {
           ok: false,
           detail: readable(e),
           added,
+          // The recovery path caps `added` at what the run could have added,
+          // so what it offers to sweep is already inside what it can account
+          // for. See the cap two lines above.
+          accountable: true,
           deckAtStart: before,
           runId: "recovered",
           fields: [],
@@ -1179,6 +1187,9 @@ void Office.onReady(() => {
           ok: false,
           detail: "recovered from a run that did not finish",
           added: crumb.added,
+          // The crumb records what a finished run could account for; the sweep
+          // re-checks it against the deck and the run tag at press time.
+          accountable: true,
           deckAtStart: crumb.deckAtStart,
           runId: crumb.runId,
           fields: [],

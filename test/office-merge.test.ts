@@ -317,6 +317,36 @@ describe("a torn insert is reported in rows", () => {
     expect(out.detail).not.toMatch(/row\(s\) landed complete/);
   });
 
+  it("does not read an unaccountable deck as a torn merge", async () => {
+    /**
+     * A co-author or AutoSave landing a slide across the insert makes the deck
+     * grow by MORE than the package held. `insertVerdict` grades that
+     * `unknown` and writes a sentence naming the condition; this file branched
+     * on whether anything landed and took the torn path, producing a sentence
+     * that cannot be true — "PowerPoint took only part of the merge: all 3
+     * row(s) landed complete" — and then telling the user to take the slides
+     * back, which `sweepPlan` refuses for exactly this shape. The offer was a
+     * dead end with a slide-deleting button on it.
+     */
+    host.readTemplate.mockResolvedValueOnce({ base64: await block(), offset: 0 });
+    host.insertDeck.mockResolvedValueOnce({
+      verdict: "unknown",
+      detail: "the deck grew by 8 while the package held 6 slide(s), so this run cannot say which of them are its own",
+      landed: 8,
+      before: 2,
+      after: 10,
+    });
+
+    const out = await runMerge({ from: 1, to: 2, records: rows });
+    expect(out.ok).toBe(false);
+    expect(out.detail, "the self-contradicting sentence").not.toMatch(/took only part/);
+    expect(out.detail, "advice the undo refuses to carry out").not.toMatch(/take the slides back/i);
+    expect(out.detail, "the verdict's own sentence, which names the condition").toContain(
+      "cannot say which of them are its own",
+    );
+    expect(out.accountable, "the pane may not offer to sweep slides this run cannot identify").toBe(false);
+  });
+
   it("says nothing about rows when every row landed", async () => {
     // 240 of 240 rows is noise beside "720 slides added".
     host.readTemplate.mockResolvedValueOnce({ base64: await block(), offset: 0 });

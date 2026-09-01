@@ -55,6 +55,17 @@ export interface MergeOutcome {
   detail: string;
   /** Slides added, measured from the deck rather than assumed. */
   added: number;
+  /**
+   * Whether the deck's change is one this run can account for.
+   *
+   * False when MORE slides arrived than the package held, or the deck shrank —
+   * a co-author or AutoSave landing a slide across the insert. The slides are
+   * there and some of them are ours, but nothing here can say which, so the
+   * offer to take them back must not be made: `sweepPlan` refuses that shape
+   * deliberately, and an offer its own sweep will decline is a dead end with a
+   * slide-deleting button on it.
+   */
+  accountable: boolean;
   /** The deck's size before the insert — what an undo is clamped against. */
   deckAtStart: number;
   runId: string;
@@ -222,7 +233,19 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
   // anything back.
   const deckAtStart = await slideCount();
   const runId = req.runId ?? newRunId(deckAtStart, req.records.rows.length);
-  const nothing = { added: 0, deckAtStart, runId, fields: [], imageFields: [], slideFields: [], unknownConditions: [] };
+  // `accountable: true` — nothing was inserted, so there is nothing about the
+  // deck this run cannot account for. The field means "the change is one this
+  // run can explain", not "the run succeeded".
+  const nothing = {
+    added: 0,
+    accountable: true,
+    deckAtStart,
+    runId,
+    fields: [],
+    imageFields: [],
+    slideFields: [],
+    unknownConditions: [],
+  };
 
   if (req.records.rows.length === 0) {
     return { ok: false, detail: "There are no rows to merge.", ...nothing };
@@ -363,6 +386,7 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
    */
   const landed = {
     added,
+    accountable: insert.verdict !== "unknown",
     deckAtStart,
     runId,
     fields: prepared.fields,
@@ -414,10 +438,22 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
       // In ROWS. `insert.detail` grades slides — "719 of 720 slides landed" is
       // true and tells the user nothing they can act on, because every row
       // after the torn one still looks correct.
+      // On the VERDICT, not on whether anything landed. `unknown` means the
+      // deck changed in a way this run cannot account for — more slides than
+      // the package held, or fewer than it started with — and it took the torn
+      // branch, which produced a sentence that cannot be true: "PowerPoint took
+      // only part of the merge: all 3 row(s) landed complete." It then told the
+      // user to take the slides back, and the undo refuses exactly this shape,
+      // so the advice was a dead end.
+      //
+      // The verdict's own sentence was written for this reading and names the
+      // condition; passing it through is all that was needed.
       detail:
-        added > 0
-          ? `PowerPoint took only part of the merge: ${rows.detail}. Take the slides back and run it again.`
-          : `The merge was built but PowerPoint did not take it: ${insert.detail}`,
+        insert.verdict === "unknown"
+          ? `The deck changed in a way this run cannot account for: ${insert.detail}. Nothing has been taken back — check the deck before running the merge again.`
+          : added > 0
+            ? `PowerPoint took only part of the merge: ${rows.detail}. Take the slides back and run it again.`
+            : `The merge was built but PowerPoint did not take it: ${insert.detail}`,
       ...landed,
     };
   }

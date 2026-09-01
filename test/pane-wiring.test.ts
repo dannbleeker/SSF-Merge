@@ -80,6 +80,9 @@ const OUTCOME = {
   ok: true,
   detail: "6 slides added after slide 12.",
   added: 6,
+  // The ordinary case: the deck grew by what the package held, so the run can
+  // account for every new slide and may offer to take them back.
+  accountable: true,
   deckAtStart: 12,
   runId: "r1",
   fields: ["First", "Last"],
@@ -940,7 +943,7 @@ describe("taking rows out, through the real pane", () => {
 
 describe("taking a real merge back", () => {
   /** Walk to the merge step and land a run of six slides. */
-  async function afterMerge(): Promise<HTMLElement> {
+  async function afterMerge(outcome: Record<string, unknown> = OUTCOME): Promise<HTMLElement> {
     const root = await openPane();
     await settle();
     type("from", "4");
@@ -958,7 +961,7 @@ describe("taking a real merge back", () => {
     // the preview step, which is why the first version of this helper landed
     // nothing.
     document.querySelector<HTMLButtonElement>('[data-forward="merge"]')?.click();
-    office.runMerge.mockResolvedValueOnce(OUTCOME);
+    office.runMerge.mockResolvedValueOnce(outcome);
     primary().click();
     await settle();
     return root;
@@ -988,6 +991,21 @@ describe("taking a real merge back", () => {
     // written, and no view rendered either.
     await afterMerge();
     expect(undoButton()).not.toBeNull();
+  });
+
+  it("does NOT offer it when the run cannot say which slides are its own", async () => {
+    // The deck grew by more than the package held — a co-author or AutoSave
+    // landing a slide across the insert. The slides are there and some are
+    // ours; nothing here can say which, and `sweepPlan` refuses that shape
+    // deliberately. Offering the card anyway put a slide-deleting button on
+    // screen that answered "nothing to take back" every time it was pressed.
+    await afterMerge({
+      ...OUTCOME,
+      ok: false,
+      accountable: false,
+      detail: "The deck changed in a way this run cannot account for.",
+    });
+    expect(undoButton(), "an offer the sweep will decline").toBeNull();
   });
 
   it("sweeps with the run's OWN numbers, not the pane's current ones", async () => {
