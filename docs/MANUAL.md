@@ -410,8 +410,19 @@ months.
 **The month name written OUT is English**, whatever language it was read from:
 `{{Start|date:d MMM yyyy}}` gives `3 May 2026`. The output is the template
 author's to choose, so write the month yourself if you want it in another
-language — `{{Start|date:d}} maj {{Start|date:yyyy}}` — or use a numeric
-pattern like `dd-MM-yyyy`, which reads the same everywhere.
+language, inside the same pattern:
+
+```
+{{Start|date:d. maj yyyy}}          1. maj 2026
+{{Start|date:d. Dezember yyyy}}     1. Dezember 2026
+{{Start|date:d de mayo de yyyy}}    1 de mayo de 2026
+{{Start|date:den d. MMMM yyyy}}     den 1. March 2026
+```
+
+A word in a pattern is printed as written even when it begins with a token's
+letter — `den`, `dato`, `december` — because a run of letters is either all
+tokens or none of them. A numeric pattern like `dd-MM-yyyy` reads the same
+everywhere and needs none of this.
 
 ## Pictures
 

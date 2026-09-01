@@ -1357,6 +1357,23 @@ describe("dates a spreadsheet actually writes", () => {
     expect(applyFormat("2026-03-01", "date:yyyy-MM-ddTHH:mm")).toBe("2026-03-ddTHH:mm");
   });
 
+  it("prints a month name written into the pattern, in any language", () => {
+    /**
+     * The output month is English, so a template author writes their own — and
+     * the manual now shows it inside ONE placeholder rather than splitting the
+     * date across three. It works because a run of letters is either all tokens
+     * or none: `maj`, `Dezember` and `de` are words, and `d` and `yyyy` beside
+     * them are not.
+     *
+     * These are the four examples the manual prints. A doc that shows an output
+     * nobody checked is the same defect as a stale comment.
+     */
+    expect(applyFormat("2026-03-01", "date:d. maj yyyy")).toBe("1. maj 2026");
+    expect(applyFormat("2026-03-01", "date:d. Dezember yyyy")).toBe("1. Dezember 2026");
+    expect(applyFormat("2026-03-01", "date:d de mayo de yyyy")).toBe("1 de mayo de 2026");
+    expect(applyFormat("2026-03-01", "date:den d. MMMM yyyy")).toBe("den 1. March 2026");
+  });
+
   it("leaves an ordinary word that begins with a token's letter alone", () => {
     /**
      * `den`, `dato`, `due` and `deadline` all start with a `d`, and `M` and `y`
