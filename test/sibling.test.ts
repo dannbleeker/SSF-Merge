@@ -210,10 +210,21 @@ describe("the sibling sweep", () => {
   const table = readFileSync("scripts/sibling-watch.mjs", "utf8");
 
   it("pulls the keys out of a table, quoted or bare", () => {
-    const src = ["export const T = {", '  bare: "a",', '  "quoted": "b",', '  "with-dashes": "c",', "};", ""].join(
-      "\n",
-    );
-    expect(tableKeys(src, "T")).toEqual(["bare", "quoted", "with-dashes"]);
+    const src = [
+      "export const T = {",
+      '  bare: "a",',
+      '  "quoted": "b",',
+      '  "with-dashes": "c",',
+      // An id spelled with an underscore or a dot was DROPPED, silently, from a
+      // sweep whose whole job is noticing something new. The sibling's ids
+      // happen to use hyphens today, which is what made it latent rather than
+      // broken.
+      '  under_scored: "d",',
+      '  "dotted.id": "e",',
+      "};",
+      "",
+    ].join("\n");
+    expect(tableKeys(src, "T")).toEqual(["bare", "quoted", "with-dashes", "under_scored", "dotted.id"]);
   });
 
   it("says a missing table is MISSING, never empty", () => {
@@ -223,7 +234,26 @@ describe("the sibling sweep", () => {
     expect(tableKeys("export const OTHER = {\n  a: 1,\n};\n", "GONE")).toBeNull();
     expect(() => {
       tablesFrom((): string => "export const NOTHING = {\n};\n");
-    }).toThrow(/renamed or moved upstream/);
+    }).toThrow(/renamed, moved, emptied or reformatted/);
+  });
+
+  it("says a table it can no longer READ is missing too", () => {
+    /**
+     * The same silence by a likelier route. The key pattern is anchored on
+     * two-space indentation, so a reindent upstream — a formatter run, one more
+     * level of nesting — parses to an empty array, which is not null and was
+     * therefore reported as a quiet week. The protection above covered a rename
+     * and not a reformat.
+     *
+     * A curated table that genuinely holds nothing is not worth distinguishing
+     * here: saying so once costs a person a minute, and reading it as quiet
+     * costs every Monday after.
+     */
+    const reindented = ["export const T = {", '    bare: "a",', '    "with-dashes": "c",', "};", ""].join("\n");
+    expect(tableKeys(reindented, "T"), "four spaces is a table this cannot read").toBeNull();
+    expect(() => {
+      tablesFrom((): string => reindented.replace("T", "FAKE_BASELINE"));
+    }).toThrow(/emptied or reformatted/);
   });
 
   it("reports a finding with no row, and keeps which tables it was in", () => {

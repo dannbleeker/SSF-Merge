@@ -67,6 +67,20 @@ export const SOURCES = [
  * forever, which is the failure this whole file exists to prevent, committed by
  * the file itself.
  *
+ * **Null for a table that parses to NOTHING, too**, and that is the same rule
+ * rather than a new one. The key pattern is anchored on two-space indentation,
+ * so a reindent upstream — a formatter run, a nesting change — yields an empty
+ * array, which is not null and therefore read as "nothing new". The protection
+ * above covered a rename and not a reformat, which is the identical silence by
+ * a likelier route. A curated table that genuinely holds nothing is not a state
+ * worth distinguishing here: reporting it once as broken costs a person a
+ * minute, and reading it as quiet costs every Monday after.
+ *
+ * The key charset takes `_` and `.` as well. It matched `[A-Za-z0-9-]` only, so
+ * `brand_new_question` and `another.new.question` were dropped in silence —
+ * from a sweep whose entire job is noticing something new. The sibling's ids
+ * happen to use hyphens today, which is what made it latent.
+ *
  * @param {string} source
  * @param {string} table
  * @returns {string[] | null}
@@ -77,7 +91,8 @@ export function tableKeys(source, table) {
   const rest = source.slice(at);
   const end = rest.search(/^\};/m);
   const body = end < 0 ? rest : rest.slice(0, end);
-  return [...body.matchAll(/^ {2}"?([A-Za-z0-9][A-Za-z0-9-]*)"?:/gm)].map((m) => String(m[1]));
+  const keys = [...body.matchAll(/^ {2}"?([A-Za-z0-9][A-Za-z0-9._-]*)"?:/gm)].map((m) => String(m[1]));
+  return keys.length === 0 ? null : keys;
 }
 
 /**
@@ -270,7 +285,11 @@ export function tablesFrom(read) {
   for (const { path, table, kind } of SOURCES) {
     if (!cache.has(path)) cache.set(path, read(path));
     const keys = tableKeys(cache.get(path), table);
-    if (keys === null) throw new Error(`${path}: no table named ${table} — it was renamed or moved upstream`);
+    if (keys === null)
+      throw new Error(
+        `${path}: no keys read from ${table} — it was renamed, moved, emptied or reformatted upstream. ` +
+          `A sweep that cannot read the table must say so rather than report a quiet week.`,
+      );
     out.push({ path, table, kind, keys });
   }
   return out;
