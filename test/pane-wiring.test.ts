@@ -1493,6 +1493,60 @@ describe("the conditional slide control", () => {
     expect((office.runMerge.mock.calls[0]?.[0] as { conditions?: unknown }).conditions).toEqual({ 5: "Last" });
   });
 
+  it("keeps conditions when the SELECTED slides are the same block", async () => {
+    /**
+     * The fix for the keystroke path went in and left this one calling
+     * `blockMoved` directly, so a user who set a condition, went back, and
+     * pressed "use the slides I've selected" with the same slides still
+     * selected lost it — the same silent widening of the merge, by the other
+     * route. Two routes to one question is how the defect was written in the
+     * first place; they share the rule now.
+     */
+    await toMergeWithData();
+    openConditions();
+    choose(5, "Last");
+    backToTemplate();
+    office.selectedBlock.mockResolvedValueOnce({ ok: true, from: 4, to: 6 });
+    (pane().querySelector('[data-action="selection"]') as HTMLElement).click();
+    await settle();
+    office.inspectBlock.mockResolvedValueOnce(REPORT);
+    primary().click(); // template -> data
+    await settle();
+    office.inspectBlock.mockResolvedValueOnce(REPORT);
+    primary().click(); // data -> fields
+    primary().click(); // fields -> preview
+    await settle();
+    (pane().querySelector("[data-forward]") as HTMLElement).click(); // -> merge
+
+    const values = Array.from(pane().querySelectorAll("[data-condition]")).map((s) => (s as HTMLSelectElement).value);
+    expect(values, "the control is not open").toHaveLength(3);
+    expect(values, "the same slides are not a different block").toEqual(["", "Last", ""]);
+  });
+
+  it("drops them when the SELECTED slides are a different block", async () => {
+    // The other direction, on the overlapping case: slide 5 is still inside the
+    // new block, so a stale key would silently apply to a slide nobody set it
+    // on rather than being ignored.
+    await toMergeWithData();
+    openConditions();
+    choose(5, "Last");
+    backToTemplate();
+    office.selectedBlock.mockResolvedValueOnce({ ok: true, from: 3, to: 5 });
+    (pane().querySelector('[data-action="selection"]') as HTMLElement).click();
+    await settle();
+    office.inspectBlock.mockResolvedValueOnce(REPORT);
+    primary().click();
+    await settle();
+    office.inspectBlock.mockResolvedValueOnce(REPORT);
+    primary().click();
+    primary().click();
+    await settle();
+    (pane().querySelector("[data-forward]") as HTMLElement).click();
+
+    const values = Array.from(pane().querySelectorAll("[data-condition]")).map((s) => (s as HTMLSelectElement).value);
+    expect(values).toEqual(["", "", ""]);
+  });
+
   it("keeps a condition across a new paste, and says the column is gone", async () => {
     /**
      * The opposite decision from the row filter, and deliberately: a filter is

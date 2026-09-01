@@ -18,7 +18,7 @@ import {
 import { inspectBlock, runMerge, undoMerge, type MergeOutcome } from "../office/merge.js";
 import { readable } from "../host/errors.js";
 import { clearCrumb, dropCrumb, readCrumb } from "./crumb.js";
-import { blockMoved, blockTyped, dataChanged } from "./transitions.js";
+import { blockDrafted, blockMoved, dataChanged } from "./transitions.js";
 import type { EmptyPolicy } from "../core/merge/resolve.js";
 import { beginRun, onTrace, trace, traceText } from "../core/trace.js";
 import { render } from "./render.js";
@@ -374,7 +374,7 @@ function onInput(event: Event): void {
     // `chosenBlock` fall back to slides the boxes no longer name. The fields
     // read off it go with it for the same reason, and `added` goes because a
     // changed block is a different merge.
-    state = { ...blockTyped(state, draft), notice: undefined };
+    state = { ...blockDrafted(state, draft), notice: undefined };
     draw();
     return;
   }
@@ -474,8 +474,15 @@ async function useSelection(): Promise<void> {
     // READ". Nothing observable distinguishes this from committing the
     // selection — `chosenBlock` prefers the draft either way — so it is stated
     // rather than guarded by a test that would pass against both.
+    // Through the same rule the slide-number boxes use. Selecting the SAME
+    // slides has not moved the block, so the conditions keyed to it are not
+    // stale — and this path calling `blockMoved` directly is how that fix came
+    // to cover typing and not selecting.
     state = picked.ok
-      ? { ...blockMoved(state), draft: { from: String(picked.from), to: String(picked.to) }, notice: undefined }
+      ? {
+          ...blockDrafted(state, { from: String(picked.from), to: String(picked.to) }),
+          notice: undefined,
+        }
       : { ...state, notice: picked.why };
   });
 }

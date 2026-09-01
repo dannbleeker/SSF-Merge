@@ -58,13 +58,18 @@ export function blockMoved(state: PaneState): PaneState {
 }
 
 /**
- * A keystroke in the slide-number boxes.
+ * A new draft of the slide numbers — typed, or picked out of the deck.
  *
  * `blockMoved` is right for its own contract, and this is about WHEN it should
  * fire. It ran on every keystroke, so a user who set "slide 5 only when
  * Renewal", went back to check the slide numbers, retyped the same last slide
  * and walked forward again found the conditions gone — silently, with the merge
  * button quietly offering more slides than they had asked for.
+ *
+ * Both callers, and it was one for a while: the fix went into the typing path
+ * and "use the slides I've selected" kept calling `blockMoved` directly, so
+ * selecting the SAME slides still threw the conditions away. Two routes to one
+ * question is how the first version of this defect was written.
  *
  * The conditions are keyed by SLIDE NUMBER, so what makes them stale is the
  * block naming different slides. Typing does not do that on its own: while a
@@ -74,7 +79,7 @@ export function blockMoved(state: PaneState): PaneState {
  * the per-slide lists were read off the slides themselves, and this pane has no
  * way to know the slides were not edited in between.
  */
-export function blockTyped(state: PaneState, draft: BlockDraft): PaneState {
+export function blockDrafted(state: PaneState, draft: BlockDraft): PaneState {
   // The block the conditions are KEYED to, which outlives the empty box in the
   // middle of retyping a number. `chosenBlock` cannot answer for the second
   // keystroke: the first one already cleared the committed block, so from there
