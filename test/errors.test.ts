@@ -138,3 +138,31 @@ describe("a host error whose message is not a string", () => {
     );
   });
 });
+
+describe("a raise with nothing in it", () => {
+  /**
+   * An `OfficeExtension.Error` routinely carries an empty `message` and puts
+   * the content in `debugInfo`. `readable` answered "" for it, so the sentence
+   * the pane builds around the answer stopped mid-air: "The merge did not
+   * run: ". An empty answer is the same defect as "[object Object]", which is
+   * what the rest of this function exists to refuse — it occupies the space
+   * where a reason goes and says nothing.
+   */
+  it("says so rather than answering with an empty string", () => {
+    expect(readable(new Error(""))).toBe("the host raised nothing this pane can describe.");
+    expect(readable("")).toBe("the host raised nothing this pane can describe.");
+  });
+
+  it("falls through to the shape when an object's message is empty", () => {
+    // The object may still carry a name and a code, and "InvalidArgument /
+    // 5010" is something a reader can repeat to somebody who can act on it.
+    const said = readable({ name: "InvalidArgument", message: "", code: 5010 });
+    expect(said).toContain("InvalidArgument");
+    expect(said).toContain("5010");
+  });
+
+  it("still prefers a message that has something in it", () => {
+    // The other direction: the guard must not cost the ordinary case.
+    expect(readable(new Error("the deck is open elsewhere"))).toBe("the deck is open elsewhere");
+  });
+});

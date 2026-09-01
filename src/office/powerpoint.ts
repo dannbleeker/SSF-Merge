@@ -38,6 +38,7 @@ import {
 import { insertVerdict, type InsertVerdict } from "../host/verdicts.js";
 import { provenSweep, sweepPlan } from "../host/undo.js";
 import { BUDGET, withTimeout } from "../host/timeout.js";
+import { readable } from "../host/errors.js";
 import { TAG_RUN } from "../core/pptx/tags.js";
 
 /**
@@ -331,7 +332,14 @@ export async function insertDeck(base64: string, expected: number): Promise<Inse
       "inserting the merged deck",
     );
   } catch (e) {
-    error = e instanceof Error ? e.message : String(e);
+    // `readable`, not `e.message`: Office echoes an argument back through
+    // `debugInfo`, and the argument here is the ENTIRE merged deck as base64.
+    // Uncapped, a failed insert put megabytes of the user's own merged rows on
+    // screen as the failure sentence, with the explanation at the front and
+    // nothing after it readable — and into a bug report, if they pasted it.
+    // `errors.ts` was written for exactly this and its two callers were the
+    // paths that REJECT; this one is caught and returned, so it never asked.
+    error = readable(e);
   }
   const after = await slideCount();
   return { ...insertVerdict({ before, after, expected, error }), before, after };
@@ -435,7 +443,7 @@ export async function undoInsert(deckAtStart: number, added: number, runId: stri
     // rejection escape skipped the re-count below and told the caller the undo
     // had failed while the user's slides were already gone, with no count of
     // what went. The DELTA is the evidence, never the absence of an error.
-    error = e instanceof Error ? e.message : String(e);
+    error = readable(e);
   }
   // A queued delete that raised nothing has not necessarily happened. Adds,
   // inserts and tag writes have all been accepted here and not performed, so
@@ -448,12 +456,19 @@ export async function undoInsert(deckAtStart: number, added: number, runId: stri
   const wanted = targets.length;
   const held = plan.count - wanted;
   const kept = held === 0 ? "" : `; ${held} slide(s) in the range are not this merge's and were left alone`;
+  // The RAIL's numbering, which is the only one the pane speaks — this string
+  // reaches the user verbatim, inside "Nothing was removed — …" and "Some of
+  // the merge is still there — …". It said "from index 3" for slides the rail
+  // calls 4 to 9: a 0-based index, one before the slides actually touched, in a
+  // sentence about slides being deleted. The refusal branch twenty lines above
+  // already converts, so one function could report in both numberings at once.
+  const range = `slides ${plan.from + 1} to ${plan.from + plan.count}`;
   return {
     removed,
     detail:
       removed === wanted
-        ? `removed ${removed} slide(s) from index ${plan.from}${kept}${note}`
-        : `asked for ${wanted} slide(s) from index ${plan.from} and the deck shrank by ${removed}${kept}${note}`,
+        ? `removed ${removed} slide(s) from ${range}${kept}${note}`
+        : `asked for ${wanted} slide(s) from ${range} and the deck shrank by ${removed}${kept}${note}`,
   };
 }
 
@@ -512,7 +527,7 @@ export async function selectedBlock(): Promise<SelectedBlock> {
     // An OUTCOME, never a raise. The pane awaits this from a click handler, and
     // a rejection there is an unhandled one — the shape of defect an
     // adversarial review already found in this pane once.
-    return { ok: false, why: e instanceof Error ? e.message : String(e) };
+    return { ok: false, why: readable(e) };
   }
 }
 
@@ -573,7 +588,7 @@ export async function insertTextAtCursor(text: string): Promise<CursorInsert> {
       // Documented to call back rather than throw, and it throws anyway on a
       // host with no document open. Answered, because the caller has a
       // fallback and a raise would take it with it.
-      resolve({ ok: false, why: e instanceof Error ? e.message : String(e) });
+      resolve({ ok: false, why: readable(e) });
     }
   });
 }

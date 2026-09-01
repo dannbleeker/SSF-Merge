@@ -19,6 +19,9 @@
 /** Longest error text that reaches a user. Enough for a real sentence. */
 export const ERROR_CHARS = 400;
 
+/** What every branch answers when there is no describable reason in the raise. */
+const NOTHING_IN_IT = "the host raised nothing this pane can describe.";
+
 /** `s`, cut to `max` with what was dropped counted rather than merely elided. */
 export function short(s: string, max = ERROR_CHARS): string {
   // The count, not a bare ellipsis: "…" alone leaves a reader unable to tell a
@@ -46,14 +49,24 @@ export function short(s: string, max = ERROR_CHARS): string {
  * "[object Object]" is not.
  */
 export function readable(e: unknown): string {
-  if (e instanceof Error) return short(e.message);
-  if (typeof e === "string") return short(e);
-  if (e === null || e === undefined) return "the host raised nothing this pane can describe.";
+  // The MESSAGE having content, not merely the value being an Error. An
+  // `OfficeExtension.Error` routinely carries an empty message and puts the
+  // content in `debugInfo`, and this answered "" for it — so the sentence the
+  // pane builds around it stopped mid-air: "The merge did not run: ". An empty
+  // answer is the same defect as "[object Object]", which is what the rest of
+  // this function exists to refuse: it occupies the space where a reason goes
+  // and says nothing.
+  if (e instanceof Error) return e.message === "" ? NOTHING_IN_IT : short(e.message);
+  if (typeof e === "string") return e === "" ? NOTHING_IN_IT : short(e);
+  if (e === null || e === undefined) return NOTHING_IN_IT;
   // An Office.js async failure is not always an `Error`: it is routinely a
   // plain object carrying `name`, `message` and `code`, and the message in it
   // is the whole point.
   if (typeof e === "object") {
-    if ("message" in e && typeof e.message === "string") return short(e.message);
+    // An empty message falls THROUGH rather than answering. The object may
+    // still carry a `name` and a `code`, and "InvalidArgument / 5010" is
+    // something a reader can repeat to somebody who can act on it.
+    if ("message" in e && typeof e.message === "string" && e.message !== "") return short(e.message);
     try {
       // `JSON.stringify` answers `undefined` for a few shapes that reach here,
       // so the shape is named rather than falling through to a stringification
