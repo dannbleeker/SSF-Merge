@@ -1094,15 +1094,30 @@ async function undoRun(): Promise<void> {
       last = offer !== null ? { ...outcome, added: offer, pressed: true } : undefined;
       // The slides are the crumb's whole reason. Gone, and it is noise that would
       // offer a stale recovery on the next open.
+      // `pressed` travels in the crumb too. The guard it feeds is about the
+      // DECK's history rather than this pane session's: close the pane after a
+      // partial undo and reopen it, and the next press is still not a first
+      // one, because a press has happened and the deck has changed shape.
       if (offer !== null)
-        dropCrumb({ deckAtStart: outcome.deckAtStart, added: offer, runId: outcome.runId, doc: documentKey() });
+        dropCrumb({
+          deckAtStart: outcome.deckAtStart,
+          added: offer,
+          runId: outcome.runId,
+          doc: documentKey(),
+          pressed: true,
+        });
       else clearCrumb(documentKey());
-      // The deck AFTER, measured from what actually came out. The sentence used
-      // to say the deck was "back to" the size it started at, which is only
-      // true when the sweep took everything: replace two merged slides with two
-      // of your own and it said "back to 12" over a deck of 14, in the same
-      // object that set `deckSize` to 14 correctly.
-      const deckNow = (state.deckSize ?? outcome.deckAtStart + outcome.added) - removed;
+      // ASKED, not computed. The sentence used to say the deck was "back to"
+      // the size it started at, which is only true when the sweep took
+      // everything — replace two merged slides with two of your own and it said
+      // "back to 12" over a deck of 14. Subtracting `removed` from the pane's
+      // cached size was the next answer and is wrong in the same place: the
+      // cache is stale precisely when the user has edited the deck by hand,
+      // which is the only way to reach the branch that prints it. The two
+      // sibling paths already re-count; this one guessed.
+      const deckNow =
+        (await slideCount().catch(() => undefined)) ??
+        (state.deckSize ?? outcome.deckAtStart + outcome.added) - removed;
       state = {
         ...state,
         deckSize: deckNow,
@@ -1117,8 +1132,8 @@ async function undoRun(): Promise<void> {
           offer !== null
             ? `Some of the merge is still there — ${detail}`
             : declined
-              ? `${plural(removed, "slide")} removed. The rest are not this merge's to take back — ` +
-                `delete them from the thumbnail rail if you want them gone. Your deck holds ${deckNow}.`
+              ? `${plural(removed, "slide")} removed. The rest could not be shown to be this merge's and were ` +
+                `left alone — delete them from the thumbnail rail if you want them gone.`
               : `${plural(removed, "slide")} removed. Your deck holds ${deckNow}.`,
       };
     },
@@ -1194,9 +1209,16 @@ async function endPreview(): Promise<void> {
         ...(deckNow !== undefined ? { deckSize: deckNow } : {}),
         notice:
           (removed > 0
-            ? `${plural(removed, "slide")} of the preview removed, and the rest are not this run's to take back. `
+            ? `${plural(removed, "slide")} of the preview removed. The rest could not be shown to be this run's. `
             : `The preview could not be taken back — ${detail}. `) +
-          "Any preview slides still in your deck can be deleted from the thumbnail rail.",
+          // The deck is asked, so this does not send somebody hunting for
+          // slides that are not there. Deleting the preview slides yourself is
+          // the commonest way to reach this branch at all — the card says the
+          // button does exactly that — and a deck no bigger than it was before
+          // the preview is the evidence that they went.
+          (deckNow !== undefined && deckNow <= outcome.deckAtStart
+            ? `Your deck holds ${plural(deckNow, "slide")}, no more than before the preview.`
+            : "Any preview slides still in your deck can be deleted from the thumbnail rail."),
       };
       return;
     }
@@ -1216,11 +1238,17 @@ async function endPreview(): Promise<void> {
       // still in the deck, in the range the preview was on, and the user is
       // about to look at a deck with a slide in it they did not expect and no
       // account of where it came from.
+      // COULD NOT BE SHOWN, not "are not this run's". `disowned` cannot tell
+      // the two apart — a slide with no tag and a slide the host would not
+      // answer for are the same `undefined` — and its own docstring says
+      // nothing downstream may read it as ownership. On a host below
+      // PowerPointApi 1.3 the stronger sentence is false for every user, every
+      // time, over slides that ARE this run's.
       notice:
         (disowned ?? 0) > 0
           ? `${removed > 0 ? `${plural(removed, "slide")} of the preview removed. ` : "None of the preview came back. "}` +
-            `${plural(disowned ?? 0, "slide")} in that range ${(disowned ?? 0) === 1 ? "is" : "are"} not this ` +
-            `run's and ${(disowned ?? 0) === 1 ? "was" : "were"} left alone.`
+            `${plural(disowned ?? 0, "slide")} in that range could not be shown to be this run's and ` +
+            `${(disowned ?? 0) === 1 ? "was" : "were"} left alone.`
           : undefined,
     };
   });
@@ -1337,6 +1365,9 @@ void Office.onReady(() => {
           // The crumb records what a finished run could account for; the sweep
           // re-checks it against the deck and the run tag at press time.
           accountable: true,
+          // Carried through, so a run already swept once does not get the
+          // pre-tags fall-through on the press after a reopen.
+          ...(crumb.pressed === true ? { pressed: true } : {}),
           deckAtStart: crumb.deckAtStart,
           runId: crumb.runId,
           fields: [],
@@ -1352,7 +1383,9 @@ void Office.onReady(() => {
           // pane is on step 1 and the run it is about is over. Without it the
           // sentence below named a button nothing rendered.
           recovered: true,
-          notice: `A merge from ${crumb.startedAt.slice(0, 10)} added ${crumb.added} slide(s) and the pane closed before you could take them back.`,
+          // `plural`, not the host layer's `slide(s)`. This sentence is on a
+          // user's screen; that spelling is a house convention for the run log.
+          notice: `A merge from ${crumb.startedAt.slice(0, 10)} added ${plural(crumb.added, "slide")} and the pane closed before you could take them back.`,
         };
       } else if (crumb) {
         // A run that died DURING the insert, which is the window the crumb was

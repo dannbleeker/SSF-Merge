@@ -837,7 +837,12 @@ describe("the preview", () => {
     expect(pane().querySelector(".step-of")?.textContent, "a pane must always leave a way on").toBe(
       "Step 5 of 5 · Merge",
     );
-    expect(pane().textContent).toContain("not this run's to take back");
+    // COULD NOT BE SHOWN, not "are not this run's": a slide with no tag and a
+    // slide the host would not answer for arrive here as the same `undefined`,
+    // and on a host below PowerPointApi 1.3 the stronger sentence is false for
+    // every user over slides that ARE the run's.
+    expect(pane().textContent).toContain("could not be shown to be this run's");
+    expect(pane().textContent, "a claim the data cannot support").not.toContain("are not this run's");
     // And there is no second press to make: the preview is over.
     expect(office.undoMerge.mock.calls.length, "no further sweep is offered").toBe(before + 1);
   });
@@ -953,6 +958,14 @@ describe("the preview", () => {
     expect(pane().textContent).toContain("could not be taken back");
     expect(pane().textContent, "a claim of identity taken from a size").not.toContain("already gone");
     expect(pane().textContent, "nor the same claim by another spelling").not.toContain("nothing here to take back");
+    // And it does not send them hunting for slides that are not there. Deleting
+    // the preview slides yourself is the commonest way to reach this branch —
+    // the card says the button does exactly that — so a deck no bigger than it
+    // was before the preview gets the sentence that fits.
+    expect(pane().textContent).toContain("no more than before the preview");
+    expect(pane().textContent, "advice for a deck that does not hold them").not.toContain(
+      "can be deleted from the thumbnail rail",
+    );
     expect(pane().textContent, "a sentence contradicting itself").not.toContain("still there");
     // And the wizard is usable again, which is the half that was terminal.
     expect(pane().querySelector(".step-of")?.textContent).toBe("Step 5 of 5 · Merge");
@@ -1292,6 +1305,10 @@ describe("taking a real merge back", () => {
     // how a positional delete reaches slides the user owned first.
     await afterMerge();
     office.undoMerge.mockResolvedValueOnce({ removed: 6, detail: "removed 6 slide(s) from index 12" });
+    // The deck's size is ASKED for after a sweep rather than computed from the
+    // pane's cached number, which is stale exactly when the user has been
+    // editing by hand.
+    office.slideCount.mockResolvedValueOnce(12);
     undoButton()?.click();
     await settle();
 
@@ -1302,6 +1319,10 @@ describe("taking a real merge back", () => {
   it("puts the way back away once the slides are gone", async () => {
     await afterMerge();
     office.undoMerge.mockResolvedValueOnce({ removed: 6, detail: "removed 6 slide(s) from index 12" });
+    // The deck's size is ASKED for after a sweep rather than computed from the
+    // pane's cached number, which is stale exactly when the user has been
+    // editing by hand.
+    office.slideCount.mockResolvedValueOnce(12);
     undoButton()?.click();
     await settle();
     expect(undoButton()).toBeNull();
@@ -1334,6 +1355,10 @@ describe("taking a real merge back", () => {
     expect(office.runMerge, "the second merge really ran").toHaveBeenCalledTimes(2);
 
     office.undoMerge.mockResolvedValueOnce({ removed: 6, detail: "removed 6 slide(s) from index 12" });
+    // The deck's size is ASKED for after a sweep rather than computed from the
+    // pane's cached number, which is stale exactly when the user has been
+    // editing by hand.
+    office.slideCount.mockResolvedValueOnce(12);
     undoButton()?.click();
     await settle();
     expect(office.undoMerge.mock.calls[0]?.[0], "the six slides that are actually there").toMatchObject({
@@ -1431,6 +1456,10 @@ describe("taking a real merge back", () => {
 
     // The user takes those slides back, and then does an ordinary merge.
     office.undoMerge.mockResolvedValueOnce({ removed: 6, detail: "removed 6 slide(s) from index 12" });
+    // The deck's size is ASKED for after a sweep rather than computed from the
+    // pane's cached number, which is stale exactly when the user has been
+    // editing by hand.
+    office.slideCount.mockResolvedValueOnce(12);
     undoButton()?.click();
     await settle();
     office.slideCount.mockReset().mockResolvedValue(12);
@@ -1461,6 +1490,29 @@ describe("taking a real merge back", () => {
     expect(undoButton(), "not on the template step").toBeNull();
   });
 
+  it("asks the deck for its size rather than adjusting the number it had", () => {
+    /**
+     * The pane's cached size is stale exactly when the user has edited the deck
+     * by hand — which is the only way to reach the sentence that prints it. It
+     * said "your deck holds 15" over a deck of 14 and then wrote 15 into the
+     * state, so the merge card went on to offer "6 slides added after slide 15,
+     * leaving 21" over a fourteen-slide deck.
+     *
+     * The two sibling paths in this file already re-count. This asserts the
+     * third does, by giving the host an answer nothing else could produce.
+     */
+    return (async () => {
+      await afterMerge();
+      // A COMPLETE sweep, which is the branch that prints the size.
+      office.undoMerge.mockResolvedValueOnce({ removed: 6, disowned: 0, detail: "removed 6" });
+      office.slideCount.mockResolvedValueOnce(99);
+      undoButton()?.click();
+      await settle();
+      // 99 is not 12 + 6 - 6, so only a real read can produce it.
+      expect(pane().textContent).toContain("Your deck holds 99");
+    })();
+  });
+
   it("KEEPS the way back when the sweep only got some of them", async () => {
     // A partial sweep leaves slides in the deck and the user is the only one
     // who can finish the job, so the button has to stay.
@@ -1470,6 +1522,10 @@ describe("taking a real merge back", () => {
       disowned: 0,
       detail: "asked for 6 and the deck shrank by 2",
     });
+    // The deck is ASKED for its size after a sweep, rather than the pane's
+    // cached number being adjusted — the cache is stale exactly when the user
+    // has edited the deck by hand. Six added onto twelve, two taken back.
+    office.slideCount.mockResolvedValueOnce(16);
     undoButton()?.click();
     await settle();
     expect(undoButton(), "still offered").not.toBeNull();
@@ -1556,6 +1612,10 @@ describe("taking a real merge back", () => {
     expect(document.body.textContent).toContain("landed anyway");
     expect(undoButton(), "six slides in the deck and a way to remove them").not.toBeNull();
     office.undoMerge.mockResolvedValueOnce({ removed: 6, detail: "removed 6 slide(s) from index 12" });
+    // The deck's size is ASKED for after a sweep rather than computed from the
+    // pane's cached number, which is stale exactly when the user has been
+    // editing by hand.
+    office.slideCount.mockResolvedValueOnce(12);
     undoButton()?.click();
     await settle();
     expect(office.undoMerge.mock.calls[0]?.[0]).toMatchObject({ deckAtStart: 12, added: 6 });
@@ -2342,13 +2402,17 @@ describe("a run the pane never came back from", () => {
     office.slideCount.mockReset().mockResolvedValue(18);
     await openPane();
     await settle();
-    expect(pane().textContent).toContain("added 6 slide(s)");
+    expect(pane().textContent).toContain("added 6 slides");
 
     const undo = document.querySelector<HTMLButtonElement>('.card.undo button[data-action="undo"]');
     expect(undo, "a way back, not only a sentence about one").not.toBeNull();
     expect(pane().textContent).toContain("Remove slides 13 to 18");
 
     office.undoMerge.mockResolvedValueOnce({ removed: 6, detail: "removed 6 slide(s) from index 12" });
+    // The deck's size is ASKED for after a sweep rather than computed from the
+    // pane's cached number, which is stale exactly when the user has been
+    // editing by hand.
+    office.slideCount.mockResolvedValueOnce(12);
     undo?.click();
     await settle();
     expect(office.undoMerge.mock.calls[0]?.[0]).toMatchObject({ deckAtStart: 12, added: 6 });
@@ -2379,7 +2443,7 @@ describe("a run the pane never came back from", () => {
     await settle();
 
     expect(pane().textContent, "still on the step the user was typing in").toContain("Which slides repeat?");
-    expect(pane().textContent, "and still told about the run").toContain("added 6 slide(s)");
+    expect(pane().textContent, "and still told about the run").toContain("added 6 slides");
   });
 });
 

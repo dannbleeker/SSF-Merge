@@ -659,21 +659,34 @@ function tokenizeRun(run: string, d: Date): string | undefined {
 }
 
 /**
- * A WORD, for the purpose of the rule above.
+ * A WORD, for the purpose of the rule above: a run of LATIN letters, with the
+ * combining marks and apostrophes that sit inside one.
  *
- * Any Unicode letter, plus the apostrophe that sits inside one. Matching ASCII
- * alone cut a word into runs at its own accent, and a one-character run of `d`
- * is a whole token — so `día d de MMMM` printed `1ía 1 de March`,
- * `décembre yyyy` printed `1écembre 2026`, and `Date d'échéance dd/MM/yyyy`
- * printed `Date 1'échéance 01/03/2026`. Spanish, French, Danish and Swedish all
- * write ordinary date words beginning with a token's letter and continuing past
- * ASCII, and the manual promises text in a pattern prints as written.
+ * ASCII alone cut a word at its own accent, and a one-character run of `d` is a
+ * whole token — so `día d de MMMM` printed `1ía 1 de March` and
+ * `Date d'échéance dd/MM/yyyy` printed `Date 1'échéance 01/03/2026`.
  *
- * The tokens themselves are ASCII, so widening what counts as a word cannot
- * make a run tokenize that did not before — it can only make one STOP, which is
- * the direction that keeps a promise.
+ * ANY Unicode letter was the first fix and it is worse, because the tokens are
+ * Latin and every other script's date words are not: `yyyy年MM月dd日` — the
+ * ordinary Japanese and Chinese pattern — became one run holding `年`, which is
+ * no token, so the whole thing printed itself. So did `yyyy년 MM월 dd일` and
+ * `dd MMMM yyyyг.`. The manual invites writing the month in your own language,
+ * and that broke it for every language not written in this alphabet.
+ *
+ * Latin is the line because it is where the tokens live. A letter from another
+ * script cannot be part of a word a token is hiding inside, so it does not need
+ * to end one.
+ *
+ * `\p{Mn}` because a decomposed `é` is `e` plus a combining mark, which is not
+ * a letter — text pasted from a Mac routinely arrives that way. Both
+ * apostrophes because U+2019 is what Word's autocorrect produces and U+0027 is
+ * what a keyboard does.
+ *
+ * The price is a pattern where a token sits against a letter: `d'MMMM` prints
+ * itself rather than `1'March`. That is the whole-run rule doing what it says,
+ * and it is the same trade `ddTHH` already makes.
  */
-const PATTERN_WORD = /[\p{L}]+(?:'[\p{L}]+)*/gu;
+const PATTERN_WORD = /[\p{Script=Latin}\p{Mn}]+(?:['\u2019][\p{Script=Latin}\p{Mn}]+)*/gu;
 
 export function formatDate(d: Date, pattern: string): string {
   return pattern.replace(PATTERN_WORD, (run) => tokenizeRun(run, d) ?? run);

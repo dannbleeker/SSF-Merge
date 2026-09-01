@@ -458,7 +458,22 @@ export async function undoInsert(
   if (!plan) {
     return { removed: 0, disowned: 0, detail: `nothing to take back (deck was ${deckAtStart}, is ${deckNow})` };
   }
-  const targets = provenSweep(plan, await runTagsAt(plan.from, plan.count), runId, opts);
+  // PROOF is only required of a host that could give it. `Slide.tags` is
+  // PowerPointApi 1.3 and this add-in's floor is 1.2 — so on a 1.2 host
+  // `runTagsAt` answers an empty list ALWAYS, and demanding proof there does
+  // not make an undo careful, it removes it: a partial sweep could never be
+  // finished, and the card would sit over slides no press could ever take,
+  // which is the state this codebase calls the worse of two options.
+  //
+  // The guard is for a host that CAN answer and did not. That is the case a
+  // repeat press has to refuse, because the deck has provably changed shape
+  // since the run and the read that would identify the slides came back empty.
+  // Where tags do not exist at all, position is the only evidence there has
+  // ever been, and it is what this add-in gave before tags existed.
+  const canProve = hostSupports("1.3");
+  const targets = provenSweep(plan, await runTagsAt(plan.from, plan.count), runId, {
+    requireProof: opts.requireProof === true && canProve,
+  });
   if (targets.length === 0) {
     // Says what is KNOWN, which is neither of the two things it used to say.
     // "None of them carries this merge's mark" is a claim about the slides, and

@@ -1390,10 +1390,32 @@ describe("dates a spreadsheet actually writes", () => {
     expect(applyFormat("2026-03-01", "date:Date d'échéance dd/MM/yyyy")).toBe("Date d'échéance 01/03/2026");
     expect(applyFormat("2026-03-01", "date:dåb d MMM")).toBe("dåb 1 Mar");
     expect(applyFormat("2026-03-01", "date:död d MMM")).toBe("död 1 Mar");
+    // U+2019 as well as U+0027: the typographic apostrophe is what Word's
+    // autocorrect produces and what a paste from a document carries.
+    expect(applyFormat("2026-03-01", "date:Date d\u2019échéance dd/MM/yyyy")).toBe("Date d\u2019échéance 01/03/2026");
     // And nothing that used to tokenize stopped: the tokens are ASCII, so
     // widening what counts as a word can only make a run stop matching.
     expect(applyFormat("2026-03-01", "date:yyyyMMdd")).toBe("20260301");
     expect(applyFormat("2026-03-01", "date:dd-MM-yyyy")).toBe("01-03-2026");
+  });
+
+  it("reads a pattern written in another script", () => {
+    /**
+     * The tokens are Latin and every other script's date words are not, so a
+     * word rule of "any Unicode letter" — the first fix for the accent case
+     * above — swept `年`, `월` and `г` into the run beside a token and made the
+     * whole thing literal. `yyyy年MM月dd日` is the ordinary Japanese and Chinese
+     * pattern; it printed itself, on every merged slide.
+     *
+     * Latin is the line because it is where the tokens live: a letter from
+     * another script cannot be part of a word a token is hiding inside, so it
+     * does not need to end one. The manual invites writing the month in your
+     * own language, and this is what that means for languages not written in
+     * this alphabet.
+     */
+    expect(applyFormat("2026-03-01", "date:yyyy年MM月dd日")).toBe("2026年03月01日");
+    expect(applyFormat("2026-03-01", "date:yyyy년 MM월 dd일")).toBe("2026년 03월 01일");
+    expect(applyFormat("2026-03-01", "date:dd MMMM yyyyг.")).toBe("01 March 2026г.");
   });
 
   it("leaves an ordinary word that begins with a token's letter alone", () => {

@@ -64,6 +64,19 @@ export interface Crumb {
    * created. The missing question was never "how big" but "which deck".
    */
   doc: string;
+  /**
+   * Whether a sweep has already been pressed for this run.
+   *
+   * Recorded because the guard it feeds is about the DECK's history, not about
+   * one pane session: a press having happened is what makes the size clamps
+   * insufficient — see `provenSweep`'s `requireProof`. Without it here, a
+   * partial undo followed by the pane closing and reopening would offer the
+   * next press as a first one, and the deck has changed shape all the same.
+   *
+   * Optional, so a crumb written by an older build reads as "not yet pressed",
+   * which is what it was.
+   */
+  pressed?: boolean;
 }
 
 /** The store, or null where there is not one. Never throws. */
@@ -192,6 +205,7 @@ export function readCrumb(here: string): Crumb | undefined {
       runId: typeof c.runId === "string" ? c.runId : "unknown",
       startedAt: typeof c.startedAt === "string" ? c.startedAt : "unknown",
       doc: c.doc,
+      ...(c.pressed === true ? { pressed: true } : {}),
     };
   } catch {
     return undefined;

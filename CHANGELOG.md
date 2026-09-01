@@ -7,6 +7,22 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a date pattern written in another alphabet printed itself
+
+`{{When|date:yyyy年MM月dd日}}` — the ordinary Japanese and Chinese pattern —
+printed the pattern on every merged slide, and so did the Korean and Russian
+equivalents. Widening what counts as a word to cover accents had swept every
+other script's date words in with it. The manual invites writing the month in
+your own language; this is what that means for languages not written in this
+alphabet. The typographic apostrophe Word produces is handled now too.
+
+### Fixed — an undo that had been pressed once could not be finished on an older PowerPoint
+
+The guard added above requires a slide to prove it is the merge's, and a
+PowerPoint below the version that carries those marks can never prove it — so a
+partial undo could not be completed and the button sat over slides no press
+would ever take. Proof is asked only of a PowerPoint that could give it.
+
 ### Fixed — a second undo press could delete a slide made between the presses
 
 If PowerPoint stopped answering for slide tags between one press and the next —
@@ -29,9 +45,9 @@ preview's own out.
 If the first press met a slide it would not claim as the preview's — one you had
 put there yourself, in the range the preview was on — the second press could
 delete it, under a notice saying there was nothing to take back. The same shape
-was reachable from the merge undo. A press that leaves a slide it will not claim
-now ends the offer and says which slides are still in the deck, and the merge
-undo and the preview take that decision from one place instead of two.
+was reachable from the merge undo. A press that leaves behind a slide it could
+not show to be the merge's now ends the offer and says so, and the merge undo
+and the preview take that decision from one place instead of two.
 
 ### Fixed — a preview a co-author's edit stranded could not be dismissed
 

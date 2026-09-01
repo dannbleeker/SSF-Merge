@@ -115,8 +115,12 @@ export function sweepPlan(o: { deckAtStart: number; deckNow: number; added: numb
  * that may be withholding the way forward.
  *
  * So the offer survives exactly one shape: slides came out, none was declined,
- * and some are still owed. There the window still holds only this run's slides
- * and a second press has less to do.
+ * and some are still owed. That does NOT mean the remaining window holds only
+ * this run's slides — the user may have deleted merged slides by hand, and the
+ * surplus then reaches theirs, which is the whole reason a second press asks
+ * `provenSweep` for proof rather than trusting the count. It means the sweep
+ * has not yet met anything it could not claim, so pressing again is worth
+ * offering.
  */
 export function nextSweepOffer(o: { added: number; removed: number; disowned?: number }): number | null {
   if ((o.disowned ?? 0) > 0) return null;
@@ -146,7 +150,10 @@ export function nextSweepOffer(o: { added: number; removed: number; disowned?: n
  *   an empty slide — this repo's rule, learned from two signals agreeing at
  *   zero and both being wrong. A host that cannot read tags is not evidence
  *   that a slide is not ours, so the answer is what it was before anything was
- *   asked. This can only make an undo safer, never less capable.
+ *   asked. Adding the tag question therefore took nothing away from a host that
+ *   cannot answer it. (`requireProof` DOES, which is why the caller only sets
+ *   it where tags exist: demanding proof of a host with none does not make an
+ *   undo careful, it removes it.)
  * - **A read that does not line up with the plan takes the whole plan.** A
  *   short answer is a read that failed, not a set of slides disowned. Deleting
  *   on it would be acting on an answer nobody gave.

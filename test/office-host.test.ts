@@ -217,4 +217,28 @@ describe("what an insert and an undo say when the host misbehaves", () => {
     expect(outcome.detail).not.toContain("PowerPoint would not");
     expect(outcome.detail).not.toContain("carries this merge's mark");
   });
+
+  it("still sweeps on a host that has no tags to prove anything with", async () => {
+    /**
+     * PROOF is only required of a host that could give it. `Slide.tags` is
+     * PowerPointApi 1.3 and this add-in's floor is 1.2, deliberately — so on a
+     * 1.2 host `runTagsAt` answers an empty list ALWAYS, and demanding proof
+     * there does not make the undo careful, it removes it: a partial sweep
+     * could never be finished, and the card would sit for ever over slides no
+     * press could take.
+     *
+     * That is the "delete button standing over slides the sweep refuses" state
+     * this codebase calls the worse of two options, guaranteed for a whole
+     * class of hosts rather than intermittent. Position is the only evidence
+     * there has ever been below 1.3, and it is what this add-in gave before
+     * tags existed.
+     */
+    const { fake, module } = await host({
+      slides: ["u1", "u2", "u3", "m1", "m2", "m3", "m4", "m5", "m6"],
+      sets: ["1.1", "1.2"],
+    });
+    const outcome = await module.undoInsert(3, 6, "run-1", { requireProof: true });
+    expect(outcome.removed, "a repeat press on a 1.2 host can still finish").toBe(6);
+    expect(fake.slides).toEqual(["u1", "u2", "u3"]);
+  });
 });
