@@ -441,11 +441,15 @@ function body(doc: Document, state: PaneState, current: StepId, orange: OrangeHo
     // where it would otherwise be discovered: `{{Photo|image}}` on a notes page
     // is filled by nothing and printed as written, on presenter view and every
     // handout.
-    // MINUS the ones that are also on a slide, where they will be filled. The
-    // same field on a slide and in its notes was told to "put the field in a
-    // shape on the slide instead" about a field already in one.
+    // A field on a slide AND in its notes is still named here, because
+    // `placeImages` runs on the slide document alone: the notes copy is printed
+    // verbatim whatever the slide does. Filtering it out was a defect of its
+    // own — the warning went silent about a placeholder that reaches presenter
+    // view and every handout. What is dropped is only the closing ADVICE, which
+    // tells the user to do a thing they have already done.
     const onSlide = new Set(state.imageFields ?? []);
-    const offSlide = (state.imageFieldsOffSlide ?? []).filter((f) => !onSlide.has(f));
+    const offSlide = state.imageFieldsOffSlide ?? [];
+    const placedToo = offSlide.some((f) => onSlide.has(f));
     if (offSlide.length > 0) {
       out.push(
         el(doc, "p", {
@@ -453,7 +457,8 @@ function body(doc: Document, state: PaneState, current: StepId, orange: OrangeHo
           text:
             `${offSlide.map((f) => `{{${f}}}`).join(", ")} ${offSlide.length === 1 ? "asks" : "ask"} for a picture ` +
             `somewhere a picture cannot go — a notes page, a chart or SmartArt. ${offSlide.length === 1 ? "It" : "They"} ` +
-            `will be printed as written. Put the field in a shape on the slide instead.`,
+            `will be printed as written.` +
+            (placedToo ? "" : " Put the field in a shape on the slide instead."),
         }),
       );
     }

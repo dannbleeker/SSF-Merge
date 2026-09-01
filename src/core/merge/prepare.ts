@@ -14,7 +14,7 @@ import { chartValueFields } from "./numbers.js";
 import { workbookFields } from "./graphics.js";
 import JSZip from "jszip";
 
-import { imageFieldsIn } from "./images.js";
+import { asksForImage, imageFieldsIn, imageMode } from "./images.js";
 import { fieldSites } from "./sites.js";
 
 export interface BlockRequest {
@@ -159,7 +159,10 @@ export async function prepareBlock(pkg: Pkg, req: BlockRequest, runId: string): 
       // Only a slide can hold a picture — `placeImages` fills a SHAPE, and a
       // chart part has none.
       if (site.kind === "slide") {
-        for (const name of imageFieldsIn(doc)) if (!imageFields.includes(name)) imageFields.push(name);
+        // `imageMode`: WILL BE FILLED. `placeImages` fills an exact mode and
+        // nothing else, so a misspelled one does not belong in this list.
+        for (const name of imageFieldsIn(doc, (f) => imageMode(f) !== undefined))
+          if (!imageFields.includes(name)) imageFields.push(name);
       } else {
         // NAMED rather than ignored. `{{Photo|image}}` on a notes page merges as
         // nothing and prints itself: the raw placeholder reaches presenter view
@@ -167,7 +170,11 @@ export async function prepareBlock(pkg: Pkg, req: BlockRequest, runId: string): 
         // pane never even offers the file picker. Filling it is not on the
         // table — `placeImages` fills a shape and a notes page is not one — so
         // the answer is to say so before the merge rather than after it.
-        for (const name of imageFieldsIn(doc)) if (!imageFieldsOffSlide.includes(name)) imageFieldsOffSlide.push(name);
+        // `asksForImage`: ASKS FOR A PICTURE. A misspelled mode belongs here —
+        // the merge leaves such a field visible, and this is the list that says
+        // so.
+        for (const name of imageFieldsIn(doc, asksForImage))
+          if (!imageFieldsOffSlide.includes(name)) imageFieldsOffSlide.push(name);
       }
       // A chart's VALUE cells live in the workbook it relates to, and the
       // reader is a dry run of the merge's own walk, so the two cannot hold

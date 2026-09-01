@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { clearCrumb, dropCrumb, readCrumb } from "../src/pane/crumb.js";
 
 const KEY = "ssf-merge.run.v1";
+/** Where one deck's record lives — one key per deck. */
+const keyOf = (doc: string): string => `${KEY}:${doc}`;
 const real = globalThis.localStorage;
 
 /** Put a hostile Storage in place, and take it away again. */
@@ -164,6 +166,48 @@ describe("the numbers an undo cannot be done without", () => {
     expect(readCrumb(OTHER_DECK)).toMatchObject({ added: 2 });
   });
 
+  it("never prunes the record it has just written", () => {
+    /**
+     * `startedAt` dates the MERGE and is carried through a re-write, so a press
+     * on an older run writes a record with an old date — and a prune sorting by
+     * date deleted it on the very next line. `readCrumb` then fell back to the
+     * single-key record the previous build left behind, which still said six
+     * slides and carried no `pressed`: the next press asks for no proof, over a
+     * deck that has provably changed shape, which is the deletion the mark
+     * exists to prevent.
+     */
+    for (let i = 0; i < 8; i++) {
+      real.setItem(
+        `ssf-merge.run.v1:recent-${i}`,
+        JSON.stringify({
+          kind: "ssf-merge-run",
+          deckAtStart: 1,
+          added: 1,
+          runId: `r${i}`,
+          startedAt: `2026-09-0${i + 1}T09:00:00.000Z`,
+          doc: `recent-${i}`,
+        }),
+      );
+    }
+    real.setItem(
+      KEY,
+      JSON.stringify({
+        kind: "ssf-merge-run",
+        deckAtStart: 12,
+        added: 6,
+        runId: "r1",
+        startedAt: "2026-08-01T09:00:00.000Z",
+        doc: DECK,
+      }),
+    );
+    dropCrumb({ deckAtStart: 12, added: 3, runId: "r1", doc: DECK, pressed: true });
+
+    expect(readCrumb(DECK), "the press's own record").toMatchObject({ added: 3, pressed: true });
+    // And the record it was read FROM is retired, or it answers again the
+    // moment the per-deck one is pruned.
+    expect(real.getItem(KEY), "a stale single-key record left standing").toBeNull();
+  });
+
   it("does not keep a record for every deck the user has ever merged in", () => {
     // `localStorage` is not unbounded and neither is this. The oldest goes,
     // because a record whose deck has not been opened in a hundred merges is
@@ -186,6 +230,29 @@ describe("the numbers an undo cannot be done without", () => {
     expect(keys.length, "the store grew without bound").toBeLessThanOrEqual(8);
     expect(readCrumb(DECK), "and the newest is kept").toMatchObject({ runId: "new" });
     expect(readCrumb("deck-0"), "the oldest went first").toBeUndefined();
+  });
+
+  it("evicts a record holding nothing before one holding slides", () => {
+    // `merge()` writes a pending marker on every press in every deck, so
+    // markers are the population that grows — and a record still describing
+    // slides in somebody's deck is the one thing here worth keeping. Sorting by
+    // date alone evicted exactly that one: a swept run's record is cleared, and
+    // one a press proved unremovable is never cleared and never re-stamped, so
+    // it always carries the oldest date.
+    real.setItem(
+      keyOf(DECK),
+      JSON.stringify({
+        kind: "ssf-merge-run",
+        deckAtStart: 12,
+        added: 6,
+        runId: "r1",
+        startedAt: "2026-07-01T09:00:00.000Z",
+        doc: DECK,
+        unremovable: true,
+      }),
+    );
+    for (let i = 0; i < 10; i++) dropCrumb({ deckAtStart: 3, added: 0, runId: `pending-${i}`, doc: `other-${i}` });
+    expect(readCrumb(DECK), "the one record holding slides").toMatchObject({ added: 6, unremovable: true });
   });
 
   it("does not overwrite another deck's record of slides that are still there", () => {

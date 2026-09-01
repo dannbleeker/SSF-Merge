@@ -1120,7 +1120,7 @@ async function undoRun(): Promise<void> {
     "undo",
     { entering: { notice: undefined }, whenItRaises: (e) => `The slides could not be removed: ${readable(e)}` },
     async () => {
-      const { removed, disowned, detail, unprovable } = await undoMerge(outcome);
+      const { removed, disowned, detail, unprovable, refusedShape } = await undoMerge(outcome);
       if (removed <= 0) {
         // A refusal is an OUTCOME and the detail already says why — usually that
         // the deck changed underneath the run, which is a thing the user can
@@ -1162,7 +1162,14 @@ async function undoRun(): Promise<void> {
         // disowned: 0`, so the offer stood over slides no press could take for
         // the rest of the session. Resetting belongs on the path that actually
         // removed something, and is done there.
-        const fruitless = (outcome.fruitless ?? 0) + 1;
+        // A refused SHAPE is not a fruitless press. `sweepPlan` declined before
+        // anything was asked of PowerPoint — the deck grew past what this run
+        // added — so it says nothing about the host, and spending a press from
+        // a budget that exists to tell a hiccup from a state would let a
+        // co-author's slide use one up. The card comes down anyway while the
+        // deck stays that shape, because `undoIsPossible` asks the same
+        // question on every draw.
+        const fruitless = refusedShape === true ? (outcome.fruitless ?? 0) : (outcome.fruitless ?? 0) + 1;
         const done = unprovable === true || fruitless >= FRUITLESS_LIMIT;
         last = done ? undefined : { ...outcome, pressed: true, fruitless };
         // The crumb is KEPT — it is the record that stops the next merge
@@ -1177,6 +1184,7 @@ async function undoRun(): Promise<void> {
           runId: outcome.runId,
           doc: documentKey(),
           pressed: true,
+          ...(fruitless > 0 ? { fruitless } : {}),
           ...(done ? { unremovable: true } : {}),
         });
         state = {
@@ -1514,6 +1522,8 @@ void Office.onReady(() => {
           // Carried through, so a run already swept once does not get the
           // pre-tags fall-through on the press after a reopen.
           ...(crumb.pressed === true ? { pressed: true } : {}),
+          // The budget too, or a reopen hands a stuck host two more presses.
+          ...(crumb.fruitless !== undefined ? { fruitless: crumb.fruitless } : {}),
           deckAtStart: crumb.deckAtStart,
           runId: crumb.runId,
           fields: [],

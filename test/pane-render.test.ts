@@ -1299,12 +1299,15 @@ describe("a picture field where a picture cannot go", () => {
     expect(pane.textContent).toContain("cannot go");
   });
 
-  it("says nothing about a field that is ALSO on a slide, where it will be filled", () => {
-    // The same field in a shape and in that slide's notes. Telling the user to
-    // "put the field in a shape on the slide instead" is advice about a field
-    // already in one.
+  it("still names a field that is ALSO on a slide, and drops only the advice", () => {
+    // The same field in a shape and in that slide's notes. `placeImages` runs
+    // on the SLIDE document alone, so the notes copy is printed verbatim
+    // whatever the slide does — suppressing the warning went silent about a
+    // placeholder that reaches presenter view and every handout. Only the
+    // closing advice goes: the user has already put it in a shape.
     const pane = paneFor({ ...withFields, imageFields: ["Photo"], imageFieldsOffSlide: ["Photo"] }, "fields");
-    expect(pane.textContent, "advice about a field that is already placed").not.toContain("cannot go");
+    expect(pane.textContent, "a placeholder that still reaches the handout").toContain("cannot go");
+    expect(pane.textContent, "advice about a field that is already placed").not.toContain("instead");
   });
 
   it("is silent when every picture field is on a slide", () => {

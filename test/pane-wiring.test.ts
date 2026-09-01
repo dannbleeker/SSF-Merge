@@ -1844,6 +1844,33 @@ describe("taking a real merge back", () => {
     expect(undoButton(), "twice is a host that will not do it").toBeNull();
   });
 
+  it("does not spend the budget on a deck the sweep refused the shape of", async () => {
+    /**
+     * `sweepPlan` declines before anything is asked of PowerPoint — the deck
+     * grew past what this run added, which is a co-author's slide, not a host
+     * misbehaving. Counting it left one genuine hiccup enough to write the
+     * record off permanently.
+     */
+    await afterMerge();
+    office.undoMerge.mockResolvedValueOnce({
+      removed: 0,
+      disowned: 0,
+      refusedShape: true,
+      detail: "nothing to take back (deck was 12, is 30)",
+    });
+    office.slideCount.mockResolvedValueOnce(18);
+    undoButton()?.click();
+    await settle();
+
+    // The budget is untouched, so two real fruitless presses are still needed.
+    const swallowed = { removed: 0, disowned: 0, detail: "the deck shrank by 0" };
+    office.undoMerge.mockResolvedValueOnce(swallowed);
+    office.slideCount.mockResolvedValueOnce(18);
+    undoButton()?.click();
+    await settle();
+    expect(undoButton(), "one hiccup is not a state").not.toBeNull();
+  });
+
   it("gives the budget back after a press that worked", async () => {
     /**
      * `fruitless` was spread through the success path with the rest of the

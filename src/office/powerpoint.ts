@@ -404,6 +404,15 @@ export interface UndoOutcome {
    * threw away slides the very next press would have removed.
    */
   unprovable?: boolean;
+  /**
+   * `sweepPlan` refused the SHAPE of the deck, before any host call.
+   *
+   * The deck grew by more than this run added, or shrank below where it
+   * started, so no window can be named — a co-author's slide, or the user's own
+   * editing. Nothing was asked of PowerPoint, so this answer is not evidence
+   * about it, and the pane's fruitless-press budget must not be spent on it.
+   */
+  refusedShape?: boolean;
 }
 
 /**
@@ -475,7 +484,17 @@ export async function undoInsert(
   const deckNow = await slideCount();
   const plan = sweepPlan({ deckAtStart, deckNow, added });
   if (!plan) {
-    return { removed: 0, disowned: 0, detail: `nothing to take back (deck was ${deckAtStart}, is ${deckNow})` };
+    // The SHAPE was refused — the deck grew past what this run added, or shrank
+    // below where it started — and that says nothing about the host. It is
+    // marked so the pane does not spend a press from a budget whose whole
+    // purpose is telling a host's hiccup from a host's state: a co-author
+    // adding a slide is neither.
+    return {
+      removed: 0,
+      disowned: 0,
+      refusedShape: true,
+      detail: `nothing to take back (deck was ${deckAtStart}, is ${deckNow})`,
+    };
   }
   // PROOF is asked of every host, INCLUDING one that cannot give it.
   //

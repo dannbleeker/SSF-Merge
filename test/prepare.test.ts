@@ -313,6 +313,19 @@ describe("placeholders in the speaker notes", () => {
     expect(prepared.imageFieldsOffSlide).toEqual(["Photo"]);
   });
 
+  it("keeps a misspelled picture mode OUT of the list of fields that will be filled", async () => {
+    // `placeImages` fills an exact mode and nothing else, so `{{Photo|images}}`
+    // on a slide is a field nothing will fill. Counting it among the ones that
+    // will turned off the merge step's "the pictures you attached will not be
+    // placed" caution and offered a file picker for it.
+    const deck = await makeDeck([{ paragraphs: [["{{Photo|images}}"]] }, { paragraphs: [["after"]] }]);
+    const pkg = await Pkg.open(deck);
+    const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "run1");
+    expect(prepared.ok).toBe(true);
+    if (!prepared.ok) return;
+    expect(prepared.imageFields, "a field placeImages will not fill").toEqual([]);
+  });
+
   it("reads a misspelled picture mode as a picture request, as the merge does", async () => {
     // `{{Photo|images}}` is a picture request with the mode misspelled, and
     // `makeResolver` already treats it as one — so the merge leaves the

@@ -250,6 +250,37 @@ describe("the package the engine hands over", () => {
     const second = await problemsIn(await untyped.generateAsync({ type: "uint8array" }));
     expect(second).toContain("ppt/slides/slide1.xml has no content-type override of its own");
   });
+
+  it("accepts a percent-encoded part name, and still catches one that is missing", async () => {
+    /**
+     * OPC maps a part name to a ZIP item by stripping the leading `/` and
+     * nothing else, so `notes%20slide1.xml` is stored under exactly that name.
+     * This oracle decoded every target, so it would have called a legitimately
+     * encoded package broken — and, being the check the engine's own fix was
+     * measured against, it could not have caught the engine getting it wrong.
+     *
+     * Both halves are asserted, because an oracle that accepts everything is
+     * the vacuous measurement this file exists to refuse.
+     */
+    const deck = await makeDeck([{ paragraphs: [["a"]], notes: "note" }, { paragraphs: [["b"]] }]);
+    const zip = await JSZip.loadAsync(deck);
+    const notes = await zip.file("ppt/notesSlides/notesSlide1.xml")!.async("uint8array");
+    const rels = await zip.file("ppt/notesSlides/_rels/notesSlide1.xml.rels")!.async("uint8array");
+    zip.remove("ppt/notesSlides/notesSlide1.xml");
+    zip.remove("ppt/notesSlides/_rels/notesSlide1.xml.rels");
+    zip.file("ppt/notesSlides/notes%20slide1.xml", notes);
+    zip.file("ppt/notesSlides/_rels/notes%20slide1.xml.rels", rels);
+    for (const path of ["ppt/slides/_rels/slide1.xml.rels", "[Content_Types].xml"]) {
+      const text = await zip.file(path)!.async("string");
+      zip.file(path, text.replaceAll("notesSlide1.xml", "notes%20slide1.xml"));
+    }
+    expect(await problemsIn(await zip.generateAsync({ type: "uint8array" }))).toEqual([]);
+
+    // And the same package with that part taken out is still reported.
+    zip.remove("ppt/notesSlides/notes%20slide1.xml");
+    const broken = await problemsIn(await zip.generateAsync({ type: "uint8array" }));
+    expect(broken.some((p) => p.includes("not in the package"))).toBe(true);
+  });
 });
 
 describe("a package carrying every feature at once", () => {

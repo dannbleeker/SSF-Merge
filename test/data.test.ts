@@ -216,6 +216,17 @@ describe("applyFormat", () => {
     // A grouped cell still reads, and a fraction still rounds.
     expect(applyFormat("1.234.567", "number:0")).toBe("1 234 567");
     expect(applyFormat("12345678901234.5", "number:0")).toBe("12 345 678 901 235");
+    // The comparison is on the INTEGER digits, which are the ones grouping
+    // prints in full. A cell carrying more PRECISION than a double holds is not
+    // a defect: the fraction is rounded to the places asked for either way.
+    // Comparing the whole decimal refused these — and the raw fall-through
+    // keeps the cell's own separator, so a Danish deck printed a dot.
+    expect(applyFormat("1234567890.12345678", "number:2")).toBe("1 234 567 890,12");
+    expect(applyFormat("0.3333333333333333333", "number:2")).toBe("0,33");
+    expect(applyFormat("2,5000000000000001", "number:2")).toBe("2,50");
+    // Including a magnitude JavaScript spells with an exponent at the SMALL
+    // end, which groups perfectly.
+    expect(applyFormat("0.0000001", "number:2")).toBe("0,00");
     expect(applyFormat("1234567890123456789012345", "number:2")).toBe("1234567890123456789012345");
     // And the ordinary case is untouched.
     expect(applyFormat("1234567.891", "number:2")).toBe("1 234 567,89");

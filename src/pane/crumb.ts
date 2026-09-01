@@ -32,12 +32,16 @@ const KEY = "ssf-merge.run.v1";
 /**
  * How many decks' records the store will hold.
  *
- * One key per deck the user has merged in, so a run in one deck can never
- * destroy another's — the single key was a choice between overwriting a
+ * One key per deck the user has merged in, so a run in one deck cannot
+ * overwrite another's — the single key was a choice between destroying a
  * stranger's record and denying them one, and both are losses. Bounded because
  * `localStorage` is not: a user who merges into a hundred decks should not
- * carry a hundred records for ever, and the oldest is the one least likely to
- * still have slides in it.
+ * carry a hundred records for ever.
+ *
+ * Something still has to go when the bound is reached, and WHICH is the whole
+ * question. `merge()` writes a pending marker on every press in every deck, so
+ * markers are the population that grows; a record still holding slides is the
+ * one thing here worth keeping. See `deckKeys`.
  */
 const KEEP_DECKS = 8;
 
@@ -46,24 +50,43 @@ function keyFor(doc: string): string {
   return `${KEY}:${doc}`;
 }
 
-/** Every deck key this store holds, oldest write first. */
+/**
+ * Every deck key this store holds, in the order they may be evicted.
+ *
+ * Records HOLDING NOTHING first — a pending marker for a run that may never
+ * have landed anything — then the oldest merge. Sorting by date alone evicted
+ * exactly the wrong record: a swept run's record is cleared and one that a
+ * press proved unremovable is deliberately never cleared and never re-stamped,
+ * so the record with the oldest date is systematically the one still describing
+ * slides that are in a deck.
+ *
+ * The date is the MERGE's, carried through a re-write, so this is not write
+ * order and must not be described as one.
+ */
 function deckKeys(s: Storage): string[] {
   const keys: string[] = [];
   for (let i = 0; i < s.length; i++) {
     const k = s.key(i);
     if (k !== null && k.startsWith(`${KEY}:`)) keys.push(k);
   }
-  const at = (k: string): number => {
+  const read = (k: string): Partial<Crumb> | undefined => {
     try {
       const parsed: unknown = JSON.parse(s.getItem(k) ?? "");
-      const when = typeof parsed === "object" && parsed !== null ? (parsed as Partial<Crumb>).startedAt : undefined;
-      const t = typeof when === "string" ? Date.parse(when) : Number.NaN;
-      return Number.isFinite(t) ? t : 0;
+      return typeof parsed === "object" && parsed !== null ? parsed : undefined;
     } catch {
-      return 0;
+      return undefined;
     }
   };
-  return keys.sort((a, b) => at(a) - at(b));
+  const holds = (k: string): number => {
+    const added = read(k)?.added;
+    return typeof added === "number" && added > 0 ? 1 : 0;
+  };
+  const at = (k: string): number => {
+    const when = read(k)?.startedAt;
+    const t = typeof when === "string" ? Date.parse(when) : Number.NaN;
+    return Number.isFinite(t) ? t : 0;
+  };
+  return keys.sort((a, b) => holds(a) - holds(b) || at(a) - at(b));
 }
 
 /** What a run left behind, if it did not get to finish. */
@@ -131,6 +154,15 @@ export interface Crumb {
    * happened and was refused — over a card that died the moment it was pressed.
    */
   unremovable?: boolean;
+  /**
+   * How many presses in a row have proved nothing, carried across a reopen.
+   *
+   * `pressed` and `unremovable` both survive the pane closing, and this is the
+   * third fact of the same kind: without it a reopen silently handed the run a
+   * fresh budget, so a host stuck refusing could be pressed twice more per
+   * open, for ever.
+   */
+  fruitless?: number;
 }
 
 /** This build's own spelling of a moment, which is the only one it carries forward. */
@@ -195,11 +227,18 @@ export function dropCrumb(c: Omit<Crumb, "kind" | "startedAt">): void {
     const startedAt = sameRun && prior !== undefined && isStamp(prior.startedAt) ? prior.startedAt : now();
     const crumb: Crumb = { kind: "ssf-merge-run", startedAt, ...c };
     s.setItem(keyFor(c.doc), JSON.stringify(crumb));
-    // Oldest first, because a record whose deck has not been opened in a
-    // hundred merges is the one least likely to still describe slides that are
-    // there.
-    const keys = deckKeys(s);
-    for (const key of keys.slice(0, Math.max(0, keys.length - KEEP_DECKS))) s.removeItem(key);
+    // The single-key record this deck may have been READ from is retired here,
+    // or it outlives the per-deck one and answers again the moment that is
+    // pruned — with the pre-press `added` and no `pressed`, which is the exact
+    // state the mark exists to prevent.
+    const legacy = s.getItem(KEY);
+    if (legacy && !belongsToAnotherDeck(legacy, c.doc)) s.removeItem(KEY);
+    // NEVER the record this call just wrote. `startedAt` dates the merge and is
+    // carried through a re-write, so a press on an older run writes a record
+    // with an old date — and the prune, sorting by date, deleted it on the very
+    // next line.
+    const keys = deckKeys(s).filter((k) => k !== keyFor(c.doc));
+    for (const key of keys.slice(0, Math.max(0, keys.length + 1 - KEEP_DECKS))) s.removeItem(key);
   } catch {
     /* a merge does not fail because a browser would not remember something */
   }
@@ -312,6 +351,7 @@ export function readCrumb(here: string): Crumb | undefined {
       doc: c.doc,
       ...(c.pressed === true ? { pressed: true } : {}),
       ...(c.unremovable === true ? { unremovable: true } : {}),
+      ...(typeof c.fruitless === "number" && c.fruitless > 0 ? { fruitless: c.fruitless } : {}),
     };
   } catch {
     return undefined;

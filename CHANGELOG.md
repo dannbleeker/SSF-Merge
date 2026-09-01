@@ -7,6 +7,46 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a merged deck could open as "repaired"
+
+A part whose name is percent-encoded — `my%20chart.xml`, which the file format
+allows and other tools produce — was invisible to the merge, so every copy went
+on pointing at the template's own chart and editing one would have changed them
+all. Worse for a notes page: the copies kept pointing at the template's, and
+removing the template then deleted the part they all named, leaving a deck
+PowerPoint offers to repair.
+
+### Fixed — a number with more digits than a spreadsheet cell can hold
+
+`{{Order|number}}` on a nineteen-digit order number printed a DIFFERENT number,
+grouped and formatted as though it were right. A value whose digits would not
+survive is now printed exactly as the cell has it.
+
+### Fixed — a picture field where a picture cannot go
+
+`{{Photo|image}}` written on a notes page, in a chart's labels or inside
+SmartArt is filled by nothing and printed as written — onto presenter view and
+every handout — and if it was the only picture field, the file picker was never
+offered. The fields step names it now, before the merge.
+
+### Fixed — a merge that filled a chart's labels said it had filled nothing
+
+A placeholder that lives only in the workbook behind a chart merged correctly
+and was counted nowhere, so the summary told the author to check their spelling
+on a merge that had just worked.
+
+### Fixed — the undo card after a partial removal
+
+The disabled merge button reported what was left to remove as what the merge had
+added — "Added 3 slides" about a merge that added six. It now says "3 of 6
+slides still there".
+
+### Fixed — a merge in one deck could erase another deck's recovery record
+
+The record of an unfinished run was kept under one key for every deck, so
+opening a second deck and merging destroyed the first deck's only record of
+slides still sitting in it. Each deck has its own now.
+
 ### Fixed — a date pattern is read a word at a time
 
 `{{Signed|date:d MMM yyyy}}` and its cousins now read the pattern as words: a

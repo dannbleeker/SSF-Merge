@@ -787,29 +787,35 @@ function fixedDecimal(n: number, decimals: number): string {
 }
 
 /**
- * Whether a decimal string and a number are the same value.
+ * Whether the digits this format will PRINT survived the parse.
  *
- * Both are canonicalised — sign, integer digits without leading zeros, fraction
- * without trailing zeros — and compared as text, because that is the only
- * comparison a double cannot silently win. `Number(a) === n` is always true:
- * the digits that were lost were lost in the parse.
+ * The comparison is on the INTEGER part alone, and that is the whole subtlety.
+ * Grouping prints every integer digit, so one lost there is a different number
+ * on the slide — `1234567890123456789` came back as `1 234 567 890 123 456
+ * 800`, an order number nobody typed. The fraction is rounded to `decimals`
+ * places before it is printed, so a cell carrying more precision than a double
+ * holds is not a defect there: `0.3333333333333333333` at two places is `0,33`
+ * either way.
  *
- * A number JavaScript spells with an exponent has no plain form to compare, and
- * answers false: those are refused for the separate reason that there is
- * nothing to group.
+ * Comparing the WHOLE decimal was the first rule and it refused those — a
+ * Danish deck then printed `1234567890.12345678` with a dot, because the raw
+ * fall-through keeps the cell's own separator. It also refused every value
+ * JavaScript spells with an exponent, including small ones like `0.0000001`
+ * that group perfectly.
+ *
+ * Text, not arithmetic: `Number(wrote) === n` is always true, because the
+ * digits that were lost were lost in the parse.
  */
 function sameNumber(wrote: string, n: number): boolean {
-  const spelled = String(n);
+  const spelled = String(Math.trunc(n));
+  // A magnitude with no plain integer spelling has nothing to compare and
+  // nothing to group; `applyFormat` refuses it a line later for that reason.
   if (spelled.includes("e") || spelled.includes("E")) return false;
-  const canon = (s: string): string => {
-    const negative = s.startsWith("-");
-    const [whole = "", fraction = ""] = s.replace(/^[+-]/, "").split(".");
-    const digits = whole.replace(/^0+(?=\d)/, "");
-    const frac = fraction.replace(/0+$/, "");
-    const body = frac === "" ? digits : `${digits}.${frac}`;
-    return negative && body !== "0" ? `-${body}` : body;
+  const whole = (s: string): string => {
+    const body = (s.replace(/^[+-]/, "").split(".")[0] ?? "").replace(/^0+(?=\d)/, "");
+    return body === "" ? "0" : body;
   };
-  return canon(wrote) === canon(spelled);
+  return whole(wrote) === whole(spelled);
 }
 
 export function formatNumber(n: number, decimals: number, group: string, point: string): string {
@@ -889,8 +895,10 @@ export function applyFormat(raw: string, spec: string | undefined): string {
       // magnitudes too — 2^53 itself, `1e18`, `1e20` — which a double carries
       // perfectly and which a user has every right to see grouped. Compare what
       // was written with what came back and refuse only a disagreement.
-      const wrote = numericText(raw);
-      if (wrote !== undefined && !sameNumber(wrote, n)) return raw;
+      // `numericText` answers for exactly the cells `numericValue` does, and
+      // that has already answered, so this is the same string it parsed.
+      const wrote = numericText(raw) ?? "";
+      if (!sameNumber(wrote, n)) return raw;
       return formatNumber(n, decimals, " ", ",");
     }
     case "date": {
