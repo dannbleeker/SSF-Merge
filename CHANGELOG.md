@@ -7,6 +7,48 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a chart could stop the merge dead, with nothing on screen
+
+Two placeholders sitting next to each other in a chart's data sheet, both
+holding text rather than a number, made the merge throw part-way through. No
+slides, no message, no way to tell what happened — the run simply ended. And
+where it did not throw, the placeholders came back in the wrong order: open Edit
+Data afterwards and they had been shuffled between the cells, so the sheet no
+longer agreed with the chart about which value belonged where.
+
+### Fixed — a chart's cell range could still stop PowerPoint dead
+
+The bound added earlier compares sizes, and an address long enough to overflow
+arithmetic defeated it — the pane died the same way, when the template block was
+picked and before any data was pasted. Any address too large to count exactly is
+refused now.
+
+### Fixed — a placeholder in a chart's data sheet could have the merge refused
+
+A placeholder typed into a data-sheet cell that the chart does not plot is
+filled by the merge, and nothing looked for it beforehand. If it was the only
+one in the block, the merge was refused outright — with a message telling you to
+type field names onto a slide that already carried one.
+
+### Fixed — a merge that filled only chart values said it had filled nothing
+
+"No {{fields}} were filled — check the spelling in your template · 2 chart
+values filled", in one sentence. The merge both failed and worked, and the
+author was sent hunting a spelling mistake they had not made.
+
+### Fixed — "use the slides I've selected" threw away your conditions
+
+The same defect as retyping a slide number, by the other route: selecting the
+same slides again lost every condition you had set, silently, and the merge
+button then quietly offered more slides than you asked for.
+
+### Fixed — a deck that changed underneath a merge, when the call also failed
+
+The case where PowerPoint both raised an error and took more slides than the
+merge held was read as an ordinary partial merge, so the contradictory sentence
+and the offer to take slides back — which would have refused — both came back.
+
+
 ### Fixed — a chart's cell range could stop PowerPoint dead, and a legal one took minutes
 
 A chart series names its cells with a range like `Sheet1!$B$2:$B$5`. Nothing

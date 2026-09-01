@@ -251,7 +251,23 @@ export function sheetOfFormula(formula: string): string | null {
  */
 const CELL_INDEX = new WeakMap<Document, Map<string, Element>>();
 
-/** The `<c>` element for one address, or undefined. */
+/**
+ * The `<c>` element for one address, or undefined.
+ *
+ * A cell with NO `r` attribute is not indexed, and that is a known gap rather
+ * than an oversight. `CT_Cell` allows it — position is then implied by order —
+ * and such a cell falls out of the numeric pass as a fourth silent outcome:
+ * not filled, not refused, not unreadable, not unplotted. Nothing holds it, so
+ * the workbook's text pass merges the string behind it and the data sheet ends
+ * up holding TEXT where the series reads its value, with every counter the pane
+ * could speak from at zero.
+ *
+ * Left alone because no producer has been named that writes one: Excel,
+ * PowerPoint and xlsxwriter all emit `r`. Closing it means giving the index a
+ * position-implied address — a cell's `<row r>` plus its ordinal among the
+ * preceding cells, honouring any explicit `r` its siblings carry — which is
+ * worth doing the day a real workbook needs it and not before.
+ */
 export function cellAt(sheet: Document, ref: string): Element | undefined {
   let index = CELL_INDEX.get(sheet);
   if (!index) {
