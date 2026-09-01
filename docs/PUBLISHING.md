@@ -216,6 +216,39 @@ run everywhere and refuses politely instead, so a reviewer on an old build meets
 a message rather than an absence. That is the better failure, but it is worth
 knowing it is deliberate.
 
+## What a real-host round should exercise next
+
+Written on 2026-09-01, after a release pass that changed the undo, the preview
+and the date reader. It is here rather than in a message because a list of what
+to click goes stale the moment somebody has to remember where it was, and
+because the answer to "what should I try" is a property of the last release
+rather than of the conversation it came up in.
+
+Everything below has a test; none of it has met PowerPoint.
+
+- **Undo a merge on a deck you have edited by hand.** Merge, then delete two of
+  the merged slides yourself and add one of your own where they were, then press
+  "Remove these slides". It should take back what it can show is the merge's,
+  leave yours, say so, and then stop offering — a second press is not on offer
+  once it has met a slide it could not claim. The thing to watch for is any
+  slide of yours disappearing; two routes to that were closed this round and
+  they are the reason this is first on the list.
+- **End a preview after moving the deck under it.** Preview a row, then delete
+  one preview slide by hand, or add a slide of your own, and press "Remove the
+  preview". The pane must always end up somewhere you can go on from: while a
+  preview is up the merge step refuses, so a preview that cannot be dismissed
+  is a session that cannot merge.
+- **A date pattern with words in it, in your own language.**
+  `{{Start|date:den d. MMMM yyyy}}`, `{{Start|date:d. maj yyyy}}`,
+  `{{Start|date:yyyyMMdd}}` and a month column spelled the way Excel exports it
+  (`1 Mrz 2026`, `1 dez 2026`, `1 out 2026`). The words should print as written
+  and the tokens should read.
+- **A number with a decimal that ends in 5.** `{{Total|number:2}}` over `1.005`
+  should print `1,01`, the way the cell reads in Excel.
+- **Pictures from two folders.** Attach one folder, then another. Both sets
+  should still be attached, and the pane should say it added rather than
+  replaced.
+
 ## Sources
 
 - [Microsoft 365 app publishing checklist](https://learn.microsoft.com/en-us/partner-center/marketplace-offers/checklist)
