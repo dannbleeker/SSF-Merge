@@ -728,6 +728,42 @@ describe("the preview", () => {
     expect(pane().querySelector(".step-of")?.textContent, "the way on").toBe("Step 5 of 5 · Merge");
   });
 
+  it("lets the user out when a press takes nothing back at all", async () => {
+    /**
+     * A co-author adds a slide during the preview: the deck has grown by more
+     * than the run added, and `sweepPlan` refuses the shape because it can no
+     * longer prove which slides are the preview's. The press removes nothing
+     * and disowns nothing, and the next press will answer the same way — so
+     * holding the user on the preview step holds them there for the session,
+     * with the forward link withheld and the merge step refusing.
+     *
+     * That is the terminal state this screen has now produced three times by
+     * three routes. A press that MOVED something still keeps the way back, and
+     * the difference between the two is the whole of the fix: "press again" is
+     * worth offering only when pressing again can do something.
+     */
+    await reachPreview();
+    office.runMerge.mockResolvedValueOnce(PREVIEW);
+    primary().click();
+    await settle();
+
+    office.undoMerge.mockResolvedValueOnce({
+      removed: 0,
+      disowned: 0,
+      detail: "nothing to take back (the deck grew by 5 while this run added 3)",
+    });
+    // The deck is BIGGER than it started, so "already gone" does not carry it.
+    office.slideCount.mockResolvedValueOnce(17);
+    primary().click();
+    await settle();
+
+    expect(pane().querySelector(".step-of")?.textContent, "a pane must always leave a way on").toBe(
+      "Step 5 of 5 · Merge",
+    );
+    expect(pane().textContent).toContain("could not be taken back");
+    expect(pane().textContent, "and what to do about the slides").toContain("delete them from the thumbnail rail");
+  });
+
   it("can still end a preview after a press that left some of it behind", async () => {
     /**
      * `sweepPlan` clamps `added` against the deck's GROWTH, so the count

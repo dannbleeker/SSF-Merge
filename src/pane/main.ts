@@ -1135,6 +1135,31 @@ async function endPreview(): Promise<void> {
       // why. A pane must always leave a way on.
       const deckNow = await slideCount().catch(() => undefined);
       const gone = deckNow !== undefined && deckNow <= outcome.deckAtStart;
+      // A press that moved NOTHING will move nothing next time either, and
+      // holding the user on this step is the terminal state the comment above
+      // is about. It happens for a reason the pane cannot fix: a co-author
+      // adds a slide during the preview, the deck has grown by more than the
+      // run added, and `sweepPlan` refuses the shape — correctly, because it
+      // can no longer prove which slides are the preview's.
+      //
+      // Kept where the press DID move something, because there the next press
+      // has less to do and can finish. The difference between "press again"
+      // and "there is nothing pressing again will do" is what decides whether
+      // the way on is withheld.
+      const moved = removed > 0 || (disowned ?? 0) > 0;
+      if (!gone && !moved) {
+        shown = undefined;
+        state = {
+          ...state,
+          previewing: false,
+          previewSlides: undefined,
+          ...(deckNow !== undefined ? { deckSize: deckNow } : {}),
+          notice:
+            `The preview could not be taken back — ${detail}. ` +
+            `The slides are still in your deck; delete them from the thumbnail rail when you are ready.`,
+        };
+        return;
+      }
       if (!gone) {
         // The card names the slides the preview is on, and after a partial
         // removal it cannot: the ones that went took the numbering of the ones

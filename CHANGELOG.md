@@ -7,6 +7,15 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a preview a co-author's edit stranded could not be dismissed
+
+If somebody else added a slide while the preview was up, the deck had grown by
+more than the run put in and the undo refused the shape — correctly, because it
+can no longer prove which slides are the preview's. The pane then held the
+wizard on the preview step, where the forward link is withheld and the merge
+step refuses, for the rest of the session. A press that takes nothing back at
+all now says so, says the slides are still in the deck, and lets you carry on.
+
 ### Fixed — a damaged chart workbook was counted as merged
 
 An embedded workbook whose own `xl/workbook.xml` is truncated or damaged merged
