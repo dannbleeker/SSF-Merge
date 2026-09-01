@@ -249,6 +249,34 @@ describe("header shapes a real encoder writes and this reader did not expect", (
     expect(readImage(odd)).toBeUndefined();
   });
 
+  it("reads EVERY frame marker, not just the baseline one", () => {
+    /**
+     * `SOF0` is baseline and `SOF2` is PROGRESSIVE, which is what "save for
+     * web" produces — so a reader that knew only baseline would call an
+     * ordinary photo unreadable, leave the placeholder on the slide, and be
+     * right about nothing.
+     *
+     * All thirteen are read correctly today. Nothing held it: replacing the
+     * whole predicate with `marker === 0xc0` left the entire suite green,
+     * because every fixture here and the one committed .jpg are baseline. A
+     * behaviour no test can lose is a behaviour no test is keeping.
+     *
+     * The three gaps in the range are the point of listing them: `C4` is a
+     * Huffman table, `C8` is reserved and `CC` is an arithmetic-coding table.
+     * None is a frame, and a reader that took the whole `C0`-`CF` block would
+     * read two arbitrary bytes of a Huffman table as a width.
+     */
+    const framed = (marker: number) => Uint8Array.from([0xff, 0xd8, 0xff, marker, ...SOF0.slice(1)]);
+    for (const marker of [0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf]) {
+      const read = readImage(framed(marker));
+      expect(read?.width, `SOF at 0x${marker.toString(16)}`).toBe(200);
+      expect(read?.height, `SOF at 0x${marker.toString(16)}`).toBe(100);
+    }
+    for (const marker of [0xc4, 0xc8, 0xcc]) {
+      expect(readImage(framed(marker)), `0x${marker.toString(16)} is not a frame`).toBeUndefined();
+    }
+  });
+
   it("still walks past the segments that are not frame headers", () => {
     // Unchanged behaviour, asserted because the fill-byte branch sits directly
     // above these and an early `continue` would swallow them.

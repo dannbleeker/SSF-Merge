@@ -140,6 +140,38 @@ describe("a picture where the placeholder was", () => {
     expect(order.slice(0, 2)).toEqual(["xfrm", "prstGeom"]);
   });
 
+  it("STRETCHES on image-stretch, filling the box and distorting on purpose", async () => {
+    /**
+     * The third documented mode, and it had no test at all — `image-stretch`
+     * appeared in `docs/MANUAL.md` and in the `MODES` table and nowhere in this
+     * suite. `test/docs.test.ts` holds the other direction (every format the
+     * engine has is documented) and nothing held this one, so a mode a user can
+     * type could have stopped working with the whole suite green.
+     *
+     * It is distinguishable from the two neighbours by what it does NOT write:
+     * a crop is a `srcRect`, a letterbox is a `fillRect` carrying insets, and
+     * filling the box exactly is neither. The `<a:fillRect/>` itself is still
+     * there and empty, which is what `<a:stretch>` normally holds — asserting
+     * its absence was this test's first mistake, and the element is the
+     * codec's, not the mode's.
+     *
+     * It must also not be confused with the stretch a shape falls back to when
+     * it states no size. That one is REPORTED, because it is a failure to
+     * honour what was asked for; this one is the ask.
+     */
+    const pkg = await template("{{Photo|image-stretch}}", xfrm(200, 200));
+    const out = await merge(pkg, [["Photo"], ["ada.png"]], new Map([["ada.png", WIDE]]));
+    const fill = (await blipFill(pkg, out.slides[0] as string)) as Element;
+    expect(elements(fill, A_NS, "srcRect")[0], "a stretch crops nothing").toBeUndefined();
+    const fillRect = elements(fill, A_NS, "fillRect")[0] as Element;
+    expect(fillRect, "a stretch still writes the element").toBeDefined();
+    for (const edge of ["l", "t", "r", "b"]) {
+      expect(fillRect.getAttribute(edge), `letterboxed on ${edge}`).toBeNull();
+    }
+    expect(out.images.placed).toBe(1);
+    expect(out.images.stretched, "asked for, so not reported as a shortfall").toEqual([]);
+  });
+
   it("matches a photo whose cell the spreadsheet padded", async () => {
     // `resolveImage` trims the cell before matching it against the files, and
     // that `.trim()` is the whole rule. Removing it left the suite green —

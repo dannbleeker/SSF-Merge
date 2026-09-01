@@ -318,6 +318,36 @@ describe("a cell the engine must not quietly rewrite", () => {
     expect(new Set(rs.columns.map((c) => c.name)).size, "every name distinct").toBe(width);
   });
 
+  it("trims a header cell, so a padded one still binds", () => {
+    // A pasted range brings whatever whitespace its export gave it. Without the
+    // trim the column is declared as `" Name "`, `{{Name}}` binds to nothing,
+    // and every slide keeps its placeholder — with the column still listed in
+    // the pane under a name that looks right.
+    const rs = toRecordSet([
+      [" Name ", "\tTown\t"],
+      ["Ada", "Aarhus"],
+    ]);
+    expect(rs.columns.map((c) => c.name)).toEqual(["Name", "Town"]);
+    expect(rs.rows[0]?.Name).toBe("Ada");
+  });
+
+  it("keeps the first row as data when told there is no header", () => {
+    // `header: false` is a public option — `toRecordSet` is exported from
+    // `src/index.ts` — and it appears nowhere in this repo, so nothing held it.
+    // `opts.header ?? true` written as `||` would silently ignore it, which is
+    // the shape a tidy-up produces.
+    const rs = toRecordSet(
+      [
+        ["Ada", "Aarhus"],
+        ["Grace", "Vejle"],
+      ],
+      { header: false },
+    );
+    expect(rs.columns.map((c) => c.name)).toEqual(["Column 1", "Column 2"]);
+    expect(rs.rows.length, "the first row is data, not names").toBe(2);
+    expect(rs.rows[0]?.["Column 1"]).toBe("Ada");
+  });
+
   it("never lets an invented column name take one a real header owns", () => {
     // Counting forward alone let a made-up name STEAL a later column's: a
     // template's {{Name 2}} bound to the second "Name" and printed the wrong
@@ -447,6 +477,32 @@ describe("which delimiter a paste uses", () => {
       ["a", "b\nc", "d"],
       ["x", "y", "z"],
     ]);
+  });
+
+  it("sniffs a fixed number of rows, and the number is what decides the answer", () => {
+    /**
+     * `chooseDelimiter` scores a SAMPLE, and the sample size is not a detail —
+     * it decides the answer. A candidate must split every sampled row into the
+     * same number of cells, so one ragged row inside the window disqualifies
+     * the real delimiter and the whole paste falls back to the comma, arriving
+     * as ONE column whose name holds the tabs. That is the failure the file's
+     * own comment describes: "a merge button that does nothing".
+     *
+     * A ragged row is left alone deliberately — it may be a ragged
+     * tab-separated paste or a genuine one-column paste whose text holds tabs,
+     * and nothing in the text says which. What must not drift is WHERE the
+     * window ends, and nothing held that: moving it by one row moves the
+     * boundary between these two cases and no test noticed.
+     */
+    const good = (n: number) => Array.from({ length: n }, (_, i) => `A${i}\tB${i}`);
+    // The sample is ten LINES, header included — so the header plus nine good
+    // rows fills it and the tenth data row is the first one outside.
+    const outside = ["Name\tTown", ...good(9), "ragged\tx\ty"].join("\n");
+    expect(parseDelimited(outside)[0], "the tab survives a raggedness the sniff never saw").toEqual(["Name", "Town"]);
+    // One row earlier is inside it, and there the sniff refuses the tab — the
+    // documented trade rather than a defect.
+    const inside = ["Name\tTown", ...good(8), "ragged\tx\ty"].join("\n");
+    expect(parseDelimited(inside)[0], "and inside the sample it refuses").toEqual(["Name\tTown"]);
   });
 
   it("keeps a one-column header that happens to hold a semicolon", () => {
