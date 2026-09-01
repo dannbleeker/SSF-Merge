@@ -347,6 +347,33 @@ describe("a torn insert is reported in rows", () => {
     expect(out.accountable, "the pane may not offer to sweep slides this run cannot identify").toBe(false);
   });
 
+  it("does not read an over-grown deck as accountable just because the call also raised", async () => {
+    /**
+     * `insertVerdict` grades `unknown` only when the call did NOT raise, so an
+     * insert that timed out AND over-grew — the case its own docstring
+     * describes, "a call can raise and still have done the work" — came back
+     * `threw`. Reading the verdict string rather than the deltas let both
+     * halves of the defect through on that branch: the torn sentence, and an
+     * undo card over slides `sweepPlan` would decline.
+     *
+     * Found by an adversarial review of the commit that was supposed to close
+     * it, which is why the rule is on the numbers now.
+     */
+    host.readTemplate.mockResolvedValueOnce({ base64: await block(), offset: 0 });
+    host.insertDeck.mockResolvedValueOnce({
+      verdict: "threw",
+      detail: "the call threw: GeneralException, and 8 slide(s) landed anyway",
+      landed: 8,
+      before: 2,
+      after: 10,
+    });
+
+    const out = await runMerge({ from: 1, to: 2, records: rows });
+    expect(out.accountable, "the pane may not offer to sweep slides this run cannot identify").toBe(false);
+    expect(out.detail, "the self-contradicting sentence").not.toMatch(/took only part/);
+    expect(out.detail).toContain("cannot say which of them are its own");
+  });
+
   it("says nothing about rows when every row landed", async () => {
     // 240 of 240 rows is noise beside "720 slides added".
     host.readTemplate.mockResolvedValueOnce({ base64: await block(), offset: 0 });

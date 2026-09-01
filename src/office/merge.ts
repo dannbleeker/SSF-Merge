@@ -364,6 +364,26 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
   // and the sweep refuses, which is the answer that rule was written to give.
   const added = Math.max(0, Math.min(insert.landed, sending.length));
 
+  /**
+   * Why this run cannot say which of the deck's new slides are its own, or
+   * undefined when it can.
+   *
+   * From the DELTAS, not from the verdict string. It read
+   * `insert.verdict !== "unknown"`, and `insertVerdict` only grades `unknown`
+   * when the call did not raise — so an insert that timed out AND over-grew,
+   * which is the case its own docstring describes ("a call can raise and still
+   * have done the work"), came back `threw` and was treated as accountable.
+   * Both halves of the defect this was written for survived on that branch: the
+   * undo card offered over slides the sweep would decline, and the sentence
+   * that says a merge landed partly and completely at once.
+   */
+  const unaccounted =
+    insert.landed > sending.length
+      ? `the deck grew by ${insert.landed} while the package held ${sending.length} slide(s), so this run cannot say which of them are its own`
+      : insert.landed < 0
+        ? `the deck SHRANK by ${-insert.landed} slide(s) across an insert of ${sending.length}, so something else changed it`
+        : undefined;
+
   // How many slides each ROW produced, in plan order — the unit a torn insert
   // has to be read in.
   const rows = tornInsert(slidesByRecord(plan.steps), added);
@@ -386,7 +406,7 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
    */
   const landed = {
     added,
-    accountable: insert.verdict !== "unknown",
+    accountable: unaccounted === undefined,
     deckAtStart,
     runId,
     fields: prepared.fields,
@@ -449,8 +469,8 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
       // The verdict's own sentence was written for this reading and names the
       // condition; passing it through is all that was needed.
       detail:
-        insert.verdict === "unknown"
-          ? `The deck changed in a way this run cannot account for: ${insert.detail}. Nothing has been taken back — check the deck before running the merge again.`
+        unaccounted !== undefined
+          ? `The deck changed in a way this run cannot account for: ${unaccounted}. Nothing has been taken back — check the deck before running the merge again.`
           : added > 0
             ? `PowerPoint took only part of the merge: ${rows.detail}. Take the slides back and run it again.`
             : `The merge was built but PowerPoint did not take it: ${insert.detail}`,
