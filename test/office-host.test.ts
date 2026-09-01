@@ -191,4 +191,30 @@ describe("what an insert and an undo say when the host misbehaves", () => {
     expect(outcome.detail).toContain("slides 4 to 9");
     expect(fake.slides).toEqual(["u1", "u2", "u3"]);
   });
+
+  it("takes nothing on a REPEAT press when the slides cannot prove they are ours", async () => {
+    /**
+     * The same deck and the same call, with `requireProof`. This fake answers
+     * the tag read with a null object for every slide, which is what a host
+     * below PowerPointApi 1.3 and a host that has stopped answering both look
+     * like — and the fall-through takes the whole window, as the test above
+     * shows.
+     *
+     * That is the answer this add-in gave before tags existed and is right for
+     * a FIRST press. On a later one it deletes: a press having happened is
+     * itself proof the deck has changed shape, so the window a size clamp
+     * produces can hold a slide the user made in between.
+     */
+    const { fake, module } = await host({
+      slides: ["u1", "u2", "u3", "m1", "m2", "m3", "m4", "m5", "m6"],
+    });
+    const outcome = await module.undoInsert(3, 6, "run-1", { requireProof: true });
+    expect(outcome.removed, "nothing may go without proof").toBe(0);
+    expect(fake.slides, "and the deck is untouched").toHaveLength(9);
+    expect(outcome.detail).toContain("could be shown to be this merge's");
+    // The sentence may not claim WHICH of the two it was: a slide with no tag
+    // and a slide the host would not answer for are the same `undefined` here.
+    expect(outcome.detail).not.toContain("PowerPoint would not");
+    expect(outcome.detail).not.toContain("carries this merge's mark");
+  });
 });
