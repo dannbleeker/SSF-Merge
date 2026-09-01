@@ -7,6 +7,36 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — an accented month name left three rows of a column unformatted
+
+`février`, `août`, `décembre`, `März` and `março` are the five European month
+names not written with plain letters, and the date reader's character class
+admitted only `A-Z`, `a-z` and `ÆØÅ` — Danish, added on purpose, and nothing
+beyond it. So French, German and Portuguese columns read nine months of twelve.
+
+The visible failure is not a wrong date, it is one column rendering two ways:
+`1 janvier 2026` formatted to `01-01-2026` and `1 février 2026` came out as
+typed, on the same slide, with the column still typed `date` and nothing saying
+why. That is the defect the month-name table was written to end, surviving in
+the gate in front of it.
+
+The class carries Latin-1 Supplement and Latin Extended-A and -B now, plus the
+combining marks — so a name reads the same whether the file spells `é` as one
+code point or as `e` followed by U+0301, which is the difference between a CSV
+exported on macOS and one exported on Windows. `monthFromName` normalises to
+NFC before the table lookup, and the two halves have to agree: a class that
+admits the mark without a lookup that folds it would type the column a date and
+then refuse every accented row in it.
+
+Latin only, deliberately. Whatever the class admits is typed `date`, and a
+script whose month names are not in the table would be typed and then rendered
+raw — the same defect, in a new alphabet.
+
+The unaccented transliterations stay refused. `fevrier` and `marco` are guesses
+at how an exporter might mangle a name rather than how the language spells it,
+and reading a guess is what the removed `new Date` fallback did when it read
+`1 marketing 2026` as March.
+
 ### Fixed — Alt+Enter in a cell put a hard line break on the slide
 
 Found by the desktop round of 2026-08-31, and only findable there.

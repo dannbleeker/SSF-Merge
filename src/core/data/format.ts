@@ -66,6 +66,33 @@ function isNumberShape(value: string): boolean {
 /** Deliberately narrow. See `looksLikeDate`. */
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}(?:[T ].*)?$/;
 /**
+ * The letters a month NAME may be written with.
+ *
+ * Latin only, and deliberately not `\p{L}`. This is a SHAPE gate: whatever it
+ * admits, `detectType` types as a date, and only then does `monthFromName`
+ * decide. So every script it opens is a script whose month names it cannot
+ * read, and a column typed `date` and rendered raw is the pathology this file
+ * exists to prevent. Latin is the alphabet the table is written in.
+ *
+ * It used to be `[A-Za-zÆØÅæøå]` — somebody having made room for Danish
+ * and stopped there. Nothing Danish is accented, so what that really excluded
+ * was `février`, `août`, `décembre`, `März` and `março`: French, German and
+ * Portuguese read nine months of twelve, in one column, half formatted and
+ * half raw.
+ *
+ * The ranges are Latin-1 Supplement and Latin Extended-A and -B, with the two
+ * MATHEMATICAL signs that sit inside them cut out — U+00D7 and U+00F7 are not
+ * letters, and admitting them would let `1 ××× 2026` be typed a date.
+ *
+ * U+0300-U+036F are the combining marks, so a name arrives in either
+ * normalisation: `é` as one code point, or as `e` followed by U+0301, which
+ * is what a CSV exported on macOS carries. `monthFromName` normalises before
+ * the lookup, and the two halves have to agree — a class that admits the mark
+ * without a lookup that folds it types the column and then refuses it.
+ */
+const MONTH_LETTER = "A-Za-z\\u00C0-\\u00D6\\u00D8-\\u00F6\\u00F8-\\u024F\\u0300-\\u036F";
+
+/**
  * `1 March 2026`, and `1. marts 2026`.
  *
  * The separator may be followed by SPACE, which is not a detail: Danish writes
@@ -88,7 +115,15 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}(?:[T ].*)?$/;
  * other; now the shape and the parse are one module and there is nothing to
  * export.
  */
-const NAMED_DATE = /^(\d{1,2})[ .\-/]\s*([A-Za-zÆØÅæøå]{3,})[ .\-/]\s*(\d{2,4})$/;
+// The combining marks in `MONTH_LETTER` are there ON PURPOSE, so the rule
+// below is off for this line. It warns that a class holding them can match
+// half a grapheme, and half a grapheme is exactly the unit this pattern works
+// in: a decomposed `é` is `e` and U+0301, two members of the class, and `{3,}`
+// counts both. Dropping them refuses every accented name a macOS export
+// writes; matching graphemes instead would mean re-modelling the whole word
+// for no gain, since `monthFromName` normalises before the lookup.
+// eslint-disable-next-line no-misleading-character-class
+const NAMED_DATE = new RegExp(`^(\\d{1,2})[ .\\-/]\\s*([${MONTH_LETTER}]{3,})[ .\\-/]\\s*(\\d{2,4})$`);
 
 /**
  * Whether a cell is a date we are willing to claim.
@@ -205,8 +240,10 @@ export function parseDate(raw: string): Date | undefined {
 /**
  * Month names in the languages `looksLikeDate` admits, as a stated table.
  *
- * `NAMED_DATE` allows `ÆØÅ`, which is somebody having made room for Danish on
- * purpose. Delegating the name to `new Date` then handled Danish BY ACCIDENT,
+ * `NAMED_DATE` allowed `ÆØÅ` and nothing else beyond ASCII, which is somebody
+ * having made room for Danish on purpose and stopping there; `MONTH_LETTER`
+ * carries the rest of Latin now, and the accented names are below.
+ * Delegating the name to `new Date` handled Danish BY ACCIDENT,
  * because that parser matches an English three-letter prefix: `marts` and
  * `januar` worked, `maj` and `desember` did not. One Danish date column came
  * out half formatted and half raw across a merged deck, and the column was
@@ -279,21 +316,27 @@ const MONTH_NAMES: Readonly<Record<string, number>> = Object.freeze({
   okt: 10,
   des: 12,
   // German — januar, februar, april, mai, juni, juli, august, september,
-  // oktober and november are spellings already above.
+  // oktober and november are spellings already above. `M\u00e4rz` is the only
+  // German month that is not, and it was the only one this table could not read.
+  "m\u00e4rz": 3,
   dezember: 12,
   // Dutch — april, juni, juli, september, oktober, november and december are
   // already above, and januari and februari came in with Swedish.
   maart: 3,
   mei: 5,
   augustus: 8,
-  // French. `mars` and `mai` are already above, under Norwegian.
+  // French. `mars` and `mai` are already above, under Norwegian. The three
+  // accented ones are the whole reason `MONTH_LETTER` is wider than ASCII.
   janvier: 1,
+  "f\u00e9vrier": 2,
   avril: 4,
   juin: 6,
   juillet: 7,
+  "ao\u00fbt": 8,
   septembre: 9,
   octobre: 10,
   novembre: 11,
+  "d\u00e9cembre": 12,
   // Spanish
   enero: 1,
   febrero: 2,
@@ -320,6 +363,7 @@ const MONTH_NAMES: Readonly<Record<string, number>> = Object.freeze({
   // Portuguese
   janeiro: 1,
   fevereiro: 2,
+  "mar\u00e7o": 3,
   maio: 5,
   junho: 6,
   julho: 7,
@@ -355,16 +399,19 @@ const MONTH_NAMES: Readonly<Record<string, number>> = Object.freeze({
  * prefix rule ever reached, since it read `janvier` and `marzo` by luck and
  * answered nothing at all for `enero`, `maart`, `mei` or `gennaio`.
  *
- * The one stated limit is the SHAPE gate rather than this table: `NAMED_DATE`
- * admits `[A-Za-zÆØÅæøå]`, so an accented spelling — `février`, `août`, `märz`,
- * `décembre` — never reaches here at all. French, German and Portuguese are
- * therefore PARTIAL: nine of twelve months read and three do not, which in one
- * column is the half-formatted-half-raw rendering this file exists to prevent.
- * Unchanged by this — the prefix rule covered exactly the same nine — and the
- * fix is to widen that character class, which is a change to what `dateShape`
- * claims and is its own decision. The transliterations are deliberately NOT
- * listed: `fevrier` is not how French spells it, and a table of guesses at how
- * somebody's exporter mangles a name is the open rule this file just removed.
+ * The accented spellings are listed now and `MONTH_LETTER` admits them, which
+ * closes the one limit this docstring used to state. `NAMED_DATE` allowed
+ * `[A-Za-zÆØÅæøå]`, so `février`, `août`, `décembre`, `März` and `março`
+ * never reached this function at all and French, German and Portuguese read
+ * nine months of twelve — one column, half formatted and half raw, which is
+ * the rendering this file exists to prevent. Widening the class widens what
+ * `dateShape` CLAIMS, and it is kept to Latin for that reason: every script it
+ * admits is a script whose names are not in the table.
+ *
+ * The transliterations are still deliberately NOT listed. `fevrier` is not how
+ * French spells it, and a table of guesses at how somebody's exporter mangles
+ * a name is the open rule this file removed. What replaced them is the real
+ * spelling, not a second guess at it.
  */
 function monthFromName(word: string): number | undefined {
   // `hasOwnProperty`, because `word` is a cell out of the user's data and the
@@ -379,9 +426,16 @@ function monthFromName(word: string): number | undefined {
   // cell is printed as it stands — which is the right answer arrived at by
   // accident. This repo's own rule is to guard any table keyed by a config or
   // data string, and the guard is one line where the luck is one refactor deep.
-  return Object.prototype.hasOwnProperty.call(MONTH_NAMES, word.toLowerCase())
-    ? MONTH_NAMES[word.toLowerCase()]
-    : undefined;
+  //
+  // NFC before the lookup, because `MONTH_LETTER` admits a combining mark and
+  // the table is written with precomposed letters. A CSV exported on macOS
+  // carries `f\u00e9vrier` as `e` + U+0301, which is a DIFFERENT string from the
+  // key here and identical to it on screen and in a diff. Without this the
+  // widened character class types the column a date and then refuses every
+  // accented row in it, which is the exact rendering this file exists to
+  // prevent, reintroduced by the change that was meant to end it.
+  const key = word.normalize("NFC").toLowerCase();
+  return Object.prototype.hasOwnProperty.call(MONTH_NAMES, key) ? MONTH_NAMES[key] : undefined;
 }
 
 /**

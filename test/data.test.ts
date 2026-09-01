@@ -576,9 +576,10 @@ describe("month names the date gate already admits", () => {
       "januar februar mars april mai juni juli august september oktober november desember",
       "januari februari mars april maj juni juli augusti september oktober november december",
       // The ASCII spellings of the languages the removed `new Date` fallback
-      // used to reach by accident, and their neighbours. An accented one —
-      // `février`, `août`, `märz` — never gets past `NAMED_DATE`'s character
-      // class, so it is not in the table and not in this list either.
+      // used to reach by accident, and their neighbours. The accented forms —
+      // `février`, `août`, `décembre`, `märz`, `março` — ARE in the table,
+      // and have their own test below; what stays out is the transliteration
+      // somebody's exporter might write instead, which is `notClaimed`.
       "januar februar mars april mai juni juli august september oktober november dezember",
       "januari februari maart april mei juni juli augustus september oktober november december",
       "janvier fevrier mars avril mai juin juillet aout septembre octobre novembre decembre",
@@ -587,7 +588,8 @@ describe("month names the date gate already admits", () => {
       "janeiro fevereiro marco abril maio junho julho agosto setembro outubro novembro dezembro",
     ];
     // The spellings this table deliberately does NOT carry, because their real
-    // form is accented and the ASCII fallback is somebody else's guess.
+    // form is accented and the ASCII fallback is somebody else's guess. The
+    // real form is read; this list is the guess at it, and it stays refused.
     const notClaimed = new Set(["fevrier", "aout", "decembre", "marco"]);
     const meaning = new Map<string, number>();
     for (const line of languages) {
@@ -657,6 +659,44 @@ describe("month names the date gate already admits", () => {
     // A word that starts like a month is not automatically a non-month, which
     // is why the list above is words rather than a rule.
     expect(parseDate("1 augustus 2026")?.getUTCMonth()).toBe(7);
+  });
+
+  it("reads the accented spellings, which the character class used to refuse", () => {
+    /**
+     * `NAMED_DATE` admitted `[A-Za-z\u00c6\u00d8\u00c5\u00e6\u00f8\u00e5]`, so French, German and
+     * Portuguese were PARTIAL: nine months of twelve read and three did not.
+     * That is one column rendering two ways, which is the defect this whole
+     * describe block exists for — and the sharpest version of it, because the
+     * three that failed are the ones nobody spells any other way.
+     */
+    expect(parseDate("1 f\u00e9vrier 2026")?.toISOString().slice(0, 10)).toBe("2026-02-01");
+    expect(parseDate("1 ao\u00fbt 2026")?.toISOString().slice(0, 10)).toBe("2026-08-01");
+    expect(parseDate("1 d\u00e9cembre 2026")?.toISOString().slice(0, 10)).toBe("2026-12-01");
+    expect(parseDate("1 m\u00e4rz 2026")?.toISOString().slice(0, 10)).toBe("2026-03-01");
+    expect(parseDate("1 mar\u00e7o 2026")?.toISOString().slice(0, 10)).toBe("2026-03-01");
+    // Capitalised, which is how German writes it and how a spreadsheet's own
+    // month formatting writes all of them.
+    expect(parseDate("1 M\u00e4rz 2026")?.toISOString().slice(0, 10)).toBe("2026-03-01");
+  });
+
+  it("reads a name whose accent is a combining mark", () => {
+    /**
+     * The same five words in NFD, which is what a CSV exported on macOS
+     * carries: `\u00e9` is `e` followed by U+0301 rather than one code point. The
+     * character class has to admit the mark and the table lookup has to
+     * normalise, and neither half is visible in a string that LOOKS identical
+     * in a diff.
+     */
+    const nfd = "1 f\u00e9vrier 2026".normalize("NFD");
+    expect(nfd).not.toBe("1 f\u00e9vrier 2026");
+    expect(parseDate(nfd)?.toISOString().slice(0, 10)).toBe("2026-02-01");
+    expect(parseDate("1 ao\u00fbt 2026".normalize("NFD"))?.toISOString().slice(0, 10)).toBe("2026-08-01");
+  });
+
+  it("formats a whole French column the same way, which was the same defect", () => {
+    // Before this, the first of these formatted and the other two came out raw.
+    const column = ["1 janvier 2026", "1 f\u00e9vrier 2026", "1 ao\u00fbt 2026"];
+    expect(column.map((c) => applyFormat(c, "date:dd-MM-yyyy"))).toEqual(["01-01-2026", "01-02-2026", "01-08-2026"]);
   });
 
   it("formats a whole Danish column the same way, which was the defect", () => {

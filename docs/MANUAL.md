@@ -345,10 +345,17 @@ as a floor for languages it did not name; that floor is gone as of 2026-08-31,
 because the same prefix rule reads `1 marketing 2026` as **1 March 2026** and a
 date the data never gave is worse than a cell left alone.
 
-**An accented month is not read.** `février`, `août`, `märz` and `décembre`
-carry a letter the date reader does not accept, so those cells stay as they are
-while the rest of the same column formats. Write the month in the three-letter
-form, or use a numeric pattern.
+**Accented months are read.** `février`, `août`, `décembre`, `März` and
+`março` are the five European month names that are not spelled with plain
+letters, and until 2026-09-01 the date reader refused the letter itself — so
+French, German and Portuguese columns formatted nine months of twelve and left
+the other three showing the raw cell. They are read in either normalisation, so
+a file exported on a Mac reads the same as one exported on Windows.
+
+Write the month the way the language spells it. `fevrier` and `marco` without
+their accents are not read: they are somebody's guess at the spelling rather
+than the spelling, and reading a guess is how the old prefix rule invented
+months.
 
 **The month name written OUT is English**, whatever language it was read from:
 `{{Start|date:d MMM yyyy}}` gives `3 May 2026`. The output is the template
