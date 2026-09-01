@@ -476,6 +476,41 @@ learn to satisfy without meaning it. The honest fix is the heading.
   CI build first: building would only hide the non-determinism behind whichever
   order the steps happen to run in. Before trusting any local run of a check that
   reads `dist-lib/`, delete it and run again.
+- **A control that is RECOMMENDED is not a control.** `scripts/mutate-core.mjs`
+  told its reader to check that the unmutated copy was green, and did not check.
+  The copy was red — it excluded `.git`, and `test/docprops.test.ts` shells out
+  to `git ls-files` at collection — so every mutant read `caught`, the survivor
+  list stayed empty, and the run ended on a line that looks like a perfect
+  score. The script runs its own control now and refuses to report at all if it
+  is red or short. Any tool whose failure mode is a GOOD-looking result has to
+  measure its own baseline; advice in a docstring is not a measurement.
+
+  The same round: `… | tail -4; echo "exit=$?"` reports `tail`'s status. Read the
+  exit code of the command you care about.
+- **A property test's CORPUS is a measurement, and asking what it matched is the
+  only thing that checks it.** `test/fuzz.test.ts` passed five properties while
+  generating six-character strings — seeded with 1, 2, 3 …, xorshift32's first
+  outputs are all near zero, so every length came out at the bottom of its range
+  and 306 of 400 strings held no placeholder. Its format specs, assembled from
+  the same noise, named a real format kind ZERO times in four hundred draws, so
+  the four formatters were exercised by nothing. Both looked like four green
+  tests. Count what the corpus reached before believing what it proved.
+- **A mock must be as strict as the function it stands in for.** A bare
+  `vi.fn()` let a test set `verdict: "ok"` — not a member of `Verdict` — so the
+  code under test took the refusal branch and the test asserted the one path it
+  was not about, while the branch it was written for shipped broken. Type the
+  mock; a fixture must not be able to put production code in a state production
+  cannot reach.
+- **A bound written to keep something OUT can keep the wanted case out too, and
+  the second direction needs its own test.** Bounding each date token against
+  any adjacent letter kept `Odds:` and `Wedding` intact and made `yyyyMMdd`
+  print itself — a pattern of nothing but documented tokens, refused. Whenever a
+  fix narrows what matches, write the test for what must still match.
+- **A table the manual claims is a promise the code has to keep.** The manual
+  named ten languages of month names "in full or in the short form"; the table
+  held short forms for four. A German column typed as a date on its SHAPE and
+  then printed as the raw cell — half a deck formatted, half not. When a doc
+  enumerates what the code supports, the enumeration is testable, so test it.
 - **All sample data is invented.** The repo is public.
 - **Merging to `main` is authorized.** Once CI is green on the exact pushed
   commit — verify the run's `head_sha` matches the branch head, because a
