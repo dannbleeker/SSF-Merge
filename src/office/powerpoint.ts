@@ -460,12 +460,20 @@ export async function undoInsert(
   }
   const targets = provenSweep(plan, await runTagsAt(plan.from, plan.count), runId, opts);
   if (targets.length === 0) {
+    // Says what is KNOWN, which is neither of the two things it used to say.
+    // "None of them carries this merge's mark" is a claim about the slides, and
+    // `runTagsAt` cannot support it: a slide with no tag and a slide the host
+    // would not answer for both arrive as `undefined`, which is the limitation
+    // `UndoOutcome.disowned` is documented with. Naming the host instead would
+    // be the same guess in the other direction. What is true either way is that
+    // none of them could be SHOWN to be this merge's, and that is why nothing
+    // went.
     return {
       removed: 0,
-      // Every slide in the range disowned, which is the whole reason nothing
-      // went: they are not this run's to remove.
       disowned: plan.count,
-      detail: `nothing to take back — none of slides ${plan.from + 1} to ${plan.from + plan.count} carries this merge's mark`,
+      detail:
+        `nothing to take back — none of slides ${plan.from + 1} to ${plan.from + plan.count} ` +
+        `could be shown to be this merge's`,
     };
   }
   let error: string | undefined;
