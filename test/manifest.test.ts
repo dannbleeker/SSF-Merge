@@ -128,8 +128,37 @@ describe("the requirement floor is checked at runtime, never declared", () => {
       expect(checkManifest(text, name), name).toEqual([]);
       if (name.endsWith(".json")) {
         for (const extension of JSON.parse(text).extensions) {
-          expect(extension.requirements, name).toBeUndefined();
+          // `capabilities` is the requirement SET, and it is the one that must
+          // never be declared. This used to assert the whole `requirements`
+          // block was absent, which is a wider claim than the rule it stands
+          // for — and it forbade `scopes`, the JSON spelling of which host the
+          // add-in runs in, so the unified manifest did not say it was a
+          // PowerPoint add-in while the XML did.
+          expect(extension.requirements?.capabilities, name).toBeUndefined();
         }
+      }
+    }
+  });
+
+  it("says which host it is for, in the JSON as well as the XML", () => {
+    /**
+     * `<Hosts><Host Name="Presentation"/></Hosts>` in the XML, and nothing at
+     * all in the JSON until 2026-09-01 — so the file a tenant administrator
+     * deploys did not name its host while the file a person sideloads did.
+     *
+     * Checked against Microsoft's own validator rather than reasoned about:
+     * `office-addin-manifest validate` accepts `presentation` and rejects a
+     * scope outside its enum, which is what makes this a spelling that exists
+     * rather than one that looked plausible.
+     */
+    for (const name of NAMES) {
+      const text = read(name);
+      if (name.endsWith(".xml")) {
+        expect(text, name).toContain('<Host Name="Presentation"');
+        continue;
+      }
+      for (const extension of JSON.parse(text).extensions) {
+        expect(extension.requirements?.scopes, name).toEqual(["presentation"]);
       }
     }
   });

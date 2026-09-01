@@ -69,8 +69,16 @@ function jsonRules(text, name, out) {
     out.push(`${name} has version ${doc.version}, which is below 1.0 and Office rejects outright`);
   }
   for (const extension of doc.extensions ?? []) {
-    if (extension.requirements) {
-      out.push(`${name} declares requirements; the PowerPointApi floor is checked at runtime by checkFloor instead`);
+    // `capabilities`, not the whole block. `requirements` also carries
+    // `scopes` — which host the add-in runs in, the JSON spelling of the XML's
+    // <Hosts> — and `formFactors`. Refusing the block outright forbade a
+    // correct declaration under a message about a floor that only the one field
+    // is about, and for a while the unified manifest did not say it was a
+    // PowerPoint add-in because of it.
+    if (extension.requirements?.capabilities) {
+      out.push(
+        `${name} declares requirement-set capabilities; the PowerPointApi floor is checked at runtime by checkFloor instead`,
+      );
     }
   }
   const asked = (doc.authorization?.permissions?.resourceSpecific ?? []).map((p) => p.name);

@@ -40,6 +40,11 @@
   },
   "extensions": [
     {
+      "requirements": {
+        "scopes": [
+          "presentation"
+        ]
+      },
       "runtimes": [
         {
           "id": "TaskPaneRuntime",

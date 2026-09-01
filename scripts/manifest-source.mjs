@@ -257,8 +257,17 @@ export function xmlManifest(origin) {
 /**
  * The unified (JSON) manifest, for Microsoft 365 deployment.
  *
- * Same definition, and the same deliberate omission: `extensions[].requirements`
- * is where a declared floor would go, and it is left out for the reason above.
+ * Same definition, and the same deliberate omission of a declared FLOOR:
+ * `extensions[].requirements.capabilities` is where one would go, and it is
+ * left out for the reason above.
+ *
+ * `requirements.scopes` is a different field in the same block and it IS
+ * declared. It is the JSON spelling of the XML's `<Hosts><Host
+ * Name="Presentation"/></Hosts>` — which host this add-in runs in — and without
+ * it the unified manifest, the file a tenant administrator deploys, did not say
+ * it was a PowerPoint add-in at all while the XML did. Microsoft's own
+ * validator accepts `presentation` and rejects a scope that is not in its enum,
+ * which is how this was checked rather than assumed.
  *
  * `authorization.permissions.resourceSpecific` is the JSON spelling of
  * `<Permissions>ReadWriteDocument</Permissions>`, and it is the whole of what
@@ -292,8 +301,14 @@ export function jsonManifest(origin) {
         },
         extensions: [
           {
-            // No `requirements` block, for the same reason the XML has no
-            // <Requirements>: the floor is checked at runtime.
+            // WHICH HOST, and nothing else. `scopes` is the JSON spelling of
+            // the XML's <Hosts><Host Name="Presentation"/></Hosts>; the sibling
+            // field `capabilities` is where a requirement-set floor would go
+            // and is deliberately absent, for the same reason the XML has no
+            // <Requirements>: the floor is checked at runtime by `checkFloor`,
+            // and a declared one that is wrong makes the add-in vanish from the
+            // ribbon with nothing to say why.
+            requirements: { scopes: ["presentation"] },
             runtimes: [
               {
                 id: "TaskPaneRuntime",

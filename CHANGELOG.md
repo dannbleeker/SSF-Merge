@@ -7,6 +7,23 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — the unified manifest did not say it was a PowerPoint add-in
+
+The XML manifest, which a person sideloads, declares its host. The unified JSON
+manifest, which an administrator deploys to a whole tenant, declared nothing —
+so the two files disagreed about the one thing every reader of them needs
+first. It now carries the same statement in the JSON spelling.
+
+The requirement-set floor is still deliberately not declared, in either file:
+a host that does not meet a declared floor shows nothing at all, no ribbon
+entry and no message, where the add-in's own check can say which version is
+missing and what it costs. The repo's rule refused the whole block that both
+things live in, under a message about the floor, which is what kept the host
+undeclared.
+
+**No re-install.** Only the JSON manifests changed; the XML files a sideload
+points at are byte-identical.
+
 ### Fixed — a big template deck could exhaust the pane before merging anything
 
 Preparing the first copy gathers the slide identifiers already in the deck, so

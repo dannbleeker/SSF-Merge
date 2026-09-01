@@ -54,7 +54,9 @@ export default defineConfig({
   // Office requires HTTPS for a sideloaded add-in. `npm run dev` serves plain
   // HTTP, which is right for looking at the pane in a browser; sideloading it
   // needs a certificate — `npx office-addin-dev-certs install` and
-  // `--https.key`/`--https.cert`. docs/MANUAL.md carries the two commands.
+  // `--https.key`/`--https.cert`. CONTRIBUTING.md carries the two commands;
+  // the manual is for people using the add-in, not building it, and said so
+  // here for a while while carrying neither.
   server: { port: 3000, strictPort: true },
   build: {
     outDir: resolve(import.meta.dirname, "dist"),
