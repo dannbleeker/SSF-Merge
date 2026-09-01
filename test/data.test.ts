@@ -163,6 +163,51 @@ describe("applyFormat", () => {
     expect(parseDate("13/01/2026")?.toISOString().slice(0, 10)).toBe("2026-01-13");
   });
 
+  it("reads a number Excel grouped with the space it actually uses", () => {
+    /**
+     * A number formatted with a SPACE group — Swedish, Norwegian, Finnish,
+     * French, Polish, Czech, Russian — is not written with U+0020. Excel uses
+     * a NO-BREAK SPACE, and modern builds use the NARROW no-break space in
+     * French, precisely so the number cannot be broken across a line. Copying
+     * that cell puts the DISPLAYED text on the clipboard, so a paste into the
+     * pane carries the space Excel chose and not the one a keyboard writes.
+     *
+     * `NUMBER` admitted `[ .,]` — plain ASCII — so the whole column typed as
+     * text: `{{Revenue|number:2}}` left the cell exactly as pasted, and the
+     * chart writer refused every value and counted it unfilled. Nothing said
+     * why, because the cell LOOKS like a number and the pane's own output uses
+     * a space too. The population that meets this is the same one the
+     * semicolon delimiter was added for.
+     */
+    for (const space of ["\u00a0", "\u202f", "\u2009"]) {
+      const grouped = `1${space}234${space}567`;
+      expect(numericValue(grouped), JSON.stringify(space)).toBe(1234567);
+      expect(looksLikeNumber(grouped), JSON.stringify(space)).toBe(true);
+      expect(applyFormat(grouped, "number:0"), JSON.stringify(space)).toBe("1 234 567");
+      // A decimal comma behind that grouping, which is the form the same
+      // locales write and the reason the group and the decimal may not be the
+      // same character.
+      expect(numericValue(`1${space}234,5`), JSON.stringify(space)).toBe(1234.5);
+    }
+  });
+
+  it("still refuses a number whose groups disagree, whichever spaces they are", () => {
+    // The property `NUMBER`'s backreference holds, extended to the new
+    // characters rather than left behind by them: the separator is captured
+    // once and every later group must repeat THAT one. Mixing them is not a
+    // locale, it is a paste that went through something.
+    expect(numericValue("1\u00a0234\u202f567")).toBeUndefined();
+    expect(numericValue("1.234\u00a0567")).toBeUndefined();
+    // But a space group with a DOT decimal is a real number and always has
+    // been with the ASCII space, so it stays one with the others. The
+    // backreference forbids reusing the GROUP character, not every separator.
+    expect(numericValue("1\u00a0234.567")).toBe(1234.567);
+    expect(numericValue("1 234.567")).toBe(1234.567);
+    // And a space is never the DECIMAL separator, so a trailing group of
+    // anything but three digits is not a number.
+    expect(numericValue("1\u00a05")).toBeUndefined();
+  });
+
   it("reads a DATE the spreadsheet padded, in every spelling it accepts", () => {
     // A cell arrives with whatever whitespace its export gave it, and one
     // `.trim()` in `parseDate` is the whole of that. Removing it left the suite
@@ -839,7 +884,17 @@ describe("the number gate and the number parser cannot disagree", () => {
    * repeat THAT one, and forbids a decimal part from reusing it.
    */
   const CORPUS = (() => {
-    const seps = ["", ",", ".", " "];
+    // Every character that can separate two digits here, which since
+    // 2026-09-01 is four spaces rather than one: the gate admits the no-break,
+    // narrow no-break and thin spaces Excel groups with.
+    //
+    // Widening this list detects NOTHING TODAY, and that is worth saying out
+    // loud rather than leaving a reader to assume the opposite. The property
+    // below is a tautology — `looksLikeNumber` is defined as `numericValue`,
+    // which is the right end state — so the corpus is a record of the input
+    // space this pair is meant to cover, kept in step with the pattern so that
+    // it is already right if the two are ever separated again.
+    const seps = ["", ",", ".", " ", "\u00a0", "\u202f", "\u2009"];
     const groups = ["", "0", "5", "12", "234", "1234"];
     const out = new Set<string>();
     for (const a of groups)
@@ -861,7 +916,7 @@ describe("the number gate and the number parser cannot disagree", () => {
     // puts 64 of these back.
     const violations = CORPUS.filter((v) => looksLikeNumber(v) !== (numericValue(v) !== undefined));
     expect(violations, "a form one of them accepts and the other cannot read").toEqual([]);
-    expect(CORPUS.length, "the sweep stopped covering anything").toBeGreaterThan(5000);
+    expect(CORPUS.length, "the sweep stopped covering anything").toBeGreaterThan(9000);
   });
 
   it("refuses a separator used for both grouping and the decimal", () => {

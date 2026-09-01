@@ -7,6 +7,35 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a number Excel grouped with a space was read as text
+
+The locales that group thousands with a space — Swedish, Norwegian, Finnish,
+French, Polish, Czech, Russian — do not write U+0020. Excel uses a NO-BREAK
+space so the number cannot break across a line, and modern builds use the
+NARROW no-break space in French; a thin space turns up in exports from
+elsewhere. Copying a formatted cell puts its DISPLAYED text on the clipboard,
+so a paste into the pane carries the space Excel chose rather than the one a
+keyboard writes.
+
+`NUMBER` admitted `[ .,]` — plain ASCII — so the whole column typed as text.
+`{{Revenue|number:2}}` left the cell exactly as pasted, and the chart writer
+refused every value and counted it unfilled. Nothing said why: the cell looks
+like a number, and this project's own `number:` output uses a space too, so
+round-tripping our own text worked while a real paste did not. The population
+that meets this is the same one the semicolon delimiter was added for.
+
+The four spellings are alternatives inside ONE capture, so the backreference
+that has held since the grouping pattern was written still holds: whichever
+space opens the number, every later group must repeat that one.
+`1<NBSP>234<NNBSP>567` is refused, and so is a group of `.` followed by a
+group of space. A space is never the decimal separator in any locale, so the
+decimal tail stays `[.,]` and `1<NBSP>5` is not one and a half.
+
+`numericValue` already stripped all four before parsing, because `\s` covers
+them — the shape gate in front of it was the only thing refusing. That is the
+same pair this file records disagreeing twice before, and the reason they are
+one function's two halves rather than two functions.
+
 ### Fixed — an accented month name left three rows of a column unformatted
 
 `février`, `août`, `décembre`, `März` and `março` are the five European month

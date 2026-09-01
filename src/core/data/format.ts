@@ -36,8 +36,31 @@ const MONTHS_FULL_EN = [
  * the pattern admitted `1,234,5`, which no locale writes and `numericValue`
  * cannot read: the column typed as a number and then rendered raw, which is the
  * disagreement this whole pair of functions exists to prevent.
+ *
+ * **A space group is four characters, not one.** The locales that group with a
+ * space — Swedish, Norwegian, Finnish, French, Polish, Czech, Russian — do not
+ * write U+0020. Excel uses the NO-BREAK space, and modern builds use the
+ * NARROW no-break space in French, exactly so a number cannot break across a
+ * line; a thin space turns up in exports from elsewhere. Copying a formatted
+ * cell puts its DISPLAYED text on the clipboard, so what a paste carries is the
+ * space Excel chose. Admitting only the ASCII one typed those columns as text,
+ * on a cell that looks like a number and in the same population the semicolon
+ * delimiter was added for.
+ *
+ * They are alternatives inside ONE capture, so the backreference still holds:
+ * whichever space opens the number, every later group repeats that one.
+ * `1<NBSP>234<NNBSP>567` is not a locale, it is a paste that went through
+ * something, and it is still refused.
+ *
+ * A space is never the DECIMAL separator anywhere, which is why the tail stays
+ * `[.,]` — `1<NBSP>5` is not one and a half.
  */
-const NUMBER = /^-?\d{1,3}([ .,])\d{3}(?:\1\d{3})*(?:(?!\1)[.,]\d+)?$|^-?\d+(?:[.,]\d+)?$/;
+const GROUP_SPACE = " \u00a0\u202f\u2009";
+// Built from `GROUP_SPACE` so the four spellings of a space group are named
+// ONCE. Written inline, the class would have to be repeated wherever the same
+// question is asked, which is how the shape gate and the parser drifted apart
+// before.
+const NUMBER = new RegExp(`^-?\\d{1,3}([${GROUP_SPACE}.,])\\d{3}(?:\\1\\d{3})*(?:(?!\\1)[.,]\\d+)?$|^-?\\d+(?:[.,]\\d+)?$`);
 
 /**
  * Whether a cell is a number we are willing to claim — the ONE answer.

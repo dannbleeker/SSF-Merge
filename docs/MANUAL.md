@@ -320,6 +320,19 @@ is what you typed, and showing it is more useful than hiding it.
 Both European and American forms are read. `1,5` is one and a half; `1,500` is
 one thousand five hundred; `1.234,56` and `1,234.56` are the same number.
 
+**A space group is read too, whichever space it is.** Swedish, Norwegian,
+Finnish, French, Polish, Czech and Russian group with a space, and Excel does
+not use the one on your keyboard — it writes a no-break space so the number
+cannot break across a line, and a narrow one in French. Copying a formatted
+cell puts what you SEE on the clipboard, so that is the character a paste
+carries. Until 2026-09-01 only the plain space was accepted, and such a column
+was treated as text: `{{Revenue|number:2}}` left it exactly as pasted and a
+chart fed from it filled nothing.
+
+The groups have to agree with each other. `1 234 567` written with two
+different spaces is not a locale, it is a paste that has been through
+something, and it is left alone.
+
 ### Dates
 
 `2026-03-01` and `3 March 2026` are read. So is `15/01/2026`, because only one

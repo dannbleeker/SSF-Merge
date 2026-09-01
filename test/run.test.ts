@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { toRecordSet } from "../src/core/data/recordset.js";
+import { parseDelimited, toRecordSet } from "../src/core/data/recordset.js";
 import { buildPlan, type Block } from "../src/core/merge/plan.js";
 import { runPlan } from "../src/core/merge/run.js";
 import { mergeDocument } from "../src/core/merge/text.js";
@@ -447,5 +447,92 @@ describe("the package a merge hands to PowerPoint", () => {
       expect(rId, "every sldId names a relationship").toBeTruthy();
       expect(await back.relTarget("ppt/presentation.xml", rId ?? ""), `${rId ?? ""} resolves`).toBeTruthy();
     }
+  });
+});
+
+describe("a paste out of a European Excel, from the clipboard to the slide", () => {
+  /**
+   * The desktop round of 2026-08-31 was meant to paste one of these by hand and
+   * did not get to it. Nothing in the suite joined the three rules it needs
+   * either: `chooseDelimiter` picks the semicolon, `numericValue` reads `1,5`
+   * as a decimal and `1.234.567` as a group, and `applyFormat` writes the
+   * result back with a space and a comma. Each is covered on its own in
+   * `data.test.ts` — this is the join, because every defect they were written
+   * for was one rule meeting another's output.
+   *
+   * `Beløb, EUR` carries the comma that decides it. A sniff that reads only the
+   * header meets that comma first and splits `Ada;1,5;…` down the middle, which
+   * is the defect `chooseDelimiter`'s body-scoring rule exists for — asserted
+   * here on the SLIDE rather than on the parse, so a change that moves the
+   * sniff cannot pass this while the deck comes out wrong.
+   */
+  const danish = "Navn;Beløb, EUR;Noter\nAda Lovelace;1234567,5;første\nGrace Hopper;2.140.000;anden";
+
+  async function paste(): Promise<Pkg> {
+    return Pkg.open(
+      await makeDeck([
+        { paragraphs: [["Hej {{Navn}}", " — {{Beløb, EUR|number:2}}"]], creationId: 11 },
+        { paragraphs: [["Noter: {{Noter}}"]], creationId: 22 },
+      ]),
+    );
+  }
+
+  const oneSlide: Block = { id: "b", slides: [{ path: "ppt/slides/slide1.xml", seq: 1 }] };
+
+  it("splits on the semicolon and keeps the decimal comma", () => {
+    const rows = toRecordSet(parseDelimited(danish));
+    expect(rows.columns.map((c) => c.name)).toEqual(["Navn", "Beløb, EUR", "Noter"]);
+    expect(rows.rows[0]!["Beløb, EUR"]).toBe("1234567,5");
+  });
+
+  it("types the money column as a number, both spellings of it", () => {
+    const rows = toRecordSet(parseDelimited(danish));
+    // `1234567,5` is a decimal comma and `2.140.000` is European grouping. One
+    // column, two spellings, and the type has to cover both or the column
+    // renders half formatted — the failure this engine is built around.
+    expect(rows.columns.find((c) => c.name === "Beløb, EUR")?.type).toBe("number");
+  });
+
+  it("writes the formatted number onto the slide", async () => {
+    const rows = toRecordSet(parseDelimited(danish));
+    const pkg = await paste();
+    const result = await runPlan(pkg, buildPlan(oneSlide, rows, { runId: "r" }), rows);
+
+    expect(await textOf(pkg, result.slides[0]!)).toBe("Hej Ada Lovelace — 1 234 567,50");
+    expect(await textOf(pkg, result.slides[1]!)).toBe("Hej Grace Hopper — 2 140 000,00");
+  });
+
+  it("formats a column pasted with the space Excel groups with", async () => {
+    /**
+     * The same paste as a Swede or a Frenchman makes it: the money column
+     * copied from a FORMATTED range, so the clipboard carries `1<NBSP>234<NBSP>567`
+     * rather than the raw cell. Before 2026-09-01 the shape gate admitted only
+     * U+0020, so the column typed as text and `number:2` left every value on
+     * the slide exactly as pasted — no format, no chart values, nothing said.
+     *
+     * Asserted on the SLIDE, because the failure was never in the parser: it
+     * was in what the deck ended up carrying.
+     */
+    const pasted = "Navn;Beløb, EUR;Noter\nAda Lovelace;1\u00a0234\u00a0567;første";
+    const rows = toRecordSet(parseDelimited(pasted));
+    const pkg = await paste();
+    const result = await runPlan(pkg, buildPlan(oneSlide, rows, { runId: "r" }), rows);
+
+    expect(await textOf(pkg, result.slides[0]!)).toBe("Hej Ada Lovelace — 1 234 567,00");
+  });
+
+  it("matches a placeholder whose name holds the delimiter's rival", async () => {
+    /**
+     * `{{Beløb, EUR}}` has a comma IN THE FIELD NAME. The header sniff and the
+     * placeholder reader are different code, and this is the one paste where a
+     * disagreement between them is invisible: the column would be named
+     * `Beløb` and the placeholder would go unmatched, leaving the braces on the
+     * slide for the reader to find.
+     */
+    const rows = toRecordSet(parseDelimited(danish));
+    const pkg = await paste();
+    const result = await runPlan(pkg, buildPlan(oneSlide, rows, { runId: "r" }), rows);
+
+    expect(await textOf(pkg, result.slides[0]!)).not.toContain("{{");
   });
 });
