@@ -40,6 +40,40 @@ describe("Pkg", () => {
     expect(Number(first.slice(3))).toBeLessThan(Number(second.slice(3)));
   });
 
+  it("never names a part the package already holds, however big the numbers are", async () => {
+    /**
+     * "Highest existing number plus one" stops being that above 2^53, where
+     * `max + 1 === max` — so a package holding `slide99999999999999999999.xml`
+     * answered a number already in use, `copyPart` overwrote it silently, and
+     * three merged slides pointed at one part while the deck stayed
+     * structurally valid and every check passed.
+     *
+     * It is the defect `nextNumber`'s own comment says it exists to prevent,
+     * reached by a route the comment does not cover. A digit run too large to
+     * count exactly is ignored rather than counted, which leaves the maximum
+     * exact — and that is also what makes the free-number search terminate.
+     */
+    const pkg = await deck(ONE);
+    // 2^53 exactly, which is the sharp case: `Number` reads it back precisely,
+    // `max + 1` rounds straight back to it, and the name that produces is the
+    // name already in the package. A longer run of nines is the same defect
+    // with a different symptom — `max + 1` answers 1e+20, and the part named
+    // after it is nonsense rather than a collision.
+    for (const path of [
+      "ppt/slides/slide9007199254740992.xml",
+      "ppt/charts/chart9007199254740992.xml",
+      "ppt/media/image9007199254740992.png",
+    ]) {
+      pkg.setBytes(path, new Uint8Array([1]));
+    }
+    expect(pkg.has(`ppt/slides/slide${pkg.nextSlideNumber()}.xml`), "the slide number is already taken").toBe(false);
+    expect(pkg.has(`ppt/charts/chart${pkg.nextNumber("ppt/charts/chart")}.xml`)).toBe(false);
+    expect(pkg.has(`ppt/media/image${pkg.nextMediaNumber()}.png`)).toBe(false);
+    // And the ordinary contract is untouched: the highest real number plus one,
+    // never filling a gap.
+    expect(pkg.nextSlideNumber()).toBe(2);
+  });
+
   it("survives a round trip through base64", async () => {
     const pkg = await deck(ONE);
     const again = await Pkg.open(await pkg.toBase64());

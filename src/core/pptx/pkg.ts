@@ -20,6 +20,35 @@ const ROOT_RELS = "_rels/.rels";
 
 /** The highest value PowerPoint accepts in `<p:sldId id="…">`; the format caps ids below 2^31. */
 const MAX_SLIDE_ID = 2_147_483_647;
+/**
+ * The next number for a part family, given the ones already in use.
+ *
+ * Highest plus one, never filling a gap — see `nextNumber`. The `used` check is
+ * belt and braces over that arithmetic: it makes the answer a number the
+ * package demonstrably does not hold, however the maximum was arrived at.
+ *
+ * A digit run past `Number.MAX_SAFE_INTEGER` is ignored rather than counted,
+ * and that is what makes this terminate. Above 2^53, `max + 1 === max` — so a
+ * package holding `slide99999999999999999999.xml` answered a number already in
+ * use, `copyPart` overwrote it silently, and three merged slides shared one
+ * part while the deck stayed structurally valid. It is the very defect
+ * `nextNumber`'s own comment says it exists to prevent, reached by a route the
+ * comment does not cover. Ignoring the outlier leaves the maximum exact, so
+ * `max + 1` is a real step and the loop below can only run finitely.
+ */
+function nextFree(used: Set<number>): number {
+  let max = 0;
+  for (const n of used) if (n > max) max = n;
+  let next = max + 1;
+  while (used.has(next)) next++;
+  return next;
+}
+
+/** Every whole number a path matched, ignoring any too large to count exactly. */
+function countable(n: number): boolean {
+  return Number.isSafeInteger(n) && n > 0;
+}
+
 /** PowerPoint's own numbering starts here, and ids below it are reserved. */
 const MIN_SLIDE_ID = 256;
 
@@ -141,12 +170,12 @@ export class Pkg {
 
   /** The next free `ppt/media/imageN.<ext>`, across every extension. */
   nextMediaNumber(): number {
-    let max = 0;
+    const used = new Set<number>();
     this.zip.forEach((path) => {
       const n = Number(/^ppt\/media\/image(\d+)\./.exec(path)?.[1] ?? 0);
-      if (n > max) max = n;
+      if (countable(n)) used.add(n);
     });
-    return max + 1;
+    return nextFree(used);
   }
 
   /**
@@ -171,13 +200,13 @@ export class Pkg {
    * Never reuses a gap: the highest existing number plus one.
    */
   nextNumber(prefix: string, suffix = ".xml"): number {
-    let max = 0;
+    const used = new Set<number>();
     const pattern = new RegExp(`^${escapeRegExp(prefix)}(\\d+)${escapeRegExp(suffix)}$`);
     this.zip.forEach((path) => {
       const n = Number(pattern.exec(path)?.[1] ?? 0);
-      if (n > max) max = n;
+      if (countable(n)) used.add(n);
     });
-    return max + 1;
+    return nextFree(used);
   }
 
   /**
@@ -627,12 +656,12 @@ export class Pkg {
   }
 
   nextSlideNumber(): number {
-    let max = 0;
+    const used = new Set<number>();
     this.zip.forEach((path) => {
       const n = Number(/^ppt\/slides\/slide(\d+)\.xml$/.exec(path)?.[1] ?? 0);
-      if (n > max) max = n;
+      if (countable(n)) used.add(n);
     });
-    return max + 1;
+    return nextFree(used);
   }
 
   /**
