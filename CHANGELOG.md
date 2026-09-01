@@ -7,6 +7,24 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a chart value could reach the data sheet and never the chart, in silence
+
+A chart keeps its own copy of the numbers it draws, and that copy can have no
+slot for a cell which held no number when the template was made — which is
+exactly the cell you type a placeholder into. Programs that generate decks omit
+it by design.
+
+The merge walked that copy rather than the cells, so such a placeholder was
+never looked at: not filled, not refused, not counted, and not offered in the
+fields list. The data sheet was filled anyway, so the sheet ended up holding the
+row's figure under a chart with nowhere to draw it — and on a PowerPoint that
+refreshes the chart from the sheet, the bar appeared later out of nowhere.
+
+It is counted now, and the sentence carries the remedy: the value is in the
+sheet, and pressing Edit Data on that chart and closing it brings the chart into
+line. Writing the missing slot is deliberately not done — that changes what
+PowerPoint draws, and it is a question for a real host rather than a guess.
+
 ### Fixed — a tag from another add-in could make the merged deck unopenable
 
 A merge carries through any tags another add-in left on your slides, which is a

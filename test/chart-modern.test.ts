@@ -138,7 +138,7 @@ describe("a modern chart is merged", () => {
     // `<cx:f>` is what joins them, exactly as `<c:f>` does for a classic chart.
     const spec = { ...FUNNEL, values: ["{{Revenue}}", "42"] };
     const { result, zip } = await mergeDeck({ paragraphs: [["Cover"]], modernChart: spec });
-    expect(result.graphics.numbers).toEqual({ filled: 2, refused: 0, unreadable: 0 });
+    expect(result.graphics.numbers).toEqual({ filled: 2, refused: 0, unreadable: 0, unplotted: 0 });
     expect(pointsIn(await chartOf(zip, MERGED_SLIDES[0] ?? ""), "numDim")).toEqual(["1250000", "42"]);
     expect(pointsIn(await chartOf(zip, MERGED_SLIDES[1] ?? ""), "numDim")).toEqual(["880000", "42"]);
   });
@@ -182,7 +182,7 @@ describe("a modern chart is merged", () => {
     // had and the run reports the refusal.
     const spec = { ...FUNNEL, values: ["{{Region}}", "42"] };
     const { result, zip } = await mergeDeck({ paragraphs: [["Cover"]], modernChart: spec });
-    expect(result.graphics.numbers).toEqual({ filled: 0, refused: 2, unreadable: 0 });
+    expect(result.graphics.numbers).toEqual({ filled: 0, refused: 2, unreadable: 0, unplotted: 0 });
     expect(pointsIn(await chartOf(zip, MERGED_SLIDES[0] ?? ""), "numDim")).toEqual(["{{Region}}", "42"]);
   });
 

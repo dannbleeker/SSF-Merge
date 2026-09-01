@@ -263,6 +263,19 @@ export function describeMerge(r: MergeReport): string {
     // Said in the language of the CHART rather than of the cell, because when a
     // range cannot be read there is no cell to point the reader at — the count
     // is per series, which is the only honest granularity for it.
+    // The one with a REMEDY, so the sentence carries it. The value is in the
+    // workbook — an ordinary text merge put it there — and the chart's cached
+    // point list has no entry at that index to draw it from, because the writer
+    // omitted the point for a cell that held no number. Opening Edit Data and
+    // closing it refreshes the cache from the sheet, which is a thing the user
+    // can do and the merge cannot.
+    if (c.unplotted > 0) {
+      parts.push(
+        `${plural(c.unplotted, "chart value")} reached the data sheet but not the chart — press Edit Data on ${
+          c.unplotted === 1 ? "that chart" : "those charts"
+        } and close it to bring ${c.unplotted === 1 ? "it" : "them"} in`,
+      );
+    }
     if (c.unreadable > 0) {
       parts.push(
         `the data behind ${plural(c.unreadable, "chart series")} could not be read, so ${

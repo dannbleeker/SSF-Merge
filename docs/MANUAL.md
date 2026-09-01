@@ -1048,6 +1048,14 @@ anything else. Two things are worth knowing.
   the two cannot be treated differently, and leaving both is the safer way
   round: a label you can see is wrong beats a chart that quietly disagrees with
   its own data.
+- **A value that reaches the data sheet but not the chart is counted.** A chart
+  stores its own copy of the numbers, and that copy can have no slot for a cell
+  that held no number when the template was made — which is exactly the cell you
+  typed a placeholder into. The merge fills the data sheet and has nowhere to
+  put the value in the chart, so the merge says so and tells you the remedy:
+  press **Edit Data** on that chart and close it, and PowerPoint brings the
+  chart into line with the sheet. This is likelier on a template a program
+  generated than on one made in PowerPoint.
 - **A chart whose data sheet cannot be found is counted too.** If the chart
   names a sheet the workbook does not have, nothing can be filled and the chart
   keeps the template's numbers. The merge says so when it finishes rather than

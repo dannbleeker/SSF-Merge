@@ -59,6 +59,22 @@ export interface NumberOutcome {
    * granularity — when the range cannot be read there is no cell to count.
    */
   unreadable: number;
+  /**
+   * Value placeholders the chart's own cache has no point for.
+   *
+   * A cached point list is sparse: `<c:ptCount>` covers the range and each
+   * `<c:pt>` carries an index, so a writer omits the point for a cell it has no
+   * number for — which is exactly the cell somebody typed a placeholder into.
+   * The merge fills the data SHEET (an ordinary text merge does that) and has
+   * nowhere to put the value in the chart.
+   *
+   * Counted rather than repaired. Writing the missing point changes what
+   * PowerPoint draws, and whether the documented Edit Data route produces a gap
+   * at all is unproven. A count turns a silent hole into a sentence with a
+   * remedy: the value is in the sheet, and opening Edit Data and closing it
+   * brings the chart into line.
+   */
+  unplotted: number;
 }
 
 /**
@@ -83,18 +99,19 @@ export interface NumberPass extends NumberOutcome {
 export type HeldCell = { si: number } | { sheet: string; ref: string };
 
 export function emptyNumberOutcome(): NumberOutcome {
-  return { filled: 0, refused: 0, unreadable: 0 };
+  return { filled: 0, refused: 0, unreadable: 0, unplotted: 0 };
 }
 
 /** The same, for the pass that also collects what it declined. */
 export function emptyNumberPass(): NumberPass {
-  return { filled: 0, refused: 0, unreadable: 0, held: [] };
+  return { filled: 0, refused: 0, unreadable: 0, unplotted: 0, held: [] };
 }
 
 export function tallyNumbers(into: NumberOutcome, from: NumberOutcome): void {
   into.filled += from.filled;
   into.refused += from.refused;
   into.unreadable += from.unreadable;
+  into.unplotted += from.unplotted;
 }
 
 /** The shared-string index a cell reads through, or nothing if it holds its own text. */
@@ -410,6 +427,36 @@ export async function mergeChartNumbers(
       // with a zero refusal could not happen.
       out.unreadable++;
       continue;
+    }
+
+    // WHICH INDEXES THE CACHE HAS. A chart's cached point list is sparse by
+    // design — `<c:ptCount>` says how many cells the range covers and `<c:pt>`
+    // carries an `idx`, so a writer omits the point for a cell it has no number
+    // for. python-pptx and xlsxwriter both do exactly that for a `None`, and a
+    // cell somebody typed a placeholder into is not a number.
+    //
+    // The walk below is over the POINTS, so a cell with no point was never
+    // opened: not filled, not refused, not counted, and not reported to the
+    // pane as a field. The workbook's text pass fills it all the same, so the
+    // data sheet ends up holding the row's figure under a chart that has
+    // nowhere to draw it — and on a host that refreshes the cache from the
+    // sheet, the bar appears later, out of nowhere.
+    //
+    // Writing the missing point is the other half of this and is NOT done here:
+    // inserting into a cache changes what PowerPoint draws, and whether the
+    // documented Edit Data route actually produces a gap is unproven — it is a
+    // ten-minute question in a real PowerPoint. What IS done is counting, so a
+    // silence becomes a sentence with a remedy in it.
+    const plotted = new Set(series.points.map((p) => p.idx));
+    for (let idx = 0; idx < cells.length; idx++) {
+      if (plotted.has(idx)) continue;
+      const address = cells[idx];
+      const doc = address ? sheets.get(sheetPath) : undefined;
+      const cell = doc ? cellAt(doc, address!) : undefined;
+      if (!cell) continue;
+      const text = stringOfCell(cell, shared);
+      if (text === undefined || fieldsInText(text).length === 0) continue;
+      out.unplotted++;
     }
 
     for (const point of series.points) {

@@ -67,6 +67,7 @@ describe("what became of the pictures", () => {
       filled: 0,
       refused: 0,
       unreadable: 0,
+      unplotted: 0,
     });
   });
 });

@@ -175,6 +175,54 @@ describe("a value cell that holds its string inline", () => {
     expect((await sheetCells(zip))["B2"]).toEqual({ type: "n", value: "1250000" });
   });
 
+  it("counts a value the cache has no point for, instead of passing over it", async () => {
+    /**
+     * A cached point list is SPARSE by design: `<c:ptCount>` covers the range
+     * and each `<c:pt>` carries an index, so a writer omits the point for a
+     * cell it has no number for — which is exactly the cell somebody typed a
+     * placeholder into. python-pptx, which authored this repo's own test-kit
+     * chart, does that for a `None`; so does xlsxwriter.
+     *
+     * The numeric walk is over the POINTS, so such a cell was never opened:
+     * not filled, not refused, not counted, not offered to the pane as a field.
+     * The workbook's text pass fills it all the same, so the data sheet ends up
+     * holding the row's figure under a chart with nowhere to draw it — and on a
+     * host that refreshes the cache from the sheet, the bar appears later out
+     * of nowhere.
+     *
+     * Counted rather than repaired, and the sentence carries the remedy: the
+     * value is in the sheet, and Edit Data brings the chart into line. Writing
+     * the missing point changes what PowerPoint draws, and whether the
+     * documented Edit Data route produces a gap at all is unproven.
+     */
+    const deck = await makeDeck([
+      { paragraphs: [["{{Name}}"]], chart: { categories: ["a", "b"], workbook: ["x"], values: ["10", "{{Revenue}}"] } },
+    ]);
+    const zip = await JSZip.loadAsync(deck);
+    // Remove the cached point for index 1 — the placeholder's own cell — while
+    // leaving `ptCount` at 2. That is the shape the writers above produce.
+    const chart = await zip.file("ppt/charts/chart1.xml")!.async("string");
+    // Scoped to the NUMBER cache. A chart holds a category cache too and it
+    // comes first, so an unscoped replace takes a category point and the test
+    // then measures nothing — which is what the first version of this did.
+    const holed = chart.replace(/<c:numCache>[\s\S]*?<\/c:numCache>/, (cache) =>
+      cache.replace(/<c:pt idx="1">[\s\S]*?<\/c:pt>/, ""),
+    );
+    expect(holed, "the fixture's cached points moved; this patches them by hand").not.toBe(chart);
+    expect(holed, "the count still covers the cell").toContain('<c:ptCount val="2"/>');
+    expect(holed, "and the placeholder's own point is the one gone").not.toContain("{{Revenue}}</c:v>");
+    zip.file("ppt/charts/chart1.xml", holed);
+
+    const pkg = await Pkg.open(await zip.generateAsync({ type: "uint8array" }));
+    const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "h");
+    if (!prepared.ok) throw new Error(prepared.why);
+    const records = toRecordSet(ROWS);
+    const out = await runPlan(pkg, buildPlan(prepared.block, records, { runId: "h" }), records);
+
+    expect(out.graphics.numbers.filled, "there is no point to fill").toBe(0);
+    expect(out.graphics.numbers.unplotted, "and the run says so").toBe(1);
+  });
+
   it("holds an INLINE value cell it refused, which shares no string with anything", async () => {
     /**
      * The other half of holding a refused cell. A shared-string cell is held by
@@ -571,6 +619,7 @@ describe("a workbook whose worksheet part is not named sheet1.xml", () => {
       filled: 1,
       refused: 0,
       unreadable: 0,
+      unplotted: 0,
     });
   });
 
@@ -578,7 +627,7 @@ describe("a workbook whose worksheet part is not named sheet1.xml", () => {
     // The relationship target decides the path. Nothing in the format says a
     // worksheet lives in that folder either.
     const out = await mergeRenamed("xl/data.xml");
-    expect(out.graphics.numbers).toEqual({ filled: 1, refused: 0, unreadable: 0 });
+    expect(out.graphics.numbers).toEqual({ filled: 1, refused: 0, unreadable: 0, unplotted: 0 });
   });
 });
 

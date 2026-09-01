@@ -297,11 +297,11 @@ describe("describeMerge says what the merge DID", () => {
    * the merged label: a chart that is wrong and looks right. It counted those
    * refusals for a reader that did not exist.
    */
-  const values = (filled: number, refused: number, unreadable = 0) => ({
+  const values = (filled: number, refused: number, unreadable = 0, unplotted = 0) => ({
     added: 6,
     deckAtStart: 3,
     paragraphsMerged: 12,
-    chartValues: { filled, refused, unreadable },
+    chartValues: { filled, refused, unreadable, unplotted },
   });
 
   it("says when a chart's data could not be read at all", () => {
@@ -325,6 +325,21 @@ describe("describeMerge says what the merge DID", () => {
 
   it("stays quiet when every series was read", () => {
     expect(describeMerge(values(9, 0))).not.toContain("could not be read");
+  });
+
+  it("says when a value reached the data sheet but not the chart", () => {
+    /**
+     * The third silent outcome, and the only one with a remedy the user can
+     * act on: a chart's cached point list is sparse, so a writer omits the
+     * point for a cell it has no number for — which is the cell a placeholder
+     * was typed into. The merge fills the data sheet and has nowhere to put the
+     * value in the chart.
+     *
+     * So the sentence says where the value IS, not only where it is not.
+     */
+    const line = describeMerge(values(0, 0, 0, 2));
+    expect(line).toContain("data sheet");
+    expect(line, "and what to do about it").toContain("Edit Data");
   });
 
   it("counts the chart values it filled", () => {
