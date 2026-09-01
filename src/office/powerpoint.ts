@@ -95,8 +95,23 @@ export function hostEnvironment(): Environment {
     // Substituted by Vite at build time. Undefined in the suite and under tsc,
     // which is why `environmentLine` answers "unknown" rather than blank.
     ...(typeof __BUILD_STAMP__ === "string" ? { build: __BUILD_STAMP__ } : {}),
-    ...((p) => (p ? { platform: p } : {}))(read(() => String(Office.context.platform))),
-    ...((h) => (h ? { host: h } : {}))(read(() => Office.context.diagnostics?.version)),
+    // `String` over a value that may be absent produces the STRING "undefined",
+    // which is truthy — so `environmentLine`'s `?? "unknown"` never fired and
+    // the line read `platform: "undefined"`, which is the exact outcome that
+    // fallback's own comment says it exists to prevent.
+    ...((p) => (p ? { platform: p } : {}))(
+      read(() => (Office.context.platform === undefined ? undefined : String(Office.context.platform))),
+    ),
+    // WHICH HOST, from the field that names it. `host` was filled from
+    // `diagnostics.version`, so the one field answering "which application am I
+    // in" carried a build number and the question went unasked.
+    ...((h) => (h ? { host: h } : {}))(
+      read(() => {
+        const named = Office.context.diagnostics?.host;
+        return named === undefined ? undefined : String(named);
+      }),
+    ),
+    ...((v) => (v ? { officeVersion: v } : {}))(read(() => Office.context.diagnostics?.version)),
     supports: hostSupports,
   });
 }

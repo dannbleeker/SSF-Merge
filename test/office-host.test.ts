@@ -92,6 +92,35 @@ describe("what an insert and an undo say when the host misbehaves", () => {
     uninstallFakeHost();
   });
 
+  it("names which HOST it is in, and never the word undefined", async () => {
+    /**
+     * Two defects in one line, both of which defeat the thing it exists for.
+     * `host` was filled from `diagnostics.version`, so the field answering
+     * "which application am I in" carried a build number; and the platform was
+     * read through `String`, which turns an absent value into the STRING
+     * "undefined" — truthy, so `environmentLine`'s `?? "unknown"` never fired
+     * and the line read `platform: "undefined"`, which is the exact outcome
+     * that fallback's own comment says it prevents.
+     */
+    const { module } = await host();
+    const line = module.hostEnvironment();
+    expect(line.host).toBe("PowerPoint");
+    expect(line.officeVersion).toBe("16.0.fake");
+    expect(line.platform).toBe("OfficeOnline");
+  });
+
+  it("says unknown when the host will not say, rather than the word undefined", async () => {
+    vi.resetModules();
+    (globalThis as unknown as { Office: unknown }).Office = {
+      context: { requirements: { isSetSupported: () => true } },
+    };
+    const module = await import("../src/office/powerpoint.js");
+    const line = module.hostEnvironment();
+    expect(line.platform).toBe("unknown");
+    expect(line.host).toBe("unknown");
+    expect(line.officeVersion).toBe("unknown");
+  });
+
   it("bounds what the host said, so a failed insert cannot put the deck on screen", async () => {
     // Office echoes an argument back through `debugInfo`, and the argument to
     // `insertSlidesFromBase64` is the ENTIRE merged deck as base64. Uncapped,
