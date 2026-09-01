@@ -354,6 +354,20 @@ describe("the preview step", () => {
     expect(card?.textContent).toContain("template is untouched");
     // Singular, because one slide is one slide.
     expect(card?.textContent).toContain("Slide 13 ");
+    // ALL the way through the sentence. The is/are was chosen from the block's
+    // size and the pronoun was written plural regardless, so the card read
+    // "Slide 13 is a preview … removing the preview deletes them" — agreeing
+    // with itself in one clause and not in the next. A one-slide preview is
+    // ordinary: a badge, a certificate, or a block this row's conditions left
+    // one slide of.
+    expect(card?.textContent).toContain("deletes it.");
+    expect(card?.textContent).not.toContain("deletes them");
+
+    const many = paneFor({ ...ready, previewing: true, previewSlides: { from: 13, to: 15 } }, "preview").querySelector(
+      ".card.undo",
+    );
+    expect(many?.textContent).toContain("are a preview");
+    expect(many?.textContent).toContain("deletes them.");
   });
 
   it("hides the forward link while a preview is showing", () => {

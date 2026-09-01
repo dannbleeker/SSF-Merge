@@ -14,6 +14,7 @@ import {
   includedCount,
   includedRecords,
   nextStep,
+  noFieldsHere,
   primary,
   slidesToAdd,
   readBlockDraft,
@@ -101,6 +102,21 @@ describe("what blocks a step", () => {
     expect(blockedReason(noFields, "merge")).toContain("Slides 4 to 6");
   });
 
+  it("agrees with itself when the block is ONE slide", () => {
+    /**
+     * A single-slide block is the commonest shape a badge or a certificate
+     * merge has, and every sentence naming it read "Slide 4 carry no fields
+     * yet." The subject knew it was singular — `blockSubject` answered "Slide
+     * 4" correctly — and both callers appended a verb written for a range.
+     */
+    const one: PaneState = { ...ready, block: { from: 4, to: 4 }, fields: [] };
+    expect(blockedReason(one, "merge")).toBe("Slide 4 carries no fields yet. Go back a step and put one on a slide.");
+    expect(noFieldsHere(one)).toContain("Slide 4 carries no fields yet.");
+
+    const many: PaneState = { ...ready, fields: [] };
+    expect(blockedReason(many, "merge")).toContain("Slides 4 to 6 carry no fields yet.");
+  });
+
   it("NAMES the placeholders that have no column", () => {
     // A count alone sends the user back through every slide looking for it.
     const missing: PaneState = { ...ready, fields: ["First", "Nickname", "Badge"] };
@@ -138,6 +154,47 @@ describe("what blocks a step", () => {
     for (const step of ["template", "data", "fields", "preview"] as const) {
       expect(caution(missing, step), step).toBeNull();
     }
+  });
+
+  it("blocks the PREVIEW for the same reasons it blocks the merge", () => {
+    /**
+     * The merge asked whether any row was left and the preview did not, so a
+     * user who unticked every row — or chose "leave the whole row out" while
+     * every row qualifies — reached a preview step whose one enabled button did
+     * NOTHING: no slides, no notice, no spinner, no change to the screen.
+     * `preview()` returns early on exactly this, so the two had to become one
+     * question rather than two that agree by inspection.
+     */
+    const records = {
+      columns: [{ name: "First", type: "text" as const }],
+      rows: [{ First: "Ada" }, { First: "Grace" }],
+    };
+    const withData: PaneState = { ...ready, records, rows: 2, fields: ["First"] };
+
+    const unticked: PaneState = { ...withData, excluded: [0, 1] };
+    expect(blockedReason(unticked, "preview")).toBe("Every row is unticked, so there is nothing to preview.");
+    expect(primary(unticked, "preview").enabled, "a button that does nothing at all").toBe(false);
+    expect(blockedReason(unticked, "merge")).toContain("nothing to merge");
+
+    // The other trigger, and the one the user never sees coming: they did not
+    // untick anything, they chose "leave the whole row out".
+    const skipped: PaneState = {
+      ...withData,
+      records: { columns: records.columns, rows: [{ First: "" }, { First: "" }] },
+      onEmpty: "skip",
+      slideFields: [["First"]],
+    };
+    expect(blockedReason(skipped, "preview")).toContain("nothing to preview");
+    expect(blockedReason(skipped, "merge")).toContain("nothing to merge");
+  });
+
+  it("does not block either step just because the rows have not been read yet", () => {
+    // `rows` is the count and `records` is the data, and a state carries the
+    // first without the second while the pane is still on the early steps.
+    // Reading only the data made the first version of the rule above answer
+    // "every row is unticked" for a merge that was fine.
+    expect(blockedReason(ready, "preview")).toBeNull();
+    expect(blockedReason(ready, "merge")).toBeNull();
   });
 
   it("refuses to merge while a preview is still in the deck", () => {

@@ -122,10 +122,17 @@ export function render(root: HTMLElement, state: PaneState, current: StepId): vo
     // untouched, because the obvious fear about a preview on a real deck is
     // that it has edited the thing being previewed — which is exactly what the
     // design on this project's rejected list would have done.
+    // One slide is an ordinary preview: a name badge, a certificate, or a block
+    // whose other slides this row's conditions left out. Both halves of the
+    // sentence take their number from the same test — the is/are was chosen
+    // from the block's size and the pronoun was written plural regardless, so
+    // "Slide 13 is a preview … removing the preview deletes them" was on
+    // screen, agreeing with itself in one clause and not in the next.
+    const one = state.previewSlides ? state.previewSlides.from === state.previewSlides.to : false;
     card.append(
       el(doc, "p", {
         text: state.previewSlides
-          ? `${blockName(state.previewSlides)} ${state.previewSlides.from === state.previewSlides.to ? "is" : "are"} a preview of the first row. Your template is untouched — removing the preview deletes them.`
+          ? `${blockName(state.previewSlides)} ${one ? "is" : "are"} a preview of the first row. Your template is untouched — removing the preview deletes ${one ? "it" : "them"}.`
           : "A preview is in your deck. Your template is untouched — removing the preview deletes it.",
       }),
     );
