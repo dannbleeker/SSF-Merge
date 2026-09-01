@@ -225,37 +225,39 @@ This is the list to read when somebody asks what is open, so it is kept short
 and it is kept true. An item leaves it when a round has actually done the thing,
 not when the code looks right.
 
-**Edit Data, on both decks.** The one that matters. It needs DESKTOP PowerPoint,
-and all three rounds — 2026-08-28 and twice on 2026-08-30 — were driven in the
-browser. The bytes are right, and checked: each merged chart's workbook holds its
-own region, on both the classic charts and the sunburst. What nobody has watched
-is PowerPoint refreshing the chart from that workbook when Excel closes, which is
-where a merge that filled only the chart would revert in front of you. "Did not
-run" and "passed" are different answers.
-
-**The take-back after the pane closes, and WHICH deck it is offered on.** The
-pane remembers an unfinished merge in the browser's storage, which belongs to
-the add-in rather than to the presentation — so the record names the deck it was
-written on, and is only answered for that deck. What names the open deck is
-`Office.context.document.url`, and no round has ever looked at it. If the web
-host answers nothing there, or answers a different string on the second open
-than it did on the first, the take-back is simply never offered again, silently,
-in the one situation it exists for.
-
-Two presses, in this order, and the first is the one that proves anything:
-
-1. Merge as usual, then close the pane and open it again on the SAME deck. It
-   should say *"A merge from <date> added 6 slide(s) and the pane closed before
-   you could take them back"* and offer to remove them. Nothing said is the
-   failure — and it looks exactly like there being nothing to say.
-2. Open a DIFFERENT deck and check it is NOT offered there. **Passing this one
-   alone means nothing**: on a host that names no document, both decks stay
-   quiet, and quiet is what step 2 is looking for.
-
-Send back what the first one said, word for word, including the date and the
-count.
+**Touch-only operation, and Firefox.** Both are unticked in `docs/PUBLISHING.md`
+and neither has been done. The desktop round of 2026-08-31 could not: the machine
+it ran on has no digitizer, and reporting a pass from synthetic mouse clicks
+would be exactly the did-not-run/passed conflation this page exists to prevent.
+Firefox was not installed on it either, so Gecko remains the one engine the pane
+has never been opened in — Chromium is covered twice over, by the web rounds in
+Edge and by the desktop pane, which is WebView2.
 
 **Answered since, and no longer open.**
+
+**Edit Data, on both decks**, done on 2026-08-31 in desktop PowerPoint
+16.0.20326. Right-click ▸ Edit Data on each of the three classic charts opened a
+workbook holding that row's own region — `Nordics`, `Benelux`, `DACH`, never
+`{{Region}}` — and on the sunburst a workbook whose series is `Ada` and whose
+merged cell reads `Nordics`, with `Benelux` and `DACH` beside it untouched.
+Closing each workbook changed nothing on the slide: no title reverted, no
+category axis reverted, no ring segment reverted. That is the half no test can
+reach, and it is answered.
+
+**The take-back after the pane closes, and WHICH deck it is offered on**, both
+presses, 2026-08-31. On reopening the pane on the same deck it said, exactly:
+
+> A merge from 2026-08-31 added 6 slide(s) and the pane closed before you could
+> take them back.
+
+with *"Remove slides 4 to 9, which this merge added."* beneath it. Opening the
+sunburst deck instead offered nothing — and that silence means something here,
+because the second half of the question is answered too: on desktop
+`Office.context.document.url` returns the full local path
+(`C:\...\round-2026-08-31.pptx`), it returned the same string on the second open
+as on the first, and it returned a different string for the second deck. The
+host names the document, so the quiet on the other deck is discrimination rather
+than the failure mode this entry was written to catch.
 
 The preview step was skipped on 2026-08-28 and on the first round of 2026-08-30.
 The third round pressed it and left by both routes: **On to the merge**, which
@@ -276,6 +278,23 @@ of repointing it produces a malformed file that PowerPoint opens READ ONLY with
 exists to find, and is not one. LibreOffice is not a stand-in either: since 26.8
 it reads the chartEx and shows its own message rather than taking the fallback.
 
+**On DESKTOP the notice does not survive the save, and that is not a fault.**
+Forcing the branch on 2026-08-31's desktop deck drew, on every merged copy, a
+picture of THAT COPY'S OWN sunburst — "Ada pipeline" over Nordics/Benelux/DACH —
+rather than the sentence. Desktop PowerPoint has a renderer and rewrites each
+chartEx's fallback picture whenever it saves, so it overwrites the notice with a
+correct per-copy rendering. The engine's own output still carries the notice and
+no picture; the deck a desktop round hands you carries the picture and no notice.
+Both are right, and the desktop one is better — an old host sees this
+recipient's real figures instead of a sentence. Expect the notice only where the
+host does not re-render, which is where it was seen on 2026-08-30: the web.
+
+This is also why `verify-package.mjs` asks for one DISTINCT fallback picture per
+merged copy and passes on a host-saved deck. Point it at engine output that has
+never been through PowerPoint and that single check fails, correctly, because
+there are no pictures there yet. A red on that one line, on a deck no host has
+saved, is the wrong input rather than a defect.
+
 ## The second deck: the modern chart
 
 `modern-chart.pptx` is a separate thirty-second round, and it is worth doing
@@ -292,7 +311,7 @@ reading `Pipeline for {{Name}}`, and a hierarchy whose outer ring's first cell i
 `{{Region}}` with `Benelux` and `DACH` beside it as plain text.
 
 `verify-package.mjs` checks this deck too now. It tells the two shapes apart by
-which kind of chart part the deck holds, and answers **7/7** on a good sunburst
+which kind of chart part the deck holds, and answers **8/8** on a good sunburst
 merge. It used to report 4/13 here — the main template's checklist run against a
 deck that has no classic charts, no photos, no notes and no `{{Nickname}}` — and
 the round of 2026-08-30 read that correctly as the wrong tool and checked the
@@ -344,7 +363,7 @@ Save the deck to `test-kit/out/round-<date>.pptx` and run the checker over it:
 node test-kit/driver/verify-package.mjs test-kit/out/round-<date>.pptx
 ```
 
-It should say **13/13** for the main deck and **7/7** for the sunburst, and it understands a deck that still holds its template
+It should say **14/14** for the main deck and **8/8** for the sunburst, and it understands a deck that still holds its template
 block — it counts the parts the MERGED slides reach, not the parts in the
 package. If you intend to believe its verdict, run `mutate.mjs` over the same
 deck first and read the line that says how many guards it actually proved.
