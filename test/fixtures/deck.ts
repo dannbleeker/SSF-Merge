@@ -501,6 +501,7 @@ const TYPE = {
   slide: "application/vnd.openxmlformats-officedocument.presentationml.slide+xml",
   notes: "application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml",
   chart: "application/vnd.openxmlformats-officedocument.drawingml.chart+xml",
+  chartShapes: "application/vnd.openxmlformats-officedocument.drawingml.chartshapes+xml",
   chartEx: "application/vnd.ms-office.chartex+xml",
   tags: "application/vnd.openxmlformats-officedocument.presentationml.tags+xml",
   diagramData: "application/vnd.openxmlformats-officedocument.drawingml.diagramData+xml",
@@ -542,6 +543,13 @@ export async function makeDeck(slides: SlideSpec[]): Promise<Uint8Array> {
           ? [`<Override PartName="/ppt/notesSlides/notesSlide${i + 1}.xml" ContentType="${TYPE.notes}"/>`]
           : []),
         ...(s.chart ? [`<Override PartName="/ppt/charts/chart${i + 1}.xml" ContentType="${TYPE.chart}"/>`] : []),
+        // The chart's own drawing, declared the way PowerPoint declares it. A
+        // fixture that leaves a part undeclared is a fixture no PowerPoint
+        // would open, and a test written against it cannot tell the engine's
+        // copies apart from the template's own.
+        ...(typeof s.chart === "object" && s.chart.callout !== undefined
+          ? [`<Override PartName="/ppt/drawings/drawing${i + 1}.xml" ContentType="${TYPE.chartShapes}"/>`]
+          : []),
         // One part, whichever slide asked for it, so two slides carrying shape
         // tags do not declare it twice.
         ...(s.shapeTags && slides.findIndex((o) => o.shapeTags) === i
