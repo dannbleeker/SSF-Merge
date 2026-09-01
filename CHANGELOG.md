@@ -7,6 +7,15 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — pressing "Remove the preview" twice could delete slides you had added
+
+If the first press met a slide it would not claim as the preview's — one you had
+put there yourself, in the range the preview was on — the second press could
+delete it, under a notice saying there was nothing to take back. The same shape
+was reachable from the merge undo. A press that leaves a slide it will not claim
+now ends the offer and says which slides are still in the deck, and the merge
+undo and the preview take that decision from one place instead of two.
+
 ### Fixed — a preview a co-author's edit stranded could not be dismissed
 
 If somebody else added a slide while the preview was up, the deck had grown by

@@ -766,6 +766,37 @@ describe("the preview", () => {
     }
   });
 
+  it("stops offering the preview back once a press has DECLINED a slide", async () => {
+    /**
+     * The pane may not press again after the sweep has met a slide it will not
+     * claim. Carrying a count forward re-submits that slide to a window it is
+     * now alone in, where an all-untagged plan is taken whole — so the second
+     * press deletes the user's own slides, under a notice saying there was
+     * nothing to take back. `test/undo.test.ts` walks that mechanism in the
+     * pure code; this holds the pane to the decision.
+     */
+    await reachPreview();
+    office.runMerge.mockResolvedValueOnce(PREVIEW);
+    primary().click();
+    await settle();
+
+    // One out, one declined, of three: something of this run's is still owed,
+    // so this is not the "nothing left" path — it is the one where a second
+    // press would reach across the declined slide.
+    office.undoMerge.mockResolvedValueOnce({ removed: 1, disowned: 1, detail: "removed 1 slide(s)" });
+    office.slideCount.mockResolvedValueOnce(14);
+    const before = office.undoMerge.mock.calls.length;
+    primary().click();
+    await settle();
+
+    expect(pane().querySelector(".step-of")?.textContent, "a pane must always leave a way on").toBe(
+      "Step 5 of 5 · Merge",
+    );
+    expect(pane().textContent).toContain("not this run's to take back");
+    // And there is no second press to make: the preview is over.
+    expect(office.undoMerge.mock.calls.length, "no further sweep is offered").toBe(before + 1);
+  });
+
   it("lets the user out when a press takes nothing back at all", async () => {
     /**
      * A co-author adds a slide during the preview: the deck has grown by more
@@ -799,7 +830,7 @@ describe("the preview", () => {
       "Step 5 of 5 · Merge",
     );
     expect(pane().textContent).toContain("could not be taken back");
-    expect(pane().textContent, "and what to do about the slides").toContain("delete them from the thumbnail rail");
+    expect(pane().textContent, "and what to do about the slides").toContain("can be deleted from the thumbnail rail");
   });
 
   it("can still end a preview after a press that left some of it behind", async () => {
@@ -820,8 +851,10 @@ describe("the preview", () => {
     primary().click();
     await settle();
 
-    // One removed, one disowned, of three: something is genuinely left.
-    office.undoMerge.mockResolvedValueOnce({ removed: 1, disowned: 1, detail: "removed 1 slide(s)" });
+    // One removed of three, and NONE declined: the window still holds only
+    // this run's slides, so a second press is worth offering. A press that
+    // declined one would end the offer instead — see the test below.
+    office.undoMerge.mockResolvedValueOnce({ removed: 1, disowned: 0, detail: "removed 1 slide(s)" });
     office.slideCount.mockResolvedValueOnce(14);
     primary().click();
     await settle();
@@ -867,13 +900,14 @@ describe("the preview", () => {
     // WHICH slides, made from a count — and a deck back to twelve is equally
     // consistent with the user having deleted three of their own. The sentence
     // says what was measured.
-    // SIZE, and the size that was MEASURED. "Those slides are already gone" was
-    // a claim about WHICH slides made from a count of them; "back to the 12 it
-    // had" was then the wrong count, because the deck can be BELOW where it
-    // started — preview three onto twelve, delete five of your own, and the
-    // sentence named twelve over a deck of ten.
-    expect(pane().textContent).toContain("Your deck holds 12 slides");
+    // SIZE, never identity. "Those slides are already gone" was a claim about
+    // WHICH slides made from a count of them, and a deck back to the size it
+    // started at is equally the user having deleted their OWN slides with
+    // preview slides still in it. The sentence says what can be done instead of
+    // what is there.
+    expect(pane().textContent).toContain("could not be taken back");
     expect(pane().textContent, "a claim of identity taken from a size").not.toContain("already gone");
+    expect(pane().textContent, "nor the same claim by another spelling").not.toContain("nothing here to take back");
     expect(pane().textContent, "a sentence contradicting itself").not.toContain("still there");
     // And the wizard is usable again, which is the half that was terminal.
     expect(pane().querySelector(".step-of")?.textContent).toBe("Step 5 of 5 · Merge");
@@ -1226,7 +1260,9 @@ describe("taking a real merge back", () => {
     undoButton()?.click();
     await settle();
     expect(undoButton()).toBeNull();
-    expect(document.body.textContent).toContain("back to 12");
+    // The deck AFTER, measured from what came out. "Back to 12" is only true
+    // when the sweep took everything, and it said so over a deck of 14.
+    expect(document.body.textContent).toContain("Your deck holds 12");
   });
 
   it("does not let a second merge that added NOTHING destroy the way back", async () => {
@@ -2271,7 +2307,7 @@ describe("a run the pane never came back from", () => {
     undo?.click();
     await settle();
     expect(office.undoMerge.mock.calls[0]?.[0]).toMatchObject({ deckAtStart: 12, added: 6 });
-    expect(pane().textContent).toContain("back to 12");
+    expect(pane().textContent).toContain("Your deck holds 12");
   });
 
   it("does not move the user who has already started typing", async () => {

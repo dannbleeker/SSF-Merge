@@ -87,6 +87,45 @@ export function sweepPlan(o: { deckAtStart: number; deckNow: number; added: numb
 }
 
 /**
+ * What a SECOND press may ask for, after a first one has run.
+ *
+ * The pane used to work this out inline, twice, and the two copies answered
+ * differently — which is how a fix for a stuck preview became a deletion of a
+ * stranger's slides. It is one decision and it is not arithmetic.
+ *
+ * **A press that DISOWNED anything ends the offer.** `sweepPlan` produces a
+ * WINDOW from deck sizes, and carrying `added - removed` widens that window
+ * back over the slides the first press just declined. They are then the only
+ * slides in it, all untagged — and `provenSweep`'s "a host that answers
+ * nothing takes the whole plan" rule, which is right for a host that cannot
+ * read tags at all, takes them. Reproduced end to end: preview four slides,
+ * delete three by hand, add two of your own, press twice, and the second press
+ * deletes the two you added, under a notice saying there was nothing to take
+ * back.
+ *
+ * Narrowing the window instead is what the pane did before, and it is the
+ * deadlock: `sweepPlan` refuses a count smaller than the deck's growth, so
+ * every later press returns null and the screen that withholds the way on
+ * never lets go. Neither number is right, because the question is not how many
+ * — it is that a run which has met a slide it cannot claim has lost positional
+ * identity for the rest of the range, and no count restores it.
+ *
+ * **A press that moved NOTHING ends it too.** The same press repeated gives the
+ * same answer; offering it again is a button that cannot work, on a screen
+ * that may be withholding the way forward.
+ *
+ * So the offer survives exactly one shape: slides came out, none was declined,
+ * and some are still owed. There the window still holds only this run's slides
+ * and a second press has less to do.
+ */
+export function nextSweepOffer(o: { added: number; removed: number; disowned?: number }): number | null {
+  if ((o.disowned ?? 0) > 0) return null;
+  if (o.removed <= 0) return null;
+  const left = o.added - o.removed;
+  return left > 0 ? left : null;
+}
+
+/**
  * Which of a plan's slides this run may actually delete.
  *
  * `sweepPlan` bounds the RANGE from the deck's sizes. This bounds the SET

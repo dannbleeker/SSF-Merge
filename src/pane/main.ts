@@ -16,6 +16,7 @@ import {
   slideCount,
 } from "../office/powerpoint.js";
 import { inspectBlock, runMerge, undoMerge, type MergeOutcome } from "../office/merge.js";
+import { nextSweepOffer } from "../host/undo.js";
 import { readable } from "../host/errors.js";
 import { clearCrumb, dropCrumb, readCrumb } from "./crumb.js";
 import { blockDrafted, blockMoved, dataChanged } from "./transitions.js";
@@ -1063,37 +1064,43 @@ async function undoRun(): Promise<void> {
         };
         return;
       }
-      // What the sweep DECLINED is not still owed. A slide it left because it
-      // would not claim it as this run's is not one the user is waiting for
-      // this pane to remove, and counting it here kept the card up saying
-      // "remove the slides this merge added" over slides the same sentence had
-      // just called not this merge's.
-      //
-      // `disowned` cannot tell "not ours" from "the host would not say" — see
-      // `UndoOutcome` — so this is a floor on what is settled rather than a
-      // count of somebody else's slides. Taken the other way it is the defect
-      // above, a delete button standing over slides the sweep refuses, which is
-      // the worse of the two.
-      const remaining = Math.max(0, outcome.added - removed - (disowned ?? 0));
-      last = remaining > 0 ? { ...outcome, added: remaining } : undefined;
+      // What a SECOND press may ask for, decided in one place for this screen
+      // and the preview's — see `nextSweepOffer`. A press that DECLINED a slide
+      // ends the offer, because carrying any count forward re-submits that
+      // slide to a window it is now alone in, where `provenSweep` takes an
+      // all-untagged plan whole. A press that took slides and declined none may
+      // be pressed again.
+      const offer = nextSweepOffer({ added: outcome.added, removed, disowned });
+      const declined = (disowned ?? 0) > 0;
+      last = offer !== null ? { ...outcome, added: offer } : undefined;
       // The slides are the crumb's whole reason. Gone, and it is noise that would
       // offer a stale recovery on the next open.
-      if (remaining > 0)
-        dropCrumb({ deckAtStart: outcome.deckAtStart, added: remaining, runId: outcome.runId, doc: documentKey() });
+      if (offer !== null)
+        dropCrumb({ deckAtStart: outcome.deckAtStart, added: offer, runId: outcome.runId, doc: documentKey() });
       else clearCrumb(documentKey());
+      // The deck AFTER, measured from what actually came out. The sentence used
+      // to say the deck was "back to" the size it started at, which is only
+      // true when the sweep took everything: replace two merged slides with two
+      // of your own and it said "back to 12" over a deck of 14, in the same
+      // object that set `deckSize` to 14 correctly.
+      const deckNow = (state.deckSize ?? outcome.deckAtStart + outcome.added) - removed;
       state = {
         ...state,
-        deckSize: (state.deckSize ?? outcome.deckAtStart + outcome.added) - removed,
-        // Only a COMPLETE sweep disarms the button. A partial one leaves slides
-        // in the deck and the user is the only one who can finish the job, so
-        // the way back has to stay on screen.
-        ...(remaining > 0
-          ? { added: remaining, deckAtStart: outcome.deckAtStart }
+        deckSize: deckNow,
+        // Only a sweep with nothing left to do disarms the button. One that
+        // left slides it CAN still take keeps the way back on screen; one that
+        // met a slide it will not claim has to stop offering, because it can no
+        // longer tell that slide from its own by position.
+        ...(offer !== null
+          ? { added: offer, deckAtStart: outcome.deckAtStart }
           : { added: undefined, deckAtStart: undefined }),
         notice:
-          remaining > 0
+          offer !== null
             ? `Some of the merge is still there — ${detail}`
-            : `${plural(removed, "slide")} removed. Your deck is back to ${outcome.deckAtStart}.`,
+            : declined
+              ? `${plural(removed, "slide")} removed. The rest are not this merge's to take back — ` +
+                `delete them from the thumbnail rail if you want them gone. Your deck holds ${deckNow}.`
+              : `${plural(removed, "slide")} removed. Your deck holds ${deckNow}.`,
       };
     },
   );
@@ -1111,75 +1118,39 @@ async function endPreview(): Promise<void> {
   if (!outcome) return;
   await duringRun("preview", { whenItRaises: (e) => `The preview could not be removed: ${readable(e)}` }, async () => {
     const { removed, disowned, detail } = await undoMerge(outcome);
-    // `disowned` as well as `removed`, which the merge undo twenty lines above
-    // already does and this did not. A slide the sweep declined because it
-    // carries no mark of this run is not one the pane is still waiting to take
-    // back — counted as outstanding it produced "Some of the preview is still
-    // there" about a slide the same sweep had just called not the preview's,
-    // and held the user on the preview step with a button offering to delete
-    // it. The same two-things-at-once defect as the merge card, in the sibling
-    // screen.
+    // ONE decision for this screen and the merge undo's, so the two cannot
+    // answer differently — which they did, and the difference was a deletion.
+    // See `nextSweepOffer`.
+    const offer = nextSweepOffer({ added: outcome.added, removed, disowned });
+    // How many of the preview this run still believes are in the deck. It
+    // decides what to SAY; `offer` decides whether pressing again is worth
+    // offering, and the two are different questions — a slide the sweep
+    // declined is still in the deck and is not this run's to take.
     const outstanding = Math.max(0, outcome.added - removed - (disowned ?? 0));
     if (outstanding > 0) {
       // ASK THE DECK before claiming anything. The commonest way to reach here
       // is that the user did what the card told them the button does — deleted
       // the preview slides themselves — so the deck never grew, the sweep
       // refused, and this said "Some of the preview is still there" about
-      // slides that are gone. Its own second clause said the opposite:
-      // "nothing to take back (deck was 12, is 12)".
+      // slides that are gone.
       //
-      // And it returned with `previewing` still set, which was terminal. While
-      // a preview is up the forward link is withheld, the rail is not
-      // clickable, and the merge step refuses — so the user could not reach the
-      // merge again for the rest of the session, with nothing on screen saying
-      // why. A pane must always leave a way on.
+      // And every branch out of here CLEARS `previewing` unless another press
+      // could finish the job. While a preview is up the forward link is
+      // withheld, the rail is not clickable and the merge step refuses, so a
+      // preview that cannot be ended is a pane with no way on — a state this
+      // screen has now reached by three separate routes.
       const deckNow = await slideCount().catch(() => undefined);
-      const gone = deckNow !== undefined && deckNow <= outcome.deckAtStart;
-      // A press that moved NOTHING will move nothing next time either, and
-      // holding the user on this step is the terminal state the comment above
-      // is about. It happens for a reason the pane cannot fix: a co-author
-      // adds a slide during the preview, the deck has grown by more than the
-      // run added, and `sweepPlan` refuses the shape — correctly, because it
-      // can no longer prove which slides are the preview's.
-      //
-      // Kept where the press DID move something, because there the next press
-      // has less to do and can finish. The difference between "press again"
-      // and "there is nothing pressing again will do" is what decides whether
-      // the way on is withheld.
-      const moved = removed > 0 || (disowned ?? 0) > 0;
-      if (!gone && !moved) {
-        shown = undefined;
-        state = {
-          ...state,
-          previewing: false,
-          previewSlides: undefined,
-          ...(deckNow !== undefined ? { deckSize: deckNow } : {}),
-          notice:
-            `The preview could not be taken back — ${detail}. ` +
-            `The slides are still in your deck; delete them from the thumbnail rail when you are ready.`,
-        };
-        return;
-      }
-      if (!gone) {
-        // The card names the slides the preview is on, and after a partial
-        // removal it cannot: the ones that went took the numbering of the ones
-        // that stayed with them. It went on saying "Slides 5 to 8 are a preview
-        // of the first row" over a deck where 5 is the user's own slide again,
-        // beside a button offering to delete them. The card has a numberless
-        // sentence for exactly this, and it is the honest one here.
+      if (offer !== null) {
+        // Slides came out, none was declined, and some are still owed: the
+        // window still holds only this run's slides and the next press has
+        // less to do.
         //
-        // `shown` shrinks by what actually went, so the next press asks for
-        // what is left rather than for the original count — the same correction
-        // the merge undo makes with `remaining`.
-        // `outcome.added - removed`, NOT `outstanding`. `sweepPlan` compares
-        // `added` against the deck's GROWTH, and a disowned slide is still in
-        // the deck — so carrying the disowned-adjusted count forward makes
-        // `grew` exceed `added` on the next press and the plan comes back null
-        // forever, on the one branch that does not clear `previewing`. That is
-        // the terminal state the comment above describes, reached by the fix
-        // for it. `outstanding` decides what to SAY and whether to stop; the
-        // number the sweep is clamped against is a deck size.
-        shown = { ...outcome, added: outcome.added - removed };
+        // The card stops NAMING them. After a partial removal it cannot: the
+        // ones that went took the numbering of the ones that stayed with them,
+        // so it went on saying "Slides 5 to 8 are a preview of the first row"
+        // over a deck where 5 is the user's own slide again, beside a button
+        // offering to delete them.
+        shown = { ...outcome, added: offer };
         state = {
           ...state,
           previewSlides: undefined,
@@ -1188,27 +1159,25 @@ async function endPreview(): Promise<void> {
         };
         return;
       }
+      // Nothing more this pane may do. Either the sweep declined a slide — and
+      // carrying any count forward re-submits it to a window it is now alone
+      // in, where an all-untagged plan is taken whole — or the press moved
+      // nothing and would answer the same way again.
+      //
+      // The sentence may not say the preview is gone. `deckNow` is a SIZE:
+      // a deck back to where it started is equally the user having deleted
+      // their own slides, with preview slides still in it.
       shown = undefined;
       state = {
         ...state,
         previewing: false,
         previewSlides: undefined,
-        deckSize: deckNow,
-        // SIZE, not identity, and the sentence may not claim more than that.
-        // `undo.ts`'s own docstring says every quantity there is a size — so a
-        // deck back to the size it started at is consistent with the preview
-        // being gone AND with the user having deleted three of their own
-        // slides instead, and this said the first outright. Saying what was
-        // measured leaves `previewing` cleared either way, which is the half
-        // that matters: a preview that cannot be ended is a pane with no way
-        // on.
-        // `deckNow`, which is the number that was MEASURED. Printing
-        // `deckAtStart` made the sentence false whenever the deck had gone
-        // BELOW it — preview three onto twelve, delete five of your own, and
-        // the pane said "back to the 12 slide(s) it had" over a deck of ten,
-        // in the same object that set `deckSize` to ten correctly. The comment
-        // above this said "saying what was measured" while the line did not.
-        notice: `Your deck holds ${plural(deckNow ?? outcome.deckAtStart, "slide")}, no more than before the preview, so there is nothing here to take back.`,
+        ...(deckNow !== undefined ? { deckSize: deckNow } : {}),
+        notice:
+          (removed > 0
+            ? `${plural(removed, "slide")} of the preview removed, and the rest are not this run's to take back. `
+            : `The preview could not be taken back — ${detail}. `) +
+          "Any preview slides still in your deck can be deleted from the thumbnail rail.",
       };
       return;
     }
@@ -1223,7 +1192,17 @@ async function endPreview(): Promise<void> {
       // and a deck size one too small makes the next undo's clamp refuse a
       // sweep it should allow.
       deckSize: outcome.deckAtStart + (disowned ?? 0),
-      notice: undefined,
+      // Silent when the whole preview came out, which is the ordinary case and
+      // wants no sentence. NOT silent when the sweep declined a slide: it is
+      // still in the deck, in the range the preview was on, and the user is
+      // about to look at a deck with a slide in it they did not expect and no
+      // account of where it came from.
+      notice:
+        (disowned ?? 0) > 0
+          ? `${plural(removed, "slide")} of the preview removed. ` +
+            `${plural(disowned ?? 0, "slide")} in that range ${(disowned ?? 0) === 1 ? "is" : "are"} not this ` +
+            `run's and ${(disowned ?? 0) === 1 ? "was" : "were"} left alone.`
+          : undefined,
     };
   });
 }
