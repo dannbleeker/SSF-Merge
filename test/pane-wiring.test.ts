@@ -728,6 +728,44 @@ describe("the preview", () => {
     expect(pane().querySelector(".step-of")?.textContent, "the way on").toBe("Step 5 of 5 · Merge");
   });
 
+  it("never holds the wizard on the preview after a press that changed nothing", async () => {
+    /**
+     * The INVARIANT, over the whole matrix rather than the three cases that
+     * were reported one at a time. This screen has produced the same terminal
+     * state three times by three routes — a slide the sweep disowned, a count
+     * carried forward that `sweepPlan` then refused, and a deck a co-author
+     * grew — and each was found only after somebody hit it.
+     *
+     * The rule is not "always leave the step". Where a press moved something
+     * the next press has less to do and can finish, and taking the way back
+     * away there would strand a preview that was halfway out. The rule is that
+     * `previewing` may only stay set when the press CHANGED something, because
+     * that is the only case in which pressing again is worth offering.
+     */
+    for (const removed of [0, 1, 2, 3]) {
+      for (const disowned of [0, 1]) {
+        if (removed + disowned > 3) continue;
+        for (const deckNow of [9, 12, 13, 15, 17]) {
+          await reachPreview();
+          office.runMerge.mockResolvedValueOnce(PREVIEW);
+          primary().click();
+          await settle();
+
+          office.undoMerge.mockResolvedValueOnce({ removed, disowned, detail: `removed ${removed}` });
+          office.slideCount.mockResolvedValueOnce(deckNow);
+          primary().click();
+          await settle();
+
+          const where = `removed=${removed} disowned=${disowned} deckNow=${deckNow}`;
+          const stillOnPreview = pane().querySelector(".step-of")?.textContent === "Step 4 of 5 · Preview";
+          if (stillOnPreview) {
+            expect(removed + disowned, `${where}: held on the preview by a press that did nothing`).toBeGreaterThan(0);
+          }
+        }
+      }
+    }
+  });
+
   it("lets the user out when a press takes nothing back at all", async () => {
     /**
      * A co-author adds a slide during the preview: the deck has grown by more
