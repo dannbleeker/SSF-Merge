@@ -447,13 +447,18 @@ async function runTagsAt(from: number, count: number): Promise<(string | undefin
  * yields a plan whose last two entries are slides the user made. `provenSweep`
  * asks the slides themselves, through the run tag the package carries.
  */
-export async function undoInsert(deckAtStart: number, added: number, runId: string): Promise<UndoOutcome> {
+export async function undoInsert(
+  deckAtStart: number,
+  added: number,
+  runId: string,
+  opts: { requireProof?: boolean } = {},
+): Promise<UndoOutcome> {
   const deckNow = await slideCount();
   const plan = sweepPlan({ deckAtStart, deckNow, added });
   if (!plan) {
     return { removed: 0, disowned: 0, detail: `nothing to take back (deck was ${deckAtStart}, is ${deckNow})` };
   }
-  const targets = provenSweep(plan, await runTagsAt(plan.from, plan.count), runId);
+  const targets = provenSweep(plan, await runTagsAt(plan.from, plan.count), runId, opts);
   if (targets.length === 0) {
     return {
       removed: 0,

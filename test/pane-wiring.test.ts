@@ -787,6 +787,30 @@ describe("the preview", () => {
     }
   });
 
+  it("asks the sweep for PROOF on a second press", async () => {
+    // The pane's half of the rule: a press that leaves slides owed carries the
+    // outcome forward marked `pressed`, and `undoMerge` turns that into
+    // `requireProof` — so the sweep may no longer fall back to position on a
+    // deck that has provably changed shape since the run. Without the mark, a
+    // host that stops answering tags between presses takes the whole window,
+    // and a slide the user made in the meantime goes with it.
+    await reachPreview();
+    office.runMerge.mockResolvedValueOnce(PREVIEW);
+    primary().click();
+    await settle();
+
+    office.undoMerge.mockResolvedValueOnce({ removed: 1, disowned: 0, detail: "removed 1 slide(s)" });
+    office.slideCount.mockResolvedValueOnce(14);
+    primary().click();
+    await settle();
+
+    office.undoMerge.mockResolvedValueOnce({ removed: 2, disowned: 0, detail: "removed 2 slide(s)" });
+    primary().click();
+    await settle();
+    expect(office.undoMerge.mock.calls[1]?.[0], "the second press says it is one").toMatchObject({ pressed: true });
+    expect(office.undoMerge.mock.calls[0]?.[0], "and the first says it is not").not.toMatchObject({ pressed: true });
+  });
+
   it("stops offering the preview back once a press has DECLINED a slide", async () => {
     /**
      * The pane may not press again after the sweep has met a slide it will not

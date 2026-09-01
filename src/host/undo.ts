@@ -157,11 +157,31 @@ export function nextSweepOffer(o: { added: number; removed: number; disowned?: n
  *   on it would take back none of the slides that are sitting in the deck,
  *   which is the case recovery exists for.
  */
-export function provenSweep(plan: SweepPlan, tags: (string | undefined)[], runId: string): number[] {
+export function provenSweep(
+  plan: SweepPlan,
+  tags: (string | undefined)[],
+  runId: string,
+  opts: { requireProof?: boolean } = {},
+): number[] {
   const all: number[] = [];
   for (let i = plan.from + plan.count - 1; i >= plan.from; i--) all.push(i);
-  if (tags.length !== plan.count) return all;
-  if (tags.every((t) => t === undefined)) return all;
+  // The two fall-throughs below take the whole plan on the reasoning that an
+  // empty read is not an empty slide — sound for a FIRST press, where the size
+  // clamps are the only evidence anybody ever had and the answer is what it was
+  // before tags existed.
+  //
+  // It is not sound for a LATER one. By then the deck has provably changed
+  // shape — a press happened — and the window `sweepPlan` produces from sizes
+  // can hold a slide the user made in the meantime. Reproduced: a six-slide
+  // merge, three removed on the first press, the host then stops answering
+  // tags, and the user deletes one merged slide and adds one of their own. The
+  // deck's growth still equals what is owed, the read comes back empty, the
+  // whole window goes, and the slide they just made goes with it.
+  //
+  // So a repeat press asks for PROOF and takes nothing without it. The caller
+  // knows which press this is; this function only has to be told.
+  if (tags.length !== plan.count) return opts.requireProof ? [] : all;
+  if (tags.every((t) => t === undefined)) return opts.requireProof ? [] : all;
   // Only where the id actually appears can it tell two runs apart.
   const discriminates = tags.includes(runId);
   return all.filter((index) => {

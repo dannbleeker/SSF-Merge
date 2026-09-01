@@ -81,6 +81,14 @@ export interface MergeOutcome {
    * no such moment to name. `describeMerge` falls back to `deckAtStart`.
    */
   landedAfter?: number;
+  /**
+   * Whether this outcome is one the pane has already swept once.
+   *
+   * Set when a press leaves slides still owed and the pane carries the outcome
+   * forward. It is the one thing `undoMerge` needs in order to refuse the
+   * pre-tags fall-through on a repeat press — see `provenSweep`.
+   */
+  pressed?: boolean;
 
   runId: string;
   /** Placeholders found in the block, for the pane to report on. */
@@ -543,5 +551,13 @@ export async function undoMerge(outcome: MergeOutcome): Promise<UndoOutcome> {
   // The run id travels with the numbers, because position alone cannot tell
   // this run's slides from a slide the user has since made at the same index.
   // See `provenSweep`.
-  return undoInsert(outcome.deckAtStart, outcome.added, outcome.runId);
+  //
+  // And `pressed` says which press this is. A first one may fall back to the
+  // size clamps when the host will not answer for tags — that is the answer
+  // this add-in gave before tags existed, and a host below PowerPointApi 1.3
+  // has none. A later one may not: the deck has provably changed shape since
+  // the run, so the window can hold a slide the user made in between.
+  return undoInsert(outcome.deckAtStart, outcome.added, outcome.runId, {
+    requireProof: outcome.pressed === true,
+  });
 }

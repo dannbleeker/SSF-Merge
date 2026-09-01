@@ -1088,7 +1088,10 @@ async function undoRun(): Promise<void> {
       // be pressed again.
       const offer = nextSweepOffer({ added: outcome.added, removed, disowned });
       const declined = (disowned ?? 0) > 0;
-      last = offer !== null ? { ...outcome, added: offer } : undefined;
+      // `pressed`, so the next sweep refuses the pre-tags fall-through: the deck
+      // has provably changed shape by now, and the window a size clamp produces
+      // can hold a slide the user made since. See `provenSweep`.
+      last = offer !== null ? { ...outcome, added: offer, pressed: true } : undefined;
       // The slides are the crumb's whole reason. Gone, and it is noise that would
       // offer a stale recovery on the next open.
       if (offer !== null)
@@ -1166,7 +1169,7 @@ async function endPreview(): Promise<void> {
         // so it went on saying "Slides 5 to 8 are a preview of the first row"
         // over a deck where 5 is the user's own slide again, beside a button
         // offering to delete them.
-        shown = { ...outcome, added: offer };
+        shown = { ...outcome, added: offer, pressed: true };
         state = {
           ...state,
           previewSlides: undefined,

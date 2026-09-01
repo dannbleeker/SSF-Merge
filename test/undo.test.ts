@@ -266,3 +266,35 @@ describe("what a second press may ask for", () => {
     expect(nextSweepOffer({ added: 4, removed: removedFirst.length, disowned }), "no second press").toBeNull();
   });
 });
+
+describe("a repeat press may not fall back to position", () => {
+  /**
+   * `provenSweep` takes the whole plan when the tag read comes back empty or
+   * short, and that is right for a FIRST press: the size clamps are the only
+   * evidence anybody ever had, and a host below PowerPointApi 1.3 has no tags
+   * to offer. It is not right for a later one.
+   *
+   * By then the deck has provably changed shape, because a press happened. A
+   * six-slide merge, three removed on the first press, the host then stops
+   * answering tags, and the user deletes one merged slide and adds one of their
+   * own: the deck's growth still equals what is owed, so the clamps pass, the
+   * read comes back empty, the whole window goes — and the slide they just made
+   * goes with it.
+   */
+  it("takes nothing when the host will not answer and this is not the first press", () => {
+    const plan = sweepPlan({ deckAtStart: 12, deckNow: 15, added: 3 })!;
+    expect(plan).toEqual({ from: 12, count: 3 });
+    // The host answers nothing at all — below 1.3, or refusing.
+    expect(provenSweep(plan, [], "r1"), "a first press keeps the pre-tags answer").toEqual([14, 13, 12]);
+    expect(provenSweep(plan, [], "r1", { requireProof: true }), "a repeat press takes nothing").toEqual([]);
+    // And a SHORT read, which is the same fact one step less obvious.
+    expect(provenSweep(plan, [undefined, undefined], "r1", { requireProof: true })).toEqual([]);
+    expect(provenSweep(plan, [undefined, undefined, undefined], "r1", { requireProof: true })).toEqual([]);
+  });
+
+  it("still takes what the tags prove, whichever press it is", () => {
+    // The guard refuses an absence of evidence, not the evidence itself.
+    const plan = sweepPlan({ deckAtStart: 12, deckNow: 15, added: 3 })!;
+    expect(provenSweep(plan, ["r1", "r1", undefined], "r1", { requireProof: true })).toEqual([13, 12]);
+  });
+});

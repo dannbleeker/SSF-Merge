@@ -7,6 +7,15 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a second undo press could delete a slide made between the presses
+
+If PowerPoint stopped answering for slide tags between one press and the next —
+which it does, and which every host below a certain version does always — the
+sweep fell back to counting slides and took the whole range, including anything
+you had added in the meantime. Falling back is right for a first press, where
+counting is the only evidence there has ever been; a later press now requires
+the slides to prove they are the merge's, and takes nothing if they cannot.
+
 ### Fixed — the preview card named the wrong slides when the deck had moved
 
 The card exists so you can find the preview slides and delete them by hand, and
