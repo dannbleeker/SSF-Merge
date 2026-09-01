@@ -681,15 +681,45 @@ function tokenizeRun(run: string, d: Date): string | undefined {
  * a letter — text pasted from a Mac routinely arrives that way. Both
  * apostrophes because U+2019 is what Word's autocorrect produces and U+0027 is
  * what a keyboard does.
- *
- * The price is a pattern where a token sits against a letter: `d'MMMM` prints
- * itself rather than `1'March`. That is the whole-run rule doing what it says,
- * and it is the same trade `ddTHH` already makes.
  */
 const PATTERN_WORD = /[\p{Script=Latin}\p{Mn}]+(?:['\u2019][\p{Script=Latin}\p{Mn}]+)*/gu;
 
+const APOSTROPHE = /(['\u2019])/;
+
+/**
+ * A word run, formatted — the whole run if it is all tokens, else each
+ * apostrophe-separated piece if EVERY piece is.
+ *
+ * The second rule is not decoration. Holding an apostrophe inside a word is
+ * what stops `Date d'échéance` printing as `Date 1'échéance`, and it welds the
+ * two halves of `MMM'yy` into one run that is not a token — so the commonest
+ * abbreviated pattern there is printed itself. `MMM'yy` and `MMM’yy` are
+ * `Mar'26`; `d'échéance` is left alone, because `échéance` is not a token and
+ * one piece failing fails the run.
+ *
+ * The price is the reverse case: `d'MMMM` is `1'March` rather than itself. Both
+ * readings are guesses about a pattern nobody writes, and the rule that gets
+ * `MMM'yy` right is the one worth having.
+ */
+function formatWord(run: string, d: Date): string {
+  const whole = tokenizeRun(run, d);
+  if (whole !== undefined) return whole;
+  const pieces = run.split(APOSTROPHE);
+  if (pieces.length === 1) return run;
+  const out: string[] = [];
+  for (let i = 0; i < pieces.length; i += 2) {
+    const piece = pieces[i] ?? "";
+    const formatted = piece === "" ? undefined : tokenizeRun(piece, d);
+    if (formatted === undefined) return run;
+    out.push(formatted);
+    const separator = pieces[i + 1];
+    if (separator !== undefined) out.push(separator);
+  }
+  return out.join("");
+}
+
 export function formatDate(d: Date, pattern: string): string {
-  return pattern.replace(PATTERN_WORD, (run) => tokenizeRun(run, d) ?? run);
+  return pattern.replace(PATTERN_WORD, (run) => formatWord(run, d));
 }
 
 /**

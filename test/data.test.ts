@@ -1399,6 +1399,29 @@ describe("dates a spreadsheet actually writes", () => {
     expect(applyFormat("2026-03-01", "date:dd-MM-yyyy")).toBe("01-03-2026");
   });
 
+  it("reads a pattern whose own tokens are joined by an apostrophe", () => {
+    /**
+     * Holding an apostrophe inside a word is what leaves `d'échéance` alone,
+     * and it welds `MMM'yy` — `Mar'26`, the commonest abbreviated pattern
+     * there is — into a single run that is not a token, so the whole thing
+     * printed itself. Word's autocorrect turns the straight apostrophe into
+     * U+2019, so `{{Signed|date:MMM’yy}}` reached it by simply being typed in
+     * Word.
+     *
+     * A run that is not all tokens is retried piece by piece, and every piece
+     * has to be one: `MMM'yy` reads, `d'échéance` does not, because `échéance`
+     * is not a token.
+     */
+    expect(applyFormat("2026-03-01", "date:MMM'yy")).toBe("Mar'26");
+    expect(applyFormat("2026-03-01", "date:MMM\u2019yy")).toBe("Mar\u201926");
+    expect(applyFormat("2026-03-01", "date:dd'MM'yyyy")).toBe("01'03'2026");
+    expect(applyFormat("2026-03-01", "date:d\u2019MMM")).toBe("1\u2019Mar");
+    // One piece that is not a token fails the whole run, which is what keeps
+    // the accented-word case above working.
+    expect(applyFormat("2026-03-01", "date:Date d'échéance MMM'yy")).toBe("Date d'échéance Mar'26");
+    expect(applyFormat("2026-03-01", "date:l'an yyyy")).toBe("l'an 2026");
+  });
+
   it("reads a pattern written in another script", () => {
     /**
      * The tokens are Latin and every other script's date words are not, so a

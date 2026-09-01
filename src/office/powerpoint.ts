@@ -458,21 +458,23 @@ export async function undoInsert(
   if (!plan) {
     return { removed: 0, disowned: 0, detail: `nothing to take back (deck was ${deckAtStart}, is ${deckNow})` };
   }
-  // PROOF is only required of a host that could give it. `Slide.tags` is
-  // PowerPointApi 1.3 and this add-in's floor is 1.2 — so on a 1.2 host
-  // `runTagsAt` answers an empty list ALWAYS, and demanding proof there does
-  // not make an undo careful, it removes it: a partial sweep could never be
-  // finished, and the card would sit over slides no press could ever take,
-  // which is the state this codebase calls the worse of two options.
+  // PROOF is asked of every host, INCLUDING one that cannot give it.
   //
-  // The guard is for a host that CAN answer and did not. That is the case a
-  // repeat press has to refuse, because the deck has provably changed shape
-  // since the run and the read that would identify the slides came back empty.
-  // Where tags do not exist at all, position is the only evidence there has
-  // ever been, and it is what this add-in gave before tags existed.
-  const canProve = hostSupports("1.3");
+  // This was gated on `hostSupports("1.3")` for one commit, on the reasoning
+  // that `Slide.tags` is 1.3, this add-in's floor is 1.2, and demanding proof
+  // of a host with no tags leaves the card sitting over slides no press could
+  // ever take. The gate is a slide deletion: on every 1.2 host a second press
+  // then falls through to the whole positional window, which is exactly the
+  // window that can hold a slide the user made between the presses — and it
+  // reports the deletion as a clean success. Guaranteed, for a whole host
+  // class, rather than the intermittent case the proof was added for.
+  //
+  // The dead button it was meant to retire is retired where the decision
+  // belongs: a press that removed nothing and disowned something withdraws the
+  // offer (see `undoRun` and `endPreview`), which works on a host that cannot
+  // answer AND on one that can answer and does not.
   const targets = provenSweep(plan, await runTagsAt(plan.from, plan.count), runId, {
-    requireProof: opts.requireProof === true && canProve,
+    requireProof: opts.requireProof === true,
   });
   if (targets.length === 0) {
     // Says what is KNOWN, which is neither of the two things it used to say.

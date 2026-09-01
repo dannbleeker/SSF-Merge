@@ -73,8 +73,13 @@ export interface Crumb {
    * partial undo followed by the pane closing and reopening would offer the
    * next press as a first one, and the deck has changed shape all the same.
    *
-   * Optional, so a crumb written by an older build reads as "not yet pressed",
-   * which is what it was.
+   * Optional, because a crumb written by an older build does not carry it. That
+   * is NOT the same as "not yet pressed" — an older build re-wrote the crumb
+   * after a partial press too — so upgrading across one gives that run a single
+   * un-proofed press. The alternative is refusing every older crumb, which
+   * throws away the dead-tab recovery this file exists for; the exposure is one
+   * press on a deck the user has just watched change, and the press that
+   * follows it carries the mark.
    */
   pressed?: boolean;
 }
@@ -92,12 +97,26 @@ function store(): Storage | null {
   }
 }
 
-/** Remember what an undo would need, before the insert that makes it necessary. */
+/**
+ * Remember what an undo would need, before the insert that makes it necessary.
+ *
+ * `startedAt` dates the MERGE, not the write. The crumb is re-written after a
+ * partial press — the count it carries has changed — and stamping the clock
+ * each time moved the merge's date forward, so the recovery notice read "a
+ * merge from <today>, and the pane closed before you could take them back"
+ * about a run from last week whose pane had not closed. A re-write for the same
+ * run in the same deck keeps the date it already had.
+ */
 export function dropCrumb(c: Omit<Crumb, "kind" | "startedAt">): void {
   const s = store();
   if (!s) return;
   try {
-    const crumb: Crumb = { kind: "ssf-merge-run", startedAt: new Date().toISOString(), ...c };
+    const prior = readCrumb(c.doc);
+    const startedAt =
+      prior !== undefined && prior.runId === c.runId && prior.startedAt !== "unknown"
+        ? prior.startedAt
+        : new Date().toISOString();
+    const crumb: Crumb = { kind: "ssf-merge-run", startedAt, ...c };
     s.setItem(KEY, JSON.stringify(crumb));
   } catch {
     /* a merge does not fail because a browser would not remember something */

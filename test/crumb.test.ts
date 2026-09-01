@@ -34,6 +34,30 @@ describe("the numbers an undo cannot be done without", () => {
     expect(readCrumb(DECK)).toMatchObject({ deckAtStart: 12, added: 720, runId: "r12-240-abc" });
   });
 
+  it("dates the MERGE, not the write, when a press re-writes it", () => {
+    // A partial press re-drops the crumb with the count that is left, and the
+    // date was re-stamped with it — so the recovery notice said "a merge from
+    // <today> … and the pane closed before you could take them back" about a
+    // run that was older and whose pane had not closed. The date is the
+    // merge's; only the numbers change.
+    // Seeded rather than written twice: two writes in the same millisecond
+    // carry the same stamp, so the test would pass against the defect roughly
+    // whenever the machine was quick.
+    const WHEN = "2026-08-20T09:15:00.000Z";
+    real.setItem(
+      KEY,
+      JSON.stringify({ kind: "ssf-merge-run", deckAtStart: 12, added: 6, runId: "r1", startedAt: WHEN, doc: DECK }),
+    );
+    dropCrumb({ deckAtStart: 12, added: 4, runId: "r1", doc: DECK, pressed: true });
+    expect(readCrumb(DECK)).toMatchObject({ added: 4, pressed: true, startedAt: WHEN });
+
+    // A DIFFERENT run is a different merge and takes its own date, whatever is
+    // in the store.
+    dropCrumb({ deckAtStart: 12, added: 6, runId: "r2", doc: DECK });
+    expect(readCrumb(DECK)?.runId).toBe("r2");
+    expect(readCrumb(DECK)?.startedAt, "a new run keeps none of the old one's").not.toBe(WHEN);
+  });
+
   it("is gone once the slides are", () => {
     dropCrumb({ deckAtStart: 12, added: 720, runId: "r1", doc: DECK });
     clearCrumb(DECK);

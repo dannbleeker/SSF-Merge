@@ -151,9 +151,12 @@ export function nextSweepOffer(o: { added: number; removed: number; disowned?: n
  *   zero and both being wrong. A host that cannot read tags is not evidence
  *   that a slide is not ours, so the answer is what it was before anything was
  *   asked. Adding the tag question therefore took nothing away from a host that
- *   cannot answer it. (`requireProof` DOES, which is why the caller only sets
- *   it where tags exist: demanding proof of a host with none does not make an
- *   undo careful, it removes it.)
+ *   cannot answer it. (`requireProof` DOES, on every host, including one whose
+ *   API set has no `Slide.tags` at all. Sparing those was tried for a commit
+ *   and it is a guaranteed deletion rather than an intermittent one: a repeat
+ *   press there falls through to the whole positional window every time. What
+ *   a host with no proof to give gets instead is the button withdrawn — see
+ *   `undoRun` — which costs a press that could never have worked.)
  * - **A read that does not line up with the plan takes the whole plan.** A
  *   short answer is a read that failed, not a set of slides disowned. Deleting
  *   on it would be acting on an answer nobody gave.

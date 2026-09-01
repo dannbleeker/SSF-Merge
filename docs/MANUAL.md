@@ -426,6 +426,11 @@ tokens or none of them. Text in another alphabet is never part of such a word,
 so `年`, `월` and `г` sit beside a token without disturbing it. A numeric
 pattern like `dd-MM-yyyy` reads the same everywhere and needs none of this.
 
+An apostrophe holds a word together — `d'échéance` prints itself rather than
+becoming `1'échéance` — and it still separates two tokens, so `MMM'yy` is
+`Mar'26`. Both apostrophes count, the straight one and the curly one Word's
+autocorrect produces.
+
 ## Pictures
 
 A cell can name a picture file — `ada.png`, `photos\\ada.PNG` — and the field

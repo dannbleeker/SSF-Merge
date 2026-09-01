@@ -15,16 +15,22 @@ date and `Odds:`, `den`, `dato`, `día`, `décembre` and `d'échéance` print
 themselves — including in alphabets this one has no tokens in, so
 `yyyy年MM月dd日` reads as a date and `dddd` stays a weekday name rather than
 becoming `0101`. It is the manual's own rule ("any other text in the pattern is
-printed as written"), which the pattern reader had never quite kept.
+printed as written"), which the pattern reader had never quite kept. An
+apostrophe holds a word together, so `d'échéance` prints itself while `MMM'yy`
+still reads as `Mar'26` — with either apostrophe, including the curly one Word's
+autocorrect produces.
 
 ### Fixed — a second undo press could delete a slide made between the presses
 
 If PowerPoint stopped answering for slide tags between one press and the next —
-which it does, and which every host below a certain version does always — the
-sweep fell back to counting slides and took the whole range, including anything
-you had added in the meantime. Falling back is right for a first press, where
-counting is the only evidence there has ever been; a later press now requires
-the slides to prove they are the merge's, and takes nothing if they cannot.
+which it does, and which older PowerPoint versions do always — the sweep fell
+back to counting slides and took the whole range, including anything you had
+added in the meantime. Falling back is right for a first press, where counting
+is the only evidence there has ever been; a later press now requires the slides
+to prove they are the merge's, and takes nothing if they cannot. Where they
+cannot — an older PowerPoint has no slide tags to prove it with — the button is
+withdrawn and the notice says the slides can be deleted from the thumbnail rail,
+rather than standing over them offering a removal that will not happen.
 
 ### Fixed — the preview card named the wrong slides when the deck had moved
 

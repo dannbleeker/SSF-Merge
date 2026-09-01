@@ -946,10 +946,6 @@ describe("the preview", () => {
     primary().click();
     await settle();
 
-    // SIZE, not identity. "Those slides are already gone" was a claim about
-    // WHICH slides, made from a count — and a deck back to twelve is equally
-    // consistent with the user having deleted three of their own. The sentence
-    // says what was measured.
     // SIZE, never identity. "Those slides are already gone" was a claim about
     // WHICH slides made from a count of them, and a deck back to the size it
     // started at is equally the user having deleted their OWN slides with
@@ -958,14 +954,14 @@ describe("the preview", () => {
     expect(pane().textContent).toContain("could not be taken back");
     expect(pane().textContent, "a claim of identity taken from a size").not.toContain("already gone");
     expect(pane().textContent, "nor the same claim by another spelling").not.toContain("nothing here to take back");
-    // And it does not send them hunting for slides that are not there. Deleting
-    // the preview slides yourself is the commonest way to reach this branch —
-    // the card says the button does exactly that — so a deck no bigger than it
-    // was before the preview gets the sentence that fits.
-    expect(pane().textContent).toContain("no more than before the preview");
-    expect(pane().textContent, "advice for a deck that does not hold them").not.toContain(
-      "can be deleted from the thumbnail rail",
-    );
+    // "Your deck holds 12 slides, no more than before the preview" was here for
+    // one commit and is the same claim in the same place: these exact inputs
+    // are BOTH worlds, and it suppressed the advice in the one where the
+    // preview slides are still in the deck. The count is reported; the advice
+    // is unconditional.
+    expect(pane().textContent, "a size read as an identity").not.toContain("no more than before the preview");
+    expect(pane().textContent).toContain("Your deck holds 12 slides");
+    expect(pane().textContent).toContain("can be deleted from the thumbnail rail");
     expect(pane().textContent, "a sentence contradicting itself").not.toContain("still there");
     // And the wizard is usable again, which is the half that was terminal.
     expect(pane().querySelector(".step-of")?.textContent).toBe("Step 5 of 5 · Merge");
@@ -1554,6 +1550,55 @@ describe("taking a real merge back", () => {
     expect(document.body.textContent, "and it does not claim they are still owed").not.toContain(
       "Some of the merge is still there",
     );
+    // What was DECLINED, counted. "The rest could not be shown to be this
+    // merge's" spoke about every slide left in the range — four of them here,
+    // three of which the sweep never doubted — so the sentence written to be
+    // true on every path was false on this one.
+    expect(document.body.textContent).toContain("2 slides in that range could not be shown to be this merge's");
+    expect(document.body.textContent, "a claim about slides the sweep never doubted").not.toContain("The rest");
+  });
+
+  it("takes the card down when a press proves nothing, rather than offering it for ever", async () => {
+    /**
+     * A press that removes nothing and disowns something will answer the same
+     * way every time: the sweep could not show the slides are this merge's,
+     * and pressing again asks the same question of the same deck. The card
+     * stayed up over them, with a live delete button, and `sweepPlan` still
+     * said yes to the shape — so nothing else took it down.
+     *
+     * On a host below PowerPointApi 1.3 that is EVERY second press, because a
+     * tag read there can never answer. Relaxing the proof for those hosts was
+     * the other way out and it deletes: the fall-through takes the whole
+     * positional window, which is where a slide the user made between the
+     * presses sits. See `test/office-host.test.ts`.
+     */
+    await afterMerge();
+    office.undoMerge.mockResolvedValueOnce({ removed: 2, disowned: 0, detail: "removed 2 slide(s)" });
+    office.slideCount.mockResolvedValueOnce(16);
+    undoButton()?.click();
+    await settle();
+    expect(undoButton(), "slides are still owed, so the way back stays").not.toBeNull();
+
+    // The deck still fits a plan — four owed, four there — so the card is not
+    // withdrawn by the arithmetic. It is withdrawn because the press proved
+    // nothing and the next one cannot either.
+    office.undoMerge.mockResolvedValueOnce({
+      removed: 0,
+      disowned: 4,
+      detail: "nothing to take back — none of slides 13 to 16 could be shown to be this merge's",
+    });
+    office.slideCount.mockResolvedValueOnce(16);
+    undoButton()?.click();
+    await settle();
+
+    expect(undoButton(), "a button that can only answer the same way again").toBeNull();
+    const pressed = office.undoMerge.mock.calls.length;
+    undoButton()?.click();
+    await settle();
+    expect(office.undoMerge.mock.calls.length, "and no further sweep is offered").toBe(pressed);
+    // The slides are still in the deck, so the user is told what they can do
+    // about them instead of being left with a sentence and no way forward.
+    expect(document.body.textContent).toContain("thumbnail rail");
   });
 
   it("says so when the sweep refused, and leaves the deck alone", async () => {

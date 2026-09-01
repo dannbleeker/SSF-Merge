@@ -1072,10 +1072,34 @@ async function undoRun(): Promise<void> {
         // `undoIsPossible` asks `sweepPlan` on every draw, so a truthful count
         // takes the card down by itself, and puts it back if the deck comes
         // back.
+        //
+        // A press that DISOWNED something withdraws the button outright. The
+        // same press repeated gives the same answer, so the card would sit
+        // over those slides for ever offering a deletion that cannot happen —
+        // and on a host that cannot read a tag at all, which is every host
+        // below PowerPointApi 1.3, that is every second press. Relaxing the
+        // proof instead was tried and is a slide deletion; see `undoInsert`.
+        // The refusal branch below leaves the card up on purpose: it is the
+        // deck having changed underneath the run, which the user can undo.
+        //
+        // The CRUMB goes with it, so a reopened pane does not offer the same
+        // dead press again. The price is a host that refused a tag read once
+        // and would have answered the next time; the alternative is a standing
+        // offer that on every host below 1.3 can never work, and the same
+        // decision `nextSweepOffer` already takes for a press that declined a
+        // slide.
         const deckNow = await slideCount().catch(() => undefined);
+        const stuck = (disowned ?? 0) > 0;
+        if (stuck) {
+          last = undefined;
+          clearCrumb(documentKey());
+        }
         state = {
           ...state,
-          notice: `Nothing was removed — ${detail}`,
+          notice: stuck
+            ? `Nothing was removed — ${detail}. Delete them from the thumbnail rail if you want them gone.`
+            : `Nothing was removed — ${detail}`,
+          ...(stuck ? { added: undefined, deckAtStart: undefined } : {}),
           ...(deckNow !== undefined ? { deckSize: deckNow } : {}),
         };
         return;
@@ -1132,8 +1156,15 @@ async function undoRun(): Promise<void> {
           offer !== null
             ? `Some of the merge is still there — ${detail}`
             : declined
-              ? `${plural(removed, "slide")} removed. The rest could not be shown to be this merge's and were ` +
-                `left alone — delete them from the thumbnail rail if you want them gone.`
+              ? // The DECLINED slides, counted. "The rest" is every slide left
+                // in the range, and on a partial sweep most of them were shown
+                // to be the merge's — the press simply stopped when it met one
+                // it could not claim. Naming a count says what happened; the
+                // sentence before it said something false about slides it had
+                // never asked about.
+                `${plural(removed, "slide")} removed. ${plural(disowned ?? 0, "slide")} in that range could not ` +
+                `be shown to be this merge's and ${(disowned ?? 0) === 1 ? "was" : "were"} left alone — delete ` +
+                `them from the thumbnail rail if you want them gone.`
               : `${plural(removed, "slide")} removed. Your deck holds ${deckNow}.`,
       };
     },
@@ -1211,14 +1242,16 @@ async function endPreview(): Promise<void> {
           (removed > 0
             ? `${plural(removed, "slide")} of the preview removed. The rest could not be shown to be this run's. `
             : `The preview could not be taken back — ${detail}. `) +
-          // The deck is asked, so this does not send somebody hunting for
-          // slides that are not there. Deleting the preview slides yourself is
-          // the commonest way to reach this branch at all — the card says the
-          // button does exactly that — and a deck no bigger than it was before
-          // the preview is the evidence that they went.
-          (deckNow !== undefined && deckNow <= outcome.deckAtStart
-            ? `Your deck holds ${plural(deckNow, "slide")}, no more than before the preview.`
-            : "Any preview slides still in your deck can be deleted from the thumbnail rail."),
+          // The size is REPORTED, never read as an identity. A sentence saying
+          // the deck is no bigger than it was before the preview was here for
+          // one commit and it is the mistake the comment twelve lines above
+          // forbids: delete three of your own slides while a three-slide
+          // preview is up and the deck is back to its old size with every
+          // preview slide still in it — and that branch suppressed the only
+          // advice that would have helped. Both, always: the count, and what
+          // to do if the slides are still there.
+          (deckNow !== undefined ? `Your deck holds ${plural(deckNow, "slide")}. ` : "") +
+          "Any preview slides still in your deck can be deleted from the thumbnail rail.",
       };
       return;
     }
