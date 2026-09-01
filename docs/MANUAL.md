@@ -417,12 +417,14 @@ language, inside the same pattern:
 {{Start|date:d. Dezember yyyy}}     1. Dezember 2026
 {{Start|date:d de mayo de yyyy}}    1 de mayo de 2026
 {{Start|date:den d. MMMM yyyy}}     den 1. March 2026
+{{Start|date:yyyy年MM月dd日}}        2026年03月01日
 ```
 
 A word in a pattern is printed as written even when it begins with a token's
 letter — `den`, `dato`, `december` — because a run of letters is either all
-tokens or none of them. A numeric pattern like `dd-MM-yyyy` reads the same
-everywhere and needs none of this.
+tokens or none of them. Text in another alphabet is never part of such a word,
+so `年`, `월` and `г` sit beside a token without disturbing it. A numeric
+pattern like `dd-MM-yyyy` reads the same everywhere and needs none of this.
 
 ## Pictures
 

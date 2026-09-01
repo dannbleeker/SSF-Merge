@@ -1416,6 +1416,9 @@ describe("dates a spreadsheet actually writes", () => {
     expect(applyFormat("2026-03-01", "date:yyyy年MM月dd日")).toBe("2026年03月01日");
     expect(applyFormat("2026-03-01", "date:yyyy년 MM월 dd일")).toBe("2026년 03월 01일");
     expect(applyFormat("2026-03-01", "date:dd MMMM yyyyг.")).toBe("01 March 2026г.");
+    // The example the manual prints. A doc showing an output nobody checked is
+    // the same defect as a stale comment.
+    expect(applyFormat("2026-03-01", "date:yyyy年MM月dd日")).toBe("2026年03月01日");
   });
 
   it("leaves an ordinary word that begins with a token's letter alone", () => {
