@@ -857,6 +857,9 @@ async function merge(): Promise<void> {
               added: outcome.added,
               deckAtStart: outcome.deckAtStart,
               changedSinceMerge: undefined,
+              // A NEW merge, so a withdrawal earned by the last one does not
+              // hide this one's way back.
+              undoWithdrawn: undefined,
               // This run's slides are not a recovered run's, so the card goes
               // back to living on the merge step. `recovered` says WHERE the
               // offer may be drawn, and it was set at boot and never cleared —
@@ -1058,7 +1061,7 @@ async function undoRun(): Promise<void> {
     "undo",
     { entering: { notice: undefined }, whenItRaises: (e) => `The slides could not be removed: ${readable(e)}` },
     async () => {
-      const { removed, disowned, detail } = await undoMerge(outcome);
+      const { removed, disowned, detail, unprovable } = await undoMerge(outcome);
       if (removed <= 0) {
         // A refusal is an OUTCOME and the detail already says why — usually that
         // the deck changed underneath the run, which is a thing the user can
@@ -1073,33 +1076,30 @@ async function undoRun(): Promise<void> {
         // takes the card down by itself, and puts it back if the deck comes
         // back.
         //
-        // A press that DISOWNED something withdraws the button outright. The
-        // same press repeated gives the same answer, so the card would sit
-        // over those slides for ever offering a deletion that cannot happen —
-        // and on a host that cannot read a tag at all, which is every host
-        // below PowerPointApi 1.3, that is every second press. Relaxing the
-        // proof instead was tried and is a slide deletion; see `undoInsert`.
-        // The refusal branch below leaves the card up on purpose: it is the
-        // deck having changed underneath the run, which the user can undo.
+        // The card is TAKEN DOWN only where the host says the press can never
+        // work — proof was required and there are no slide tags on this host to
+        // prove anything with. `disowned > 0` is not that condition, and taking
+        // it for one was two defects at once: a 1.3 host that failed a tag read
+        // once, and a delete the host accepted and did not perform, both answer
+        // `removed: 0, disowned: n` and both succeed on the next press. The
+        // withdrawal took the card AND the crumb, so slides the next press
+        // would have removed were left with nothing able to ask for them.
         //
-        // The CRUMB goes with it, so a reopened pane does not offer the same
-        // dead press again. The price is a host that refused a tag read once
-        // and would have answered the next time; the alternative is a standing
-        // offer that on every host below 1.3 can never work, and the same
-        // decision `nextSweepOffer` already takes for a press that declined a
-        // slide.
+        // `added` and `deckAtStart` STAY, in every case. They say what is in the
+        // deck, not what may be pressed: `added` is what disarms the merge
+        // button, so clearing it re-armed "Add 6 slides" over six slides that
+        // were still there. The crumb stays for the same reason — it is the
+        // record that stops the next merge overwriting a run whose slides are
+        // still in the deck.
         const deckNow = await slideCount().catch(() => undefined);
-        const stuck = (disowned ?? 0) > 0;
-        if (stuck) {
-          last = undefined;
-          clearCrumb(documentKey());
-        }
+        if (unprovable === true) last = undefined;
         state = {
           ...state,
-          notice: stuck
-            ? `Nothing was removed — ${detail}. Delete them from the thumbnail rail if you want them gone.`
-            : `Nothing was removed — ${detail}`,
-          ...(stuck ? { added: undefined, deckAtStart: undefined } : {}),
+          notice:
+            unprovable === true
+              ? `Nothing was removed — ${detail}. Delete them from the thumbnail rail if you want them gone.`
+              : `Nothing was removed — ${detail}`,
+          ...(unprovable === true ? { undoWithdrawn: true } : {}),
           ...(deckNow !== undefined ? { deckSize: deckNow } : {}),
         };
         return;
@@ -1240,7 +1240,12 @@ async function endPreview(): Promise<void> {
         ...(deckNow !== undefined ? { deckSize: deckNow } : {}),
         notice:
           (removed > 0
-            ? `${plural(removed, "slide")} of the preview removed. The rest could not be shown to be this run's. `
+            ? // The slides the sweep DECLINED, counted. "The rest" spoke for
+              // every slide left in the range, most of which it never doubted
+              // — the same sentence the merge undo carried and the same reason
+              // it was replaced there.
+              `${plural(removed, "slide")} of the preview removed. ${plural(disowned ?? 0, "slide")} could not ` +
+              `be shown to be this run's. `
             : `The preview could not be taken back — ${detail}. `) +
           // The size is REPORTED, never read as an identity. A sentence saying
           // the deck is no bigger than it was before the preview was here for

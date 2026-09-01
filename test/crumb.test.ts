@@ -58,6 +58,44 @@ describe("the numbers an undo cannot be done without", () => {
     expect(readCrumb(DECK)?.startedAt, "a new run keeps none of the old one's").not.toBe(WHEN);
   });
 
+  it("does not carry a date across two runs that share an id", () => {
+    // Two of the pane's writes use a shared id rather than a run's own —
+    // "pending", before an insert has answered, and "recovered", for a run
+    // rebuilt from a crumb. Matching on the id alone made a merge inherit the
+    // date of an unrelated one days earlier, which is the very thing the
+    // carry-over exists to prevent.
+    const WHEN = "2026-08-20T09:15:00.000Z";
+    real.setItem(
+      KEY,
+      JSON.stringify({
+        kind: "ssf-merge-run",
+        deckAtStart: 18,
+        added: 6,
+        runId: "pending",
+        startedAt: WHEN,
+        doc: DECK,
+      }),
+    );
+    dropCrumb({ deckAtStart: 40, added: 0, runId: "pending", doc: DECK });
+    expect(readCrumb(DECK)?.startedAt, "a different deck size is a different run").not.toBe(WHEN);
+
+    // And a stored date that is not one is replaced rather than carried, or a
+    // corrupt record would outlive every re-write.
+    real.setItem(
+      KEY,
+      JSON.stringify({
+        kind: "ssf-merge-run",
+        deckAtStart: 12,
+        added: 6,
+        runId: "r1",
+        startedAt: "gibberish",
+        doc: DECK,
+      }),
+    );
+    dropCrumb({ deckAtStart: 12, added: 4, runId: "r1", doc: DECK });
+    expect(readCrumb(DECK)?.startedAt).not.toBe("gibberish");
+  });
+
   it("is gone once the slides are", () => {
     dropCrumb({ deckAtStart: 12, added: 720, runId: "r1", doc: DECK });
     clearCrumb(DECK);

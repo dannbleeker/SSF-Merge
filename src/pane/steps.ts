@@ -217,6 +217,21 @@ export interface PaneState {
    */
   added?: number;
   /**
+   * The undo card is not offered, because a press has proved it cannot work.
+   *
+   * SEPARATE from `added`, which stays. `added` says what is in the deck — it
+   * disarms the merge button and it draws the card's numbers — and clearing it
+   * to hide the card re-armed "Add 6 slides" over six slides that were still
+   * there, one press from a deck holding twelve.
+   *
+   * Set only where the host cannot prove a slide is the merge's at all (see
+   * `UndoOutcome.unprovable`), so the same press would answer the same way for
+   * ever. Not persisted: a reopened pane offers the press again, once, which is
+   * the price of keeping the crumb that stops the next merge overwriting a run
+   * whose slides are still in the deck.
+   */
+  undoWithdrawn?: boolean;
+  /**
    * Whether the state has changed since that merge landed.
    *
    * `added` used to carry both halves of "a merge just landed": the button's

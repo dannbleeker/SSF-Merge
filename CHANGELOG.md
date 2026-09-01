@@ -28,9 +28,10 @@ back to counting slides and took the whole range, including anything you had
 added in the meantime. Falling back is right for a first press, where counting
 is the only evidence there has ever been; a later press now requires the slides
 to prove they are the merge's, and takes nothing if they cannot. Where they
-cannot — an older PowerPoint has no slide tags to prove it with — the button is
-withdrawn and the notice says the slides can be deleted from the thumbnail rail,
-rather than standing over them offering a removal that will not happen.
+cannot — an older PowerPoint has no slide tags to prove it with — the press that
+finds that out withdraws the button and says the slides can be deleted from the
+thumbnail rail, rather than leaving it standing there for the rest of the
+session. The merge button stays disarmed while those slides are in the deck.
 
 ### Fixed — the preview card named the wrong slides when the deck had moved
 

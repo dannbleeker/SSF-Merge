@@ -843,6 +843,11 @@ describe("the preview", () => {
     // every user over slides that ARE the run's.
     expect(pane().textContent).toContain("could not be shown to be this run's");
     expect(pane().textContent, "a claim the data cannot support").not.toContain("are not this run's");
+    // COUNTED, not "the rest". One slide was declined and one is still owed,
+    // and the sentence spoke for both — the same defect the merge undo's
+    // notice carried, in the sibling screen that was not changed with it.
+    expect(pane().textContent).toContain("1 slide could not be shown to be this run's");
+    expect(pane().textContent, "a claim about slides the sweep never doubted").not.toContain("The rest");
     // And there is no second press to make: the preview is over.
     expect(office.undoMerge.mock.calls.length, "no further sweep is offered").toBe(before + 1);
   });
@@ -1558,19 +1563,15 @@ describe("taking a real merge back", () => {
     expect(document.body.textContent, "a claim about slides the sweep never doubted").not.toContain("The rest");
   });
 
-  it("takes the card down when a press proves nothing, rather than offering it for ever", async () => {
+  it("takes the card down only where the host says the press can NEVER work", async () => {
     /**
-     * A press that removes nothing and disowns something will answer the same
-     * way every time: the sweep could not show the slides are this merge's,
-     * and pressing again asks the same question of the same deck. The card
-     * stayed up over them, with a live delete button, and `sweepPlan` still
-     * said yes to the shape — so nothing else took it down.
-     *
-     * On a host below PowerPointApi 1.3 that is EVERY second press, because a
-     * tag read there can never answer. Relaxing the proof for those hosts was
-     * the other way out and it deletes: the fall-through takes the whole
-     * positional window, which is where a slide the user made between the
-     * presses sits. See `test/office-host.test.ts`.
+     * `removed: 0, disowned: n` is not a terminal answer. A 1.3 host that
+     * failed one tag read, and a delete PowerPoint accepted and did not
+     * perform, both produce it and both succeed on the next press — so a
+     * withdrawal on that pair alone throws away slides the very next press
+     * would have removed. `undoInsert` says which case this is: `unprovable`
+     * is set only where proof was required and the host has no slide tags at
+     * all.
      */
     await afterMerge();
     office.undoMerge.mockResolvedValueOnce({ removed: 2, disowned: 0, detail: "removed 2 slide(s)" });
@@ -1579,9 +1580,7 @@ describe("taking a real merge back", () => {
     await settle();
     expect(undoButton(), "slides are still owed, so the way back stays").not.toBeNull();
 
-    // The deck still fits a plan — four owed, four there — so the card is not
-    // withdrawn by the arithmetic. It is withdrawn because the press proved
-    // nothing and the next one cannot either.
+    // A press that proved nothing but might next time. The card stays.
     office.undoMerge.mockResolvedValueOnce({
       removed: 0,
       disowned: 4,
@@ -1590,15 +1589,56 @@ describe("taking a real merge back", () => {
     office.slideCount.mockResolvedValueOnce(16);
     undoButton()?.click();
     await settle();
+    expect(undoButton(), "a host that answered nothing once may answer the next time").not.toBeNull();
 
-    expect(undoButton(), "a button that can only answer the same way again").toBeNull();
-    const pressed = office.undoMerge.mock.calls.length;
+    // The same answer from a host that CANNOT answer. Now it goes.
+    office.undoMerge.mockResolvedValueOnce({
+      removed: 0,
+      disowned: 4,
+      unprovable: true,
+      detail: "nothing to take back — none of slides 13 to 16 could be shown to be this merge's",
+    });
+    office.slideCount.mockResolvedValueOnce(16);
     undoButton()?.click();
     await settle();
-    expect(office.undoMerge.mock.calls.length, "and no further sweep is offered").toBe(pressed);
+
+    expect(undoButton(), "a button that can only answer the same way again").toBeNull();
     // The slides are still in the deck, so the user is told what they can do
     // about them instead of being left with a sentence and no way forward.
     expect(document.body.textContent).toContain("thumbnail rail");
+  });
+
+  it("leaves the merge button disarmed when it takes the undo card down", async () => {
+    /**
+     * The card was hidden by clearing `state.added`, and `added` is what
+     * disarms the merge button — its own docstring says so: "one more press and
+     * there are 1440, in somebody's deck, from a button that looks like the one
+     * they just pressed". So the withdrawal re-armed "Add 6 slides" over the
+     * six slides that were still there, and invited the user to double them.
+     *
+     * The card and the button are different questions: one is what may be
+     * pressed, the other is what is in the deck.
+     */
+    await afterMerge();
+    expect(primary().textContent, "a merge that landed").toBe("Added 6 slides");
+
+    office.undoMerge.mockResolvedValueOnce({
+      removed: 0,
+      disowned: 6,
+      unprovable: true,
+      detail: "nothing to take back — none of slides 13 to 18 could be shown to be this merge's",
+    });
+    office.slideCount.mockResolvedValueOnce(18);
+    const merges = office.runMerge.mock.calls.length;
+    undoButton()?.click();
+    await settle();
+
+    expect(undoButton(), "the card is withdrawn").toBeNull();
+    expect(primary().textContent, "and the merge button is still the one that landed").toBe("Added 6 slides");
+    expect(primary().disabled, "a live merge button over slides that are still there").toBe(true);
+    primary().click();
+    await settle();
+    expect(office.runMerge.mock.calls.length, "no second merge on top of the first").toBe(merges);
   });
 
   it("says so when the sweep refused, and leaves the deck alone", async () => {

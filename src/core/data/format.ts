@@ -693,8 +693,9 @@ const APOSTROPHE = /(['\u2019])/;
  * The second rule is not decoration. Holding an apostrophe inside a word is
  * what stops `Date d'échéance` printing as `Date 1'échéance`, and it welds the
  * two halves of `MMM'yy` into one run that is not a token — so the commonest
- * abbreviated pattern there is printed itself. `MMM'yy` and `MMM’yy` are
- * `Mar'26`; `d'échéance` is left alone, because `échéance` is not a token and
+ * abbreviated pattern there is printed itself. `MMM'yy` is `Mar'26` and
+ * `MMM’yy` is `Mar’26` — the apostrophe is kept as written. `d'échéance` is
+ * left alone, because `échéance` is not a token and
  * one piece failing fails the run.
  *
  * The price is the reverse case: `d'MMMM` is `1'March` rather than itself. Both

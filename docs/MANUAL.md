@@ -891,9 +891,15 @@ nothing you had before the run can be touched.
 Position decides which slides are even considered; the slides themselves decide
 which of those go. Every merged slide carries a mark inside the file saying
 which merge made it, and the undo removes only the ones that carry this merge's.
-Where PowerPoint will not answer that question — an older host, or one having a
-bad minute — the clamps above are the whole of the protection, which is why they
-are drawn as tightly as they are.
+
+Where PowerPoint will not answer that question — an older version, or one having
+a bad minute — the FIRST press falls back to the clamps above, which is what the
+add-in did before slide marks existed and is why they are drawn as tightly as
+they are. A LATER press does not: by then a press has happened, so the deck has
+changed shape and the range can hold a slide you made in between. It takes
+nothing it cannot show is the merge's, and where nothing can be shown at all the
+card is withdrawn and the notice says the slides can be deleted from the
+thumbnail rail.
 
 **If your deck grew after the merge, the offer goes away.** Add slides yourself,
 or have a co-author add some, and the last slides in the deck are no longer the
@@ -906,7 +912,11 @@ The same applies if you take some of the merged slides out yourself: the card
 then offers the ones that are left, not the number the merge originally added.
 
 A sweep that removed only some of them keeps the offer up, because the rest are
-still there and only you can finish.
+still there and only you can finish. If pressing again proves nothing — an older
+PowerPoint has no slide marks to prove it with — the card goes rather than
+standing over slides it cannot remove, and the slides stay in the deck for you
+to delete by hand. The merge button stays disarmed either way: those slides are
+still there, and a re-armed button is how a deck gets the merge twice.
 
 **If the pane closes before you take them back, the offer comes with you.**
 Reopen the add-in and it says which merge left slides in your deck and offers to
@@ -1009,8 +1019,9 @@ two slide numbers works everywhere.
 
 The last of those is worth knowing about, because it is the one that changes
 what a button does rather than whether it is there. Below 1.3 the undo cannot
-ask a slide whether this merge made it, so it falls back to what it can prove
-from the deck's size — see
+ask a slide whether this merge made it. The first press falls back to what it
+can prove from the deck's size; a second press takes nothing, and the card is
+withdrawn rather than left offering a removal that cannot happen — see
 [what the undo will not do](#taking-a-merge-back).
 
 A declared requirement set that your PowerPoint does not meet makes the add-in

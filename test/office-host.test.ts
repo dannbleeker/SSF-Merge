@@ -215,6 +215,10 @@ describe("what an insert and an undo say when the host misbehaves", () => {
     // and a slide the host would not answer for are the same `undefined` here.
     expect(outcome.detail).not.toContain("PowerPoint would not");
     expect(outcome.detail).not.toContain("carries this merge's mark");
+    // And the pane may NOT treat this as terminal. This host has the API and
+    // did not answer with it; the next press may well be answered, so the way
+    // back stays on screen.
+    expect(outcome.unprovable, "a host that can answer and did not").not.toBe(true);
   });
 
   it("takes nothing on a REPEAT press on a host with no tags either, and spares the slide made since", async () => {
@@ -243,5 +247,9 @@ describe("what an insert and an undo say when the host misbehaves", () => {
     expect(outcome.disowned).toBe(3);
     expect(fake.slides, "the slide the user made between the presses").toContain("MINE");
     expect(fake.slides).toHaveLength(15);
+    // This one IS terminal, and says so: there are no slide tags on this host
+    // to prove anything with, so the same press answers the same way for ever.
+    // It is the only shape the pane may withdraw the card on.
+    expect(outcome.unprovable, "a host with no tags at all").toBe(true);
   });
 });

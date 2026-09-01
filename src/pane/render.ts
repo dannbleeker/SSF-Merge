@@ -216,6 +216,10 @@ export function render(root: HTMLElement, state: PaneState, current: StepId): vo
   // a presentation and the sentence should say which part.
   if (
     state.added &&
+    // A press has already proved this host cannot answer for the slides, so
+    // the button would refuse every time it was drawn. `added` is untouched:
+    // the slides are still in the deck and the merge button must stay disarmed.
+    state.undoWithdrawn !== true &&
     state.deckSize !== undefined &&
     state.deckAtStart !== undefined &&
     undoIsPossible(state.added, state.deckSize, state.deckAtStart) &&

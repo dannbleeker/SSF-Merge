@@ -385,6 +385,21 @@ export interface UndoOutcome {
    */
   disowned: number;
   detail: string;
+  /**
+   * The press could not have gone differently, and repeating it cannot either.
+   *
+   * True only where PROOF was required and this host has no `Slide.tags` at
+   * all — PowerPointApi 1.3 — so the tag read answered nothing and always
+   * will. That is the one shape a caller may treat as terminal.
+   *
+   * Everything else that answers `removed: 0, disowned: n` may well succeed on
+   * the next press: a 1.3 host whose tag read failed once, and a delete the
+   * host accepted and did not perform, both look identical from here. The pane
+   * read the pair as terminal for one commit and withdrew the card and the
+   * crumb on both — leaving slides in the deck that the very next press would
+   * have removed, with nothing left able to ask for them.
+   */
+  unprovable?: boolean;
 }
 
 /**
@@ -477,6 +492,10 @@ export async function undoInsert(
     requireProof: opts.requireProof === true,
   });
   if (targets.length === 0) {
+    // Whether the answer can change. Asked HERE because this is the only place
+    // that knows both halves — that proof was demanded, and that the host has
+    // no tags to give. See `UndoOutcome.unprovable`.
+    const unprovable = opts.requireProof === true && !hostSupports("1.3");
     // Says what is KNOWN, which is neither of the two things it used to say.
     // "None of them carries this merge's mark" is a claim about the slides, and
     // `runTagsAt` cannot support it: a slide with no tag and a slide the host
@@ -491,6 +510,7 @@ export async function undoInsert(
       detail:
         `nothing to take back — none of slides ${plan.from + 1} to ${plan.from + plan.count} ` +
         `could be shown to be this merge's`,
+      ...(unprovable ? { unprovable: true } : {}),
     };
   }
   let error: string | undefined;

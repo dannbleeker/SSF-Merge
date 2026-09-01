@@ -112,8 +112,16 @@ export function dropCrumb(c: Omit<Crumb, "kind" | "startedAt">): void {
   if (!s) return;
   try {
     const prior = readCrumb(c.doc);
+    // The SAME run, and a date that is one. Two of the pane's writes use a
+    // shared id — "pending" before an insert answers, and "recovered" for a run
+    // rebuilt from a crumb — so matching on the id alone let a merge inherit
+    // the date of an unrelated one days earlier, which is the defect this
+    // carry-over was written to fix. `deckAtStart` is the run's other half and
+    // separates them. A stored date that is not a date is replaced rather than
+    // carried, or a corrupt one would outlive every re-write.
+    const sameRun = prior !== undefined && prior.runId === c.runId && prior.deckAtStart === c.deckAtStart;
     const startedAt =
-      prior !== undefined && prior.runId === c.runId && prior.startedAt !== "unknown"
+      sameRun && prior !== undefined && Number.isFinite(Date.parse(prior.startedAt))
         ? prior.startedAt
         : new Date().toISOString();
     const crumb: Crumb = { kind: "ssf-merge-run", startedAt, ...c };
