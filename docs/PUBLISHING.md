@@ -71,13 +71,16 @@ Checked, so it is not re-litigated later.
       one telling a user what they may do with the add-in.
 
 - [ ] **Bump the manifest version on every submitted update.** `VERSION` in
-      `scripts/manifest-source.mjs` is the constant `1.0.0.0` and has never
-      moved. AppSource requires the version to increment with each update, so
-      the first update after listing is where a constant becomes a rejection.
-      Nothing today bumps it, and nothing needs to until there is a listing.
+      `scripts/manifest-source.mjs` is a hand-edited constant, moved when the
+      manifest changes rather than when the project releases: `1.0.0.0` →
+      `1.0.1.0` on 2026-08-30, for the icon and support-link changes above.
+      AppSource requires the version to increment with each update, so a
+      submission whose number has not moved since the last one is refused.
+      Nothing automates the bump, and nothing needs to until there is a listing —
+      the item stays open because remembering is the whole of the process.
 
-      **This entry previously called the split between `1.0.0.0` and
-      `package.json`'s `0.2.3` a defect. It is not, and the claim was wrong.**
+      **This entry previously called the split between the manifest's version
+      and `package.json`'s a defect. It is not, and the claim was wrong.**
       The decoupling is deliberate, reasoned in that file and pinned by
       `test/manifest.test.ts`: Office rejects anything below 1.0 outright and
       wants four parts, npm wants semver, and a sibling project shipped `0.1.0`
@@ -140,8 +143,11 @@ Checked, so it is not re-litigated later.
 ## Likely to fail review, or to cost a round trip
 
 - [ ] **Test on macOS Safari, and in Chrome and Firefox.** The policy requires
-      the add-in work in all of them. All three real-host rounds so far were
-      Edge, on Windows, on the web. A reviewer tests on their own platform.
+      the add-in work in all of them. Every real-host round so far has been on
+      Windows: the web rounds in Edge, and the round of 2026-08-31 in desktop
+      PowerPoint, whose pane is WebView2 and so Chromium again. Neither Safari
+      nor Gecko has ever opened the pane. A reviewer tests on their own
+      platform.
 
 - [ ] **Test on a touch-only device.** "All features must work on touch-only
       devices without keyboard/mouse." This flow needs two typed slide numbers,
@@ -166,9 +172,12 @@ Checked, so it is not re-litigated later.
       on our own site or Microsoft's, and a test refuses any of them going back
       to GitHub.
 
-- [ ] **Edit Data on desktop PowerPoint.** Not a policy item. It is the one
-      product behaviour no round has ever verified, and desktop is exactly where
-      a reviewer will be. See `docs/TEST-KIT.md`.
+- [x] **Edit Data on desktop PowerPoint.** Not a policy item, and no longer
+      open: it was the one product behaviour no round had verified, and the
+      round of 2026-08-31 did it in desktop PowerPoint 16.0.20326. Right-click ▸
+      Edit Data on each classic chart opened a workbook holding that row's own
+      values rather than the placeholders, and closing the workbook reverted
+      nothing on the slide. `docs/TEST-KIT.md` records both decks.
 
 - [ ] **Read the title rule.** Titles may not include a brand or service name,
       with an exception for add-ins aimed at large organisations. Whether "SSF

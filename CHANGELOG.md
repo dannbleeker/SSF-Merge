@@ -7,6 +7,36 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a big template deck could exhaust the pane before merging anything
+
+Preparing the first copy gathers the slide identifiers already in the deck, so
+a new copy cannot collide with one. It read each slide through the cache that
+keeps edits, which retains — so the merge parsed and held every slide in the
+presentation before it had merged a single row.
+
+That is worst exactly where it is least affordable. On versions of PowerPoint
+below the one that can hand over a slide range, the add-in receives the whole
+presentation, so a three-hundred-slide deck meant three hundred held documents
+on the first copy. Measured on a modest 120-slide deck it was 125 held parts
+and 23 MB before any work; it is now 5 parts and 3 MB, and what is held no
+longer grows with the deck at all.
+
+### Fixed — the security page advertised a denial of service that was already fixed
+
+`SECURITY.md` carried the sweep of 2026-08-30 twice, and the two copies
+disagreed about the same finding: one said the placeholder pattern's quadratic
+backtracking had been fixed, the other said it had been left standing
+deliberately and printed the inputs that trigger it. The fix is the one that
+shipped — the reader is a linear scan and there is no pattern left to
+backtrack — so the second copy was a public page handing out a recipe against
+code that no longer exists. It is gone.
+
+The rest of the documentation was read against the source in the same pass, and
+several sentences that had stopped being true were corrected: what the tags on a
+merged slide are actually used for, which characters a field name may contain,
+what the pane says when a merge fills nothing, and the limits of taking a merge
+back.
+
 ### Fixed — an undo could remove slides you made yourself
 
 "Remove these slides" worked out what to delete from how big the deck was

@@ -3,10 +3,11 @@
 Mail merge for PowerPoint. You build one slide, or one block of slides, put
 placeholders where the data goes, and SSF Merge produces one copy per row.
 
-> **Status.** Everything described here is built and shipped, with two
-> exceptions, both marked where they appear: two things that could happen to
-> your template after a merge, and two data sources that are not the paste box.
-> Neither is on the backlog — `docs/BACKLOG.md` is empty — so read them as
+> **Status.** Everything described here is built and shipped, with three
+> exceptions, each marked where it appears: two things that could happen to your
+> template after a merge, two data sources that are not the paste box, and two
+> places the merged slides could go instead of the end of your deck. None of
+> them is on the backlog — `docs/BACKLOG.md` is empty — so read them as
 > *designed and not scheduled*, not as *coming soon*.
 >
 > Nothing here is aspirational: a line moves out of *not scheduled* in the same
@@ -256,8 +257,11 @@ Write a field where the value should appear:
 {{Name}}
 ```
 
-Field names may contain letters, digits, underscores and dots, so `{{Customer.Name}}`
-works if your columns are named that way.
+A field name can be almost anything your column headers are: letters, digits,
+spaces, underscores, dots and punctuation all work, so `{{Customer.Name}}` and
+`{{Min. of cost}}` are both fields. The exceptions are set out a few paragraphs
+below — a brace, a pipe, a line break, and a name with no letter or digit in it
+at all.
 
 **A placeholder split across formatting still works.** PowerPoint constantly
 stores `{{FirstName}}` as `{{Fir` + `stName}}` after an edit or a spellcheck
@@ -701,9 +705,17 @@ say so in an issue — that is what puts something back on the backlog.
 
 ## Tags SSF Merge writes
 
-Merged slides carry metadata inside the file. You never need to touch it, but it
-is what makes undo and re-run possible, and it is visible to any tool that reads
-PowerPoint tags.
+Merged slides carry metadata inside the file. You never need to touch it, and it
+is visible to any tool that reads PowerPoint tags.
+
+One of these tags is read back by the add-in itself. Before an undo deletes
+anything it asks each slide in the range whether this merge made it, and
+`SSF_MERGE_RUN` is the answer — so a slide you added yourself, sitting where a
+merged one used to be, is left alone. The range it asks about comes from the
+deck's size before and after the run, not from the tags; the tags decide which
+slides inside that range may go. The other three are written for you and for
+other tools, and nothing in the add-in reads them back. Re-run needs none of
+them: it works because the template stays exactly where it is.
 
 | Tag | On | Meaning |
 | --- | --- | --- |
@@ -831,6 +843,13 @@ added cannot be found by id on PowerPoint for the web. The sweep is clamped so
 it can never reach an index below the deck's size when the merge started, so
 nothing you had before the run can be touched.
 
+Position decides which slides are even considered; the slides themselves decide
+which of those go. Every merged slide carries a mark inside the file saying
+which merge made it, and the undo removes only the ones that carry this merge's.
+Where PowerPoint will not answer that question — an older host, or one having a
+bad minute — the clamps above are the whole of the protection, which is why they
+are drawn as tightly as they are.
+
 **If your deck grew after the merge, the offer goes away.** Add slides yourself,
 or have a co-author add some, and the last slides in the deck are no longer the
 ones the merge added — so there is no range anybody can name, and the card stops
@@ -887,10 +906,12 @@ reaches anybody. If a merge goes wrong, this is the thing worth sending.
 A call that never came back shows its `issued` line with no `answered` after it,
 which names the step that stopped.
 
-**"No placeholders were filled."** The merge added the slides and changed
-nothing on them, which almost always means the placeholder names in your
-template do not match your column headers. Check the spelling and the braces —
-`{{First name}}` matches a column headed `First name`, and nothing else does.
+**"no {{fields}} were filled — check the spelling in your template".** That
+clause appears in the outcome line beside the slide count, and it means the
+merge added the slides and changed nothing on them — which almost always means
+the placeholder names in your template do not match your column headers. Check
+the spelling and the braces: `{{First name}}` matches a column headed
+`First name`, and nothing else does.
 
 ## Installing it
 
@@ -1039,9 +1060,16 @@ so once. Only the chart's Edit Data will still show your placeholders.
   instead.** See "Modern charts" above: those versions cannot draw one at all,
   and what they fall back to is a picture this add-in cannot redraw for each
   row. Anything newer shows the chart itself.
-- **Cut and paste on PowerPoint for the web loses shape tags**
-  ([office-js#3784](https://github.com/OfficeDev/office-js/issues/3784)). A
-  merged slide cut and pasted into another deck loses its run tag, so undo will
-  no longer find it.
+- **A merged slide moved into another deck cannot be taken back by undo.** The
+  offer is scoped to the presentation the merge ran in, and inside it the sweep
+  works by position, so a slide that has been cut and pasted somewhere else is
+  out of its reach. Delete it by hand. (The tags SSF Merge writes are on the
+  SLIDE, in the file, not on its shapes, so the shape-tag loss reported in
+  [office-js#3784](https://github.com/OfficeDev/office-js/issues/3784) is not
+  what is happening here — this limit is the scope of the undo itself.)
 - **A very long deck is slow to edit**, which is PowerPoint's behaviour and not
-  something an add-in can fix. Merging into a separate presentation avoids it.
+  something an add-in can fix. There is no way around it inside SSF Merge:
+  merging into a separate presentation would avoid it and was designed and
+  declined — see [Where the merged slides
+  go](#where-the-merged-slides-go) — so the remedy today is a smaller run, or
+  splitting the rows across decks yourself.
