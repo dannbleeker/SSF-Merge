@@ -7,6 +7,20 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a tag from another add-in could make the merged deck unopenable
+
+A merge carries through any tags another add-in left on your slides, which is a
+promise this manual makes. The values were escaped for the five markup
+characters and for the whitespace an XML parser would otherwise normalise — and
+not for the characters XML cannot hold at all, which have no escape: writing
+`&#11;` is exactly as broken as writing the character. One of those in a
+carried-through tag produced a part PowerPoint refuses, on every merged slide,
+reported as a damaged file with nothing naming the cause.
+
+The rule already existed for slide text. It is now in one place that both
+writers share, because those two are the only places this engine builds XML by
+hand and two copies of "what XML can hold" is two things to drift apart.
+
 ### Fixed — a deck from another generator could not be merged at all
 
 An XML part may legally begin with a UTF-8 byte order mark, and .NET's default

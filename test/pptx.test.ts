@@ -889,6 +889,67 @@ describe("a slide whose <p:tags> leads nowhere", () => {
   }
 });
 
+describe("a tag value carrying a character XML cannot hold", () => {
+  /**
+   * `mergeTagPart` carries a FOREIGN add-in's tags through a merge, which is a
+   * promise `docs/MANUAL.md` makes — and the value comes from a template deck
+   * this engine did not write. `xmlAttr` escapes the five markup characters and
+   * the whitespace an attribute parser normalises, and stops there.
+   *
+   * The characters XML 1.0 forbids outright have no escape at all: `&#11;` is
+   * exactly as ill-formed as the byte. So a value holding one produced a tag
+   * part PowerPoint refuses, on every merged slide, reported as a damaged file
+   * with nothing naming the cause.
+   *
+   * The rule already existed for slide TEXT and lived in `merge/text.ts`, one
+   * layer above the only other place this codebase builds XML by
+   * concatenation. It is in `pptx/xml.ts` now, where both readers can share it
+   * — a second copy is how the two would come to disagree about what XML can
+   * carry.
+   */
+  const FORBIDDEN = (xml: string) =>
+    [...xml].filter((c) => {
+      const n = c.charCodeAt(0);
+      return (n < 0x20 && n !== 9 && n !== 10 && n !== 13) || n === 0xfffe || n === 0xffff;
+    });
+
+  it("writes a part a conforming parser will take", () => {
+    for (const [what, value] of [
+      ["a NUL", "a\u0000b"],
+      ["a vertical tab", "a\u000bb"],
+      ["a form feed", "a\u000cb"],
+      ["U+FFFE", "p\ufffeq"],
+    ] as const) {
+      const xml = tagPartXml([["FOREIGN", value]]);
+      expect(FORBIDDEN(xml), what).toEqual([]);
+      expect(() => parseXml(xml), what).not.toThrow();
+    }
+  });
+
+  it("keeps a lone surrogate out, and an astral character in", () => {
+    // An unpaired half is already broken text and cannot be written at all; a
+    // well-formed pair is one ordinary code point above FFFF and must survive,
+    // which is the distinction `\p{Surrogate}` under the `u` flag draws.
+    expect(tagPartXml([["FOREIGN", "x\ud800y"]])).not.toContain("\ud800");
+    expect(tagPartXml([["FOREIGN", `ok ${String.fromCodePoint(0x1f600)}`]])).toContain(String.fromCodePoint(0x1f600));
+  });
+
+  it("still escapes the markup and the whitespace it always did", () => {
+    // The neighbouring rule this must not disturb. A tab, a newline and a
+    // carriage return are LEGAL XML and are escaped for a different reason: an
+    // attribute parser normalises them to spaces, so writing them literally
+    // loses them.
+    const xml = tagPartXml([["FOREIGN", `a<b>&"c'\td\ne`]]);
+    expect(xml).toContain("&lt;");
+    expect(xml).toContain("&amp;");
+    expect(xml).toContain("&quot;");
+    expect(xml).toContain("&#9;");
+    expect(xml).toContain("&#10;");
+    const round = parseXml(xml);
+    expect(round.getElementsByTagName("p:tag")[0]?.getAttribute("val")).toBe(`a<b>&"c'\td\ne`);
+  });
+});
+
 describe("sweeping the template block off a long deck", () => {
   /**
    * `removeSlide` used to resolve every `<p:sldId>` in the deck through

@@ -14,7 +14,7 @@
  */
 import { Pkg } from "./pkg.js";
 import { REL_TYPE } from "./parts.js";
-import { P_NS, R_NS, child, element, elements, parseXml } from "./xml.js";
+import { P_NS, R_NS, child, element, elements, parseXml, xmlSafe } from "./xml.js";
 
 const TAGS_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.presentationml.tags+xml";
 const TAG_LST_NS = `xmlns:p="${P_NS}"`;
@@ -46,9 +46,21 @@ export const TAG_RECORD = "SSF_MERGE_RECORD";
  * whitespace in them. It reaches a FOREIGN tag, which `mergeTagPart` carries
  * through untouched and `docs/MANUAL.md` promises survives a merge. An add-in
  * keeping anything formatted in a tag got it back on one line.
+ *
+ * **A third half: the characters XML cannot carry AT ALL.** Escaping was the
+ * whole of this and it is not enough — `&#11;` is exactly as ill-formed as the
+ * byte, so a C0 control, a lone surrogate or U+FFFE in a foreign tag produced a
+ * part PowerPoint refuses, on every merged slide, reported as a damaged file
+ * with nothing naming the cause. `xmlSafe` is that rule, and it is shared with
+ * the slide-text writer rather than copied: this and that are the only two
+ * places in the engine that build XML by concatenation, and two copies of
+ * "what XML can hold" is two things to drift.
+ *
+ * It runs FIRST, because escaping a character that may not be written is
+ * writing it.
  */
 function xmlAttr(s: string): string {
-  return s
+  return xmlSafe(s)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
