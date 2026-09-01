@@ -352,6 +352,21 @@ export async function graphicPartsOf(pkg: Pkg, slidePath: string): Promise<strin
  * charts is exactly the mix-up a count would not catch.
  */
 export async function packagesOfChart(pkg: Pkg, chartPath: string): Promise<string[]> {
+  // Only a CHART is asked for its workbook. `fieldSites` hands this every part
+  // `graphicPartsOf` found, which includes a SmartArt data part, a diagram
+  // drawing and — since chart callouts are cloned — a chart's user-shapes
+  // drawing. None of those has an embedded workbook, and pairing one with a
+  // `package` relationship it happened to carry would fill a chart's numbers
+  // from a stranger's cells.
+  //
+  // A chart stored somewhere other than `ppt/charts/` would be skipped by this,
+  // and its value cells would go unmerged. Part names are arbitrary in OPC, so
+  // that is possible in principle; no producer has been named that does it, and
+  // this engine's own clones are renamed into that folder. Left as it is rather
+  // than widened on a hunch — the shape that would close it properly is passing
+  // the relationship TYPE down from `graphicPartsOf` instead of inferring the
+  // kind from a path, which is a change worth making the day something real
+  // needs it.
   if (!chartPath.startsWith("ppt/charts/")) return [];
   const out: string[] = [];
   for (const rel of await relsOf(pkg, chartPath)) {
