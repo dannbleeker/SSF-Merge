@@ -34,6 +34,30 @@ describe("bounding a host call", () => {
     clear.mockRestore();
   });
 
+  it("names a rejection that is not an Error, rather than tracing [object Object]", async () => {
+    /**
+     * `err instanceof Error` is the only thing between a host rejection and the
+     * run log. Office.js rejects with `OfficeExtension.Error`, which is one —
+     * but a rejected string, a rejected plain object and a rejected `undefined`
+     * are all things a promise can carry, and the run log is the only
+     * diagnostic a task-pane user can hand over. A line reading
+     * `raised call=an insert` with no error at all sends the reader nowhere.
+     *
+     * The three states this function reports — answered, gave up, raised — are
+     * separate because they send a reader to different files. A raise with
+     * nothing in it collapses the third back into "the host got in the way".
+     */
+    beginRun();
+    await withTimeout(Promise.reject("GeneralException"), 1000, "an insert").catch(() => undefined);
+    const raised = traceLog().entries.find((l) => l.message === "raised");
+    expect(raised?.data?.error, "the run log is what a user hands over").toBe("GeneralException");
+
+    beginRun();
+    await withTimeout(Promise.reject({ code: 5010 }), 1000, "an insert").catch(() => undefined);
+    const other = traceLog().entries.find((l) => l.message === "raised");
+    expect(typeof other?.data?.error, "still a string, whatever was thrown").toBe("string");
+  });
+
   it("clears its timer when the work FAILS too", async () => {
     const clear = vi.spyOn(globalThis, "clearTimeout");
     const before = clear.mock.calls.length;
