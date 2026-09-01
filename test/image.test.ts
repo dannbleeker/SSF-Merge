@@ -222,6 +222,46 @@ describe("header shapes a real encoder writes and this reader did not expect", (
     expect(readImage(jpeg(0xff, 0xff, 0xff, 0xff)), "four fill bytes lost the frame").toEqual(control);
   });
 
+  it("walks past a standalone marker that carries no length", () => {
+    /**
+     * `TEM` (`FF 01`) and the eight restart markers (`FF D0`-`FF D7`) are the
+     * markers with no length after them. Skipped by a length they do not have,
+     * the walk reads the FRAME HEADER's own first bytes as a segment length and
+     * jumps a nonsense distance — the same failure as the fill-byte case above,
+     * and the same symptom: a perfectly good JPEG reported as a file this
+     * add-in cannot read, with the picture placeholder left standing.
+     *
+     * Same method as the test above: not an absolute size read out of bytes I
+     * wrote, but a legal variation that must not change the control's answer.
+     */
+    const control = readImage(jpeg());
+    expect(control?.width, "the control is not being read").toBe(200);
+    expect(readImage(jpeg(0xff, 0x01)), "TEM").toEqual(control);
+    expect(readImage(jpeg(0xff, 0xd0)), "RST0").toEqual(control);
+    expect(readImage(jpeg(0xff, 0xd7)), "RST7").toEqual(control);
+  });
+
+  it("walks past padding that is not a fill byte", () => {
+    /**
+     * The walker advances one byte at a time until it finds `0xFF`, rather than
+     * assuming the byte after a segment begins a marker. A stray byte between
+     * segments is not something an encoder should write and is something a
+     * reader meets; taken as the start of a marker it reads the byte after it
+     * as a marker number and the two after that as a length.
+     *
+     * The padding has to come AFTER a segment, not straight after the SOI:
+     * `readImage` requires `FF D8 FF` before it will call this a JPEG at all,
+     * which is right — a marker must follow the start-of-image — and it is why
+     * the first version of this test asserted a file the reader correctly
+     * refuses.
+     */
+    const control = readImage(jpeg());
+    // An APP0 of four bytes, then one stray byte before the frame header.
+    const app0 = [0xff, 0xe0, 0x00, 0x04, 0x01, 0x02];
+    expect(readImage(jpeg(...app0, 0x00)), "one stray byte").toEqual(control);
+    expect(readImage(jpeg(...app0, 0x00, 0x13, 0x7f)), "three stray bytes").toEqual(control);
+  });
+
   it("reads the same size from either BMP header", () => {
     /**
      * The 12-byte OS/2 header keeps width and height as two 16-bit numbers at
