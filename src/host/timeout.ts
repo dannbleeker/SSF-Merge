@@ -1,4 +1,4 @@
-import { trace } from "../core/trace.js";
+import { currentRun, trace } from "../core/trace.js";
 
 /**
  * Every host call is bounded.
@@ -68,11 +68,17 @@ export function withTimeout<T>(work: Promise<T>, ms: number, what: string): Prom
     timer = setTimeout(() => reject(new Timeout(what, ms)), ms);
   });
   const at = Date.now();
+  // The run this call belongs to, captured at issue. An abandoned call is not
+  // cancelled — nothing here can cancel a host call — so it may still answer
+  // after the pane has started another run, and its line would land in that
+  // run's log: an `answered` for a call nobody in the new run made, above an
+  // `issued` in the old one that looks like a call that never came back.
+  const run = currentRun();
   trace("host", "issued", { call: what, budget: ms });
   return Promise.race([work, bell]).then(
     (value) => {
       if (timer !== undefined) clearTimeout(timer);
-      trace("host", "answered", { call: what, ms: Date.now() - at });
+      trace("host", "answered", { call: what, ms: Date.now() - at }, run);
       return value;
     },
     (err: unknown) => {
@@ -81,11 +87,16 @@ export function withTimeout<T>(work: Promise<T>, ms: number, what: string): Prom
       // raised are different facts about the host and want different next
       // steps, and collapsing them is how "the host got in the way" became the
       // sibling's least useful verdict.
-      trace("host", err instanceof Timeout ? "gave up waiting" : "raised", {
-        call: what,
-        ms: Date.now() - at,
-        ...(err instanceof Timeout ? {} : { error: err instanceof Error ? err.message : String(err) }),
-      });
+      trace(
+        "host",
+        err instanceof Timeout ? "gave up waiting" : "raised",
+        {
+          call: what,
+          ms: Date.now() - at,
+          ...(err instanceof Timeout ? {} : { error: err instanceof Error ? err.message : String(err) }),
+        },
+        run,
+      );
       throw err;
     },
   );

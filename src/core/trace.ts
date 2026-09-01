@@ -58,6 +58,7 @@ let entries: TraceEntry[] = [];
 let dropped = 0;
 let startedAt = 0;
 let running = false;
+let runSeq = 0;
 let watcher: ((e: TraceEntry) => void) | undefined;
 
 /**
@@ -71,6 +72,25 @@ export function beginRun(): void {
   dropped = 0;
   startedAt = Date.now();
   running = true;
+  runSeq++;
+}
+
+/**
+ * Which run is being recorded, for anything that outlives one.
+ *
+ * A call abandoned on its budget is not cancelled — nothing here can cancel a
+ * host call — so it may still answer, and its `.then` still traces. If the pane
+ * has started another run by then, that line lands in the NEW run's log: the
+ * abandoned run ends on an `issued` with no answer, reading as a call that
+ * never came back, and the next run opens with an `answered` for a call nobody
+ * in it made. Both are false, and a run log is the only diagnostic a task-pane
+ * user can hand over.
+ *
+ * A counter rather than a timestamp, because two runs a millisecond apart are
+ * still two runs.
+ */
+export function currentRun(): number {
+  return runSeq;
 }
 
 /** Whether a run is being recorded. */
@@ -95,8 +115,13 @@ export function elapsed(): number | null {
  * was written, and holding the caller's object lets a later mutation rewrite
  * history — in a file somebody may already be reading as fact.
  */
-export function trace(scope: string, message: string, data?: Record<string, unknown>): void {
+export function trace(scope: string, message: string, data?: Record<string, unknown>, ofRun?: number): void {
   if (!running) return;
+  // A line from a run that has ENDED belongs to no log. Dropped rather than
+  // tagged: a reader cannot use a line about a call they cannot see, and
+  // leaving it in the current run's log is how a stall in one run reads as a
+  // spurious answer in the next.
+  if (ofRun !== undefined && ofRun !== runSeq) return;
   const entry: TraceEntry = { ms: Date.now() - startedAt, scope, message, ...(data ? { data: { ...data } } : {}) };
   entries.push(entry);
   // A broken window must never cost the record the entry it was writing —
