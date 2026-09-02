@@ -7,6 +7,34 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed — Gecko has opened the pane, by hand
+
+Dann opened the pane in **Firefox 155** on 2026-09-02 and reported it looked
+fine: it rendered, and the merge flow worked. Recorded as a human observation,
+because that is exactly what it is — no automation ran, and none can here.
+
+Three ways in were tested first, and all three are closed on this machine:
+
+- Firefox 155 speaks **WebDriver BiDi, not CDP** — `/json/version` answers 404
+  and `/session` is a WebSocket. Every script in `test-kit/driver/` talks CDP.
+- **Playwright cannot drive a stock Firefox.** It launches with `-juggler-pipe`,
+  its own patched protocol, and the Program Files build exits 0 immediately.
+- **Playwright's own build downloads and will not execute** — `spawn UNKNOWN`
+  from `%LOCALAPPDATA%`, which is the AppLocker signature.
+
+Worth correcting one thing on the way: the bundled *Chromium* failure that
+looked like the same policy block was a **version mismatch** — build 1223
+downloaded against a Playwright wanting 1234. Two different causes with
+identical-looking first lines.
+
+Two things in the Firefox run were not separately confirmed and are named in
+`docs/PUBLISHING.md` as the places to look first if a Gecko report ever arrives:
+the clipboard copy, which is permission-gated inside a cross-origin iframe, and
+EXIF photo rotation, which fails soft by design and would put a picture in
+sideways with no error at all.
+
+**WebKit is now the only engine nobody has opened the pane in.**
+
 ### Changed — a real-host round in Chrome, and the tooling it broke
 
 A full round on PowerPoint for the web in Chrome 152 on 2026-09-02: sideload,

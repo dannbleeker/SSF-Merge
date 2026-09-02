@@ -173,12 +173,27 @@ from you; they are here so a refusal is recognisable rather than mysterious.
       holds 7.`
 
       Say plainly what that is worth: Chrome and Edge are **both Chromium**, so
-      this ticks a name on the policy's list rather than exercising a second
-      engine. **Gecko and WebKit have still never opened the pane.** Firefox is
-      not installed on this machine and Playwright's copy lands under
-      `%LOCALAPPDATA%`, where AppLocker refuses it, so Gecko needs a real
-      install before it can be tried at all. A reviewer tests on their own
-      platform.
+      it ticks a name on the policy's list rather than exercising a second
+      engine.
+
+      **Gecko is done, by hand.** Dann opened the pane in **Firefox 155** on
+      2026-09-02 and reported it looked fine — it rendered, and the merge flow
+      worked. Recorded as a human observation, because that is what it is: no
+      automation ran. Firefox 155 speaks WebDriver BiDi rather than CDP, which
+      is what every script in `test-kit/driver/` talks; Playwright cannot drive
+      a stock Firefox, needing its own `-juggler-pipe` build; and that build
+      downloads to `%LOCALAPPDATA%`, where AppLocker refuses to execute it
+      (`spawn UNKNOWN`). All three were tested rather than assumed.
+
+      Two things were not separately confirmed in that run and are the ones to
+      look at if a Gecko report ever comes back: the **clipboard copy** under
+      "What this run did, step by step", which is permission-gated inside a
+      cross-origin iframe, and **EXIF photo rotation**, which fails soft by
+      design — a Gecko difference there puts the picture in sideways with no
+      error at all.
+
+      **WebKit is the one engine left.** A reviewer tests on their own platform,
+      and nobody has opened the pane on Safari.
 
       One operational thing the Chrome run established: **a sideload lives in
       the browser profile, not the account.** A fresh Chrome signed into the
