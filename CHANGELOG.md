@@ -30,16 +30,34 @@ worth recording rather than quietly committing: `step-4-preview.png` still said
 merge added". Both were reworded in the release passes that landed before this,
 and neither picture was refreshed with the copy. They are correct now.
 
-### Not fixed, and deliberately
+### Changed — one place decides how a slide range is said
 
-The same "slides N to M" shape is built by hand in five more places, none of
-them the button and none with a test pinning the singular case:
-`core/merge/prepare.ts:122`, `host/capability.ts:178`, `office/merge.ts:276`,
-`office/powerpoint.ts:542` and `:592`. They are refusal reasons and run-log
-details rather than a control the user presses, they sit in three layers that
-cannot share the pane's `blockName`, and widening a wording fix across them
-straight after a release round is a change to make deliberately rather than in
-passing.
+The wording fix above was left at the button on purpose, with the other copies
+listed. This takes them.
+
+`slideRange` in the new `src/core/phrase.ts` is now the only thing that decides
+between "slide 3" and "slides 3 to 5". It is in `core` because that is the one
+layer `pane`, `host` and `office` can all import from, and deliberately not in
+`core/merge/text.ts`, which is the placeholder engine and no place for a
+sentence a user reads.
+
+Nine call sites across four layers now ask it, including `blockName`, which was
+the only one already right. Two of them changed what they say:
+`prepare.ts` and `steps.ts` both said "The block ends before it starts: slide 6
+to 4" — a range with a singular noun — and now say "slides 6 to 4". One was
+reworded instead of converted: `capability.ts` echoes what was TYPED rather than
+naming slides, and "slides 1.5 to 2.5 is not" puts a plural subject on a
+singular verb, so it drops the word.
+
+The guard is the point of the exercise. `test/phrase.test.ts` reads every file
+under `src/` and fails if any of them builds the phrase itself. The eighth copy
+would be written by somebody who never saw the other seven.
+
+It was nearly useless. The first version stripped source with `withoutTsProse`,
+which removes string and template CONTENTS as well as comments, so the phrase it
+hunts for was gone before it looked: the guard went green over six files that
+were breaking it. It strips comments only now, and it was proved by putting a
+hand-built copy back and watching it name the file.
 
 ### Fixed — a recovery notice that said the pane closed before a press that happened
 

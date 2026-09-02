@@ -40,6 +40,7 @@ import { provenSweep, sweepPlan } from "../host/undo.js";
 import { BUDGET, withTimeout } from "../host/timeout.js";
 import { readable } from "../host/errors.js";
 import { TAG_RUN } from "../core/pptx/tags.js";
+import { slideRange } from "../core/phrase.js";
 
 /**
  * What the host says it supports, as the pure layer wants it.
@@ -539,7 +540,7 @@ export async function undoInsert(
       removed: 0,
       disowned: plan.count,
       detail:
-        `nothing to take back — none of slides ${plan.from + 1} to ${plan.from + plan.count} ` +
+        `nothing to take back — none of ${slideRange(plan.from + 1, plan.from + plan.count)} ` +
         `could be shown to be this merge's`,
       ...(unprovable ? { unprovable: true } : {}),
     };
@@ -589,7 +590,7 @@ export async function undoInsert(
   // calls 4 to 9: a 0-based index, one before the slides actually touched, in a
   // sentence about slides being deleted. The refusal branch twenty lines above
   // already converts, so one function could report in both numberings at once.
-  const range = `slides ${plan.from + 1} to ${plan.from + plan.count}`;
+  const range = slideRange(plan.from + 1, plan.from + plan.count);
   return {
     removed,
     disowned: held,

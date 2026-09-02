@@ -19,6 +19,7 @@ import { recordIsSkipped, slideApplies } from "../core/merge/plan.js";
 import { baseName } from "../core/merge/images.js";
 import { imageNamesIn, parseDelimited, toRecordSet } from "../core/data/recordset.js";
 import type { RecordSet } from "../core/data/recordset.js";
+import { slideRange } from "../core/phrase.js";
 
 /**
  * The order, and why DATA comes before FIELDS.
@@ -404,7 +405,7 @@ export function readBlockDraft(draft: BlockDraft, deckSize?: number): BlockRead 
     };
   }
   if (a < 1) return { block: null, why: `Slides are numbered from 1, so slide ${a} is not one.` };
-  if (b < a) return { block: null, why: `The block ends before it starts: slide ${a} to ${b}.` };
+  if (b < a) return { block: null, why: `The block ends before it starts: ${slideRange(a, b)}.` };
   if (deckSize !== undefined && b > deckSize) {
     // ADVICE, not a refusal — the block comes back and the button stays live.
     // `deckSize` is a count taken when the pane opened, and a user who adds
@@ -907,7 +908,8 @@ export function unusedColumns(state: PaneState): string[] {
 function blockCarries(state: PaneState): string {
   const block = chosenBlock(state);
   if (!block) return "Those slides carry";
-  return block.from === block.to ? `Slide ${block.from} carries` : `Slides ${block.from} to ${block.to} carry`;
+  const said = blockName(block);
+  return `${said} ${block.from === block.to ? "carries" : "carry"}`;
 }
 
 /**
