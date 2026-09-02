@@ -170,10 +170,33 @@ from you; they are here so a refusal is recognisable rather than mysterious.
       nor Gecko has ever opened the pane. A reviewer tests on their own
       platform.
 
-- [ ] **Test on a touch-only device.** "All features must work on touch-only
-      devices without keyboard/mouse." This flow needs two typed slide numbers,
-      a pasted table and a file picker, and none of that has been tried without
-      a keyboard.
+- [~] **Test on a touch-only device.** The policy, quoted exactly, is section
+      1120.3: *"All features must work on a touch-only device without a physical
+      keyboard or mouse."*
+
+      **Physical** is the word that matters, and this item used to miss it. An
+      on-screen keyboard is part of a touch device, so typing and pasting are
+      not what the rule forbids — depending on hardware nobody has is.
+
+      What was checked, on 2026-09-02, without a device:
+
+      - **No hover, right-click, double-click or drag anywhere in the pane.**
+        No `mouseover`, `mouseenter`, `contextmenu` or `dblclick` handler, no
+        `draggable`, and no `:hover` rule that shows or hides anything — hover
+        is decoration only. Those are the interactions a touch device cannot
+        perform at all.
+      - **Touch targets are already gated.** `scripts/pane-shots.mjs` measures
+        every hit area across every pane state and fails under 24 px on the
+        short side.
+      - **Step 1 does not even need the typing.** "Use the slides I have
+        selected" takes the block from the host's own selection, which is a
+        tap. It is offered only where `getSelectedSlides` exists — PowerPointApi
+        1.5, above the 1.2 floor — so on an older host the two boxes remain the
+        only way in, and those need the on-screen keyboard.
+
+      Left unticked deliberately: nothing here has been run on a digitizer, and
+      the machine has none. This is now a reasoned risk rather than an unknown
+      one, and the residual risk is the on-screen keyboard in the paste box.
 
 - [x] **A support page.** Done —
       `https://ssf-merge.struktureretsundfornuft.dk/support.html`, shipping from
@@ -200,10 +223,30 @@ from you; they are here so a refusal is recognisable rather than mysterious.
       values rather than the placeholders, and closing the workbook reverted
       nothing on the slide. `docs/TEST-KIT.md` records both decks.
 
-- [ ] **Read the title rule.** Titles may not include a brand or service name,
-      with an exception for add-ins aimed at large organisations. Whether "SSF
-      Merge" is caught by that is worth asking before submitting rather than
-      after.
+- [ ] **The title rule, read on 2026-09-02, and it appears to catch this name.**
+      Section 1100.7, quoted exactly:
+
+      > The title may not include your brand or service unless your offer targets
+      > a larger organization or enterprise.
+      >
+      > - Apps and agents for Microsoft 365 and copilot may not include the brand
+      >   or service in the title.
+
+      The first sentence carries an enterprise exception. The bullet under it,
+      which is the one that applies to an Office add-in, carries none: apps for
+      Microsoft 365 **may not** include the brand in the title, full stop.
+
+      `SSF` is the brand — StruktureretSundFornuft, the publisher name on the
+      account and the domain the add-in is served from. On a plain reading,
+      `SSF Merge` is a title that includes the brand.
+
+      This does not settle it. The name was kept deliberately on 2026-09-02 —
+      see [listing/LISTING.md](listing/LISTING.md) — on the reasoning that the
+      guidance is guidance and a real objection would name the rule it thinks is
+      broken. This IS the rule it would name, and it is a certification policy
+      rather than a style guide, which is the distinction that reasoning rested
+      on. Worth deciding again before submitting, with `Slide Mail Merge`
+      already drafted and its consequences already worked out.
 
 ## Not a problem, but know it before a reviewer meets it
 

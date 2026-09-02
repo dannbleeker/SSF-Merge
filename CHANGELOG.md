@@ -7,6 +7,37 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed — two submission items read against the actual policy text
+
+Both were unticked in `docs/PUBLISHING.md` with a guess beside them. Neither
+needed a host.
+
+**Touch-only.** The rule is section 1120.3: *"All features must work on a
+touch-only device without a **physical** keyboard or mouse."* That word was
+missing from the item, and it changes the question — an on-screen keyboard is
+part of a touch device, so typing and pasting are not what the rule forbids.
+What it forbids is depending on hardware nobody has, and the pane has no
+`mouseover`, `mouseenter`, `contextmenu` or `dblclick` handler, nothing
+draggable, and no `:hover` rule that shows or hides anything. Touch targets were
+already gated at 24 px by `pane-shots.mjs`, and step 1 has a tap-only path
+through "Use the slides I have selected" on hosts with PowerPointApi 1.5. Still
+unticked, because none of it has run on a digitizer — but it is a reasoned risk
+now rather than an unknown one.
+
+**The title rule, and it appears to catch the name.** Section 1100.7: *"The
+title may not include your brand or service unless your offer targets a larger
+organization or enterprise"* — and then, in a bullet under it, *"Apps and agents
+for Microsoft 365 and copilot may not include the brand or service in the
+title."* The sentence has an enterprise exception; the bullet that applies to an
+Office add-in has none. `SSF` is the brand, so on a plain reading `SSF Merge` is
+a title that includes it.
+
+That is recorded rather than acted on. The name was kept deliberately, on the
+reasoning that guidance is guidance and a real objection would name the rule it
+thinks is broken. This is that rule, and it is a certification policy rather
+than a style guide — which is the distinction the reasoning rested on. Worth
+deciding again before submitting.
+
 ### Fixed — a merge button that died with nothing said about it
 
 Found on a real host on 2026-09-02. Six slides merged, all six deleted from the
