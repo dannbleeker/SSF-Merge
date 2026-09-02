@@ -113,11 +113,11 @@ several slides in a row; one is enough to start.
 
 Open the pane: **Home** tab → **Mail merge**. Type `3` into both boxes.
 
-![Step 1 of the pane: first slide 3, last slide 3, and a button reading "Use slides 3 to 3"](images/step-1-template.png)
+![Step 1 of the pane: first slide 3, last slide 3, and a button reading "Use slide 3"](images/step-1-template.png)
 
 The button reads **Choose the slides that repeat** until the numbers make
-sense, then becomes **Use slides 3 to 3**. Press it — the pane reads that slide
-out of the open deck and moves on.
+sense, then becomes **Use slide 3** — singular, because the block is one slide.
+Press it, and the pane reads that slide out of the open deck and moves on.
 
 ### Step 2 — Data
 
