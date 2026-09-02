@@ -15,8 +15,15 @@
  *
  * Between them those cost most of a round twice. Each row does carry the item's
  * GUID, in the id of its Copilot button (`{46807B9C-...}-hero-copilot`), which
- * is enough to build the editor URL and navigate straight there. That has never
- * failed.
+ * is enough to build the editor URL and navigate straight there.
+ *
+ * **That id is EDGE-ONLY, and this file said "has never failed" until Chrome
+ * proved otherwise.** Chrome's OneDrive draws no Copilot button, so the read
+ * returned an empty map and `openDeck` could not open anything — a tool that
+ * had only ever run in one browser, describing itself as universal. The ids
+ * belong to the DOCUMENTS rather than to the browser, so they are cached the
+ * first time they can be read and reused where they cannot. A browser that has
+ * never seen the folder in Edge still gets an honest error naming both facts.
  *
  *   import { openDeck } from "./decks.mjs";
  *   await openDeck("round-deck-B2.pptx");
@@ -25,6 +32,11 @@
  * A OneDrive editor URL contains a personal account identifier, and this
  * repository is public.
  */
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+
+/** Where ids read in one browser are kept for one that cannot read them. */
+const CACHE = "test-kit/out/deck-ids.json";
 const BASE = process.env.SSF_CDP ?? "http://127.0.0.1:9333";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -92,9 +104,33 @@ export async function deckIds() {
       })()`,
       returnByValue: true,
     });
-    return found.result?.value ?? {};
+    const seen = found.result?.value ?? {};
+    // Cached whenever the browser HAS the ids, and merged over the cache rather
+    // than replacing it: Chrome cannot read any, and reading none must not
+    // erase what Edge learned. The ids identify documents, not browsers, so a
+    // cached one is as good as a fresh one until the file is deleted.
+    if (Object.keys(seen).length) {
+      const merged = { ...readCache(), ...seen };
+      try {
+        mkdirSync(dirname(CACHE), { recursive: true });
+        writeFileSync(CACHE, `${JSON.stringify(merged, null, 2)}\n`);
+      } catch {
+        // A cache that cannot be written is not a reason to fail an open.
+      }
+      return merged;
+    }
+    return readCache();
   } finally {
     c.ws.close();
+  }
+}
+
+/** Ids read in an earlier session, or nothing. */
+function readCache() {
+  try {
+    return JSON.parse(readFileSync(CACHE, "utf8"));
+  } catch {
+    return {};
   }
 }
 
