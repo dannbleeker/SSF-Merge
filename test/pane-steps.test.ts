@@ -418,6 +418,23 @@ describe("which block the pane acts on", () => {
     expect(primary(state, "template").label).toBe("Use slides 7 to 9");
   });
 
+  it("says slide, singular, when the block is one slide", () => {
+    /**
+     * Found in the real-host round of 2026-09-02. A one-slide template block
+     * put "Use slides 2 to 2" on the button - a range with itself at both ends,
+     * which reads as a mistake the user has made rather than a sentence the
+     * pane meant.
+     *
+     * Everything around it already gets this right: the take-back card says
+     * "Remove slide 3 from this merge", the summary says "1 slide added", and
+     * `blockName` has handled `from === to` since it was written. The button
+     * was the one place that built the phrase itself instead of asking.
+     */
+    const state: PaneState = { ...ready, draft: { from: "3", to: "3" } };
+    expect(primary(state, "template").label).toBe("Use slide 3");
+    expect(primary(state, "template").label).not.toContain("3 to 3");
+  });
+
   it("keeps the committed block while a box is being retyped", () => {
     // Mid-edit the draft reads nothing. Dropping the block there would blank
     // the heading and the button on every keystroke.

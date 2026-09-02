@@ -7,6 +7,40 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a one-slide block said "Use slides 2 to 2"
+
+Found in the real-host round of 2026-09-02. A template block of a single slide
+put a range with itself at both ends on the button, which reads as something the
+user mistyped rather than a sentence the pane meant.
+
+Everything around it already got this right. The take-back card says "Remove
+slide 3 from this merge", the summary says "1 slide added", and `blockName` has
+handled `from === to` since it was written — the heading directly above the
+button in the manual's own screenshot said "Slide 3". The button was the one
+place that spelled the phrase out again instead of asking, so it read "Use
+slides 3 to 3" under a heading that read "Slide 3". It asks `blockName` now.
+
+`docs/MANUAL.md` documented the defect as though it were correct, twice,
+including the alt text of the picture beside it. Both are corrected, and the
+pictures were regenerated with `scripts/manual-shots.mjs`.
+
+**Two of the regenerated pictures had drifted for another reason**, and it is
+worth recording rather than quietly committing: `step-4-preview.png` still said
+"removing the preview deletes them" and `step-5-done.png` still said "which this
+merge added". Both were reworded in the release passes that landed before this,
+and neither picture was refreshed with the copy. They are correct now.
+
+### Not fixed, and deliberately
+
+The same "slides N to M" shape is built by hand in five more places, none of
+them the button and none with a test pinning the singular case:
+`core/merge/prepare.ts:122`, `host/capability.ts:178`, `office/merge.ts:276`,
+`office/powerpoint.ts:542` and `:592`. They are refusal reasons and run-log
+details rather than a control the user presses, they sit in three layers that
+cannot share the pane's `blockName`, and widening a wording fix across them
+straight after a release round is a change to make deliberately rather than in
+passing.
+
 ### Fixed — a recovery notice that said the pane closed before a press that happened
 
 Found by the real-host round of 2026-09-02 on PowerPoint for the web. Six slides
