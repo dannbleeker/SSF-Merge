@@ -37,7 +37,7 @@ describe("whether a module is the entry point", () => {
     expect(isMain("file:///anything.mjs", ["node"])).toBe(false);
   });
 
-  it("still says yes through a SYMLINK to the file", () => {
+  it("still says yes through a SYMLINK to the file", (ctx) => {
     /**
      * Node resolves `import.meta.url` to the link's TARGET and leaves `argv[1]`
      * as the link, so the two never matched: the CLI did nothing and exited 0.
@@ -56,7 +56,22 @@ describe("whether a module is the entry point", () => {
       `import { isMain } from ${JSON.stringify(resolve("scripts/is-main.mjs"))};\n` +
         `console.log(isMain(import.meta.url) ? "MAIN" : "NOT MAIN");\n`,
     );
-    symlinkSync(real, link);
+    // Windows refuses `symlink` without elevation or Developer Mode, and this
+    // box is one of those: the whole local gate went red on a machine where
+    // nothing was wrong with the code. A permanently failing suite is worse
+    // than a skipped test, because it teaches everyone to scroll past the run
+    // that finally does matter.
+    //
+    // Skipped only on the permission error — any other failure from
+    // `symlinkSync` is still a failure — and CI is Linux, so the assertions
+    // below are never left unexercised anywhere it counts.
+    try {
+      symlinkSync(real, link);
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "EPERM") throw e;
+      ctx.skip("this machine does not permit symlinks (EPERM); CI runs this test on Linux");
+      return;
+    }
 
     const ran = (entry: string) => execFileSync(process.execPath, [entry], { encoding: "utf8" }).trim();
     expect(ran(real), "directly").toBe("MAIN");

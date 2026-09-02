@@ -1739,6 +1739,52 @@ describe("taking a real merge back", () => {
     expect(document.body.textContent).toContain("thumbnail rail");
   });
 
+  it("does not say the pane closed when a press has already been made and answered", async () => {
+    /**
+     * Found by the real-host round of 2026-09-02, on PowerPoint for the web.
+     *
+     * The user merged six slides, deleted all six from the thumbnail rail, and
+     * pressed "Remove these slides". The pane answered, correctly, "Nothing was
+     * removed - nothing to take back (deck was 13, is 13)". The crumb was kept
+     * and marked `pressed`, which is right: it is the record that stops the
+     * next merge overwriting a run whose slides may still be there.
+     *
+     * On the next open the pane said "A merge from <date> added 6 slides and
+     * the pane closed before you could take them back." Two things wrong with
+     * one sentence. The pane did not close before the press - the press
+     * happened and was answered. And the slides are not outstanding: the deck
+     * is back to its starting size, so no card is offered beside the sentence
+     * that says they are waiting to be taken back.
+     *
+     * `unremovable` was already handled. `pressed` was not, and it is the
+     * commoner mark by far: it is written on EVERY fruitless press, while
+     * `unremovable` needs the budget spent or a host with no tags at all.
+     */
+    localStorage.setItem(
+      CRUMB_KEY,
+      JSON.stringify({
+        kind: "ssf-merge-run",
+        deckAtStart: 12,
+        added: 6,
+        runId: "r1",
+        startedAt: "2026-09-02T10:00:00.000Z",
+        doc: "https://example-my.sharepoint.com/personal/x/Documents/deck.pptx",
+        pressed: true,
+        fruitless: 1,
+      }),
+    );
+    // The deck is back to the size it was before the merge, so `sweepPlan`
+    // refuses and no card is drawn. The sentence must not contradict that.
+    office.slideCount.mockReset().mockResolvedValue(12);
+    await openPane();
+    await settle();
+
+    expect(undoButton(), "the deck did not grow, so there is nothing to offer").toBeNull();
+    expect(document.body.textContent, "the press happened; the pane did not close first").not.toContain(
+      "the pane closed",
+    );
+  });
+
   it("does not report the sweep's remainder as what the merge added", async () => {
     // `added` is what a further press may still take back, so a partial undo
     // lowers it — and the disabled merge button read from it, so a six-slide

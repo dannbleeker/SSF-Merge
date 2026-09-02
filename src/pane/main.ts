@@ -1541,7 +1541,25 @@ void Office.onReady(() => {
           recovered: true,
           // `plural`, not the host layer's `slide(s)`. This sentence is on a
           // user's screen; that spelling is a house convention for the run log.
-          notice: `A merge from ${crumb.startedAt.slice(0, 10)} added ${plural(crumb.added, "slide")} and the pane closed before you could take them back.`,
+          //
+          // "The pane closed before you could take them back" is only true of a
+          // crumb NOBODY pressed. `unremovable` was already carved out above,
+          // but that mark needs the whole budget spent or a host with no tags
+          // at all; `pressed` is written on every fruitless press and is far
+          // commoner. The real-host round of 2026-09-02 walked into it: six
+          // slides merged, all six deleted from the thumbnail rail, one press
+          // answered "nothing to take back (deck was 13, is 13)" — and the next
+          // open said the pane had closed before the user could press, beside
+          // no card at all, because `sweepPlan` had correctly withdrawn it.
+          //
+          // A pressed crumb is still worth keeping and still worth mentioning:
+          // it is what stops the next merge overwriting the record. It just
+          // must not claim the press never happened, or that slides are waiting
+          // when the card beside it says otherwise.
+          notice:
+            crumb.pressed === true
+              ? `A merge from ${crumb.startedAt.slice(0, 10)} added ${plural(crumb.added, "slide")}, and a take-back has already been tried on this deck.`
+              : `A merge from ${crumb.startedAt.slice(0, 10)} added ${plural(crumb.added, "slide")} and the pane closed before you could take them back.`,
         };
       } else if (crumb && crumb.runId !== pendingRunId) {
         // A run that died DURING the insert, which is the window the crumb was
