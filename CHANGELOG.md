@@ -7,6 +7,25 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed — touch-only is confirmed, on a device
+
+Dann confirmed it on 2026-09-02 on a touch device. A human confirmation and
+recorded as one: no automation ran, and none could — the machine this repository
+is developed on has no digitizer, and a pass reported from synthetic mouse
+clicks would be the did-not-run/passed conflation `docs/TEST-KIT.md` exists to
+prevent.
+
+It matched what the code already said, which is why the reading stays in
+`docs/PUBLISHING.md` rather than being replaced by the tick: nothing in the pane
+depends on hover, right-click, double-click or drag, and hit areas are gated at
+24 px by `pane-shots.mjs`. That is the part a future change could break
+silently — a `:hover` rule that hides something, or a control that slips under
+24 px, fails no test, and the audit that would catch it runs weekly.
+
+With this and the Firefox run, **the name is the only thing left that a
+certification reviewer has been given a written rule to raise**, and WebKit the
+only engine nobody has opened the pane in.
+
 ### Changed — Gecko has opened the pane, by hand
 
 Dann opened the pane in **Firefox 155** on 2026-09-02 and reported it looked

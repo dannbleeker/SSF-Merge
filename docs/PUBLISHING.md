@@ -201,9 +201,14 @@ from you; they are here so a refusal is recognisable rather than mysterious.
       manifest was uploaded again, by hand, through the same dialog no script
       can reach. Every new browser costs that.
 
-- [~] **Test on a touch-only device.** The policy, quoted exactly, is section
-      1120.3: *"All features must work on a touch-only device without a physical
-      keyboard or mouse."*
+- [x] **Test on a touch-only device.** **Confirmed by Dann on 2026-09-02**, on a
+      touch device. A human confirmation, recorded as one: no automation ran,
+      and none could — the machine this repository is developed on has no
+      digitizer, and reporting a pass from synthetic mouse clicks would be
+      exactly the did-not-run/passed conflation this page exists to prevent.
+
+      The policy, quoted exactly, is section 1120.3: *"All features must work on
+      a touch-only device without a physical keyboard or mouse."*
 
       **Physical** is the word that matters, and this item used to miss it. An
       on-screen keyboard is part of a touch device, so typing and pasting are
@@ -225,9 +230,11 @@ from you; they are here so a refusal is recognisable rather than mysterious.
         1.5, above the 1.2 floor — so on an older host the two boxes remain the
         only way in, and those need the on-screen keyboard.
 
-      Left unticked deliberately: nothing here has been run on a digitizer, and
-      the machine has none. This is now a reasoned risk rather than an unknown
-      one, and the residual risk is the on-screen keyboard in the paste box.
+      That code-level reading is what made the confirmation likely rather than
+      surprising, and it stays here because it is the part a future change could
+      break silently: a `:hover` rule that hides something, or a control that
+      slips under 24 px, would not fail any test — `pane-shots.mjs` is the guard
+      that would, and it only runs weekly.
 
 - [x] **A support page.** Done —
       `https://ssf-merge.struktureretsundfornuft.dk/support.html`, shipping from
