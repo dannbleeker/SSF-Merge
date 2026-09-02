@@ -7,6 +7,37 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a recovery notice that said the pane closed before a press that happened
+
+Found by the real-host round of 2026-09-02 on PowerPoint for the web. Six slides
+merged into a twelve-slide deck, all six deleted from the thumbnail rail, then
+"Remove these slides" pressed once. The pane answered correctly: *"Nothing was
+removed — nothing to take back (deck was 13, is 13)"*. The next open said:
+
+> A merge from 2026-09-02 added 6 slides and the pane closed before you could
+> take them back.
+
+Wrong twice in one sentence. The pane did not close before the press — the press
+happened and was answered. And no card was drawn beside it, because `sweepPlan`
+had correctly withdrawn the offer once the deck was back to its starting size,
+so the sentence promised a take-back that nothing on screen offered.
+
+`unremovable` was already carved out of that branch. `pressed` was not, and it
+is by far the commoner mark: it is written on EVERY fruitless press, while
+`unremovable` needs the whole budget spent or a host with no `Slide.tags` at
+all. A pressed crumb now says a take-back has already been tried, and is still
+kept, because it remains the record that stops the next merge overwriting a run
+whose slides may still be in the deck.
+
+### Fixed — the local gate went red on Windows for a reason that was not a defect
+
+`test/is-main.test.ts` creates a symlink. Windows refuses that without elevation
+or Developer Mode, so the whole suite failed on a machine where nothing was
+wrong with the code. It now skips on `EPERM` and only on `EPERM`, naming the
+reason; every other symlink failure is still a failure, and CI runs it on Linux.
+A permanently red suite is worse than a skipped test: it teaches everyone to
+scroll past the run that finally does matter.
+
 ### Fixed — a merged deck could open as "repaired"
 
 A part whose name is percent-encoded — `my%20chart.xml`, which the file format
