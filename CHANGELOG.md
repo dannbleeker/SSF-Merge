@@ -7,6 +7,41 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — the local gate was red on Windows for a reason that was not a defect
+
+`test/is-main.test.ts` creates a symlink, and Windows refuses that without
+elevation or Developer Mode. So the whole suite failed on the owner's machine
+while CI was green, every run, for a reason nothing was wrong with — which is
+the worst kind of red, because it teaches everyone to scroll past the run that
+finally matters.
+
+The obvious fix, skipping on `EPERM`, was tried earlier in the day and reverted:
+`test-count.mjs` counted tests that RAN, so a skip made the recorded floor
+platform-dependent — 1475 on Windows, 1476 in CI — and committing either number
+broke the other machine. The skip was a worse problem than the red.
+
+So the counter changed instead, and it now keeps **two** numbers:
+
+- the floor counts tests that **exist**, which is the same on every machine;
+- a second recorded number caps how many may be **skipped**.
+
+The danger the old rule guarded against is still guarded. Switching 23 tests off
+with `it.skip` leaves the total alone and blows the cap; deleting 23 drops the
+total. Proved both ways: the unit tests below cover the arithmetic, and
+switching one real test off was run end to end, where the gate exited 1 and
+named both skipped tests.
+
+The cap does NOT rise by itself, unlike the floor. A suite growing is ordinary;
+a new skip is a decision somebody should be seen making, so it takes
+`--update`. The log now names which tests were skipped, because "1 skipped" is
+the same line whether it is the symlink this machine cannot make or a case
+switched off to get a green run.
+
+`scripts/test-count.mjs` also had no test of its own — the one gate whose
+failure is invisible, because every other check fails loudly when it breaks and
+this one just stops noticing. Its decision is now a pure function with eleven
+cases against it.
+
 ### Fixed — a phone's portrait photo went into the deck on its side
 
 The open question in `docs/TEST-KIT.md` is answered and the fix is in.
