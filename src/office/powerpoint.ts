@@ -407,11 +407,14 @@ export interface UndoOutcome {
   /**
    * `sweepPlan` refused the SHAPE of the deck.
    *
-   * Four ways, all of them facts about the DECK rather than about the host: it
-   * grew by more than this run added, it shrank below where it started, it is
-   * back to exactly the size it began at, or the run added nothing. No window
-   * can be named in any of them — a co-author's slide, or the user's own
-   * editing.
+   * Three shapes of the DECK rather than anything about the host: it grew by
+   * more than this run added, it shrank below where it started, or it is back
+   * to exactly the size it began at. No window can be named in any of them — a
+   * co-author's slide, or the user's own editing. ("The run added nothing" is
+   * not a fourth: with the deck no smaller than it started and the growth no
+   * greater than `added`, an `added` of zero forces a growth of zero, which is
+   * the third.) `sweepPlan` also refuses two INPUT shapes — a non-integer and a
+   * negative start — which nothing can reach today and its own comment says so.
    *
    * The deck's size WAS asked for; that call is how we know. What was not asked
    * is anything that could misbehave — no tag read, no delete — so this answer

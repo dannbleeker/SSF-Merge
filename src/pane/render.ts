@@ -453,7 +453,7 @@ function body(doc: Document, state: PaneState, current: StepId, orange: OrangeHo
     // dropped the advice for all the others — including a field that exists
     // only on a notes page, for which that sentence is the only thing to do
     // about it.
-    const placedToo = offSlide.length > 0 && offSlide.every((f) => onSlide.has(f));
+    const placedToo = offSlide.every((f) => onSlide.has(f));
     if (offSlide.length > 0) {
       out.push(
         el(doc, "p", {

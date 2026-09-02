@@ -242,6 +242,15 @@ describe("applyFormat", () => {
     expect(applyFormat("1.0050", "number:2")).toBe("1,01");
     expect(applyFormat("-0.4", "number:0")).toBe("0");
     expect(applyFormat("-1.5", "number:0")).toBe("-2");
+    // A ZERO-PADDED cell is canonicalised before it is grouped. `numericText`
+    // preserves whatever the cell spelled and `0007` is a number shape, so the
+    // zeros reached the grouping: `0000000001234` printed as `0 000 000 001
+    // 234`. Order numbers, article codes and postcodes are written this way and
+    // type as numbers, so it is an ordinary path rather than a corner.
+    expect(applyFormat("0007", "number:0")).toBe("7");
+    expect(applyFormat("0000000001234", "number:0")).toBe("1 234");
+    expect(applyFormat("-0007.5", "number:0")).toBe("-8");
+    expect(applyFormat("0000", "number:0")).toBe("0");
     expect(applyFormat("1234567890123456789012345", "number:2")).toBe("1234567890123456789012345");
     // And the ordinary case is untouched.
     expect(applyFormat("1234567.891", "number:2")).toBe("1 234 567,89");

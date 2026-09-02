@@ -934,7 +934,16 @@ export function applyFormat(raw: string, spec: string | undefined): string {
       // cell answers 2 — a different number on the slide, grouped and formatted
       // as though it were right. The magnitude has already been checked against
       // the double; this is the last printed digit.
-      const digits = wrote.replace(/^[+-]/, "");
+      // CANONICALISED, not merely unsigned. `numericText` preserves whatever the
+      // cell spelled, and `0007` is a number shape — so the zeros reached
+      // `groupFixed` and were thousands-grouped: `0000000001234` printed as
+      // `0 000 000 001 234`. A zero-padded column of order numbers, article
+      // codes or postcodes types as a number, so this is an ordinary path.
+      // Going through `formatNumber` used to canonicalise for free, because it
+      // starts from `String(Math.abs(n))`; rounding the cell means doing it
+      // here. `sameNumber` already strips them before comparing, which is why
+      // the guard above let these through.
+      const digits = wrote.replace(/^[+-]/, "").replace(/^0+(?=\d)/, "");
       return groupFixed(roundDigits(digits, decimals), n < 0, " ", ",");
     }
     case "date": {

@@ -65,10 +65,15 @@ function keyFor(doc: string): string {
  *
  * One consequence worth stating: `added: 0` is also the crash-mid-insert
  * marker, so that record is now first out once a ninth deck is touched, where
- * before it aged out normally. It authorises no sweep — `sweepPlan` refuses a
- * count of zero — so what is lost is a sentence, against a record that can
- * still offer slides back. That is the right way round, and it is a trade
- * rather than a free win.
+ * before it aged out normally. What that costs is NOTHING A USER CAN SEE — both
+ * recovery notices require `added > 0` (`main.ts`), so a marker feeds no
+ * sentence; its only effect is to stop the next merge writing a fresh pending
+ * marker, which that merge writes anyway. It is evicted ahead of a record that
+ * can still offer slides back, which is the right way round.
+ *
+ * This paragraph said "what is lost is a sentence", which overstated it — a
+ * comment that is true of an earlier build, which is the commonest finding
+ * every review of this file has produced.
  */
 function deckKeys(s: Storage): string[] {
   const keys: string[] = [];
