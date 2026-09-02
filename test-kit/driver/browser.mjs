@@ -26,15 +26,27 @@ import { existsSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 
 /**
- * AppLocker on this machine refuses Playwright's bundled Chromium — it lives
+ * AppLocker on this machine refuses Playwright's bundled browsers — they live
  * under %LOCALAPPDATA% and the policy only permits binaries in Program Files.
- * The system Edge is in Program Files, which is why the round drives that one.
+ * The system ones are in Program Files, which is why the round drives those.
+ *
+ * `SSF_CHANNEL=chrome` picks Chrome, which is the second engine the browser
+ * matrix in `docs/PUBLISHING.md` asks for. Give it its OWN `SSF_PROFILE`: a
+ * profile carries the signed-in session, and pointing Chrome at Edge's would
+ * either be ignored or spoil it.
  */
-const EDGES = [
-  "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
-  "C:/Program Files/Microsoft/Edge/Application/msedge.exe",
-];
+const BROWSERS = {
+  msedge: [
+    "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
+    "C:/Program Files/Microsoft/Edge/Application/msedge.exe",
+  ],
+  chrome: [
+    "C:/Program Files/Google/Chrome/Application/chrome.exe",
+    "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe",
+  ],
+};
 
+const CHANNEL = process.env.SSF_CHANNEL ?? "msedge";
 const PORT = process.env.SSF_CDP_PORT ?? "9333";
 const PROFILE = resolve(process.env.SSF_PROFILE ?? "test-kit/out/browser-profile");
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -53,8 +65,10 @@ if (already) {
   process.exit(0);
 }
 
-const exe = EDGES.find((p) => existsSync(p));
-if (!exe) throw new Error(`no Edge found in Program Files; looked at:\n  ${EDGES.join("\n  ")}`);
+const candidates = BROWSERS[CHANNEL];
+if (!candidates) throw new Error(`unknown SSF_CHANNEL "${CHANNEL}"; known: ${Object.keys(BROWSERS).join(", ")}`);
+const exe = candidates.find((p) => existsSync(p));
+if (!exe) throw new Error(`no ${CHANNEL} found in Program Files; looked at:\n  ${candidates.join("\n  ")}`);
 mkdirSync(PROFILE, { recursive: true });
 
 // detached + unref, or the browser goes down with this process and every later

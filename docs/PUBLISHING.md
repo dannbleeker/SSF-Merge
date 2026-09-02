@@ -164,11 +164,27 @@ from you; they are here so a refusal is recognisable rather than mysterious.
 ## Likely to fail review, or to cost a round trip
 
 - [ ] **Test on macOS Safari, and in Chrome and Firefox.** The policy requires
-      the add-in work in all of them. Every real-host round so far has been on
-      Windows: the web rounds in Edge, and the round of 2026-08-31 in desktop
-      PowerPoint, whose pane is WebView2 and so Chromium again. Neither Safari
-      nor Gecko has ever opened the pane. A reviewer tests on their own
+      the add-in work in all of them.
+
+      **Chrome is done**, on 2026-09-02: a full round on PowerPoint for the web
+      in Chrome 152 — sideload, merge, take-back, and the merged package pulled
+      down and read. Every number and every sentence matched the Edge run
+      exactly, including the formatted values and `2 slides removed. Your deck
+      holds 7.`
+
+      Say plainly what that is worth: Chrome and Edge are **both Chromium**, so
+      this ticks a name on the policy's list rather than exercising a second
+      engine. **Gecko and WebKit have still never opened the pane.** Firefox is
+      not installed on this machine and Playwright's copy lands under
+      `%LOCALAPPDATA%`, where AppLocker refuses it, so Gecko needs a real
+      install before it can be tried at all. A reviewer tests on their own
       platform.
+
+      One operational thing the Chrome run established: **a sideload lives in
+      the browser profile, not the account.** A fresh Chrome signed into the
+      same account showed a plain "Add-ins" button and no "Mail merge" until the
+      manifest was uploaded again, by hand, through the same dialog no script
+      can reach. Every new browser costs that.
 
 - [~] **Test on a touch-only device.** The policy, quoted exactly, is section
       1120.3: *"All features must work on a touch-only device without a physical

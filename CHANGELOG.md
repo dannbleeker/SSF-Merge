@@ -7,6 +7,37 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed — a real-host round in Chrome, and the tooling it broke
+
+A full round on PowerPoint for the web in Chrome 152 on 2026-09-02: sideload,
+merge, take-back, and the merged package pulled down and read. Every number and
+every sentence matched the Edge run exactly, including the formatted values and
+*"2 slides removed. Your deck holds 7."*
+
+Worth saying plainly what that is worth. Chrome and Edge are **both Chromium**,
+so it ticks a name on the policy's list rather than exercising a second engine.
+Gecko and WebKit have still never opened the pane, and Firefox is not installed
+here — Playwright's copy lands under `%LOCALAPPDATA%` where AppLocker refuses
+it, so Gecko needs a real install before it can be tried at all.
+
+Two things the change of browser exposed, neither of which a second Edge round
+ever would:
+
+- **`decks.mjs` was Edge-only, and said it had never failed.** It reads each
+  deck's item GUID from the id of its Copilot button, and Chrome's OneDrive
+  draws no Copilot button — so it found zero decks and could open nothing. The
+  ids belong to the documents rather than to the browser, so they are cached
+  when they can be read and reused when they cannot. Proved by opening a deck in
+  Chrome with nothing readable in its DOM.
+- **A sideload lives in the browser profile, not the account.** A fresh Chrome
+  signed into the same account had a plain "Add-ins" button and no "Mail merge"
+  until the manifest was uploaded again by hand, through the same dialog no
+  script can reach — searched again in Chrome, absent from every CDP target
+  there too. Every new browser costs that.
+
+`browser.mjs` takes `SSF_CHANNEL=chrome` now, with its own profile and port and
+a guard that names the known channels.
+
 ### Changed — two submission items read against the actual policy text
 
 Both were unticked in `docs/PUBLISHING.md` with a guess beside them. Neither
