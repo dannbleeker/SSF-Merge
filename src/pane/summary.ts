@@ -17,14 +17,21 @@ import type { NumberOutcome } from "../core/merge/numbers.js";
 import { sweepPlan } from "../host/undo.js";
 import type { Block } from "./steps.js";
 import { slidesPerRecord } from "./steps.js";
+import { slideRange } from "../core/phrase.js";
 
 export function plural(n: number, one: string, many = `${one}s`): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
-/** "Slides 4 to 6" — or "Slide 4" when the block is one slide. */
+/**
+ * "Slides 4 to 6" — or "Slide 4" when the block is one slide.
+ *
+ * A sentence subject, so it is capitalised; `slideRange` is the shared decision
+ * and every other layer uses it lower-cased, mid-sentence.
+ */
 export function blockName(block: Block): string {
-  return block.from === block.to ? `Slide ${block.from}` : `Slides ${block.from} to ${block.to}`;
+  const said = slideRange(block.from, block.to);
+  return said[0]!.toUpperCase() + said.slice(1);
 }
 
 /**
@@ -136,7 +143,7 @@ export function undoSummary(added: number, deckSize: number, deckAtStart: number
   // range is where the merge's slides should be, not proof that they are. The
   // press itself asks the slides (`provenSweep`), so the button is safe — the
   // label simply may not promise what only the press can establish.
-  return plan.count === 1 ? `Remove slide ${from} from this merge.` : `Remove slides ${from} to ${to} from this merge.`;
+  return `Remove ${slideRange(from, to)} from this merge.`;
 }
 
 /**

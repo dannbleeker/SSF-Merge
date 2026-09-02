@@ -1739,6 +1739,52 @@ describe("taking a real merge back", () => {
     expect(document.body.textContent).toContain("thumbnail rail");
   });
 
+  it("does not say the pane closed when a press has already been made and answered", async () => {
+    /**
+     * Found by the real-host round of 2026-09-02, on PowerPoint for the web.
+     *
+     * The user merged six slides, deleted all six from the thumbnail rail, and
+     * pressed "Remove these slides". The pane answered, correctly, "Nothing was
+     * removed - nothing to take back (deck was 13, is 13)". The crumb was kept
+     * and marked `pressed`, which is right: it is the record that stops the
+     * next merge overwriting a run whose slides may still be there.
+     *
+     * On the next open the pane said "A merge from <date> added 6 slides and
+     * the pane closed before you could take them back." Two things wrong with
+     * one sentence. The pane did not close before the press - the press
+     * happened and was answered. And the slides are not outstanding: the deck
+     * is back to its starting size, so no card is offered beside the sentence
+     * that says they are waiting to be taken back.
+     *
+     * `unremovable` was already handled. `pressed` was not, and it is the
+     * commoner mark by far: it is written on EVERY fruitless press, while
+     * `unremovable` needs the budget spent or a host with no tags at all.
+     */
+    localStorage.setItem(
+      CRUMB_KEY,
+      JSON.stringify({
+        kind: "ssf-merge-run",
+        deckAtStart: 12,
+        added: 6,
+        runId: "r1",
+        startedAt: "2026-09-02T10:00:00.000Z",
+        doc: "https://example-my.sharepoint.com/personal/x/Documents/deck.pptx",
+        pressed: true,
+        fruitless: 1,
+      }),
+    );
+    // The deck is back to the size it was before the merge, so `sweepPlan`
+    // refuses and no card is drawn. The sentence must not contradict that.
+    office.slideCount.mockReset().mockResolvedValue(12);
+    await openPane();
+    await settle();
+
+    expect(undoButton(), "the deck did not grow, so there is nothing to offer").toBeNull();
+    expect(document.body.textContent, "the press happened; the pane did not close first").not.toContain(
+      "the pane closed",
+    );
+  });
+
   it("does not report the sweep's remainder as what the merge added", async () => {
     // `added` is what a further press may still take back, so a partial undo
     // lowers it — and the disabled merge button read from it, so a six-slide
@@ -1755,6 +1801,48 @@ describe("taking a real merge back", () => {
     expect(primary().textContent, "a merge that added six").not.toBe("Added 3 slides");
     expect(primary().textContent).toBe("3 of 6 slides still there");
     expect(primary().disabled, "and it is still disarmed").toBe(true);
+  });
+
+  it("says why the merge button is dead after a press that removed nothing", async () => {
+    /**
+     * Found on a real host on 2026-09-02. The user merged six slides, deleted
+     * all six from the thumbnail rail, and pressed "Remove these slides". The
+     * pane answered correctly — nothing to take back, the deck is the size it
+     * started — and then sat there with the merge button reading "Added 6
+     * slides", disabled, for ever.
+     *
+     * Disabled is RIGHT: `added` is what disarms it, and clearing it on a press
+     * that proved nothing would re-arm "Add 6 slides" over slides that may
+     * still be in the deck. Size alone cannot tell "the user deleted them" from
+     * "the user deleted six others and added six of their own".
+     *
+     * What was wrong is that nothing said so. The deck was back to its starting
+     * size, the pane said nothing had been removed, and the one button that
+     * could move the run forward was greyed out with no reason and no way on
+     * except closing the pane and opening it again. Walking back to step 2 and
+     * forward does not help, which is the first thing anybody tries.
+     */
+    await afterMerge();
+    office.undoMerge.mockResolvedValueOnce({
+      removed: 0,
+      disowned: 0,
+      detail: "nothing to take back (deck was 12, is 12)",
+    });
+    office.slideCount.mockResolvedValueOnce(12);
+    undoButton()?.click();
+    await settle();
+
+    expect(primary().disabled, "still disarmed, which is correct").toBe(true);
+    expect(document.body.textContent, "and now it says why").toMatch(/start a new merge|new merge/i);
+
+    // And the way out it names actually works. A notice that told the user to
+    // do something that did not help would be worse than the silence it
+    // replaced — this is the assertion that stops it becoming that.
+    pane().querySelector<HTMLElement>('[data-action="rows"]')?.click();
+    await settle();
+    pane().querySelector<HTMLElement>("[data-row]")?.click();
+    await settle();
+    expect(primary().disabled, "an edit is a different merge, so the button comes back").toBe(false);
   });
 
   it("marks a press that moved nothing as a press, so the next one still asks for proof", async () => {

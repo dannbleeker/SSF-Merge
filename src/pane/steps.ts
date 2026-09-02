@@ -14,11 +14,12 @@
 
 import { canBeField, whyNotAField } from "../core/merge/text.js";
 import type { EmptyPolicy } from "../core/merge/resolve.js";
-import { plural } from "./summary.js";
+import { blockName, plural } from "./summary.js";
 import { recordIsSkipped, slideApplies } from "../core/merge/plan.js";
 import { baseName } from "../core/merge/images.js";
 import { imageNamesIn, parseDelimited, toRecordSet } from "../core/data/recordset.js";
 import type { RecordSet } from "../core/data/recordset.js";
+import { slideRange } from "../core/phrase.js";
 
 /**
  * The order, and why DATA comes before FIELDS.
@@ -404,7 +405,7 @@ export function readBlockDraft(draft: BlockDraft, deckSize?: number): BlockRead 
     };
   }
   if (a < 1) return { block: null, why: `Slides are numbered from 1, so slide ${a} is not one.` };
-  if (b < a) return { block: null, why: `The block ends before it starts: slide ${a} to ${b}.` };
+  if (b < a) return { block: null, why: `The block ends before it starts: ${slideRange(a, b)}.` };
   if (deckSize !== undefined && b > deckSize) {
     // ADVICE, not a refusal — the block comes back and the button stays live.
     // `deckSize` is a count taken when the pane opened, and a user who adds
@@ -907,7 +908,8 @@ export function unusedColumns(state: PaneState): string[] {
 function blockCarries(state: PaneState): string {
   const block = chosenBlock(state);
   if (!block) return "Those slides carry";
-  return block.from === block.to ? `Slide ${block.from} carries` : `Slides ${block.from} to ${block.to} carry`;
+  const said = blockName(block);
+  return `${said} ${block.from === block.to ? "carries" : "carry"}`;
 }
 
 /**
@@ -1189,7 +1191,17 @@ export function primary(state: PaneState, step: StepId): Primary {
   switch (step) {
     case "template":
       return block
-        ? { label: `Use slides ${block.from} to ${block.to}`, enabled: true, advances: "data" }
+        ? // `blockName`, not a range spelled out again here. A one-slide block
+          // read "Use slides 2 to 2" — a range with itself at both ends, which
+          // looks like something the user mistyped rather than a sentence the
+          // pane meant. Everything around it already asks: the take-back card
+          // says "Remove slide 3 from this merge", the summary says "1 slide
+          // added", and `blockName` has handled `from === to` since it was
+          // written. This was the one place that built the phrase itself.
+          //
+          // Lower-cased because the label is mid-sentence and `blockName`
+          // returns a sentence subject. The multi-slide wording is unchanged.
+          { label: `Use ${blockName(block).toLowerCase()}`, enabled: true, advances: "data" }
         : { label: "Choose the slides that repeat", enabled: false, advances: "data" };
     case "data":
       // "Attach data" is what the step is FOR, so it stays the label until

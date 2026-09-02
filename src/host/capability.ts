@@ -1,3 +1,4 @@
+import { slideRange } from "../core/phrase.js";
 /**
  * What this host can do, decided away from the host.
  *
@@ -170,12 +171,15 @@ export type BlockIds = { ok: true; ids: string[] } | { ok: false; why: string };
  */
 export function blockIds(deckIds: string[], from: number, to: number): BlockIds {
   if (!Number.isInteger(from) || !Number.isInteger(to) || from < 1 || to < from) {
-    return { ok: false, why: `The template block has to be whole slide numbers, and slide ${from} to ${to} is not.` };
+    // Not `slideRange`: this echoes what was TYPED rather than naming a range
+    // of slides, and "slides 1.5 to 2.5 is not" puts a plural subject on a
+    // singular verb. Dropping the word is what makes it read.
+    return { ok: false, why: `The template block has to be whole slide numbers, and ${from} to ${to} is not.` };
   }
   if (to > deckIds.length) {
     return {
       ok: false,
-      why: `The template block is slides ${from} to ${to}, and PowerPoint listed ${deckIds.length} slide(s).`,
+      why: `The template block is ${slideRange(from, to)}, and PowerPoint listed ${deckIds.length} slide(s).`,
     };
   }
   const ids = deckIds.slice(from - 1, to);

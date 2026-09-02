@@ -7,6 +7,275 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed — a real-host round in Chrome, and the tooling it broke
+
+A full round on PowerPoint for the web in Chrome 152 on 2026-09-02: sideload,
+merge, take-back, and the merged package pulled down and read. Every number and
+every sentence matched the Edge run exactly, including the formatted values and
+*"2 slides removed. Your deck holds 7."*
+
+Worth saying plainly what that is worth. Chrome and Edge are **both Chromium**,
+so it ticks a name on the policy's list rather than exercising a second engine.
+Gecko and WebKit have still never opened the pane, and Firefox is not installed
+here — Playwright's copy lands under `%LOCALAPPDATA%` where AppLocker refuses
+it, so Gecko needs a real install before it can be tried at all.
+
+Two things the change of browser exposed, neither of which a second Edge round
+ever would:
+
+- **`decks.mjs` was Edge-only, and said it had never failed.** It reads each
+  deck's item GUID from the id of its Copilot button, and Chrome's OneDrive
+  draws no Copilot button — so it found zero decks and could open nothing. The
+  ids belong to the documents rather than to the browser, so they are cached
+  when they can be read and reused when they cannot. Proved by opening a deck in
+  Chrome with nothing readable in its DOM.
+- **A sideload lives in the browser profile, not the account.** A fresh Chrome
+  signed into the same account had a plain "Add-ins" button and no "Mail merge"
+  until the manifest was uploaded again by hand, through the same dialog no
+  script can reach — searched again in Chrome, absent from every CDP target
+  there too. Every new browser costs that.
+
+`browser.mjs` takes `SSF_CHANNEL=chrome` now, with its own profile and port and
+a guard that names the known channels.
+
+### Changed — two submission items read against the actual policy text
+
+Both were unticked in `docs/PUBLISHING.md` with a guess beside them. Neither
+needed a host.
+
+**Touch-only.** The rule is section 1120.3: *"All features must work on a
+touch-only device without a **physical** keyboard or mouse."* That word was
+missing from the item, and it changes the question — an on-screen keyboard is
+part of a touch device, so typing and pasting are not what the rule forbids.
+What it forbids is depending on hardware nobody has, and the pane has no
+`mouseover`, `mouseenter`, `contextmenu` or `dblclick` handler, nothing
+draggable, and no `:hover` rule that shows or hides anything. Touch targets were
+already gated at 24 px by `pane-shots.mjs`, and step 1 has a tap-only path
+through "Use the slides I have selected" on hosts with PowerPointApi 1.5. Still
+unticked, because none of it has run on a digitizer — but it is a reasoned risk
+now rather than an unknown one.
+
+**The title rule, and it appears to catch the name.** Section 1100.7: *"The
+title may not include your brand or service unless your offer targets a larger
+organization or enterprise"* — and then, in a bullet under it, *"Apps and agents
+for Microsoft 365 and copilot may not include the brand or service in the
+title."* The sentence has an enterprise exception; the bullet that applies to an
+Office add-in has none. `SSF` is the brand, so on a plain reading `SSF Merge` is
+a title that includes it.
+
+That is recorded rather than acted on. The name was kept deliberately, on the
+reasoning that guidance is guidance and a real objection would name the rule it
+thinks is broken. This is that rule, and it is a certification policy rather
+than a style guide — which is the distinction the reasoning rested on. Worth
+deciding again before submitting.
+
+### Fixed — a merge button that died with nothing said about it
+
+Found on a real host on 2026-09-02. Six slides merged, all six deleted from the
+thumbnail rail, then "Remove these slides" pressed. The pane answered correctly
+— *"Nothing was removed — nothing to take back (deck was 13, is 13)"* — and then
+sat there with the merge button reading "Added 6 slides", disabled, with no
+reason and no way on. Walking back to step 2 and forward again does not help,
+which is the first thing anybody tries; only closing the pane and reopening it
+did.
+
+**Disabled is right.** `added` is what disarms that button, and clearing it on a
+press that proved nothing would re-arm "Add 6 slides" over slides that may still
+be in the deck — size alone cannot tell "the user deleted them" from "the user
+deleted six others and added six of their own". What was wrong is that nothing
+said so.
+
+The notice now names both the state and the way out: the run's button stays
+disarmed, and changing the rows, the block or the pictures starts a new merge.
+The test asserts the advice as well as the sentence — it makes the edit and
+checks the button comes back — because a notice telling somebody to do something
+that did not help would be worse than the silence it replaced.
+
+### Fixed — the local gate was red on Windows for a reason that was not a defect
+
+`test/is-main.test.ts` creates a symlink, and Windows refuses that without
+elevation or Developer Mode. So the whole suite failed on the owner's machine
+while CI was green, every run, for a reason nothing was wrong with — which is
+the worst kind of red, because it teaches everyone to scroll past the run that
+finally matters.
+
+The obvious fix, skipping on `EPERM`, was tried earlier in the day and reverted:
+`test-count.mjs` counted tests that RAN, so a skip made the recorded floor
+platform-dependent — 1475 on Windows, 1476 in CI — and committing either number
+broke the other machine. The skip was a worse problem than the red.
+
+So the counter changed instead, and it now keeps **two** numbers:
+
+- the floor counts tests that **exist**, which is the same on every machine;
+- a second recorded number caps how many may be **skipped**.
+
+The danger the old rule guarded against is still guarded. Switching 23 tests off
+with `it.skip` leaves the total alone and blows the cap; deleting 23 drops the
+total. Proved both ways: the unit tests below cover the arithmetic, and
+switching one real test off was run end to end, where the gate exited 1 and
+named both skipped tests.
+
+The cap does NOT rise by itself, unlike the floor. A suite growing is ordinary;
+a new skip is a decision somebody should be seen making, so it takes
+`--update`. The log now names which tests were skipped, because "1 skipped" is
+the same line whether it is the symlink this machine cannot make or a case
+switched off to get a green run.
+
+`scripts/test-count.mjs` also had no test of its own — the one gate whose
+failure is invisible, because every other check fails loudly when it breaks and
+this one just stops noticing. Its decision is now a pure function with eleven
+cases against it.
+
+### Fixed — a phone's portrait photo went into the deck on its side
+
+The open question in `docs/TEST-KIT.md` is answered and the fix is in.
+
+A phone held upright writes the pixels LANDSCAPE and sets an EXIF tag saying
+"turn this 90 degrees to show it". Every gallery and every browser honours that
+tag. **PowerPoint does not** — established on a real host on 2026-09-02, where a
+`Orientation=6` photo merged into a portrait frame came out lying on its side
+with the subject's head and feet cropped off the left and right edges. It was
+proved rather than eyeballed: cover-cropping the unrotated pixels in a script
+reproduces the render band for band.
+
+That is what decided the shape of the fix, and why nothing had been changed
+before. Swapping the dimensions the add-in reports — the fix the OTHER answer
+wanted — would have made it worse, because the crop would then be computed for
+a picture the host is not drawing. The pixels themselves have to be turned.
+
+- `core/image/orient.ts` reads the tag out of the JPEG's APP1 segment and says
+  what turn is wanted. Byte-level and DOM-free, like `read.ts` beside it, and
+  it handles both TIFF byte orders — reading a big-endian header as little
+  turns tag `0x0112` into `0x1201` and finds nothing, which is a silent wrong
+  answer rather than a crash.
+- `pane/upright.ts` does the turning, at the one place the pane reads a picked
+  file, and fails soft everywhere: no `createImageBitmap`, no canvas, a refused
+  2d context or a decode that throws all return the bytes untouched. A photo
+  the wrong way up is a bad merge; a merge that stops because a canvas was
+  unavailable is a worse one.
+
+Checked against real JPEGs written by Pillow rather than bytes assembled in the
+test — a decoder checked only against its own encoder proves the two agree and
+nothing else — and cross-read with Pillow on all eight orientations. The
+fixtures are built by `scripts/build-exif-fixtures.py`.
+
+Writing it turned up one defect in the new code, caught by a test that passed
+1.5 among the nonsense values: `correctionFor` checked `>= 1 && <= 8` without
+`Number.isInteger`, so a fractional orientation indexed nothing and the caller
+read `.rotate` off `undefined`. The same trap `sweepPlan` already documents.
+
+### Added — opening a deck by name, because clicking one is not reliable
+
+`test-kit/driver/decks.mjs`. The real-host rounds of 2026-09-02 lost most of two
+sessions to the OneDrive folder, and every failure looked identical: a click
+that appeared to miss.
+
+Four distinct causes, none obvious from the outside:
+
+- A double-click **selects** the row rather than opening it.
+- A row left selected **swallows every later double-click**, so once one attempt
+  goes wrong the next twenty go wrong the same way. Reloading the folder is the
+  only thing that clears it, and that is what finally identified it: the same
+  click worked immediately after a reload and never before one.
+- A row below the fold has a rect off the bottom of the window, so the click is
+  dispatched, accepted, and lands on nothing — the trap the slide rail already
+  set in `pane.mjs`.
+- Enter on a selected row does not open it either.
+
+Each row does carry the item's GUID, in the id of its Copilot button, which is
+enough to build the editor URL and navigate straight there. That has not failed
+once.
+
+The account is read out of the open folder tab rather than written into the
+file. A OneDrive editor URL contains a personal account identifier and this
+repository is public.
+
+The README's run block was also two changes stale: it still told the reader to
+launch Edge by hand, which `browser.mjs` has done since it was added.
+
+### Fixed — a one-slide block said "Use slides 2 to 2"
+
+Found in the real-host round of 2026-09-02. A template block of a single slide
+put a range with itself at both ends on the button, which reads as something the
+user mistyped rather than a sentence the pane meant.
+
+Everything around it already got this right. The take-back card says "Remove
+slide 3 from this merge", the summary says "1 slide added", and `blockName` has
+handled `from === to` since it was written — the heading directly above the
+button in the manual's own screenshot said "Slide 3". The button was the one
+place that spelled the phrase out again instead of asking, so it read "Use
+slides 3 to 3" under a heading that read "Slide 3". It asks `blockName` now.
+
+`docs/MANUAL.md` documented the defect as though it were correct, twice,
+including the alt text of the picture beside it. Both are corrected, and the
+pictures were regenerated with `scripts/manual-shots.mjs`.
+
+**Two of the regenerated pictures had drifted for another reason**, and it is
+worth recording rather than quietly committing: `step-4-preview.png` still said
+"removing the preview deletes them" and `step-5-done.png` still said "which this
+merge added". Both were reworded in the release passes that landed before this,
+and neither picture was refreshed with the copy. They are correct now.
+
+### Changed — one place decides how a slide range is said
+
+The wording fix above was left at the button on purpose, with the other copies
+listed. This takes them.
+
+`slideRange` in the new `src/core/phrase.ts` is now the only thing that decides
+between "slide 3" and "slides 3 to 5". It is in `core` because that is the one
+layer `pane`, `host` and `office` can all import from, and deliberately not in
+`core/merge/text.ts`, which is the placeholder engine and no place for a
+sentence a user reads.
+
+Nine call sites across four layers now ask it, including `blockName`, which was
+the only one already right. Two of them changed what they say:
+`prepare.ts` and `steps.ts` both said "The block ends before it starts: slide 6
+to 4" — a range with a singular noun — and now say "slides 6 to 4". One was
+reworded instead of converted: `capability.ts` echoes what was TYPED rather than
+naming slides, and "slides 1.5 to 2.5 is not" puts a plural subject on a
+singular verb, so it drops the word.
+
+The guard is the point of the exercise. `test/phrase.test.ts` reads every file
+under `src/` and fails if any of them builds the phrase itself. The eighth copy
+would be written by somebody who never saw the other seven.
+
+It was nearly useless. The first version stripped source with `withoutTsProse`,
+which removes string and template CONTENTS as well as comments, so the phrase it
+hunts for was gone before it looked: the guard went green over six files that
+were breaking it. It strips comments only now, and it was proved by putting a
+hand-built copy back and watching it name the file.
+
+### Fixed — a recovery notice that said the pane closed before a press that happened
+
+Found by the real-host round of 2026-09-02 on PowerPoint for the web. Six slides
+merged into a twelve-slide deck, all six deleted from the thumbnail rail, then
+"Remove these slides" pressed once. The pane answered correctly: *"Nothing was
+removed — nothing to take back (deck was 13, is 13)"*. The next open said:
+
+> A merge from 2026-09-02 added 6 slides and the pane closed before you could
+> take them back.
+
+Wrong twice in one sentence. The pane did not close before the press — the press
+happened and was answered. And no card was drawn beside it, because `sweepPlan`
+had correctly withdrawn the offer once the deck was back to its starting size,
+so the sentence promised a take-back that nothing on screen offered.
+
+`unremovable` was already carved out of that branch. `pressed` was not, and it
+is by far the commoner mark: it is written on EVERY fruitless press, while
+`unremovable` needs the whole budget spent or a host with no `Slide.tags` at
+all. A pressed crumb now says a take-back has already been tried, and is still
+kept, because it remains the record that stops the next merge overwriting a run
+whose slides may still be in the deck.
+
+### Fixed — the local gate went red on Windows for a reason that was not a defect
+
+`test/is-main.test.ts` creates a symlink. Windows refuses that without elevation
+or Developer Mode, so the whole suite failed on a machine where nothing was
+wrong with the code. It now skips on `EPERM` and only on `EPERM`, naming the
+reason; every other symlink failure is still a failure, and CI runs it on Linux.
+A permanently red suite is worse than a skipped test: it teaches everyone to
+scroll past the run that finally does matter.
+
 ### Fixed — a merged deck could open as "repaired"
 
 A part whose name is percent-encoded — `my%20chart.xml`, which the file format

@@ -24,6 +24,7 @@ import type { EmptyPolicy } from "../core/merge/resolve.js";
 import { beginRun, onTrace, trace, traceText } from "../core/trace.js";
 import { render } from "./render.js";
 import { describeMerge, plural } from "./summary.js";
+import { upright } from "./upright.js";
 import {
   EMPTY,
   EMPTY_DRAFT,
@@ -625,7 +626,13 @@ async function takeImages(files: FileList | null): Promise<void> {
   let refused = 0;
   for (const file of Array.from(files)) {
     try {
-      images.set(file.name, new Uint8Array(await file.arrayBuffer()));
+      // Turned here, once, rather than at merge time. PowerPoint ignores a
+      // photo's EXIF orientation — established on a real host on 2026-09-02 —
+      // so a phone's portrait picture lands in the deck lying on its side
+      // unless the pixels are turned first. `upright` returns the bytes
+      // unchanged for everything that does not need it, which is nearly
+      // everything, and also whenever it cannot do the work at all.
+      images.set(file.name, await upright(new Uint8Array(await file.arrayBuffer())));
     } catch {
       // A file the browser will not read — moved, or on a disconnected drive.
       // Counted rather than thrown: the others are still worth having, and the
@@ -1189,9 +1196,23 @@ async function undoRun(): Promise<void> {
         });
         state = {
           ...state,
+          // The merge button stays disarmed after this, and the sentence says
+          // so. `added` is what disarms it, and clearing it on a press that
+          // proved nothing would re-arm "Add 6 slides" over slides that may
+          // still be in the deck — size alone cannot tell "the user deleted
+          // them" from "the user deleted six others and added six of their
+          // own". So the button is right to stay dead, and what was missing was
+          // any way to find that out.
+          //
+          // On a real host on 2026-09-02 this left a deck back at its starting
+          // size, a pane saying nothing had been removed, and one greyed-out
+          // button with no reason and no way on. Walking back to step 2 and
+          // forward again does not help, which is the first thing anybody
+          // tries; changing anything about the merge does, because an edit is
+          // a different merge.
           notice: done
             ? `Nothing was removed — ${detail}. Delete them from the thumbnail rail if you want them gone.`
-            : `Nothing was removed — ${detail}`,
+            : `Nothing was removed — ${detail}. This run's button stays disarmed; change the rows, the block or the pictures to start a new merge.`,
           ...(done ? { undoWithdrawn: true } : {}),
           ...(deckNow !== undefined ? { deckSize: deckNow } : {}),
         };
@@ -1541,7 +1562,25 @@ void Office.onReady(() => {
           recovered: true,
           // `plural`, not the host layer's `slide(s)`. This sentence is on a
           // user's screen; that spelling is a house convention for the run log.
-          notice: `A merge from ${crumb.startedAt.slice(0, 10)} added ${plural(crumb.added, "slide")} and the pane closed before you could take them back.`,
+          //
+          // "The pane closed before you could take them back" is only true of a
+          // crumb NOBODY pressed. `unremovable` was already carved out above,
+          // but that mark needs the whole budget spent or a host with no tags
+          // at all; `pressed` is written on every fruitless press and is far
+          // commoner. The real-host round of 2026-09-02 walked into it: six
+          // slides merged, all six deleted from the thumbnail rail, one press
+          // answered "nothing to take back (deck was 13, is 13)" — and the next
+          // open said the pane had closed before the user could press, beside
+          // no card at all, because `sweepPlan` had correctly withdrawn it.
+          //
+          // A pressed crumb is still worth keeping and still worth mentioning:
+          // it is what stops the next merge overwriting the record. It just
+          // must not claim the press never happened, or that slides are waiting
+          // when the card beside it says otherwise.
+          notice:
+            crumb.pressed === true
+              ? `A merge from ${crumb.startedAt.slice(0, 10)} added ${plural(crumb.added, "slide")}, and a take-back has already been tried on this deck.`
+              : `A merge from ${crumb.startedAt.slice(0, 10)} added ${plural(crumb.added, "slide")} and the pane closed before you could take them back.`,
         };
       } else if (crumb && crumb.runId !== pendingRunId) {
         // A run that died DURING the insert, which is the window the crumb was
