@@ -53,6 +53,12 @@ export function sweepPlan(o: { deckAtStart: number; deckNow: number; added: numb
   // It is checked because the other two are, and because a reader comparing the
   // three has to be able to see one rule rather than guess which is trusted.
   if (!Number.isInteger(o.deckAtStart) || !Number.isInteger(o.deckNow) || !Number.isInteger(o.added)) return null;
+  // Two refusals on one line, and they are different kinds. A negative starting
+  // size is an INPUT that cannot be true of any deck — checked for the same
+  // reason as the line above, so a reader sees one rule rather than guessing
+  // which quantity is trusted. A deck SMALLER than it started is a real shape
+  // and the commonest of them: the user has been deleting slides by hand, and
+  // no window counted from the end can be shown to be this run's.
   if (o.deckAtStart < 0 || o.deckNow < o.deckAtStart) return null;
   const grew = o.deckNow - o.deckAtStart;
   // MORE arrived than this run added, so positional identity is gone.

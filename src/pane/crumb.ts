@@ -65,15 +65,17 @@ function keyFor(doc: string): string {
  *
  * One consequence worth stating: `added: 0` is also the crash-mid-insert
  * marker, so that record is now first out once a ninth deck is touched, where
- * before it aged out normally. What that costs is NOTHING A USER CAN SEE — both
- * recovery notices require `added > 0` (`main.ts`), so a marker feeds no
- * sentence; its only effect is to stop the next merge writing a fresh pending
- * marker, which that merge writes anyway. It is evicted ahead of a record that
- * can still offer slides back, which is the right way round.
+ * before it aged out normally. What that costs is a SENTENCE — `main.ts`'s
+ * third recovery notice is reached only by a record with `added: 0`, and it
+ * tells the user a merge did not finish and how big the deck was either side of
+ * it. It costs nothing else: a marker does not stop the next merge writing a
+ * fresh one, because `holding` requires `added > 0` too. Evicted ahead of a
+ * record that can still offer slides back, which is the right way round, and a
+ * trade rather than a free win.
  *
- * This paragraph said "what is lost is a sentence", which overstated it — a
- * comment that is true of an earlier build, which is the commonest finding
- * every review of this file has produced.
+ * This paragraph was rewritten once to say the eviction costs nothing a user
+ * can see, on a count of two recovery notices where there are three — and the
+ * third is the marker's own. The sentence it replaced was right.
  */
 function deckKeys(s: Storage): string[] {
   const keys: string[] = [];

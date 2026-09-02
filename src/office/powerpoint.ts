@@ -493,7 +493,7 @@ export async function undoInsert(
   const deckNow = await slideCount();
   const plan = sweepPlan({ deckAtStart, deckNow, added });
   if (!plan) {
-    // The SHAPE was refused — see `UndoOutcome.refusedShape` for the four ways
+    // The SHAPE was refused — see `UndoOutcome.refusedShape` for what it covers
     // — and that says nothing about the host. It is marked so the pane does not
     // spend a press from a budget whose whole purpose is telling a host's
     // hiccup from a host's state: a co-author adding a slide is neither.
