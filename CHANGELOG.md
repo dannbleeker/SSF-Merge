@@ -7,6 +7,44 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a phone's portrait photo went into the deck on its side
+
+The open question in `docs/TEST-KIT.md` is answered and the fix is in.
+
+A phone held upright writes the pixels LANDSCAPE and sets an EXIF tag saying
+"turn this 90 degrees to show it". Every gallery and every browser honours that
+tag. **PowerPoint does not** — established on a real host on 2026-09-02, where a
+`Orientation=6` photo merged into a portrait frame came out lying on its side
+with the subject's head and feet cropped off the left and right edges. It was
+proved rather than eyeballed: cover-cropping the unrotated pixels in a script
+reproduces the render band for band.
+
+That is what decided the shape of the fix, and why nothing had been changed
+before. Swapping the dimensions the add-in reports — the fix the OTHER answer
+wanted — would have made it worse, because the crop would then be computed for
+a picture the host is not drawing. The pixels themselves have to be turned.
+
+- `core/image/orient.ts` reads the tag out of the JPEG's APP1 segment and says
+  what turn is wanted. Byte-level and DOM-free, like `read.ts` beside it, and
+  it handles both TIFF byte orders — reading a big-endian header as little
+  turns tag `0x0112` into `0x1201` and finds nothing, which is a silent wrong
+  answer rather than a crash.
+- `pane/upright.ts` does the turning, at the one place the pane reads a picked
+  file, and fails soft everywhere: no `createImageBitmap`, no canvas, a refused
+  2d context or a decode that throws all return the bytes untouched. A photo
+  the wrong way up is a bad merge; a merge that stops because a canvas was
+  unavailable is a worse one.
+
+Checked against real JPEGs written by Pillow rather than bytes assembled in the
+test — a decoder checked only against its own encoder proves the two agree and
+nothing else — and cross-read with Pillow on all eight orientations. The
+fixtures are built by `scripts/build-exif-fixtures.py`.
+
+Writing it turned up one defect in the new code, caught by a test that passed
+1.5 among the nonsense values: `correctionFor` checked `>= 1 && <= 8` without
+`Number.isInteger`, so a fractional orientation indexed nothing and the caller
+read `.rotate` off `undefined`. The same trap `sweepPlan` already documents.
+
 ### Added — opening a deck by name, because clicking one is not reliable
 
 `test-kit/driver/decks.mjs`. The real-host rounds of 2026-09-02 lost most of two

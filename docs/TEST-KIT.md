@@ -319,25 +319,6 @@ This is the list to read when somebody asks what is open, so it is kept short
 and it is kept true. An item leaves it when a round has actually done the thing,
 not when the code looks right.
 
-**Does PowerPoint honour a photo's EXIF orientation?** A camera or a phone
-storing a portrait photo writes the pixels LANDSCAPE and sets a tag saying
-"turn this 90 degrees to show it". This add-in reads the stored dimensions and
-ignores the tag, so for `{{Photo|image}}` — the setting that crops rather than
-squashes — it computes the crop for the picture the wrong way round.
-
-What happens next depends on something only a real PowerPoint can say, and the
-two possibilities want opposite fixes, so nothing has been changed yet:
-
-1. Put a **portrait photo straight off a phone** into a portrait frame with
-   `{{Photo|image}}` and merge one row.
-2. If the picture appears upright but **cropped on the wrong axis** — the top
-   and bottom of a head cut off where nothing needed cropping — then PowerPoint
-   honours the tag and this add-in must read it too.
-3. If the picture appears **lying on its side**, PowerPoint ignores the tag and
-   the fix is a different one.
-
-Say which of the two it is, and attach the photo you used if you can.
-
 **Touch-only operation, and Firefox.** Both are unticked in `docs/PUBLISHING.md`
 and neither has been done. The desktop round of 2026-08-31 could not: the machine
 it ran on has no digitizer, and reporting a pass from synthetic mouse clicks
@@ -347,6 +328,25 @@ has never been opened in — Chromium is covered twice over, by the web rounds i
 Edge and by the desktop pane, which is WebView2.
 
 **Answered since, and no longer open.**
+
+**Does PowerPoint honour a photo's EXIF orientation?** Answered on 2026-09-02,
+on PowerPoint for the web: **it does not.** A photo written the way a phone
+writes one — 1200x800 pixels on disk, `Orientation=6`, meant to be seen as
+800x1200 — was merged into a portrait frame with `{{Photo|image}}` and came out
+**lying on its side**, with the red band at the top of the picture and the blue
+band at the bottom both cropped off the left and right edges.
+
+Established rather than eyeballed: cover-cropping the UNROTATED pixels to the
+frame's aspect in a script reproduces the render exactly, band for band, and
+both coloured bands fall outside the crop window. The photo and the rendered
+slide are in the round's evidence.
+
+That was the answer that decided the fix, and the fix is in:
+`core/image/orient.ts` reads the tag and says what turn is wanted, and the pane
+turns the pixels in `upright.ts` before the merge ever sees them. Swapping the
+dimensions the add-in reports — the fix the OTHER answer wanted — would have
+made it worse, because the crop would then be computed for a picture PowerPoint
+is not drawing.
 
 **Edit Data, on both decks**, done on 2026-08-31 in desktop PowerPoint
 16.0.20326. Right-click ▸ Edit Data on each of the three classic charts opened a
