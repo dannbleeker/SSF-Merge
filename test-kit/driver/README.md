@@ -31,6 +31,7 @@ one machine on one day does not belong in the repo.
 | `fetch-deck.mjs` | Downloads the open deck's bytes through the page's own session, and prints its slide count. `--expect-slides N` waits for OneDrive to commit rather than handing back last save. |
 | `verify-package.mjs` | Checks a merged deck, anchored per row to the slide's own title. Knows BOTH kit decks — fourteen checks for the main template, eight for the sunburst — understands a deck that still holds its template, and refuses a deck that is neither. |
 | `mutate.mjs` | Breaks a reference deck seven ways and asserts each is caught by its own guard — and refuses to count a guard whose check was already red. |
+| `decks.mjs` | Opens a deck in the round's OneDrive folder by name, by reading each row's item GUID and navigating to the editor URL. Clicking a row is unreliable in four different ways; this is not. |
 | `browser.mjs` | Starts Edge on the persistent profile with CDP open on 9333 and leaves it running. `web-login.mjs` cannot: Playwright owns the browser it launches, so it dies when that script returns. Run this one first. |
 | `pane.mjs` | The vocabulary the rest of them are written in: `says`, `click`, `fill`, `until`, `controls`, `selectSlides`, `currentSlide`. Talks to each out-of-process iframe on its own websocket, goes through React's native value setter, and proves every action took before returning. |
 | `shot.mjs` | Photographs the deck tab at an exact pixel size, hiding the account button and any developer add-in tab first, and throwing if it finds neither. |
@@ -41,11 +42,14 @@ one machine on one day does not belong in the repo.
 
 ```bash
 node test-kit/driver/web-login.mjs                 # once; sign in by hand
-# then launch Edge yourself with --remote-debugging-port=9333 on the same
-# profile, and drive it:
-node test-kit/driver/drive.mjs url
+node test-kit/driver/browser.mjs <folder-url>      # every time after that
 node test-kit/driver/upload-template.mjs test-kit/SSF-Merge-test-template.pptx
 node test-kit/driver/cdp-eval.mjs list
+
+# Open a deck BY NAME rather than clicking it in the folder. Clicking selects
+# the row, a selected row swallows the next click, and a row below the fold is
+# not there to hit — all three look like a click that missed.
+node -e "import('./test-kit/driver/decks.mjs').then(m => m.openDeck('round-deck-A.pptx'))"
 
 # The pane is its own CDP target. Match it on the ADD-IN's host: "taskpane.html"
 # also matches a Microsoft pane, and answers about the wrong frame convincingly.

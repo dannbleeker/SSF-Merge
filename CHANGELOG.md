@@ -7,6 +7,35 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added — opening a deck by name, because clicking one is not reliable
+
+`test-kit/driver/decks.mjs`. The real-host rounds of 2026-09-02 lost most of two
+sessions to the OneDrive folder, and every failure looked identical: a click
+that appeared to miss.
+
+Four distinct causes, none obvious from the outside:
+
+- A double-click **selects** the row rather than opening it.
+- A row left selected **swallows every later double-click**, so once one attempt
+  goes wrong the next twenty go wrong the same way. Reloading the folder is the
+  only thing that clears it, and that is what finally identified it: the same
+  click worked immediately after a reload and never before one.
+- A row below the fold has a rect off the bottom of the window, so the click is
+  dispatched, accepted, and lands on nothing — the trap the slide rail already
+  set in `pane.mjs`.
+- Enter on a selected row does not open it either.
+
+Each row does carry the item's GUID, in the id of its Copilot button, which is
+enough to build the editor URL and navigate straight there. That has not failed
+once.
+
+The account is read out of the open folder tab rather than written into the
+file. A OneDrive editor URL contains a personal account identifier and this
+repository is public.
+
+The README's run block was also two changes stale: it still told the reader to
+launch Edge by hand, which `browser.mjs` has done since it was added.
+
 ### Fixed — a one-slide block said "Use slides 2 to 2"
 
 Found in the real-host round of 2026-09-02. A template block of a single slide
