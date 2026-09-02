@@ -227,6 +227,21 @@ describe("applyFormat", () => {
     // Including a magnitude JavaScript spells with an exponent at the SMALL
     // end, which groups perfectly.
     expect(applyFormat("0.0000001", "number:2")).toBe("0,00");
+    // And the ROUNDING is the cell's, not the double's. `2.4999999999999999999`
+    // is stored as 2.5, so rounding the double's spelling answers 3 where the
+    // cell answers 2 — a different number on the slide, grouped and formatted
+    // as though it were right. Measured at 814 wrong in 20 000 thirteen-digit
+    // cells before this; zero after.
+    expect(applyFormat("2.4999999999999999999", "number:0")).toBe("2");
+    expect(applyFormat("0.1249999999999999999", "number:2")).toBe("0,12");
+    expect(applyFormat("1.0049999999999999999", "number:2")).toBe("1,00");
+    // The ordinary half-away-from-zero cases still round up, which is the
+    // behaviour a spreadsheet shows and the reason this file rounds strings.
+    // (`1.0050` rather than `1.005`, which is a THOUSANDS group by this file's
+    // own rule — a lone three-digit run after a separator.)
+    expect(applyFormat("1.0050", "number:2")).toBe("1,01");
+    expect(applyFormat("-0.4", "number:0")).toBe("0");
+    expect(applyFormat("-1.5", "number:0")).toBe("-2");
     expect(applyFormat("1234567890123456789012345", "number:2")).toBe("1234567890123456789012345");
     // And the ordinary case is untouched.
     expect(applyFormat("1234567.891", "number:2")).toBe("1 234 567,89");

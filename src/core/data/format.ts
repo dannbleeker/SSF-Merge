@@ -761,6 +761,26 @@ export function formatDate(d: Date, pattern: string): string {
 function fixedDecimal(n: number, decimals: number): string {
   const plain = String(Math.abs(n));
   if (plain.includes("e") || plain.includes("E")) return Math.abs(n).toFixed(decimals);
+  return roundDigits(plain, decimals);
+}
+
+/**
+ * The same rounding, on a decimal string that came from somewhere else.
+ *
+ * `fixedDecimal` rounds the DOUBLE's shortest spelling, which is the right
+ * input when a number is all anybody has. It is the wrong one when the cell is
+ * still in hand and carries more digits than the double: `2.4999999999999999999`
+ * is stored as 2.5, so the double's spelling rounds UP to 3 where the cell
+ * rounds down to 2 — a different number on the slide, grouped and formatted as
+ * though it were right.
+ *
+ * `applyFormat` therefore rounds the cell's own digits. The magnitude has
+ * already been checked against the double (`sameNumber`), so this is about the
+ * last printed digit and nothing else.
+ *
+ * `plain` is unsigned, with no exponent: `numericText`'s output, less its sign.
+ */
+function roundDigits(plain: string, decimals: number): string {
   const [whole = "0", frac = ""] = plain.split(".");
   if (frac.length <= decimals) return decimals === 0 ? whole : `${whole}.${frac.padEnd(decimals, "0")}`;
   const kept = (whole + frac.slice(0, decimals)).split("");
@@ -818,6 +838,23 @@ function sameNumber(wrote: string, n: number): boolean {
   return whole(wrote) === whole(spelled);
 }
 
+/**
+ * Group a rounded decimal string and give it its sign.
+ *
+ * Shared by the public `formatNumber` and by `applyFormat`, which rounds the
+ * CELL rather than the double and so cannot go through the first. The two used
+ * to be one function, and separating the rounding from the grouping is what let
+ * the cell's digits reach the slide.
+ */
+function groupFixed(fixed: string, negative: boolean, group: string, point: string): string {
+  const [whole = "0", frac] = fixed.split(".");
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, group);
+  // The sign comes from the ROUNDED value, not the input. `-0.4` at no decimal
+  // places rounds to zero, and taking the sign from the input printed it as
+  // `-0` — a quantity that does not exist, on a slide, from an ordinary cell.
+  return `${negative && Number(fixed) !== 0 ? "-" : ""}${grouped}${frac ? point + frac : ""}`;
+}
+
 export function formatNumber(n: number, decimals: number, group: string, point: string): string {
   // Nothing to group. Above 1e21 JavaScript spells a number with an exponent,
   // and `1.2345678901234568e+24` split on its dot and grouped comes out as
@@ -831,14 +868,7 @@ export function formatNumber(n: number, decimals: number, group: string, point: 
   // compares the value against the cell it was read from, and this entry point
   // has no cell.
   if (!Number.isFinite(n) || Math.abs(n) >= 1e21) return String(n);
-  const fixed = fixedDecimal(n, decimals);
-  const [whole = "0", frac] = fixed.split(".");
-  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, group);
-  // The sign comes from the ROUNDED value, not the input. `-0.4` at no decimal
-  // places rounds to zero, and taking the sign from `n` printed it as `-0` —
-  // a quantity that does not exist, on a slide, from an ordinary cell.
-  const negative = n < 0 && Number(fixed) !== 0;
-  return `${negative ? "-" : ""}${grouped}${frac ? point + frac : ""}`;
+  return groupFixed(fixedDecimal(n, decimals), n < 0, group, point);
 }
 
 /**
@@ -899,7 +929,13 @@ export function applyFormat(raw: string, spec: string | undefined): string {
       // that has already answered, so this is the same string it parsed.
       const wrote = numericText(raw) ?? "";
       if (!sameNumber(wrote, n)) return raw;
-      return formatNumber(n, decimals, " ", ",");
+      // Rounded from the CELL, not from the double. `2.4999999999999999999` is
+      // stored as 2.5, so rounding the double's spelling answers 3 where the
+      // cell answers 2 — a different number on the slide, grouped and formatted
+      // as though it were right. The magnitude has already been checked against
+      // the double; this is the last printed digit.
+      const digits = wrote.replace(/^[+-]/, "");
+      return groupFixed(roundDigits(digits, decimals), n < 0, " ", ",");
     }
     case "date": {
       const d = parseDate(raw);

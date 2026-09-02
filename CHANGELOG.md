@@ -19,8 +19,10 @@ PowerPoint offers to repair.
 ### Fixed — a number with more digits than a spreadsheet cell can hold
 
 `{{Order|number}}` on a nineteen-digit order number printed a DIFFERENT number,
-grouped and formatted as though it were right. A value whose digits would not
-survive is now printed exactly as the cell has it.
+grouped and formatted as though it were right. A cell whose whole-number digits
+would not survive is now printed exactly as it stands, and one that is formatted
+is rounded from the cell's own digits rather than from what a double could hold
+— so the last printed digit is the one the cell says.
 
 ### Fixed — a picture field where a picture cannot go
 

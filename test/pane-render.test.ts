@@ -1310,6 +1310,23 @@ describe("a picture field where a picture cannot go", () => {
     expect(pane.textContent, "advice about a field that is already placed").not.toContain("instead");
   });
 
+  it("keeps the advice for a field that is on no slide, beside one that is", () => {
+    // `some` dropped the advice for ALL the named fields as soon as one of them
+    // happened to be in a shape — including a field that exists only on a notes
+    // page, for which that sentence is the only thing to do about it.
+    const pane = paneFor(
+      {
+        ...withFields,
+        fields: ["Name", "Photo", "Logo"],
+        imageFields: ["Photo"],
+        imageFieldsOffSlide: ["Photo", "Logo"],
+      },
+      "fields",
+    );
+    expect(pane.textContent).toContain("{{Logo}}");
+    expect(pane.textContent, "the only advice a notes-only field gets").toContain("instead");
+  });
+
   it("is silent when every picture field is on a slide", () => {
     const pane = paneFor({ ...withFields, imageFields: ["Photo"], imageFieldsOffSlide: [] }, "fields");
     expect(pane.textContent).not.toContain("cannot go");

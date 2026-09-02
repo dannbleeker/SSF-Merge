@@ -62,6 +62,13 @@ function keyFor(doc: string): string {
  *
  * The date is the MERGE's, carried through a re-write, so this is not write
  * order and must not be described as one.
+ *
+ * One consequence worth stating: `added: 0` is also the crash-mid-insert
+ * marker, so that record is now first out once a ninth deck is touched, where
+ * before it aged out normally. It authorises no sweep — `sweepPlan` refuses a
+ * count of zero — so what is lost is a sentence, against a record that can
+ * still offer slides back. That is the right way round, and it is a trade
+ * rather than a free win.
  */
 function deckKeys(s: Storage): string[] {
   const keys: string[] = [];
