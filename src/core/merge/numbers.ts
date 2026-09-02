@@ -245,9 +245,14 @@ export function sheetOfFormula(formula: string): string | null {
  * Keyed on the Document, so it lives exactly as long as the sheet does and
  * cannot outlive a run. Sound only while nothing ADDS a `<c>` to a sheet after
  * a lookup: the one write this pass makes is a `<v>` inside a cell that already
- * exists (see `setCellNumber`), and `test/chart-numbers.test.ts` holds that by
+ * exists (see `writeNumber`), and `test/chart-numbers.test.ts` holds that by
  * scanning the source, because a new cell would be invisible to a stale index
  * and the merge would leave it as the author typed it with nothing said.
+ *
+ * The scan reads every file that CALLS `cellAt`, not this one alone —
+ * `graphics.ts` reads cells through the same index, so a cell created there
+ * would poison it just as surely, and a guard that watches one of two call
+ * sites reads like a guard on both.
  */
 const CELL_INDEX = new WeakMap<Document, Map<string, Element>>();
 
@@ -446,13 +451,27 @@ export async function mergeChartNumbers(
   chartPath: string,
   workbookPath: string | undefined,
   resolve: Resolve,
+  /**
+   * An already-inflated workbook, for a DRY RUN only.
+   *
+   * `prepareBlock` reads every chart workbook twice — once here for the value
+   * cells, once through `workbookFields` for the text — and inflating a
+   * workbook twice per chart is the whole of that step's doubled cost. A caller
+   * that has one may hand it over.
+   *
+   * Only a resolver that writes nothing may pass this. Both readers MUTATE the
+   * zip when they fill something, so a shared book on the merge path would let
+   * one pass see the other's edits and write back a workbook neither intended.
+   * The two dry runs write nothing, which is what makes sharing safe there.
+   */
+  inflated?: JSZip,
 ): Promise<NumberPass> {
   const out = emptyNumberPass();
   if (!workbookPath || !pkg.has(workbookPath)) return out;
 
   let book: JSZip;
   try {
-    book = await JSZip.loadAsync(await pkg.bytes(workbookPath));
+    book = inflated ?? (await JSZip.loadAsync(await pkg.bytes(workbookPath)));
   } catch {
     // The same judgement `mergeWorkbook` makes: an embedding that is not a
     // readable zip is a thing to step over, not to lose the run on.
@@ -554,6 +573,15 @@ export async function mergeChartNumbers(
       // The answer is thrown away deliberately: there is no point to write to,
       // which is the whole condition here. The resolver is pure, so asking it
       // costs nothing on a real run and is the recording channel on a dry one.
+      //
+      // REDUNDANT in the only caller, and kept anyway. `prepareBlock` also runs
+      // `workbookFields` over every workbook, which walks all of a sheet's text
+      // and reports these same names — so removing this line would not, today,
+      // let the defect above back in. What it would do is make
+      // `chartValueFields` wrong on its own terms: it claims to report the
+      // fields a chart's workbook carries, and a caller that reached for it
+      // alone would get a short list. This is not load-bearing; it is the
+      // function keeping its own promise.
       for (const hit of hits) resolve(hit.name);
       out.unplotted++;
     }
@@ -654,11 +682,18 @@ export async function chartValueFields(
   pkg: Pkg,
   chartPath: string,
   workbookPath: string | undefined,
+  inflated?: JSZip,
 ): Promise<string[]> {
   const seen: string[] = [];
-  await mergeChartNumbers(pkg, chartPath, workbookPath, (name) => {
-    if (!seen.includes(name)) seen.push(name);
-    return null;
-  });
+  await mergeChartNumbers(
+    pkg,
+    chartPath,
+    workbookPath,
+    (name) => {
+      if (!seen.includes(name)) seen.push(name);
+      return null;
+    },
+    inflated,
+  );
   return seen;
 }

@@ -30,21 +30,26 @@ export type Supports = (version: string) => boolean;
  * that clears this bar.
  *
  * This said 1.4, then 1.3, and both were wrong in the same direction. 1.3 was
- * justified by `slide.tags` — and **nothing here calls it.** Merge metadata is
- * written into the PACKAGE, as `ppt/tags/tagN.xml` with a relationship from the
- * slide, which is the whole reason the engine never asks the host for anything
- * it can put in the file. The reasoning was right ("read the floor off the
- * calls the add-in actually makes") and the fact was not; a repo-wide grep for
- * `.tags` finds no caller.
+ * justified by `slide.tags`, which at the time nothing called: merge metadata
+ * is written into the PACKAGE, as `ppt/tags/tagN.xml` with a relationship from
+ * the slide, which is the whole reason the engine never asks the host for
+ * anything it can put in the file.
  *
- * Declaring a floor higher than the truth excludes hosts that would have run
- * the add-in perfectly well, and it does it SILENTLY — `checkFloor` tells the
- * user their PowerPoint is too old when it is not.
+ * `runTagsAt` DOES read `slide.tags` now — the undo asks each slide in its
+ * range whether this run made it — and the floor is still 1.2, deliberately.
+ * That read is guarded where it is made and answers an empty list below 1.3, so
+ * an older host loses the identity check and keeps the merge. Declaring 1.3
+ * would exclude a host that runs the add-in perfectly well, and it would do it
+ * SILENTLY: `checkFloor` tells the user their PowerPoint is too old when it is
+ * not. (This paragraph asserted "a repo-wide grep for `.tags` finds no caller"
+ * for as long as the caller existed. Re-run the grep before repeating it.)
  *
- * Two calls sit ABOVE the floor and are each guarded where they are used, never
- * declared: `exportAsBase64Presentation` (1.10, `chooseDeckSource` falls back to
- * the file API) and `getSelectedSlides` (1.5, `canSelectSlides` hides the
- * control). An optional call is not a floor.
+ * Three calls sit ABOVE the floor and are each guarded where they are used,
+ * never declared: `exportAsBase64Presentation` (1.10, `chooseDeckSource` falls
+ * back to the file API), `getSelectedSlides` (1.5, `canSelectSlides` hides the
+ * control) and `Slide.tags` (1.3, `runTagsAt` answers empty). An optional call
+ * is not a floor — but the third one changes what a button DOES rather than
+ * whether it is there, so `docs/MANUAL.md` names it under the undo as well.
  */
 export const API_FLOOR = "1.2";
 

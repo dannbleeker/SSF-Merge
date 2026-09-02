@@ -2,7 +2,7 @@
  * XML for the package layer.
  *
  * One implementation everywhere, deliberately. `@xmldom/xmldom` is pure
- * JavaScript, so the task pane, the Node CLI and the test suite all parse and
+ * JavaScript, so the task pane, the build scripts and the test suite all parse and
  * serialise with the same code. Reaching for the browser's native `DOMParser`
  * when it happens to exist would buy a little speed and a class of bug this
  * project cannot afford: a merge that works in the suite and produces a file

@@ -67,6 +67,15 @@ export interface PaneState {
    * `pictureColumns`.
    */
   imageFields?: string[];
+  /**
+   * Picture fields written where no picture can be placed — a notes page, a
+   * chart's text, a SmartArt node.
+   *
+   * Shown rather than filled: `placeImages` fills a shape on a slide, and none
+   * of those is one. Left unsaid, the merge printed `{{Photo|image}}` verbatim
+   * onto presenter view and every handout.
+   */
+  imageFieldsOffSlide?: string[];
   /** Column names in the data the user attached, if any. */
   columns?: string[];
   /** Rows in that data. */
@@ -217,6 +226,30 @@ export interface PaneState {
    */
   added?: number;
   /**
+   * What the merge ADDED, which `added` stops being the moment a sweep runs.
+   *
+   * `added` is what a further press may still take back, so a partial undo
+   * lowers it — and the disabled merge button reads from it, so a six-slide
+   * merge with three swept back said "Added 3 slides" about a merge that added
+   * six. Two facts, one number; this is the one that does not move.
+   */
+  addedByRun?: number;
+  /**
+   * The undo card is not offered, because a press has proved it cannot work.
+   *
+   * SEPARATE from `added`, which stays. `added` says what is in the deck — it
+   * disarms the merge button and it draws the card's numbers — and clearing it
+   * to hide the card re-armed "Add 6 slides" over six slides that were still
+   * there, one press from a deck holding twelve.
+   *
+   * Set only where the host cannot prove a slide is the merge's at all (see
+   * `UndoOutcome.unprovable`), so the same press would answer the same way for
+   * ever. Not persisted: a reopened pane offers the press again, once, which is
+   * the price of keeping the crumb that stops the next merge overwriting a run
+   * whose slides are still in the deck.
+   */
+  undoWithdrawn?: boolean;
+  /**
    * Whether the state has changed since that merge landed.
    *
    * `added` used to carry both halves of "a merge just landed": the button's
@@ -335,9 +368,40 @@ export function readBlockDraft(draft: BlockDraft, deckSize?: number): BlockRead 
   // numbered from 1" is a true sentence that says nothing about the boxes in
   // front of them, and the manual promised numbers for all four cases while
   // two of them carried none.
-  if (!Number.isInteger(a) || !Number.isInteger(b)) {
-    const bad = !Number.isInteger(a) ? from : to;
-    return { block: null, why: `Slide numbers are whole numbers, and "${bad}" is not one.` };
+  // SAFE integers, so a number too large to count exactly cannot get through.
+  // Twenty-one digits pass `DECIMAL` and `Number.isInteger`, and the pane then
+  // showed a slide number that appears nowhere in what the user typed —
+  // "Slide 1e+21 is past the end of the deck" — beside a live "Use slides 1 to
+  // 1e+21". Pressing it took the merge step down with
+  // `RangeError: Invalid array length` out of `blockSlides`: a BLANK PANE, not
+  // a sentence. It is the same defect the `0x10` guard above was written for,
+  // reached by a route that guard cannot see.
+  if (!Number.isSafeInteger(a) || !Number.isSafeInteger(b)) {
+    const bad = !Number.isSafeInteger(a) ? from : to;
+    // Two different refusals in one sentence, and it said the wrong one for a
+    // 21-digit number: that IS a whole number, it is simply not one this can
+    // count exactly. Telling somebody their whole number is not whole sends
+    // them to check a thing that is already right.
+    return {
+      block: null,
+      // Three refusals, not two, and each asked of what was TYPED rather than
+      // of the double it reads as. `Number("1000000000000000000000.5")` is
+      // `1e21`, an integer, so asking `Number.isInteger` told a decimal it was
+      // too big — the branch this split exists to keep off it. A trailing
+      // fraction of zeros is admitted here for the reason the `DECIMAL` comment
+      // above gives: `4.0` IS a whole number, and refusing it with "4.0 is not
+      // one" would be a false sentence at any size.
+      //
+      // A huge NEGATIVE is not bigger than anything — it is a slide number
+      // below 1. (The `to` box reaches "the block ends before it starts" for a
+      // small negative and this for a large one; both are true of the input and
+      // which one bites is decided by magnitude.)
+      why: !/^[+-]?\d+(?:\.0+)?$/.test(bad)
+        ? `Slide numbers are whole numbers, and "${bad}" is not one.`
+        : bad.startsWith("-")
+          ? `Slides are numbered from 1, so slide ${bad} is not one.`
+          : `Slide ${bad} is a bigger number than a deck can have slides.`,
+    };
   }
   if (a < 1) return { block: null, why: `Slides are numbered from 1, so slide ${a} is not one.` };
   if (b < a) return { block: null, why: `The block ends before it starts: slide ${a} to ${b}.` };
@@ -640,7 +704,27 @@ export function pictureColumns(state: PaneState): string[] {
  * is to edit a spreadsheet that was fine.
  */
 export function imagesWanted(state: PaneState): string[] {
-  const rows = includedRecords(state)?.rows ?? [];
+  return pictureNamesOver(state, includedRecords(state)?.rows ?? []);
+}
+
+/**
+ * The same, over EVERY row pasted rather than the ticked ones.
+ *
+ * Only for telling two zeroes apart. `imagesWanted` reading the ticked rows is
+ * right and is what the merge runs on — but it makes "no row names a picture"
+ * and "the rows that name one are not ticked" the same answer, and the pane
+ * said the first. An author who unticks the row with the photo in it was told
+ * their data has no pictures in it, which sends them to look at the
+ * spreadsheet rather than at the row picker one control above.
+ *
+ * Never a count anybody merges on: every number on that screen is a statement
+ * about what pressing the button will do.
+ */
+export function imagesNamedAnywhere(state: PaneState): string[] {
+  return pictureNamesOver(state, state.records?.rows ?? []);
+}
+
+function pictureNamesOver(state: PaneState, rows: Record<string, string>[]): string[] {
   const seen = new Set<string>();
   for (const column of pictureColumns(state)) for (const name of imageNamesIn(rows, column)) seen.add(name);
   return [...seen];
@@ -841,7 +925,12 @@ function blockCarries(state: PaneState): string {
  * step".
  */
 export function noFieldsYet(state: PaneState): string {
-  return `${blockCarries(state)} no fields yet. Go back a step and put one on a slide.`;
+  // NAMES the step. This is shown on preview AND merge, and from the merge step
+  // the fields step is two back — the only back control on that screen says
+  // "Back to preview". `noFieldsHere`'s own docstring records fixing exactly
+  // this misdirection on the fields step; this sentence still counted steps
+  // that do not exist from where it is read.
+  return `${blockCarries(state)} no fields yet. Go back to Fields and put one on a slide.`;
 }
 
 /**
@@ -1159,6 +1248,12 @@ export function primary(state: PaneState, step: StepId): Primary {
       // An EDIT re-arms it, because an edit is a different merge. The undo
       // card does not go with it: the slides that landed are still there.
       if (state.added !== undefined && !state.changedSinceMerge) {
+        // What the run DID, unless a sweep has taken some of it back — then
+        // both numbers, because "Added 3 slides" about a six-slide merge is
+        // simply false and "Added 6" over three would be worse.
+        const run = state.addedByRun;
+        if (run !== undefined && run !== state.added)
+          return { label: `${state.added} of ${run} slides still there`, enabled: false };
         return { label: `Added ${state.added} slide${state.added === 1 ? "" : "s"}`, enabled: false };
       }
       // The INCLUDED rows, never the pasted ones. A user who has taken three
@@ -1205,6 +1300,22 @@ export function nextStep(from: StepId): StepId | null {
  */
 export type OrangeHolder = "tick" | "preview" | "undone" | "unmatched";
 
+/**
+ * Whether the undo card is on screen.
+ *
+ * ONE predicate, because two things depend on it and they had come apart: the
+ * card itself, and the orange budget that must not put a tick beside it. A
+ * withdrawn card left the merge screen with neither — no orange at all — since
+ * the budget still answered from `added` alone.
+ *
+ * `undoIsPossible` is deliberately NOT asked here. It needs the deck's size and
+ * belongs to the drawing, which asks it a line later; this answers the question
+ * both callers share and no more.
+ */
+export function undoCardShows(state: PaneState, step: StepId): boolean {
+  return (state.added ?? 0) > 0 && state.undoWithdrawn !== true && (step === "merge" || state.recovered === true);
+}
+
 export function orangeHolder(state: PaneState, step: StepId): OrangeHolder {
   if (state.previewing) return "preview";
   // A landed merge outranks the tick for the same reason a preview does: the
@@ -1213,7 +1324,11 @@ export function orangeHolder(state: PaneState, step: StepId): OrangeHolder {
   // card exists to undo.
   // Wherever the card is — see `recovered`. Gated on the merge step while the
   // card was not would put a tick beside an orange card on the other four.
-  if ((state.added ?? 0) > 0 && (step === "merge" || state.recovered === true)) return "undone";
+  // The same three conditions the card itself is drawn on, `undoWithdrawn`
+  // included. It answered from `state.added` alone, so a withdrawn card left
+  // the merge screen with neither a tick nor a card — no orange at all — which
+  // is the budget being enforced in two places rather than one.
+  if (undoCardShows(state, step)) return "undone";
   if (step === "fields" && unmatchedFields(state).length > 0) return "unmatched";
   return "tick";
 }

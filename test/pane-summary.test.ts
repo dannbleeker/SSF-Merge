@@ -131,6 +131,91 @@ describe("a merge whose only placeholders are chart values", () => {
     });
     expect(line).toContain("no {{fields}} were filled");
   });
+
+  it("does not raise it about a run whose only placeholder was a picture", () => {
+    // The same contradiction by the other route. A photo template — a shape
+    // fill named by a column, no text placeholder anywhere — filled its
+    // pictures and was told to go and check its spelling.
+    const line = describeMerge({
+      added: 2,
+      deckAtStart: 1,
+      paragraphsMerged: 0,
+      pictures: { placed: 2, missing: [], unreadable: [], crowded: [], stretched: [] },
+    });
+    expect(line).not.toContain("no {{fields}} were filled");
+    expect(line).toContain("2 pictures placed");
+  });
+
+  it("does not raise it about a run whose only placeholder lives in a chart's workbook", () => {
+    // The third route, and the one nothing could see. A chart label written as
+    // `{{Name}}` lives in the workbook's shared strings; it fills there and is
+    // counted by neither `paragraphsMerged` nor `chartValues`, so a merge that
+    // filled every placeholder in the deck told the author their spelling was
+    // wrong. More reachable since `prepareBlock` learned to accept such a
+    // block: before that it refused the merge outright.
+    const line = describeMerge({ added: 2, deckAtStart: 1, paragraphsMerged: 0, workbookText: 2 });
+    expect(line).not.toContain("no {{fields}} were filled");
+  });
+
+  it("still raises it when a workbook opened and filled nothing", () => {
+    // Opening is not filling. `workbooks` counts workbooks the merge could
+    // read, including ones with no placeholder in them, which is why the count
+    // of FILLS is a separate number.
+    const line = describeMerge({ added: 2, deckAtStart: 1, paragraphsMerged: 0, workbookText: 0 });
+    expect(line).toContain("no {{fields}} were filled");
+  });
+
+  it("still raises it when the pictures were asked for and none landed", () => {
+    // `placed: 0` is not "filled elsewhere" — a run that placed nothing filled
+    // nothing, and the alarm is the whole finding.
+    const line = describeMerge({
+      added: 2,
+      deckAtStart: 1,
+      paragraphsMerged: 0,
+      pictures: { placed: 0, missing: ["Photo"], unreadable: [], crowded: [], stretched: [] },
+    });
+    expect(line).toContain("no {{fields}} were filled");
+  });
+});
+
+describe("a merge the deck changed underneath", () => {
+  /**
+   * The sentence the PANE shows is `describeMerge`; a merge that succeeds
+   * discards `outcome.detail` entirely. So the explanation the engine composed
+   * for a run that can no longer identify its own slides was written, tested
+   * and shown to nobody — the undo card was withheld, correctly, with a plain
+   * success above the space where it had been and nothing to account for it.
+   */
+  it("says the deck changed, and why there is no way back", () => {
+    const line = describeMerge({
+      added: 6,
+      deckAtStart: 12,
+      landedAfter: 13,
+      accountable: false,
+      paragraphsMerged: 6,
+    });
+    expect(line).toContain("no offer to take them back");
+    expect(line).toContain("cannot say which of the new slides are its own");
+    // The pane's own voice, not the engine's diagnostic string carried through.
+    // The host layer writes `slide(s)` by house convention because its
+    // sentences go to a run log; this one goes on a screen.
+    expect(line, "a run log's spelling on a user's screen").not.toContain("slide(s)");
+  });
+
+  it("anchors the count where the slides actually landed", () => {
+    // `deckAtStart` names the wrong slide in exactly this case — the slides
+    // went after 13, not after 12 — and the anchor is the one number in the
+    // sentence a reader can check against their own thumbnail rail.
+    const line = describeMerge({ added: 6, deckAtStart: 12, landedAfter: 13 });
+    expect(line).toContain("added after slide 13");
+    expect(line).not.toContain("added after slide 12");
+  });
+
+  it("falls back to the planned size when no insert was reached", () => {
+    // The early refusals never got as far as an insert, so there is no such
+    // moment to name.
+    expect(describeMerge({ added: 0, deckAtStart: 12 })).toContain("after slide 12");
+  });
 });
 
 describe("what the deck will look like afterwards", () => {
@@ -165,11 +250,11 @@ describe("what an undo takes back", () => {
   it("names the slides rather than saying 'undo'", () => {
     // The pane is offering to delete part of somebody's presentation, and the
     // sentence should say so.
-    expect(undoSummary(720, 732, 12)).toBe("Remove slides 13 to 732, which this merge added.");
+    expect(undoSummary(720, 732, 12)).toBe("Remove slides 13 to 732 from this merge.");
   });
 
   it("does not say 'slides 732 to 732' for a single slide", () => {
-    expect(undoSummary(1, 732, 731)).toBe("Remove slide 732, which this merge added.");
+    expect(undoSummary(1, 732, 731)).toBe("Remove slide 732 from this merge.");
   });
 
   it("says there is nothing to take back rather than naming a range that is not there", () => {
@@ -199,7 +284,7 @@ describe("what an undo takes back", () => {
     /**
      * The card computes its range backwards from the END of the deck, so a
      * deck smaller than the run's own output produced a first slide at or
-     * below zero: `Remove slides -707 to 12, which this merge added.` — with a
+     * below zero: `Remove slides -707 to 12 from this merge.` — with a
      * button under it.
      *
      * Reachable in the product, not only in a fixture. The crash crumb offers a
@@ -222,12 +307,12 @@ describe("what an undo takes back", () => {
     expect(undoIsPossible(13, 12, 12)).toBe(false);
     // The boundary: a deck holding exactly the run's output and nothing else.
     expect(undoIsPossible(12, 12, 0)).toBe(true);
-    expect(undoSummary(12, 12, 0)).toBe("Remove slides 1 to 12, which this merge added.");
+    expect(undoSummary(12, 12, 0)).toBe("Remove slides 1 to 12 from this merge.");
     // And the same deck, where the run claims one more slide than ever
     // arrived. The twelve that are there can only be the run's, so they are
     // offered — `undoInsert` counts the deck again afterwards and reports what
     // actually went.
-    expect(undoSummary(13, 12, 0)).toBe("Remove slides 1 to 12, which this merge added.");
+    expect(undoSummary(13, 12, 0)).toBe("Remove slides 1 to 12 from this merge.");
   });
 
   it("names the range the button will actually remove, not one counted from the end", () => {
@@ -251,7 +336,7 @@ describe("what an undo takes back", () => {
     // The user took three of the merged slides out by hand. Two are left, and
     // they are the last two — not a five-slide range starting three slides
     // before the merge did.
-    expect(undoSummary(5, 12, 10)).toBe("Remove slides 11 to 12, which this merge added.");
+    expect(undoSummary(5, 12, 10)).toBe("Remove slides 11 to 12 from this merge.");
 
     // The user took them all out. Nothing of the merge is left, and the five
     // slides at the end of the deck are the user's own.

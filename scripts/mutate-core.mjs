@@ -23,6 +23,40 @@
  * produce — a cell holding only spaces, an edit landing exactly on a run
  * boundary. Its first run found both of those, and they are tests now.
  *
+ * **The survivors that have been read, so nobody reads them twice.** Every run
+ * so far ends with the same handful, and each is an EQUIVALENT mutant — the two
+ * spellings cannot differ on any input the code can be given:
+ *
+ * - `x ?? ""` against `x || ""` where `x` is `getAttribute(...)` or
+ *   `textContent`. Both spellings answer `""` for `null` and for `""`, and
+ *   those are the only two values in play.
+ * - `opts.recordIndexes ?? …` and `table[0] ?? []`. An array is truthy however
+ *   empty it is, so `??` and `||` take the same branch.
+ * - `row[name] ?? ""` in `resolve.ts`. A cell is a string; `""` and `undefined`
+ *   both come out `""`.
+ * - `ALNUM.test(column.trim())` in `text.ts`. `ALNUM` looks for one letter or
+ *   digit ANYWHERE, so trimming cannot change its answer.
+ * - `format.trim()` in `images.ts`. Every caller is handed a `FieldHit.format`,
+ *   which the scanner has already trimmed; the call is defensive for the
+ *   exported entry point and there is no reachable input that needs it.
+ * - `s.from >= edit.end` in `editRuns`. The `>` form differs only for a span
+ *   starting exactly where an edit ends, which is an empty intersection either
+ *   way.
+ * - `(o.disowned ?? 0) > 0` in `nextSweepOffer`. The two spellings differ only
+ *   when `disowned` is `0`, and `0 || 0` is `0` — so the comparison that
+ *   follows gets the same value either way.
+ * - `MONTHS_EN[d.getUTCMonth()] ?? ""` in `format.ts`. The index is a month
+ *   number and the table has twelve entries, so the fallback is unreachable in
+ *   both spellings.
+ * - `Number(/^rId(\d+)$/.exec(...)?.[1] ?? 0)` in `pkg.ts`. The capture group is
+ *   one or more digits, so it is never `""` — the only value the two spellings
+ *   disagree about.
+ *
+ * Anything NOT on that list is a gap until somebody says otherwise in writing.
+ * Three that were on it are tests now: a value cell reading shared string
+ * ZERO, a slide whose `<p:custDataLst>` holds no tags of ours, and a sheet name
+ * quoted at one end.
+ *
  * Not wired into CI, and deliberately: it runs the whole suite once per mutant,
  * which is minutes rather than seconds, and a check that slow in front of every
  * merge gets switched off after the first bad week. The sibling project reaches
@@ -37,6 +71,8 @@ import { isMain } from "./is-main.mjs";
 
 /** Where a wrong answer costs the most: the engine, and the undo that deletes slides. */
 const TARGETS = [
+  "src/core/data/format.ts",
+  "src/core/pptx/pkg.ts",
   "src/host/undo.ts",
   "src/core/pptx/clone.ts",
   "src/core/merge/numbers.ts",
@@ -78,28 +114,55 @@ const RULES = [
  * is the state somebody running this is usually asking about. `node_modules` is
  * linked rather than copied: it is most of the bytes, and a junction works on
  * Windows without privileges as well as on POSIX.
+ *
+ * `.git` IS copied, and that is not incidental. It was left out at first — it
+ * is 27M and no mutant in `src/core` could reach a test about committed files —
+ * and the omission made the whole tool vacuous: `test/docprops.test.ts` calls
+ * `git ls-files` at collection time, which throws outside a repository, so the
+ * copy's suite was red before any mutant was written. Every mutant then read
+ * "caught", `survivors` stayed empty, and the run ended on a line that looked
+ * like a perfect score. A commit shipped claiming that control had been checked;
+ * it had not, and the check that would have caught it read `tail`'s exit code
+ * rather than vitest's.
+ *
+ * So the control is RUN, here, by this script, and it is not advice to the
+ * reader: `main` copies the tree, runs the suite with nothing mutated, and
+ * refuses to report survivors at all if that comes back red. A sweep whose
+ * baseline is red cannot distinguish a killed mutant from a broken copy, and
+ * the failure mode is a clean-looking result rather than an error.
  */
 function workingCopy() {
   const dir = mkdtempSync(join(tmpdir(), "ssf-mutate-"));
   cpSync(".", dir, {
     recursive: true,
-    filter: (from) => !/(^|[\\/])(node_modules|\.git|dist|dist-lib|coverage)([\\/]|$)/.test(from),
+    filter: (from) => !/(^|[\\/])(node_modules|dist|dist-lib|coverage)([\\/]|$)/.test(from),
   });
   symlinkSync(join(process.cwd(), "node_modules"), join(dir, "node_modules"), "junction");
   return dir;
 }
 
-/** @param {string} cwd */
-function suiteGreen(cwd) {
+/**
+ * The suite, run in the copy.
+ *
+ * Returns the output as well as the verdict, because the CONTROL has to be able
+ * to say why it is red. A bare boolean is what let a broken copy read as a
+ * flawless sweep.
+ *
+ * @param {string} cwd
+ * @returns {{ green: boolean; output: string }}
+ */
+function runSuite(cwd) {
   try {
-    execFileSync("node", ["./node_modules/vitest/vitest.mjs", "run", "--silent"], {
+    const out = execFileSync("node", ["./node_modules/vitest/vitest.mjs", "run", "--silent"], {
       cwd,
       stdio: "pipe",
+      encoding: "utf8",
       timeout: 600000,
     });
-    return true;
-  } catch {
-    return false;
+    return { green: true, output: out };
+  } catch (e) {
+    const err = /** @type {{ stdout?: string; stderr?: string; message?: string }} */ (e);
+    return { green: false, output: `${err.stdout ?? ""}${err.stderr ?? ""}` || (err.message ?? "") };
   }
 }
 
@@ -112,11 +175,36 @@ function suiteGreen(cwd) {
  * prose. The middle-hit rule was chosen precisely to avoid a doc comment's
  * example and it only moved the problem along.
  *
+ * TWO shapes, and the first version only knew one. A line that IS a comment is
+ * caught by the leading-marker test; a comment that TRAILS code on a line of
+ * its own — `const n = 1; // the ?? here is deliberate` — is not, so a hit
+ * inside it was mutated, changed nothing, and was reported as a survivor. Both
+ * are answered by looking at what precedes the hit ON ITS OWN LINE.
+ *
+ * Deliberately crude: a `//` inside a string literal reads as a comment here
+ * and costs one skipped mutation site. Skipping a site under-reports; treating
+ * prose as a survivor makes up a gap, and this file exists to stop the second.
+ *
  * @param {string} source @param {number} at
  */
-function inComment(source, at) {
-  const line = (source.slice(0, at).split("\n").pop() ?? "") + (source.slice(at).split("\n")[0] ?? "");
-  return /^\s*(\*|\/\/|\/\*)/.test(line);
+export function inComment(source, at) {
+  const before = source.slice(0, at).split("\n").pop() ?? "";
+  const line = before + (source.slice(at).split("\n")[0] ?? "");
+  return /^\s*(\*|\/\/|\/\*)/.test(line) || before.includes("//");
+}
+
+/**
+ * How many tests the control ran, read out of vitest's own summary.
+ *
+ * Printed so a reader can compare it with a plain `vitest run`. A copy that
+ * quietly collects fewer files is the same vacuous measurement as a red one,
+ * one step less obvious.
+ *
+ * @param {string} output
+ */
+function countedTests(output) {
+  const m = /Tests\s+(\d+) passed/.exec(output);
+  return m ? Number(m[1]) : undefined;
 }
 
 function main() {
@@ -128,8 +216,38 @@ function main() {
   console.log(`mutating a copy at ${copy}`);
 
   try {
+    // The control, run rather than recommended. Nothing is mutated yet, so this
+    // is the copy answering for itself: if it is red here, every mutant below
+    // reads "caught" and the run reports a flawless sweep it has not measured.
+    const control = runSuite(copy);
+    if (!control.green) {
+      console.log("the copy's suite is RED with nothing mutated — no sweep is possible from here");
+      console.log(control.output.split("\n").slice(-25).join("\n"));
+      process.exitCode = 1;
+      return;
+    }
+    // The count as well as the colour. A copy that collects FEWER test files
+    // and is green is the same vacuous sweep one step less obvious, and the
+    // repo already keeps the number to check it against — `test-count.mjs`
+    // holds a floor that rises on its own. Printed and asserted, not printed
+    // and left for a reader to notice.
+    const ran = countedTests(control.output);
+    const floor = JSON.parse(readFileSync("test/fixtures/test-count.json", "utf8")).min;
+    if (ran === undefined || ran < floor) {
+      console.log(`the copy ran ${ran ?? "an unreadable number of"} test(s) against a floor of ${floor}`);
+      console.log("a copy that collects less than the repo does cannot answer for the repo");
+      process.exitCode = 1;
+      return;
+    }
+    console.log(`control: the unmutated copy is green — ${ran} test(s), floor ${floor}`);
+
     outer: for (const file of TARGETS) {
-      const original = readFileSync(file, "utf8");
+      // Read from the COPY, which is what gets mutated and restored. Reading
+      // the repo instead was a race with the author: an edit saved during a run
+      // meant the mutation was computed against one text and written over
+      // another, and the "restore" then put a version of the file into the copy
+      // that had never been tested.
+      const original = readFileSync(join(copy, file), "utf8");
       for (const rule of RULES) {
         // Code only. A mutant in a doc comment changes nothing, so it survives
         // and names a gap that is not there.
@@ -146,7 +264,12 @@ function main() {
         writeFileSync(join(copy, file), mutated);
         let green;
         try {
-          green = suiteGreen(copy);
+          // A red is CONFIRMED before it is called a kill. One flaky failure
+          // otherwise records a mutant as caught, which inflates the score in
+          // the flattering direction — the same direction every defect this
+          // script has had so far pointed in. A survivor stays a survivor on
+          // the first green, so this costs a re-run only on kills.
+          green = runSuite(copy).green || runSuite(copy).green;
         } finally {
           // Restored inside the COPY. Nothing here can leave the repository
           // mutated, however this run ends.

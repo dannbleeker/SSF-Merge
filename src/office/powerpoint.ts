@@ -362,7 +362,66 @@ export async function insertDeck(base64: string, expected: number): Promise<Inse
 
 export interface UndoOutcome {
   removed: number;
+  /**
+   * Slides in the range the sweep DECLINED — it would not claim them as this
+   * run's.
+   *
+   * Not the same as slides it failed to remove, and the pane read them as the
+   * same thing: `added - removed` counted a declined slide as still owed, so
+   * the card went on offering to "remove the slides this merge added" over
+   * slides the sweep had just said were not this merge's, with a live delete
+   * button on them. The notice said both halves at once.
+   *
+   * **It cannot tell "not ours" from "the host would not say".** `runTagsAt`
+   * answers `undefined` for a slide whose tag read came back a null object as
+   * well as for one carrying no tag, and `provenSweep`'s own docstring says an
+   * unanswered read is not evidence that a slide is not ours. So a host that
+   * refuses two of six tag reads produces `disowned: 2`, the pane treats those
+   * two as settled, and two of this run's slides stay in the deck with the card
+   * gone. The alternative — counting them as still owed — is the defect above,
+   * a delete button standing over somebody else's slides, which is worse; but
+   * the number is a floor on what is settled rather than a fact about
+   * ownership, and nothing downstream may read it as one.
+   */
+  disowned: number;
   detail: string;
+  /**
+   * Proof was required, and this host said it cannot give any.
+   *
+   * Set where `hostSupports("1.3")` — the set that carries `Slide.tags` — is
+   * false, so the tag read answered nothing and will answer nothing on every
+   * later press. Note what that call actually reports: it is false for a host
+   * below 1.3 AND for one this add-in could not ASK, because `Office.context`
+   * was missing or `isSetSupported` threw. Both mean the same thing here — no
+   * proof is available — which is why they share a flag; neither is a claim
+   * about the slides.
+   *
+   * It is a floor on terminality, not the whole of it. A host that HAS the API
+   * and does not answer with it looks identical to one that failed a single tag
+   * read, and to a delete the host accepted and performed none of — so it is
+   * not reported here, and the pane bounds those by counting presses instead.
+   * Withdrawing the offer on the first such answer was a defect of its own: it
+   * threw away slides the very next press would have removed.
+   */
+  unprovable?: boolean;
+  /**
+   * `sweepPlan` refused the SHAPE of the deck.
+   *
+   * Three shapes of the DECK rather than anything about the host: it grew by
+   * more than this run added, it shrank below where it started, or it is back
+   * to exactly the size it began at. No window can be named in any of them — a
+   * co-author's slide, or the user's own editing. ("The run added nothing" is
+   * not a fourth: with the deck no smaller than it started and the growth no
+   * greater than `added`, an `added` of zero forces a growth of zero, which is
+   * the third.) `sweepPlan` also refuses two INPUT shapes — a non-integer and a
+   * negative start — which nothing can reach today and its own comment says so.
+   *
+   * The deck's size WAS asked for; that call is how we know. What was not asked
+   * is anything that could misbehave — no tag read, no delete — so this answer
+   * is not evidence about the host, and the pane's fruitless-press budget must
+   * not be spent on it.
+   */
+  refusedShape?: boolean;
 }
 
 /**
@@ -425,17 +484,64 @@ async function runTagsAt(from: number, count: number): Promise<(string | undefin
  * yields a plan whose last two entries are slides the user made. `provenSweep`
  * asks the slides themselves, through the run tag the package carries.
  */
-export async function undoInsert(deckAtStart: number, added: number, runId: string): Promise<UndoOutcome> {
+export async function undoInsert(
+  deckAtStart: number,
+  added: number,
+  runId: string,
+  opts: { requireProof?: boolean } = {},
+): Promise<UndoOutcome> {
   const deckNow = await slideCount();
   const plan = sweepPlan({ deckAtStart, deckNow, added });
   if (!plan) {
-    return { removed: 0, detail: `nothing to take back (deck was ${deckAtStart}, is ${deckNow})` };
-  }
-  const targets = provenSweep(plan, await runTagsAt(plan.from, plan.count), runId);
-  if (targets.length === 0) {
+    // The SHAPE was refused — see `UndoOutcome.refusedShape` for what it covers
+    // — and that says nothing about the host. It is marked so the pane does not
+    // spend a press from a budget whose whole purpose is telling a host's
+    // hiccup from a host's state: a co-author adding a slide is neither.
     return {
       removed: 0,
-      detail: `nothing to take back — none of slides ${plan.from + 1} to ${plan.from + plan.count} carries this merge's mark`,
+      disowned: 0,
+      refusedShape: true,
+      detail: `nothing to take back (deck was ${deckAtStart}, is ${deckNow})`,
+    };
+  }
+  // PROOF is asked of every host, INCLUDING one that cannot give it.
+  //
+  // This was gated on `hostSupports("1.3")` for one commit, on the reasoning
+  // that `Slide.tags` is 1.3, this add-in's floor is 1.2, and demanding proof
+  // of a host with no tags leaves the card sitting over slides no press could
+  // ever take. The gate is a slide deletion: on every 1.2 host a second press
+  // then falls through to the whole positional window, which is exactly the
+  // window that can hold a slide the user made between the presses — and it
+  // reports the deletion as a clean success. Guaranteed, for a whole host
+  // class, rather than the intermittent case the proof was added for.
+  //
+  // The dead button it was meant to retire is retired where the decision
+  // belongs: a press that removed nothing and disowned something withdraws the
+  // offer (see `undoRun` and `endPreview`), which works on a host that cannot
+  // answer AND on one that can answer and does not.
+  const targets = provenSweep(plan, await runTagsAt(plan.from, plan.count), runId, {
+    requireProof: opts.requireProof === true,
+  });
+  if (targets.length === 0) {
+    // Whether the answer can change. Asked HERE because this is the only place
+    // that knows both halves — that proof was demanded, and that the host has
+    // no tags to give. See `UndoOutcome.unprovable`.
+    const unprovable = opts.requireProof === true && !hostSupports("1.3");
+    // Says what is KNOWN, which is neither of the two things it used to say.
+    // "None of them carries this merge's mark" is a claim about the slides, and
+    // `runTagsAt` cannot support it: a slide with no tag and a slide the host
+    // would not answer for both arrive as `undefined`, which is the limitation
+    // `UndoOutcome.disowned` is documented with. Naming the host instead would
+    // be the same guess in the other direction. What is true either way is that
+    // none of them could be SHOWN to be this merge's, and that is why nothing
+    // went.
+    return {
+      removed: 0,
+      disowned: plan.count,
+      detail:
+        `nothing to take back — none of slides ${plan.from + 1} to ${plan.from + plan.count} ` +
+        `could be shown to be this merge's`,
+      ...(unprovable ? { unprovable: true } : {}),
     };
   }
   let error: string | undefined;
@@ -470,7 +576,13 @@ export async function undoInsert(deckAtStart: number, added: number, runId: stri
   // range: a plan of six that proved four is a complete sweep at four.
   const wanted = targets.length;
   const held = plan.count - wanted;
-  const kept = held === 0 ? "" : `; ${held} slide(s) in the range are not this merge's and were left alone`;
+  // COULD NOT BE SHOWN, never "are not". `held` is `plan.count - targets.length`
+  // and a slide the host would not answer for arrives in it exactly like a slide
+  // carrying no mark — the limitation `UndoOutcome.disowned` is documented with,
+  // and this sentence reaches the user verbatim through the pane's "Nothing was
+  // removed — ${detail}". It was the last ownership claim left in the codebase.
+  const kept =
+    held === 0 ? "" : `; ${held} slide(s) in the range could not be shown to be this merge's and were left alone`;
   // The RAIL's numbering, which is the only one the pane speaks — this string
   // reaches the user verbatim, inside "Nothing was removed — …" and "Some of
   // the merge is still there — …". It said "from index 3" for slides the rail
@@ -480,6 +592,7 @@ export async function undoInsert(deckAtStart: number, added: number, runId: stri
   const range = `slides ${plan.from + 1} to ${plan.from + plan.count}`;
   return {
     removed,
+    disowned: held,
     detail:
       removed === wanted
         ? `removed ${removed} slide(s) from ${range}${kept}${note}`

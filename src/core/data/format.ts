@@ -65,6 +65,22 @@ const NUMBER = new RegExp(
 );
 
 /**
+ * A two-digit year, in the window the application it was copied from uses.
+ *
+ * Excel reads 00-29 as the 2000s and 30-99 as the 1900s, and a cell formatted
+ * `dd/mm/yy` is ordinary there. This added 2000 to everything, so `15/06/85`
+ * merged as 2085 — a birth date or a contract history a century out on every
+ * slide, silently, with the column still typed a clean `date`.
+ *
+ * The window is Excel's rather than invented here, because the cell came out of
+ * Excel and a merge that reads it differently from the sheet is the surprise.
+ */
+function fullYear(year: number): number {
+  if (year >= 100) return year;
+  return year < 30 ? 2000 + year : 1900 + year;
+}
+
+/**
  * Whether a cell is a number we are willing to claim — the ONE answer.
  *
  * `looksLikeDate` has been the single definition of a date since `format.ts`
@@ -89,7 +105,12 @@ function isNumberShape(value: string): boolean {
   return NUMBER.test(value.trim());
 }
 /** Deliberately narrow. See `looksLikeDate`. */
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}(?:[T ].*)?$/;
+// The tail is a TIME, not anything. `.*` accepted any text after the day, so a
+// PERIOD — `2026-03-01 - 2026-03-31`, an ordinary way to write a range — was
+// typed as a date and formatted as its first half, with the rest discarded and
+// nothing to say so. A cell this engine cannot fully claim is printed as the
+// author typed it; that is the rule every other refusal here follows.
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}(?:[T ]\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/;
 /**
  * The letters a month NAME may be written with.
  *
@@ -169,8 +190,46 @@ export function dateShape(value: string): boolean {
   return !(a <= 12 && b <= 12 && a !== b);
 }
 
+/**
+ * A number written with thousands groups: `1,234`, `1.234.567`, `-12,345`.
+ *
+ * The FIRST group may not be zero, and that is the whole of the difference
+ * between an ambiguous cell and a wrong answer. `1,500` is genuinely ambiguous
+ * — fifteen hundred or one-and-a-half — and this engine reads it as grouping,
+ * which is decided and written down. `0,500` is not ambiguous at all: no
+ * spreadsheet writes a leading `0` group for five hundred, so it can only be
+ * the decimal five tenths. It was read as 500.
+ *
+ * That is a factor of a thousand on ordinary Danish and German data — a rate,
+ * a share, a percentage shown to three decimals — and the same column could
+ * hold both readings at once: `0,250` came back 250 while `0,05` came back
+ * 0.05, one column, typed `number`, two answers a thousandfold apart. The value
+ * also goes straight into a chart, so the bar plots 250 where the sheet says a
+ * quarter.
+ */
+const GROUPED_COMMA = /^-?[1-9]\d{0,2}(?:,\d{3})+$/;
+
+/** The same rule for the European spelling: `1.234`, `12.345.678`. */
+const GROUPED_DOT = /^-?[1-9]\d{0,2}(?:\.\d{3})+$/;
+
 /** Parse the number forms a spreadsheet actually produces, including the European one. */
 export function numericValue(raw: string): number | undefined {
+  const text = numericText(raw);
+  if (text === undefined) return undefined;
+  const n = Number(text);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+/**
+ * The plain decimal a cell spells, with its grouping resolved — the string
+ * `numericValue` parses.
+ *
+ * Exposed because the DIGITS matter to one caller and the double does not. A
+ * cell can hold more significant digits than a double carries, and the only way
+ * to know whether formatting changed the value is to compare what was written
+ * with what came back. See `applyFormat`.
+ */
+function numericText(raw: string): string | undefined {
   const v = raw.trim();
   if (v === "") return undefined;
   // The same question `detectType` asks, asked once. Without this the two
@@ -195,10 +254,8 @@ export function numericValue(raw: string): number | undefined {
     // "1,234,567" became "1234,567" and then NaN — while `detectType` still
     // called the column a number, so half of it rendered formatted and half
     // rendered raw.
-    normalised = /^-?\d{1,3}(?:,\d{3})+$/.test(normalised)
-      ? normalised.replace(/,/g, "")
-      : normalised.replace(",", ".");
-  } else if (hasDot && /^-?\d{1,3}(?:\.\d{3})+$/.test(normalised)) {
+    normalised = GROUPED_COMMA.test(normalised) ? normalised.replace(/,/g, "") : normalised.replace(",", ".");
+  } else if (hasDot && GROUPED_DOT.test(normalised)) {
     // The European grouping spelling, "1.234.567" — and "1.234" with it, which
     // this comment used to claim stayed a decimal. It never did: `+` is one or
     // more, so a single group has always been read as grouping.
@@ -211,8 +268,7 @@ export function numericValue(raw: string): number | undefined {
     // written down.
     normalised = normalised.replace(/\./g, "");
   }
-  const n = Number(normalised);
-  return Number.isFinite(n) ? n : undefined;
+  return Number.isFinite(Number(normalised)) ? normalised : undefined;
 }
 
 export function parseDate(raw: string): Date | undefined {
@@ -227,7 +283,7 @@ export function parseDate(raw: string): Date | undefined {
     // number cannot be a month is the day.
     const day = a > 12 ? a : b;
     const month = a > 12 ? b : a;
-    return utcDate(year < 100 ? 2000 + year : year, month, day);
+    return utcDate(fullYear(year), month, day);
   }
   // ISO, whose components are right there in the string. Taken from the string
   // rather than from a parsed Date for two reasons, and both have bitten:
@@ -257,7 +313,7 @@ export function parseDate(raw: string): Date | undefined {
     const month = monthFromName(named[2] ?? "");
     if (month === undefined) return undefined;
     const year = Number(named[3]);
-    return utcDate(year < 100 ? 2000 + year : year, month, Number(named[1]));
+    return utcDate(fullYear(year), month, Number(named[1]));
   }
   return undefined;
 }
@@ -396,6 +452,59 @@ const MONTH_NAMES: Readonly<Record<string, number>> = Object.freeze({
   outubro: 10,
   novembro: 11,
   dezembro: 12,
+  // The SHORT forms for the six languages that were named in the manual and
+  // whose abbreviations this table did not hold. Ten languages were claimed;
+  // only the English and Scandinavian abbreviations were here, so a German
+  // column of `1 dez 2026` typed as a date on shape and then printed as the raw
+  // cell — a merged deck with some slides formatted and some not, and nothing
+  // saying why. That is precisely the pathology `dateShape` exists to avoid,
+  // arriving through the table rather than around it.
+  //
+  // Every word below maps to the month it means in EVERY language that writes
+  // it — `mar` is March in English, Spanish and Portuguese; `dez` is December
+  // in German and Portuguese; `set` is September in Italian and Portuguese —
+  // which is the property that lets one table serve them all, and it is
+  // asserted over the whole table rather than trusted.
+  //
+  // German. `Mrz` as well as `M\u00e4r`: CLDR says `M\u00e4r` and Excel on
+  // Windows writes `Mrz`, and it is the spreadsheet's spelling that arrives in
+  // a pasted column. A table built from the standard alone reads eleven of a
+  // German year's twelve months, which is the half-formatted deck this table
+  // exists to prevent, missing by one word.
+  "m\u00e4r": 3,
+  mrz: 3,
+  dez: 12,
+  // Dutch
+  mrt: 3,
+  // French. Four letters where the language writes four: `janv`, `f\u00e9vr`,
+  // `juil` and `sept` are what a French spreadsheet exports, and a three-letter
+  // truncation of them is not a form anybody writes.
+  janv: 1,
+  "f\u00e9vr": 2,
+  avr: 4,
+  juil: 7,
+  sept: 9,
+  "d\u00e9c": 12,
+  // Spanish. `may` is the English full name and is already above — the two
+  // spell May the same way, which is the shared-word property this table rests
+  // on rather than an omission.
+  ene: 1,
+  abr: 4,
+  ago: 8,
+  dic: 12,
+  // Italian
+  gen: 1,
+  mag: 5,
+  giu: 6,
+  lug: 7,
+  set: 9,
+  ott: 10,
+  // Portuguese. `out` is an English word as well as October in Portuguese, and
+  // it is safe here because `NAMED_DATE` admits a month word only between a
+  // one-or-two-digit number and a two-to-four-digit year: "2 out 3" is not a
+  // date shape and never reaches this table.
+  fev: 2,
+  out: 10,
 });
 
 /**
@@ -491,38 +600,275 @@ function pad(n: number): string {
 /**
  * A date written to a pattern.
  *
- * The replacements run LONGEST TOKEN FIRST, which is what keeps them from
- * eating each other: `yyyy` before `yy`, `MMMM` before `MMM` before `MM`, `dd`
- * before `d`. Reorder them and `yyyy` becomes `2626`.
+ * ONE PASS over the pattern's letter runs, rather than seven `replace` calls.
+ * The chain it replaces went wrong twice in opposite directions.
  *
- * The single `d` is bounded by `\b` so a literal keeps its letters — a pattern
- * of `Ends d` prints "Ends 1" and not "En1s 1". The multi-letter tokens need no
- * such guard: nobody writes `MM` inside a word.
+ * Unbounded, a token matched inside an ordinary word: `Odds: d MMM yyyy`
+ * printed `O01s: 1 Mar 2026`, and `dddd` — the Excel and .NET spelling of a
+ * weekday name, which a template author reaches for — printed `0101`.
  *
- * Only the tokens the manual lists are tokens. `MMMM` was not one until
- * 2026-08-27 and printed `MarM` — `MMM` replaced and the fourth `M` left
- * standing — which is the shape of every undocumented repeat here.
+ * Bounded against any letter, a pattern made only of tokens stopped matching
+ * at all: `yyyyMMdd`, the ISO-basic spelling used for file names, printed
+ * itself, and every token in it is one the manual lists. A pattern of nothing
+ * but tokens printed as written is precisely what the manual says will not
+ * happen.
+ *
+ * So the unit is the LETTER RUN. A run is read greedily, longest token first —
+ * `yyyy` before `yy`, `MMMM` before `MMM` before `MM`, `dd` before `d`, because
+ * reordering them turns `yyyy` into `2626` — and:
+ *
+ * - a run is tokenized only if the WHOLE of it is tokens, which is what keeps
+ *   `Odds`, `address`, `Wedding`, `den`, `dato` and `due` intact;
+ * - two adjacent tokens spelling the same letter make the run literal, which is
+ *   what keeps `dddd` a weekday name rather than two days of the month. (Only
+ *   the EXACT multiples need it: `dddd` is `dd` twice and `yyyyyy` is `yy`
+ *   three times, where `MMMMM` and `yyy` are already refused by the whole-run
+ *   rule because their last letter matches no token. This paragraph used to
+ *   credit `MMMMM` to the same-letter check; removing that check and running it
+ *   says otherwise.)
+ *
+ * "Starts with a token, tail printed as written" was tried and is worse. It
+ * reads `yyyy-MM-ddTHH:mm` as a date with `THH:mm` after it — which is nice —
+ * and it also turns `Berlin, den d. MMMM yyyy` into `Berlin, 1en 1. March
+ * 2026`, because `den` starts with a `d`. `den` is the ordinary Danish, German
+ * and Swedish long-date word and the manual invites literal text in the
+ * pattern, so a rule that eats it is not a rule this can have. `H` is not a
+ * token here and never was; a run holding one is text.
+ *
+ * No lookbehind, deliberately. The seven-`replace` version was this file's only
+ * use of one, and a lookbehind in a regex LITERAL is a parse-time SyntaxError
+ * on WebKit below Safari 16.4 — which is a module that fails to load, i.e. a
+ * blank pane, rather than a date printed wrong.
  */
-export function formatDate(d: Date, pattern: string): string {
-  return pattern
-    .replace(/yyyy/g, String(d.getUTCFullYear()))
-    .replace(/yy/g, pad(d.getUTCFullYear() % 100))
-    .replace(/MMMM/g, MONTHS_FULL_EN[d.getUTCMonth()] ?? "")
-    .replace(/MMM/g, MONTHS_EN[d.getUTCMonth()] ?? "")
-    .replace(/MM/g, pad(d.getUTCMonth() + 1))
-    .replace(/dd/g, pad(d.getUTCDate()))
-    .replace(/\bd\b/g, String(d.getUTCDate()));
+const DATE_TOKENS: readonly [token: string, letter: string, value: (d: Date) => string][] = [
+  ["yyyy", "y", (d) => String(d.getUTCFullYear())],
+  ["yy", "y", (d) => pad(d.getUTCFullYear() % 100)],
+  ["MMMM", "M", (d) => MONTHS_FULL_EN[d.getUTCMonth()] ?? ""],
+  ["MMM", "M", (d) => MONTHS_EN[d.getUTCMonth()] ?? ""],
+  ["MM", "M", (d) => pad(d.getUTCMonth() + 1)],
+  ["dd", "d", (d) => pad(d.getUTCDate())],
+  ["d", "d", (d) => String(d.getUTCDate())],
+];
+
+/** One run of ASCII letters, tokenized — or nothing, meaning print it as written. */
+function tokenizeRun(run: string, d: Date): string | undefined {
+  let out = "";
+  let at = 0;
+  let previous: string | undefined;
+  for (;;) {
+    const hit = DATE_TOKENS.find(([token]) => run.startsWith(token, at));
+    if (!hit) break;
+    // `dddd` is `dd` twice, and it is a weekday name rather than the day of
+    // the month written out. Same for `yyyyyy`. A run that repeats a token's
+    // letter is not a pattern this add-in knows.
+    if (hit[1] === previous) return undefined;
+    out += hit[2](d);
+    previous = hit[1];
+    at += hit[0].length;
+  }
+  // The whole run, or none of it. A run that is part token and part word is a
+  // word: `den`, `dato`, `due` and `deadline` all begin with a token's letter,
+  // and the manual promises that text in a pattern prints as written.
+  if (at !== run.length) return undefined;
+  return out;
 }
 
-export function formatNumber(n: number, decimals: number, group: string, point: string): string {
-  const fixed = Math.abs(n).toFixed(decimals);
+/**
+ * A WORD, for the purpose of the rule above: a run of LATIN letters, with the
+ * combining marks and apostrophes that sit inside one.
+ *
+ * ASCII alone cut a word at its own accent, and a one-character run of `d` is a
+ * whole token — so `día d de MMMM` printed `1ía 1 de March` and
+ * `Date d'échéance dd/MM/yyyy` printed `Date 1'échéance 01/03/2026`.
+ *
+ * ANY Unicode letter was the first fix and it is worse, because the tokens are
+ * Latin and every other script's date words are not: `yyyy年MM月dd日` — the
+ * ordinary Japanese and Chinese pattern — became one run holding `年`, which is
+ * no token, so the whole thing printed itself. So did `yyyy년 MM월 dd일` and
+ * `dd MMMM yyyyг.`. The manual invites writing the month in your own language,
+ * and that broke it for every language not written in this alphabet.
+ *
+ * Latin is the line because it is where the tokens live. A letter from another
+ * script cannot be part of a word a token is hiding inside, so it does not need
+ * to end one.
+ *
+ * `\p{Mn}` because a decomposed `é` is `e` plus a combining mark, which is not
+ * a letter — text pasted from a Mac routinely arrives that way. Both
+ * apostrophes because U+2019 is what Word's autocorrect produces and U+0027 is
+ * what a keyboard does.
+ */
+const PATTERN_WORD = /[\p{Script=Latin}\p{Mn}]+(?:['\u2019][\p{Script=Latin}\p{Mn}]+)*/gu;
+
+const APOSTROPHE = /(['\u2019])/;
+
+/**
+ * A word run, formatted — the whole run if it is all tokens, else each
+ * apostrophe-separated piece if EVERY piece is.
+ *
+ * The second rule is not decoration. Holding an apostrophe inside a word is
+ * what stops `Date d'échéance` printing as `Date 1'échéance`, and it welds the
+ * two halves of `MMM'yy` into one run that is not a token — so the commonest
+ * abbreviated pattern there is printed itself. `MMM'yy` is `Mar'26` and
+ * `MMM’yy` is `Mar’26` — the apostrophe is kept as written. `d'échéance` is
+ * left alone, because `échéance` is not a token and
+ * one piece failing fails the run.
+ *
+ * The price is the reverse case: `d'MMMM` is `1'March` rather than itself. Both
+ * readings are guesses about a pattern nobody writes, and the rule that gets
+ * `MMM'yy` right is the one worth having.
+ */
+function formatWord(run: string, d: Date): string {
+  const whole = tokenizeRun(run, d);
+  if (whole !== undefined) return whole;
+  const pieces = run.split(APOSTROPHE);
+  if (pieces.length === 1) return run;
+  const out: string[] = [];
+  for (let i = 0; i < pieces.length; i += 2) {
+    const piece = pieces[i] ?? "";
+    const formatted = piece === "" ? undefined : tokenizeRun(piece, d);
+    if (formatted === undefined) return run;
+    out.push(formatted);
+    const separator = pieces[i + 1];
+    if (separator !== undefined) out.push(separator);
+  }
+  return out.join("");
+}
+
+export function formatDate(d: Date, pattern: string): string {
+  return pattern.replace(PATTERN_WORD, (run) => formatWord(run, d));
+}
+
+/**
+ * `Math.abs(n)` at `decimals` places, rounded the way a spreadsheet rounds.
+ *
+ * NOT `toFixed`, which rounds the binary double rather than the decimal the
+ * author typed. `1.005` is stored a hair below 1.005, so `toFixed(2)` answers
+ * "1.00" where Excel — and the cell the number was copied out of — says 1.01.
+ * Comparing the two over a corpus of ordinary money and percentage values put
+ * them apart on 118 of 310, which is not a corner: it is every value whose last
+ * kept digit is followed by a 5.
+ *
+ * So the rounding is done on the DECIMAL string, half away from zero. The
+ * string is JavaScript's shortest round-trip spelling, which is the one that
+ * reads back as the number the author typed — for `1.005` it is "1.005", and
+ * the decision is then arithmetic anybody can check by eye rather than a
+ * property of the binary value underneath.
+ *
+ * A magnitude with no plain spelling — above 1e21, where JavaScript's shortest
+ * form is exponential — has no fixed-point digits to round or to group, and is
+ * handled in `formatNumber` rather than here.
+ */
+function fixedDecimal(n: number, decimals: number): string {
+  const plain = String(Math.abs(n));
+  if (plain.includes("e") || plain.includes("E")) return Math.abs(n).toFixed(decimals);
+  return roundDigits(plain, decimals);
+}
+
+/**
+ * The same rounding, on a decimal string that came from somewhere else.
+ *
+ * `fixedDecimal` rounds the DOUBLE's shortest spelling, which is the right
+ * input when a number is all anybody has. It is the wrong one when the cell is
+ * still in hand and carries more digits than the double: `2.4999999999999999999`
+ * is stored as 2.5, so the double's spelling rounds UP to 3 where the cell
+ * rounds down to 2 — a different number on the slide, grouped and formatted as
+ * though it were right.
+ *
+ * `applyFormat` therefore rounds the cell's own digits. The magnitude has
+ * already been checked against the double (`sameNumber`), so this is about the
+ * last printed digit and nothing else.
+ *
+ * `plain` is unsigned, with no exponent: `numericText`'s output, less its sign.
+ */
+function roundDigits(plain: string, decimals: number): string {
+  const [whole = "0", frac = ""] = plain.split(".");
+  if (frac.length <= decimals) return decimals === 0 ? whole : `${whole}.${frac.padEnd(decimals, "0")}`;
+  const kept = (whole + frac.slice(0, decimals)).split("");
+  // Half AWAY from zero, which is what a spreadsheet does and what somebody
+  // reading the cell expects. Banker's rounding would answer 1.00 here and be
+  // defensible; it would also disagree with the number on screen in Excel,
+  // which is the comparison a reader of the slide actually makes.
+  if ((frac.charCodeAt(decimals) ?? 0) >= 53) {
+    let i = kept.length - 1;
+    for (; i >= 0; i--) {
+      if (kept[i] === "9") kept[i] = "0";
+      else {
+        kept[i] = String(Number(kept[i]) + 1);
+        break;
+      }
+    }
+    // Every digit was a nine: 9.99 at one place is 10.0, and the carry needs a
+    // column that was not there.
+    if (i < 0) kept.unshift("1");
+  }
+  const digits = kept.join("");
+  const cut = digits.length - decimals;
+  return decimals === 0 ? digits : `${digits.slice(0, cut) || "0"}.${digits.slice(cut)}`;
+}
+
+/**
+ * Whether the digits this format will PRINT survived the parse.
+ *
+ * The comparison is on the INTEGER part alone, and that is the whole subtlety.
+ * Grouping prints every integer digit, so one lost there is a different number
+ * on the slide — `1234567890123456789` came back as `1 234 567 890 123 456
+ * 800`, an order number nobody typed. The fraction is rounded to `decimals`
+ * places before it is printed, so a cell carrying more precision than a double
+ * holds is not a defect there: `0.3333333333333333333` at two places is `0,33`
+ * either way.
+ *
+ * Comparing the WHOLE decimal was the first rule and it refused those — a
+ * Danish deck then printed `1234567890.12345678` with a dot, because the raw
+ * fall-through keeps the cell's own separator. It also refused every value
+ * JavaScript spells with an exponent, including small ones like `0.0000001`
+ * that group perfectly.
+ *
+ * Text, not arithmetic: `Number(wrote) === n` is always true, because the
+ * digits that were lost were lost in the parse.
+ */
+function sameNumber(wrote: string, n: number): boolean {
+  const spelled = String(Math.trunc(n));
+  // A magnitude with no plain integer spelling has nothing to compare and
+  // nothing to group; `applyFormat` refuses it a line later for that reason.
+  if (spelled.includes("e") || spelled.includes("E")) return false;
+  const whole = (s: string): string => {
+    const body = (s.replace(/^[+-]/, "").split(".")[0] ?? "").replace(/^0+(?=\d)/, "");
+    return body === "" ? "0" : body;
+  };
+  return whole(wrote) === whole(spelled);
+}
+
+/**
+ * Group a rounded decimal string and give it its sign.
+ *
+ * Shared by the public `formatNumber` and by `applyFormat`, which rounds the
+ * CELL rather than the double and so cannot go through the first. The two used
+ * to be one function, and separating the rounding from the grouping is what let
+ * the cell's digits reach the slide.
+ */
+function groupFixed(fixed: string, negative: boolean, group: string, point: string): string {
   const [whole = "0", frac] = fixed.split(".");
   const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, group);
   // The sign comes from the ROUNDED value, not the input. `-0.4` at no decimal
-  // places rounds to zero, and taking the sign from `n` printed it as `-0` —
-  // a quantity that does not exist, on a slide, from an ordinary cell.
-  const negative = n < 0 && Number(fixed) !== 0;
-  return `${negative ? "-" : ""}${grouped}${frac ? point + frac : ""}`;
+  // places rounds to zero, and taking the sign from the input printed it as
+  // `-0` — a quantity that does not exist, on a slide, from an ordinary cell.
+  return `${negative && Number(fixed) !== 0 ? "-" : ""}${grouped}${frac ? point + frac : ""}`;
+}
+
+export function formatNumber(n: number, decimals: number, group: string, point: string): string {
+  // Nothing to group. Above 1e21 JavaScript spells a number with an exponent,
+  // and `1.2345678901234568e+24` split on its dot and grouped comes out as
+  // `1,2345678901234568e+24` — a European decimal, on a slide, from a whole
+  // number. `applyFormat` returns the cell unchanged before it gets here, which
+  // is its own contract; this is the same defect reached through the PUBLIC
+  // export, which has no cell to fall back to and answers the value as
+  // JavaScript spells it.
+  //
+  // The digits-changed test that `applyFormat` applies CANNOT be made here: it
+  // compares the value against the cell it was read from, and this entry point
+  // has no cell.
+  if (!Number.isFinite(n) || Math.abs(n) >= 1e21) return String(n);
+  return groupFixed(fixedDecimal(n, decimals), n < 0, group, point);
 }
 
 /**
@@ -562,7 +908,43 @@ export function applyFormat(raw: string, spec: string | undefined): string {
       if (trimmed !== "" && !/^\d+$/.test(trimmed)) return raw;
       const decimals = trimmed === "" ? 0 : Number(trimmed);
       if (decimals > 100) return raw;
-      return formatNumber(n, decimals, " ", ",");
+      // A cell the double CHANGED is returned unchanged, which is this
+      // function's own contract for a value that does not match its format.
+      //
+      // Two shapes. Above 1e21 JavaScript spells a number with an exponent, so
+      // `1e21` printed "1e+21" and a 25-digit cell printed
+      // "1,2345678901234568e+24" — a European decimal, on a slide, from an
+      // integer. Below that the spelling is fine and the DIGITS can be wrong:
+      // `1234567890123456789` came out as `1 234 567 890 123 456 800`, which is
+      // not the number in the cell, printed with the confidence of a formatted
+      // one. An order number, an IBAN typed without spaces and a 19-digit
+      // identifier all land there.
+      //
+      // The test is the CELL against the value, not a bound on the value.
+      // `Number.isSafeInteger` was the first rule and it refuses exact
+      // magnitudes too — 2^53 itself, `1e18`, `1e20` — which a double carries
+      // perfectly and which a user has every right to see grouped. Compare what
+      // was written with what came back and refuse only a disagreement.
+      // `numericText` answers for exactly the cells `numericValue` does, and
+      // that has already answered, so this is the same string it parsed.
+      const wrote = numericText(raw) ?? "";
+      if (!sameNumber(wrote, n)) return raw;
+      // Rounded from the CELL, not from the double. `2.4999999999999999999` is
+      // stored as 2.5, so rounding the double's spelling answers 3 where the
+      // cell answers 2 — a different number on the slide, grouped and formatted
+      // as though it were right. The magnitude has already been checked against
+      // the double; this is the last printed digit.
+      // CANONICALISED, not merely unsigned. `numericText` preserves whatever the
+      // cell spelled, and `0007` is a number shape — so the zeros reached
+      // `groupFixed` and were thousands-grouped: `0000000001234` printed as
+      // `0 000 000 001 234`. A zero-padded column of order numbers, article
+      // codes or postcodes types as a number, so this is an ordinary path.
+      // Going through `formatNumber` used to canonicalise for free, because it
+      // starts from `String(Math.abs(n))`; rounding the cell means doing it
+      // here. `sameNumber` already strips them before comparing, which is why
+      // the guard above let these through.
+      const digits = wrote.replace(/^[+-]/, "").replace(/^0+(?=\d)/, "");
+      return groupFixed(roundDigits(digits, decimals), n < 0, " ", ",");
     }
     case "date": {
       const d = parseDate(raw);

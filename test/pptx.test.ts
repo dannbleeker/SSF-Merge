@@ -74,6 +74,23 @@ describe("Pkg", () => {
     expect(pkg.nextSlideNumber()).toBe(2);
   });
 
+  it("refuses to name a part when the package's numbers leave nowhere safe to go", async () => {
+    /**
+     * The hole the rule above leaves. Ignoring a digit run too large to count
+     * keeps the maximum exact — but a package holding the largest COUNTABLE
+     * number and the one after it counts the first and ignores the second, so
+     * "highest plus one" answers a name that is already there. That is the
+     * collision the whole guard exists to prevent, one step further out.
+     *
+     * There is no larger safe number to hand back, so the answer is to refuse.
+     * A deck reaching this has sixteen-digit part numbers and is not a deck.
+     */
+    const pkg = await deck(ONE);
+    pkg.setBytes(`ppt/charts/chart${Number.MAX_SAFE_INTEGER}.xml`, new Uint8Array([1]));
+    pkg.setBytes("ppt/charts/chart9007199254740992.xml", new Uint8Array([1]));
+    expect(() => pkg.nextNumber("ppt/charts/chart")).toThrow(/too large to extend/);
+  });
+
   it("reads a part's relationships once, not once per relationship added", async () => {
     /**
      * `addRel` re-read every `<Relationship>` in the part to find the highest
@@ -143,6 +160,37 @@ describe("cloneSlide", () => {
     expect(await pkg.slidePaths()).toEqual(["ppt/slides/slide1.xml", "ppt/slides/slide2.xml"]);
     expect(await pkg.text("[Content_Types].xml")).toContain("/ppt/slides/slide2.xml");
     expect(pkg.has("ppt/slides/_rels/slide2.xml.rels")).toBe(true);
+  });
+
+  it("leaves a foreign custDataLst alone when it holds no tags of ours", async () => {
+    /**
+     * `dropInheritedTags` removes the template's `<p:tags>` from the copy, and
+     * a `<p:custDataLst>` may hold customer data with no `<p:tags>` in it at
+     * all — which `writeSlideTags`'s own fixture calls the ordinary shape of a
+     * template built by another tool.
+     *
+     * The guard is a conjunction, and nothing exercised it: with `custData ||
+     * tags` the clone reaches `removeChild(undefined)` on exactly this slide.
+     * Found by `scripts/mutate-core.mjs`.
+     */
+    const P = 'xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"';
+    const A = 'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"';
+    const R = 'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
+    const pkg = await deck(ONE);
+    pkg.setText(
+      "ppt/slides/slide1.xml",
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n` +
+        `<p:sld ${P} ${A} ${R}><p:cSld><p:spTree>` +
+        `<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>` +
+        `</p:spTree>` +
+        `<p:custDataLst><p:custData r:id="rId9"/></p:custDataLst>` +
+        `</p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`,
+    );
+
+    const copy = await cloneSlide(pkg, "ppt/slides/slide1.xml", { creationId: () => 222 });
+    const xml = await pkg.text(copy);
+    expect(xml, "the other tool's entry is not ours to remove").toContain('<p:custData r:id="rId9"');
+    expect(xml.match(/<p:custDataLst/g) ?? []).toHaveLength(1);
   });
 
   it("gives every copy its own creation id", async () => {
@@ -536,6 +584,58 @@ describe("a deck whose notes parts are numbered ahead of its slides", () => {
     return Pkg.open(await zip.generateAsync({ type: "uint8array" }));
   }
 
+  /** The same deck, with the notes part stored under a percent-encoded name. */
+  async function encodedNotesDeck(): Promise<Pkg> {
+    const bytes = await makeDeck([
+      { paragraphs: [["Hello {{First}}"]], notes: "Ring {{First}}" },
+      { paragraphs: [["after"]] },
+    ]);
+    const zip = await JSZip.loadAsync(bytes);
+    const notes = await zip.file("ppt/notesSlides/notesSlide1.xml")!.async("uint8array");
+    const rels = await zip.file("ppt/notesSlides/_rels/notesSlide1.xml.rels")!.async("uint8array");
+    zip.remove("ppt/notesSlides/notesSlide1.xml");
+    zip.remove("ppt/notesSlides/_rels/notesSlide1.xml.rels");
+    zip.file("ppt/notesSlides/notes%20slide1.xml", notes);
+    zip.file("ppt/notesSlides/_rels/notes%20slide1.xml.rels", rels);
+    for (const path of ["ppt/slides/_rels/slide1.xml.rels", "[Content_Types].xml"]) {
+      const text = await zip.file(path)!.async("string");
+      zip.file(path, text.replaceAll("notesSlide1.xml", "notes%20slide1.xml"));
+    }
+    return Pkg.open(await zip.generateAsync({ type: "uint8array" }));
+  }
+
+  it("clones a notes page whose part name is percent-encoded, and leaves nothing dangling", async () => {
+    /**
+     * The two resolvers came apart for one commit. `removeSlide` asked the
+     * PACKAGE which spelling it holds; `cloneSlide` still decoded — so it could
+     * not find the notes part, returned early, and every copy kept the
+     * template's own `Target`. Removing the template then deleted the part all
+     * of them pointed at: two dangling relationships and no content type, which
+     * is a deck PowerPoint opens as "repaired".
+     *
+     * OPC maps a part name to a ZIP item by stripping the leading `/` and
+     * nothing else, so this spelling is legal and third-party writers produce
+     * it.
+     */
+    const pkg = await encodedNotesDeck();
+    const records = toRecordSet([["First"], ["Ada"], ["Grace"]]);
+    const block = { id: "b", slides: [{ path: "ppt/slides/slide1.xml", seq: 1 }] };
+    const result = await runPlan(pkg, buildPlan(block, records, { runId: "r" }), records);
+
+    const keep = new Set(result.slides);
+    for (const path of await pkg.slidePaths()) if (!keep.has(path)) await pkg.removeSlide(path);
+
+    for (const slide of result.slides) {
+      const notes = await notesPathFor(pkg, slide);
+      expect(notes, `${slide} lost its notes page`).toBeDefined();
+      expect(pkg.has(notes as string), `${slide} points at a notes part that is gone`).toBe(true);
+    }
+    // And each copy got its OWN, so the notes are merged per record rather than
+    // shared — the second half of what the early return cost.
+    const paths = await Promise.all(result.slides.map((s) => notesPathFor(pkg, s)));
+    expect(new Set(paths).size, "the copies share a notes page").toBe(result.slides.length);
+  });
+
   it("gives the clone a notes page of its own rather than sharing the template's", async () => {
     const pkg = await collidingDeck();
     const template = await notesPathFor(pkg, "ppt/slides/slide1.xml");
@@ -604,6 +704,44 @@ describe("a template slide someone has commented on", () => {
    * decks, from one template.
    */
   const MODERN = "http://schemas.microsoft.com/office/2018/10/relationships/comments";
+  it("finds a part whose name is percent-encoded, the way OPC stores it", async () => {
+    /**
+     * OPC maps a part name to a ZIP item name by stripping the leading `/` and
+     * nothing else, so `ppt/charts/my%20chart.xml` is stored under exactly that
+     * name. The resolver percent-DECODED every segment, answered
+     * `ppt/charts/my chart.xml`, and `has` said no — and `cloneSlideGraphics`
+     * reads "not in the package" as "skip", so every merged copy silently went
+     * on pointing at the template's own chart.
+     *
+     * Both spellings are produced now and the package decides. A writer whose
+     * zip entries carry the decoded name still resolves: that is the second
+     * assertion, and it is why decoding could not simply be removed.
+     */
+    const bytes = await makeDeck([{ paragraphs: [["Hello {{First}}"]] }]);
+    const zip = await JSZip.loadAsync(bytes);
+    zip.file("ppt/charts/my%20chart.xml", '<?xml version="1.0"?><c/>');
+    zip.file("ppt/charts/other chart.xml", '<?xml version="1.0"?><c/>');
+    const rels = await zip.file("ppt/slides/_rels/slide1.xml.rels")!.async("string");
+    zip.file(
+      "ppt/slides/_rels/slide1.xml.rels",
+      rels.replace(
+        "</Relationships>",
+        `<Relationship Id="rIdA" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="../charts/my%20chart.xml"/>` +
+          `<Relationship Id="rIdB" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="../charts/other%20chart.xml"/></Relationships>`,
+      ),
+    );
+    const pkg = await Pkg.open(await zip.generateAsync({ type: "uint8array" }));
+
+    const encoded = await pkg.relTarget("ppt/slides/slide1.xml", "rIdA");
+    expect(encoded, "the spelling the package actually holds").toBe("ppt/charts/my%20chart.xml");
+    expect(pkg.has(encoded ?? "")).toBe(true);
+
+    // The other direction: a package whose entry carries the decoded name.
+    const decoded = await pkg.relTarget("ppt/slides/slide1.xml", "rIdB");
+    expect(decoded).toBe("ppt/charts/other chart.xml");
+    expect(pkg.has(decoded ?? "")).toBe(true);
+  });
+
   const CLASSIC = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments";
 
   async function deckWithComment(relType: string, part: string): Promise<Pkg> {

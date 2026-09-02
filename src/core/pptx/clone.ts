@@ -13,7 +13,7 @@
  * identity twice, and office-js#6105 reports exactly that failing with
  * `InvalidArgument` on Windows desktop. Every copy gets a fresh one.
  */
-import { Pkg, resolveTarget as resolve } from "./pkg.js";
+import { Pkg } from "./pkg.js";
 import { P_NS, child, element, elements, relationshipIdsIn } from "./xml.js";
 import { COMMENT_REL_TYPES, REL_TYPE } from "./parts.js";
 
@@ -150,7 +150,13 @@ async function cloneNotesSlide(pkg: Pkg, slidePath: string, slideNumber: number)
   if (!notesRel) return;
 
   const oldTarget = notesRel.getAttribute("Target") ?? "";
-  const oldPath = resolve(slidePath, oldTarget);
+  // The PACKAGE's resolver, not the decoded-only one. A notes part stored under
+  // a percent-encoded name resolved to a path `has` said no to, so this returned
+  // early and every copy kept the template's own `Target` — and `removeSlide`,
+  // which DOES ask the package, then deleted the part they all pointed at. Two
+  // dangling relationships and no content type: a deck PowerPoint opens as
+  // "repaired". The two resolvers must be the same one.
+  const oldPath = pkg.resolved(slidePath, oldTarget);
   if (!pkg.has(oldPath)) return;
 
   // Numbered from the NOTES parts, never from the slide. The two sequences are
@@ -321,6 +327,6 @@ export async function notesPathFor(pkg: Pkg, slidePath: string): Promise<string 
   const rel = elements(rels, PKG_REL_NS, "Relationship").find((r) => r.getAttribute("Type") === REL_TYPE.notesSlide);
   const target = rel?.getAttribute("Target");
   if (!target) return undefined;
-  const path = resolve(slidePath, target);
+  const path = pkg.resolved(slidePath, target);
   return pkg.has(path) ? path : undefined;
 }

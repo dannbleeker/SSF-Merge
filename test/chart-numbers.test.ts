@@ -13,7 +13,8 @@
  * deck that looks right until somebody clicks Edit Data, which is exactly the
  * half-merge this project already knows from the label side.
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import JSZip from "jszip";
 import { Pkg } from "../src/core/pptx/pkg.js";
@@ -72,6 +73,17 @@ async function sheetCells(zip: JSZip): Promise<Record<string, { type: string; va
     const type = /t="([a-z]+)"/.exec(m[2]!)?.[1] ?? "n";
     const raw = /<v>([^<]*)<\/v>/.exec(m[3]!)?.[1] ?? "";
     out[m[1]!] = { type, value: type === "s" ? (strings[Number(raw)] ?? "") : raw };
+  }
+  return out;
+}
+
+/** Every `.ts` file under a directory, recursively. */
+function tsFiles(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...tsFiles(full));
+    else if (entry.name.endsWith(".ts")) out.push(full);
   }
   return out;
 }
@@ -184,10 +196,29 @@ describe("finding a cell in a sheet", () => {
      * A source scan rather than a behavioural test, because the defect it
      * guards against is a call site that does not exist yet — nothing can
      * observe an absence behaviourally.
+     *
+     * Every file that CALLS `cellAt`, found rather than listed. It read
+     * `numbers.ts` alone while `graphics.ts` looks cells up through the same
+     * index, so half the call sites were watched by a guard whose name says
+     * all of them — and the file list is derived here so a third reader is
+     * covered the day it is written rather than the day somebody remembers.
+     *
+     * The whole of `src/core`, not one directory. `cellAt` is EXPORTED, so a
+     * reader could as easily live in `src/core/pptx`; a scan over
+     * `src/core/merge` alone would have said "every file that calls it" while
+     * watching one directory, which is the same overstatement one level up.
      */
-    const source = readFileSync("src/core/merge/numbers.ts", "utf8");
-    const created = [...source.matchAll(/createElementNS\(\s*SSML_NS\s*,\s*"([^"]+)"/g)].map((m) => m[1]);
-    expect(created, "a new cell would be invisible to the index above").not.toContain("c");
+    const readers = tsFiles("src/core")
+      .map((f) => [f, readFileSync(f, "utf8")] as const)
+      .filter(([, source]) => /\bcellAt\s*\(/.test(source));
+    expect(
+      readers.map(([f]) => f.replace(/\\/g, "/")),
+      "the index has a reader this scan does not watch",
+    ).toContain("src/core/merge/graphics.ts");
+    for (const [file, source] of readers) {
+      const created = [...source.matchAll(/createElementNS\(\s*SSML_NS\s*,\s*"([^"]+)"/g)].map((m) => m[1]);
+      expect(created, `a cell created in ${file} would be invisible to the index above`).not.toContain("c");
+    }
   });
 });
 
@@ -237,7 +268,7 @@ describe("a value cell holding a placeholder", () => {
  */
 describe("a value cell that holds its string inline", () => {
   /** Rewrite the fixture's B2 value cell to the given raw XML. */
-  async function withValueCell(cellXml: string) {
+  async function withValueCell(cellXml: string, sharedStrings?: string) {
     const deck = await makeDeck([
       { paragraphs: [["{{Name}}"]], chart: { categories: ["a"], workbook: ["x"], values: ["0"] } },
     ]);
@@ -248,6 +279,16 @@ describe("a value cell that holds its string inline", () => {
     const patched = sheet.replace('<c r="B2"><v>0</v></c>', cellXml);
     expect(patched, "the fixture's value cell moved; this test patches it by hand").not.toBe(sheet);
     book.file("xl/worksheets/sheet1.xml", patched);
+    // The shared string table, when the case is about reading through it. The
+    // fixture's own table holds one entry, so a caller replacing it is choosing
+    // what index 0 says.
+    if (sharedStrings !== undefined) {
+      const S = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"';
+      book.file(
+        "xl/sharedStrings.xml",
+        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n<sst ${S}>${sharedStrings}</sst>`,
+      );
+    }
     zip.file(emb, await book.generateAsync({ type: "nodebuffer" }));
 
     const pkg = await Pkg.open(await zip.generateAsync({ type: "uint8array" }));
@@ -273,6 +314,33 @@ describe("a value cell that holds its string inline", () => {
     const zip = await withValueCell('<c r="B2" t="inlineStr"><is><r><t>{{Reve</t></r><r><t>nue}}</t></r></is></c>');
     expect(await cachedValues(zip)).toEqual(["1250000"]);
     expect((await sheetCells(zip))["B2"]).toEqual({ type: "n", value: "1250000" });
+  });
+
+  it("holds a refused cell that reads the FIRST shared string", async () => {
+    /**
+     * A refused value cell is held by the `<si>` it reads through, so the
+     * workbook's text pass cannot merge the placeholder the numeric pass just
+     * declined. `sharedIndexOf` decides which `<si>` that is, and its range
+     * check is the whole of it: index 0 is the first entry of the table, which
+     * is where a workbook with one string keeps its only string.
+     *
+     * With `> 0` in place of `>= 0` the cell is held by sheet and reference
+     * instead — which holds the CELL and not the string — so the text pass
+     * rewrites the `<si>` underneath it. The chart then draws the template's
+     * number while Edit Data shows the row's words, and closing Excel refreshes
+     * the cache from the sheet: the bar changes on its own, which is the exact
+     * outcome this pass exists to prevent.
+     *
+     * Found by `scripts/mutate-core.mjs`. Every fixture reaching this line put
+     * its placeholder at an index above zero, so the boundary survived.
+     */
+    const zip = await withValueCell('<c r="B2" t="s"><v>0</v></c>', "<si><t>{{Notes}}</t></si>");
+    const rels = await zip.file("ppt/charts/_rels/chart2.xml.rels")!.async("string");
+    const target = /Target="([^"]*\.xlsx)"/.exec(rels)![1]!;
+    const book = await JSZip.loadAsync(await zip.file(`ppt/${target.replace(/^\.\.\//, "")}`)!.async("nodebuffer"));
+    const sst = await book.file("xl/sharedStrings.xml")!.async("string");
+    expect(sst, "the placeholder is what stays").toContain("{{Notes}}");
+    expect(sst, "and the row's words did not replace it").not.toContain("hello");
   });
 
   it("counts a value the cache has no point for, instead of passing over it", async () => {
@@ -667,6 +735,23 @@ describe("which sheet the formula names", () => {
     expect(sheetOfFormula("$B$2")).toBeNull();
   });
 
+  it("unwraps only a name quoted at BOTH ends", () => {
+    /**
+     * Excel quotes a sheet name when it needs to and always on both sides, so
+     * one apostrophe is a name containing an apostrophe rather than a quoted
+     * name — `Ada's Data!$B$2` is a title somebody typed. Unwrapping on either
+     * end alone eats the first or last character of it, and the sheet is then
+     * never found: the series reads unreadable and keeps the template's
+     * numbers, silently.
+     *
+     * Found by `scripts/mutate-core.mjs` loosening the conjunction; the whole
+     * suite stayed green.
+     */
+    expect(sheetOfFormula("Ada's Data!$B$2")).toBe("Ada's Data");
+    expect(sheetOfFormula("'Half quoted!$B$2")).toBe("'Half quoted");
+    expect(sheetOfFormula("Half quoted'!$B$2")).toBe("Half quoted'");
+  });
+
   it("ignores whitespace around the sheet's name", () => {
     /**
      * The `.trim()` this asserts had no test, which a mutation run proved by
@@ -720,6 +805,40 @@ describe("which sheet the formula names", () => {
     const out = await runPlan(pkg, buildPlan(prepared.block, records, { runId: "s" }), records);
 
     expect(out.graphics.numbers.filled, "nothing could be filled").toBe(0);
+    expect(out.graphics.numbers.unreadable, "and the run says so").toBeGreaterThan(0);
+  });
+
+  it("counts a series whose range it cannot read, rather than passing over it", async () => {
+    /**
+     * A chart may point at a DEFINED NAME — `ChartData` — instead of a cell
+     * range, which Excel writes the moment somebody names the range in Edit
+     * Data. `cellsOfFormula` cannot turn that into addresses, and the branch
+     * that says so had no test: the series is left with the template's numbers,
+     * which is the right answer, and it has to be COUNTED or the pane reports a
+     * merge that filled everything.
+     *
+     * The neighbouring case — a formula naming a sheet the workbook does not
+     * declare — is the test above, and it fails one step earlier.
+     */
+    const pkg = await Pkg.open(
+      await makeDeck([
+        {
+          paragraphs: [["{{Name}}"]],
+          chart: { categories: ["{{Name}}", "Other"], workbook: ["{{Name}}"], values: ["{{Revenue}}", "42"] },
+        },
+      ]),
+    );
+    pkg.setText(
+      "ppt/charts/chart1.xml",
+      (await pkg.text("ppt/charts/chart1.xml")).replace("Sheet1!$B$2:$B$3", "ChartData"),
+    );
+
+    const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "s");
+    if (!prepared.ok) throw new Error(prepared.why);
+    const records = toRecordSet(ROWS);
+    const out = await runPlan(pkg, buildPlan(prepared.block, records, { runId: "s" }), records);
+
+    expect(out.graphics.numbers.filled, "there is no address to write to").toBe(0);
     expect(out.graphics.numbers.unreadable, "and the run says so").toBeGreaterThan(0);
   });
 

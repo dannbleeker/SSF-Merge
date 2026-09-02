@@ -35,6 +35,7 @@ in a script.
 | `npm run coverage` | Coverage floors on `src/core` |
 | `npm run test:count` | A floor under the number of tests |
 | `npm run build:lib` | The library build. `tsc --noEmit` cannot see it fail, and the two scripts that import `dist-lib/` are only ever read as text by the suite — so a broken build here goes green everywhere else |
+| `npm run build` | The pane bundle — what a user actually loads. Nothing else here compiles it, so a build that fails only in the bundler goes green in every other check |
 
 CI runs all of them, `npm run coverage` standing in for `npm test`. `npm run
 lint -- --fix` and `npm run format` fix most of what the check commands find.

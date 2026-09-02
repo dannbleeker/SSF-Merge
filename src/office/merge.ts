@@ -25,7 +25,7 @@ import type { ImageOutcome } from "../core/merge/images.js";
 import type { NumberOutcome } from "../core/merge/numbers.js";
 import type { RecordSet } from "../core/data/recordset.js";
 import type { EmptyPolicy } from "../core/merge/resolve.js";
-import { insertDeck, readTemplate, slideCount, undoInsert } from "./powerpoint.js";
+import { insertDeck, readTemplate, slideCount, undoInsert, type UndoOutcome } from "./powerpoint.js";
 import { readable } from "../host/errors.js";
 import { tornInsert } from "../host/verdicts.js";
 import { trace } from "../core/trace.js";
@@ -68,6 +68,46 @@ export interface MergeOutcome {
   accountable: boolean;
   /** The deck's size before the insert — what an undo is clamped against. */
   deckAtStart: number;
+  /**
+   * The deck's size when the insert actually went out.
+   *
+   * The same as `deckAtStart` on every ordinary run — the whole path between
+   * the two reads is package work with no Office write in it — and different in
+   * exactly the case `accountable` is false for. It is the anchor the pane's
+   * sentence names, because `deckAtStart` names the wrong slide there.
+   *
+   * Optional because the early refusals — no template, an empty block, a
+   * package the engine would not build — never reached an insert, and there is
+   * no such moment to name. `describeMerge` falls back to `deckAtStart`.
+   */
+  landedAfter?: number;
+  /**
+   * Whether this outcome is one the pane has already swept once.
+   *
+   * Set by ANY press that returned, whatever it achieved. It is the one thing
+   * `undoMerge` needs in order to refuse the pre-tags fall-through on a repeat
+   * press — see `provenSweep`.
+   *
+   * "Whatever it achieved" is load-bearing and was learned the hard way. It was
+   * set only where a press removed something, so a press that removed NOTHING
+   * left the next one looking like a first: no proof required, the whole
+   * positional window taken, and a slide the user made in between deleted. A
+   * press having happened is what the flag means, and a press that moved
+   * nothing is still a press — the deck has had time to change either way.
+   */
+  pressed?: boolean;
+  /**
+   * How many presses in a row have proved nothing.
+   *
+   * A press that removes nothing and disowns everything may still be worth
+   * repeating — a host that failed one tag read, or accepted a delete and
+   * performed none, both answer that way and both can succeed next time. A host
+   * STUCK in that mode never will, and the offer then stands over slides no
+   * press can take. Counting the fruitless ones bounds the difference: two, and
+   * the pane stops offering. Reset by any press that removes something.
+   */
+  fruitless?: number;
+
   runId: string;
   /** Placeholders found in the block, for the pane to report on. */
   fields: string[];
@@ -92,6 +132,16 @@ export interface MergeOutcome {
   paragraphsMerged?: number;
   /** Charts whose embedded workbook the merge could not open. See `describeMerge`. */
   workbooksUnreadable?: number;
+  /**
+   * Placeholders filled inside the workbooks behind charts.
+   *
+   * Its own field because no other counter can see them: a chart label written
+   * as `{{Name}}` lives in the workbook's shared strings, fills there, and
+   * appears in neither `paragraphsMerged` nor `chartValues`. The pane read that
+   * silence as "nothing matched" and told the author to check their spelling on
+   * a merge that had just filled every placeholder in the deck.
+   */
+  workbookText?: number;
   /**
    * What became of the PICTURES.
    *
@@ -161,6 +211,17 @@ export interface BlockReport {
   /** Of those, the ones written as a picture. The pane's picker needs these. */
   imageFields: string[];
   /**
+   * Picture fields written where no picture can be placed.
+   *
+   * `placeImages` fills a SHAPE on a slide. A `{{Photo|image}}` on a notes page,
+   * in a chart's text or inside SmartArt is filled by nothing and printed
+   * verbatim — so the raw placeholder reaches presenter view and every handout,
+   * and if it is the block's only picture field the pane never offers the file
+   * picker at all. Reported so the user hears it before the merge rather than
+   * finding it on a printout.
+   */
+  imageFieldsOffSlide?: string[];
+  /**
    * The fields on each slide of the block, in order.
    *
    * The pane needs the per-slide breakdown, not just the flat set, to answer
@@ -215,6 +276,7 @@ export async function inspectBlock(req: { from: number; to: number }): Promise<B
       detail: `${prepared.fields.length} placeholder${prepared.fields.length === 1 ? "" : "s"} in slides ${req.from} to ${req.to}.`,
       fields: prepared.fields,
       imageFields: prepared.imageFields,
+      imageFieldsOffSlide: prepared.imageFieldsOffSlide,
       slideFields: prepared.slideFields,
     };
   } catch (e) {
@@ -376,13 +438,23 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
    * Both halves of the defect this was written for survived on that branch: the
    * undo card offered over slides the sweep would decline, and the sentence
    * that says a merge landed partly and completely at once.
+   *
+   * The FIRST term is about the window before the insert, and it was the one
+   * missing. `deckAtStart` is measured when the run is planned; `insert.before`
+   * when the call goes out, and the package is built in between. A slide
+   * arriving in that window leaves `landed` exactly equal to what was sent —
+   * every later term says accountable — while the indices an undo would sweep
+   * have moved onto somebody else's slide. `sweepPlan` then declines, which is
+   * correct and arrives too late: the outcome has already offered the card.
    */
   const unaccounted =
-    insert.landed > sending.length
-      ? `the deck grew by ${insert.landed} while the package held ${sending.length} slide(s), so this run cannot say which of them are its own`
-      : insert.landed < 0
-        ? `the deck SHRANK by ${-insert.landed} slide(s) across an insert of ${sending.length}, so something else changed it`
-        : undefined;
+    insert.before !== deckAtStart
+      ? `the deck was ${deckAtStart} slide(s) when this run was planned and ${insert.before} when it inserted, so this run cannot say which of them are its own`
+      : insert.landed > sending.length
+        ? `the deck grew by ${insert.landed} while the package held ${sending.length} slide(s), so this run cannot say which of them are its own`
+        : insert.landed < 0
+          ? `the deck SHRANK by ${-insert.landed} slide(s) across an insert of ${sending.length}, so something else changed it`
+          : undefined;
 
   // How many slides each ROW produced, in plan order — the unit a torn insert
   // has to be read in.
@@ -408,6 +480,11 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
     added,
     accountable: unaccounted === undefined,
     deckAtStart,
+    // The anchor and the reason, carried so the PANE can say them. The engine's
+    // own `detail` is discarded on the success path — `main.ts` shows
+    // `describeMerge(outcome)` there — so a sentence composed here and not
+    // carried is a sentence nobody reads.
+    landedAfter: insert.before,
     runId,
     fields: prepared.fields,
     imageFields: prepared.imageFields,
@@ -415,6 +492,7 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
     unknownConditions: plan.unknownConditions,
     paragraphsMerged: result.paragraphsMerged,
     workbooksUnreadable: result.graphics.unreadable.length,
+    workbookText: result.graphics.workbookText,
     pictures: result.images,
     chartValues: result.graphics.numbers,
     skippedRecords: plan.skippedRecords.length,
@@ -480,7 +558,23 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
 
   return {
     ok: true,
-    detail: `${added} slide${added === 1 ? "" : "s"} added after slide ${deckAtStart}. ${insert.detail}`,
+    // Anchored on `insert.before`, the deck's size when the call actually went
+    // out, NOT on `deckAtStart`. The two are the same on every ordinary run and
+    // differ in exactly the case below, where `deckAtStart` names the wrong
+    // slide — "6 slides added after slide 12" when they landed after 13.
+    //
+    // And a deck that changed under the merge is said out loud on the SUCCESS
+    // path too. The slides all landed, so this is not a failure; what is gone
+    // is the way back, because the run can no longer say which of the deck's
+    // new slides are its own. `accountable` already withholds the undo card —
+    // it was withholding it silently, with a success sentence above the space
+    // where the card used to be and nothing to explain it.
+    detail:
+      unaccounted !== undefined
+        ? `${added} slide${added === 1 ? "" : "s"} added after slide ${insert.before}. ${insert.detail} ` +
+          `The deck also changed while the merge was being built: ${unaccounted}. ` +
+          `So there is no offer to take these slides back — check the deck before running it again.`
+        : `${added} slide${added === 1 ? "" : "s"} added after slide ${insert.before}. ${insert.detail}`,
     ...landed,
   };
 }
@@ -494,9 +588,17 @@ export async function runMerge(req: MergeRequest): Promise<MergeOutcome> {
  * project's by-id clean-up once reported 45 successful deletes having removed
  * nothing.
  */
-export async function undoMerge(outcome: MergeOutcome): Promise<{ removed: number; detail: string }> {
+export async function undoMerge(outcome: MergeOutcome): Promise<UndoOutcome> {
   // The run id travels with the numbers, because position alone cannot tell
   // this run's slides from a slide the user has since made at the same index.
   // See `provenSweep`.
-  return undoInsert(outcome.deckAtStart, outcome.added, outcome.runId);
+  //
+  // And `pressed` says which press this is. A first one may fall back to the
+  // size clamps when the host will not answer for tags — that is the answer
+  // this add-in gave before tags existed, and a host below PowerPointApi 1.3
+  // has none. A later one may not: the deck has provably changed shape since
+  // the run, so the window can hold a slide the user made in between.
+  return undoInsert(outcome.deckAtStart, outcome.added, outcome.runId, {
+    requireProof: outcome.pressed === true,
+  });
 }

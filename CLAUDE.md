@@ -347,6 +347,29 @@ learn to satisfy without meaning it. The honest fix is the heading.
   and permanent); and never pair figures from two measurements, which is how
   `docs/BACKLOG.md` came to carry a count from the run that measured 29.2s
   beside a maximum of 31.1s from a later one. `docs/SIBLING.md` has the sort.
+- **A tool that edits the working tree will eventually commit into your work.**
+  `scripts/mutate-core.mjs` wrote its mutants into the real source and restored
+  them in a `finally`, which holds for a run that fails and not for one that is
+  killed. On 2026-09-01 a run under `timeout` was interrupted, an unrelated
+  `git add -A` swept the live mutant into a commit, and a dropped `.trim()`
+  reached the branch inside a commit whose message was about a changelog entry.
+  The script copies the tree now — but the general rule is the one that
+  survives: `git add -A` commits whatever else is touching the tree, so stage
+  paths when anything else is running, and check `git status` before a commit
+  you did not build file by file.
+
+  It cost nothing here only because the mutation run had itself reported that
+  line as a SURVIVOR, so the gap it opened was already named.
+
+- **Review the review.** Three rounds landed on 2026-09-01: six sweeps, then an
+  adversarial review of those fixes, then a seventh sweep. The review found that
+  two of the first round's fixes were INCOMPLETE — a crash still reachable
+  because a magnitude bound cannot see an infinity, and a flag derived from a
+  verdict string that hides the shape it was meant to detect — and the seventh
+  sweep found a throw that killed a whole merge. A fix is not evidence that the
+  defect is closed; the second pair of eyes is where that evidence comes from,
+  and it is cheapest immediately after the work rather than a week later.
+
 - **Record a diagnostic on BOTH populations, or it is not yet a measurement.**
   A value written only when something failed cannot be compared against
   anything. This repo shipped it twice: `withTimeout`'s call name reached only a
@@ -453,6 +476,62 @@ learn to satisfy without meaning it. The honest fix is the heading.
   CI build first: building would only hide the non-determinism behind whichever
   order the steps happen to run in. Before trusting any local run of a check that
   reads `dist-lib/`, delete it and run again.
+- **A control that is RECOMMENDED is not a control.** `scripts/mutate-core.mjs`
+  told its reader to check that the unmutated copy was green, and did not check.
+  The copy was red — it excluded `.git`, and `test/docprops.test.ts` shells out
+  to `git ls-files` at collection — so every mutant read `caught`, the survivor
+  list stayed empty, and the run ended on a line that looks like a perfect
+  score. The script runs its own control now and refuses to report at all if it
+  is red or short. Any tool whose failure mode is a GOOD-looking result has to
+  measure its own baseline; advice in a docstring is not a measurement.
+
+  The same round: `… | tail -4; echo "exit=$?"` reports `tail`'s status. Read the
+  exit code of the command you care about.
+- **A property test's CORPUS is a measurement, and asking what it matched is the
+  only thing that checks it.** `test/fuzz.test.ts` passed five properties while
+  generating six-character strings — seeded with 1, 2, 3 …, xorshift32's first
+  outputs are all near zero, so every length came out at the bottom of its range
+  and 306 of 400 strings held no placeholder. Its format specs, assembled from
+  the same noise, named a real format kind ZERO times in four hundred draws, so
+  the four formatters were exercised by nothing. Both looked like four green
+  tests. Count what the corpus reached before believing what it proved.
+- **A mock must be as strict as the function it stands in for.** A bare
+  `vi.fn()` let a test set `verdict: "ok"` — not a member of `Verdict` — so the
+  code under test took the refusal branch and the test asserted the one path it
+  was not about, while the branch it was written for shipped broken. Type the
+  mock; a fixture must not be able to put production code in a state production
+  cannot reach.
+- **A bound written to keep something OUT can keep the wanted case out too, and
+  the second direction needs its own test.** Bounding each date token against
+  any adjacent letter kept `Odds:` and `Wedding` intact and made `yyyyMMdd`
+  print itself — a pattern of nothing but documented tokens, refused. Whenever a
+  fix narrows what matches, write the test for what must still match.
+- **A table the manual claims is a promise the code has to keep.** The manual
+  named ten languages of month names "in full or in the short form"; the table
+  held short forms for four. A German column typed as a date on its SHAPE and
+  then printed as the raw cell — half a deck formatted, half not. When a doc
+  enumerates what the code supports, the enumeration is testable, so test it.
+- **Run the WHOLE gate as the last thing before a commit, not before the last
+  edit.** `npx prettier --check . && npm run lint && tsc --noEmit && vitest run`,
+  after the final change and not before it. A test added after the lint run
+  reached CI with a type assertion the compiler did not need, on a branch where
+  every earlier push had been green — the gate had run, just not on the code
+  that was committed.
+- **A fix for a review finding is this project's most defect-dense code.** Three
+  rounds, three times: a fix for a stuck preview introduced a worse deadlock, the
+  fix for THAT deleted slides the user had added, and the sentence written to
+  explain a withheld undo card was composed in a layer the pane discards. Treat
+  the diff that answers a review as needing its own review, and prefer stating
+  the INVARIANT — swept over its inputs — to fixing the case that was reported:
+  the preview's terminal state was reported three times by three routes before
+  anybody wrote down the one rule underneath.
+- **A property whose oracle is built from the code under test cannot see a
+  consistent error in it.** The split-run merge property computes what it expects
+  from the same `fieldsInText` and the same `makeResolver` as the merge it
+  checks, so a scanner reporting every field name as `""` — a merge filling every
+  slide from the wrong column — satisfied it, and so did a resolver that filled
+  nothing at all. Every property in that file now ends with an ANCHOR: one fixed
+  input whose answer is known from outside the code.
 - **All sample data is invented.** The repo is public.
 - **Merging to `main` is authorized.** Once CI is green on the exact pushed
   commit — verify the run's `head_sha` matches the branch head, because a

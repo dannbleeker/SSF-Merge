@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import JSZip from "jszip";
+import { describe, expect, it, vi } from "vitest";
 import { prepareBlock } from "../src/core/merge/prepare.js";
 import { Pkg } from "../src/core/pptx/pkg.js";
 import { makeDeck } from "./fixtures/deck.js";
@@ -50,6 +51,22 @@ describe("turning slide numbers into a block", () => {
     // Says both numbers, so the user can see which one is wrong.
     expect(out.why).toContain("2");
     expect(out.why).toContain("3");
+    // A positive offset proves the whole file came back, so "the deck" is what
+    // came back and the number is one the user can count.
+    expect(out.why).toContain("the deck that came back");
+  });
+
+  it("does not call an exported block 'the deck' when only the block came back", async () => {
+    // On the subset route PowerPoint sends back the exported BLOCK, so the
+    // count in this sentence is the size of that export — "the deck that came
+    // back has 3" to somebody looking at a deck of thirty. `offsetInPackage` is
+    // zero there, which is what tells the two routes apart.
+    const pkg = await deck(3);
+    const out = await prepareBlock(pkg, { from: 1, to: 9, offsetInPackage: 0 }, "r1");
+    expect(out.ok).toBe(false);
+    if (out.ok) return;
+    expect(out.why, "a deck the user cannot count").not.toContain("the deck that came back");
+    expect(out.why).toContain("the slides PowerPoint sent back");
   });
 
   it("refuses a block that ends before it starts", async () => {
@@ -111,6 +128,33 @@ describe("placeholders in a chart or SmartArt", () => {
     expect(prepared.ok).toBe(true);
     if (!prepared.ok) return;
     expect(prepared.fields).toEqual(["First", "Region"]);
+  });
+
+  it("inflates each chart workbook once, not once per reader", async () => {
+    /**
+     * Two readers walk the same workbook on this path — the value cells and the
+     * text — and each used to inflate it for itself, doubling the cost of the
+     * step on any deck with charts. They share one inflate now.
+     *
+     * Safe only because both are dry runs whose resolver writes nothing: both
+     * readers MUTATE the zip when they fill something, so a shared book on the
+     * merge path would let one see the other's edits.
+     */
+    const deck = await makeDeck([
+      { paragraphs: [["Hello {{First}}"]], chart: { title: "Sales", workbook: ["{{Region}}"] } },
+      { paragraphs: [["after"]] },
+    ]);
+    const pkg = await Pkg.open(deck);
+    const load = vi.spyOn(JSZip, "loadAsync");
+    try {
+      const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "run1");
+      expect(prepared.ok).toBe(true);
+      const workbooks = load.mock.calls.length;
+      expect(workbooks, "the chart's workbook is opened at all").toBeGreaterThan(0);
+      expect(workbooks, "and only once, by both readers together").toBe(1);
+    } finally {
+      load.mockRestore();
+    }
   });
 
   it("counts one in a chart's category labels, which are not paragraphs", async () => {
@@ -227,6 +271,85 @@ describe("placeholders in the speaker notes", () => {
     expect(prepared.ok, prepared.ok ? "" : prepared.why).toBe(true);
     if (!prepared.ok) return;
     expect(prepared.fields).toEqual(["Name"]);
+  });
+
+  it("names a picture field written where no picture can go", async () => {
+    /**
+     * `placeImages` fills a SHAPE on a slide. A `{{Photo|image}}` on the notes
+     * page is filled by nothing and printed as written, so the raw placeholder
+     * reaches presenter view and every printed handout — and if it is the
+     * block's only picture field, the pane never even offers the file picker,
+     * because `imageFields` is what turns that on.
+     *
+     * Filling it is not on the table; saying so before the merge is.
+     */
+    const deck = await makeDeck([
+      { paragraphs: [["Quarterly review"]], notes: "Bring {{Photo|image}} to the meeting" },
+      { paragraphs: [["after"]] },
+    ]);
+    const pkg = await Pkg.open(deck);
+    const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "run1");
+    expect(prepared.ok, prepared.ok ? "" : prepared.why).toBe(true);
+    if (!prepared.ok) return;
+    expect(prepared.imageFieldsOffSlide, "a field nothing will fill, said out loud").toEqual(["Photo"]);
+    // And it is NOT offered as one the picker can serve, which would promise a
+    // placement that cannot happen.
+    expect(prepared.imageFields).toEqual([]);
+  });
+
+  it("sees a picture field in a chart's own labels, where a chart keeps its text", async () => {
+    // The scan walked DrawingML paragraphs only, so it could not see the place
+    // a chart's text actually lives — a category label in `<c:strCache>`, a
+    // series name, a cell in the embedded workbook. The pane's sentence named
+    // "a chart" and a chart's labels were exactly what it missed.
+    const deck = await makeDeck([
+      { paragraphs: [["Quarterly review"]], chart: { categories: ["{{Photo|image}}"] } },
+      { paragraphs: [["after"]] },
+    ]);
+    const pkg = await Pkg.open(deck);
+    const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "run1");
+    expect(prepared.ok, prepared.ok ? "" : prepared.why).toBe(true);
+    if (!prepared.ok) return;
+    expect(prepared.imageFieldsOffSlide).toEqual(["Photo"]);
+  });
+
+  it("keeps a misspelled picture mode OUT of the list of fields that will be filled", async () => {
+    // `placeImages` fills an exact mode and nothing else, so `{{Photo|images}}`
+    // on a slide is a field nothing will fill. Counting it among the ones that
+    // will turned off the merge step's "the pictures you attached will not be
+    // placed" caution and offered a file picker for it.
+    const deck = await makeDeck([{ paragraphs: [["{{Photo|images}}"]] }, { paragraphs: [["after"]] }]);
+    const pkg = await Pkg.open(deck);
+    const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "run1");
+    expect(prepared.ok).toBe(true);
+    if (!prepared.ok) return;
+    expect(prepared.imageFields, "a field placeImages will not fill").toEqual([]);
+  });
+
+  it("reads a misspelled picture mode as a picture request, as the merge does", async () => {
+    // `{{Photo|images}}` is a picture request with the mode misspelled, and
+    // `makeResolver` already treats it as one — so the merge leaves the
+    // placeholder visible rather than printing a file name. A scan gating on
+    // the exact mode called it ordinary text and said nothing.
+    const deck = await makeDeck([
+      { paragraphs: [["Quarterly review"]], notes: "Bring {{Photo|images}}" },
+      { paragraphs: [["after"]] },
+    ]);
+    const pkg = await Pkg.open(deck);
+    const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "run1");
+    expect(prepared.ok).toBe(true);
+    if (!prepared.ok) return;
+    expect(prepared.imageFieldsOffSlide).toEqual(["Photo"]);
+  });
+
+  it("does not call a picture field on a SLIDE off-slide", async () => {
+    const deck = await makeDeck([{ paragraphs: [["{{Photo|image}}"]] }, { paragraphs: [["after"]] }]);
+    const pkg = await Pkg.open(deck);
+    const prepared = await prepareBlock(pkg, { from: 1, to: 1, offsetInPackage: 0 }, "run1");
+    expect(prepared.ok).toBe(true);
+    if (!prepared.ok) return;
+    expect(prepared.imageFields).toEqual(["Photo"]);
+    expect(prepared.imageFieldsOffSlide).toEqual([]);
   });
 
   it("merges the slide's and the notes' fields into one list, without duplicates", async () => {

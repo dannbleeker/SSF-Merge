@@ -7,6 +7,240 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a merged deck could open as "repaired"
+
+A part whose name is percent-encoded — `my%20chart.xml`, which the file format
+allows and other tools produce — was invisible to the merge, so every copy went
+on pointing at the template's own chart and editing one would have changed them
+all. Worse for a notes page: the copies kept pointing at the template's, and
+removing the template then deleted the part they all named, leaving a deck
+PowerPoint offers to repair.
+
+### Fixed — a number with more digits than a spreadsheet cell can hold
+
+`{{Order|number}}` on a nineteen-digit order number printed a DIFFERENT number,
+grouped and formatted as though it were right. A cell whose whole-number digits
+would not survive is now printed exactly as it stands, and one that is formatted
+is rounded from the cell's own digits rather than from what a double could hold
+— so the last printed digit is the one the cell says.
+
+### Fixed — a picture field where a picture cannot go
+
+`{{Photo|image}}` written on a notes page, in a chart's labels or inside
+SmartArt is filled by nothing and printed as written — onto presenter view and
+every handout — and if it was the only picture field, the file picker was never
+offered. The fields step names it now, before the merge.
+
+### Fixed — a merge that filled a chart's labels said it had filled nothing
+
+A placeholder that lives only in the workbook behind a chart merged correctly
+and was counted nowhere, so the summary told the author to check their spelling
+on a merge that had just worked.
+
+### Fixed — the undo card after a partial removal
+
+The disabled merge button reported what was left to remove as what the merge had
+added — "Added 3 slides" about a merge that added six. It now says "3 of 6
+slides still there".
+
+### Fixed — a merge in one deck could erase another deck's recovery record
+
+The record of an unfinished run was kept under one key for every deck, so
+opening a second deck and merging destroyed the first deck's only record of
+slides still sitting in it. Each deck has its own now.
+
+### Fixed — a date pattern is read a word at a time
+
+`{{Signed|date:d MMM yyyy}}` and its cousins now read the pattern as words: a
+run of letters is either all tokens or none of them, so `yyyyMMdd` prints the
+date and `Odds:`, `den`, `dato`, `día`, `décembre` and `d'échéance` print
+themselves — including in alphabets this one has no tokens in, so
+`yyyy年MM月dd日` reads as a date and `dddd` stays a weekday name rather than
+becoming `0101`. It is the manual's own rule ("any other text in the pattern is
+printed as written"), which the pattern reader had never quite kept. An
+apostrophe holds a word together, so `d'échéance` prints itself while `MMM'yy`
+still reads as `Mar'26` — with either apostrophe, including the curly one Word's
+autocorrect produces.
+
+### Fixed — a second undo press could delete a slide made between the presses
+
+If PowerPoint stopped answering for slide tags between one press and the next —
+which it does, and which older PowerPoint versions do always — the sweep fell
+back to counting slides and took the whole range, including anything you had
+added in the meantime. Falling back is right for a first press, where counting
+is the only evidence there has ever been; a later press now requires the slides
+to prove they are the merge's, and takes nothing if they cannot. Where they
+cannot — an older PowerPoint has no slide tags to prove it with, and one that
+does can go quiet — the button is withdrawn and the notice says the slides can
+be deleted from the thumbnail rail, rather than standing there for the rest of
+the session. A PowerPoint that cannot prove anything at all is answered on the
+first such press; one that merely did not answer gets a second try, because a
+single failed read and a delete PowerPoint swallowed look exactly the same and
+both come good next time.
+
+### Fixed — the preview card named the wrong slides when the deck had moved
+
+The card exists so you can find the preview slides and delete them by hand, and
+it took their numbers from the deck's size when the run was PLANNED rather than
+when it inserted. A slide arriving in between moved every number by one, so the
+card named a slide that was not the preview's and left the last of the
+preview's own out.
+
+### Fixed — pressing "Remove the preview" twice could delete slides you had added
+
+If the first press met a slide it would not claim as the preview's — one you had
+put there yourself, in the range the preview was on — the second press could
+delete it, under a notice saying there was nothing to take back. The same shape
+was reachable from the merge undo. A press that leaves behind a slide it could
+not show to be the merge's now says so, ends the preview's offer, and bounds the
+merge undo's — and both screens take that decision from one place instead of
+two.
+
+### Fixed — a preview a co-author's edit stranded could not be dismissed
+
+If somebody else added a slide while the preview was up, the deck had grown by
+more than the run put in and the undo refused the shape — correctly, because it
+can no longer prove which slides are the preview's. The pane then held the
+wizard on the preview step, where the forward link is withheld and the merge
+step refuses, for the rest of the session. A press that takes nothing back at
+all now says so, says the slides are still in the deck, and lets you carry on.
+
+### Fixed — a damaged chart workbook was counted as merged
+
+An embedded workbook whose own `xl/workbook.xml` is truncated or damaged merged
+nothing and reported success, so the chart was counted among the ones the run
+had filled while every label in it still read `{{Name}}` in Edit Data — with
+nothing anywhere saying so. It is reported the same way an embedding that is not
+a spreadsheet at all already was.
+
+### Fixed — German March was still not read
+
+Excel on Windows writes it `Mrz`, where the standard says `Mär`, and it is the
+spreadsheet's spelling that arrives in a pasted column. Eleven of a German
+year's twelve months read, which is the half-formatted deck this list exists to
+prevent, missing by one word.
+
+### Fixed — six languages' short month names were not read
+
+The manual says month names are read in ten languages, "in full or in the short
+form a spreadsheet writes". Only the English and Scandinavian abbreviations were
+in the list, so a German column of `1 dez 2026` was recognised as a date column
+on its shape and then printed as the raw cell — half a deck formatted, half of
+it not, with nothing saying why. German, Dutch, French, Spanish, Italian and
+Portuguese short forms are read now, including the four-letter French ones.
+
+### Fixed — a merge that landed while the deck changed said nothing
+
+A slide arriving between the moment a run is planned and the moment it inserts
+leaves every count agreeing while the undo can no longer tell which slides are
+the run's. The card was withheld — correctly — with a plain success message
+above the space where it used to be and nothing to explain it. The summary now
+says the deck changed, and anchors the count where the slides actually landed.
+
+### Fixed — the preview could not be ended over a slide it did not own
+
+Delete one preview slide by hand and the sweep declines it: it will not claim a
+slide carrying no mark of the run. Counted as still outstanding, that left "Some
+of the preview is still there" on screen with the wizard held on the preview
+step — and while a preview is up the merge step refuses, so there was no way on
+for the rest of the session.
+
+### Fixed — "those slides are already gone" was a guess
+
+Said whenever the deck was back to the size it started at, which is equally true
+of a user who deleted three of their own slides instead. It says what was
+measured now.
+
+### Fixed — three date and number readings that were wrong before this release
+
+A two-digit year was read as the year 85 rather than 1985; a cell holding a date
+RANGE was typed as a date and formatted as its first half, with the rest
+discarded; and a one-column paste of `1,5` split into two columns, while `0,500`
+was read as five hundred.
+
+### Fixed — a very long slide number said the wrong thing about itself
+
+"1000000000000000000000 is not a whole number" — it is one; it is simply larger
+than the pane can count exactly.
+
+### Fixed — picking a second folder of pictures threw away the first
+
+A browser's file picker returns one directory's selection, and a spreadsheet
+built from a photo library routinely names files in several. The second pick
+replaced the first, so the tally reported every name from folder one as missing
+— with the files sitting in the folder they had just been chosen from, and no
+way at all to attach both. Pictures are added to what is already attached now,
+and the pane says so once.
+
+### Fixed — three picture sentences that said the wrong thing
+
+"All 2 pictures matched" was printed directly under the warning that says two of
+those names get the same file, so the pane said both things and the cheerful one
+came last. "No row names a picture" was also said when the rows that name one
+were simply unticked, which sends the author to the spreadsheet instead of to
+the row picker one control above.
+
+### Fixed — the preview card named slides that were no longer there
+
+Remove the preview, have some of it come back and some not, and the card went on
+naming the range it started on — over a deck where those numbers now belong to
+the user's own slides, beside a button offering to delete them.
+
+### Fixed — a merged number could disagree with the spreadsheet it came from
+
+`{{Price|number:2}}` rounded the binary value rather than the number in the
+cell, so 1.005 printed as 1.00 where Excel — and the cell itself — says 1.01.
+Over a corpus of ordinary money and percentage values the two disagreed on 118
+of 310: every value whose last kept digit is followed by a 5. Rounding is done
+on the decimal now, half away from zero, the way a spreadsheet does it.
+
+### Fixed — a very large number formatted to nonsense
+
+A cell holding more than twenty-one digits printed "1e+21", and a
+twenty-five-digit one printed "1,2345678901234568e+24" — a European decimal, on
+a slide, from a whole number. Such a value is now left exactly as the cell has
+it, which is what this add-in already does with anything else its format cannot
+apply.
+
+### Fixed — a very long slide number emptied the pane
+
+Twenty-one digits typed into the slide range read as a whole number, so the pane
+offered "Use slides 1 to 1e+21" — a number appearing nowhere in what was typed —
+and pressing it took the merge step down to a blank pane rather than a sentence.
+
+### Fixed — two sentences that sent you to the wrong place
+
+"Slides 2 to 4 has no {{fields}}" is the refusal the pane shows word for word.
+And "go back a step" is two steps from the merge screen, whose only back control
+says "Back to preview"; it names the Fields step now.
+
+### Fixed — a merge that filled only pictures said it had filled nothing
+
+"No {{fields}} were filled — check the spelling in your template · 2 pictures
+placed", in one sentence. The same contradiction the chart-value fix removed,
+by the other route: a photo template — a shape fill named by a column, no text
+placeholder anywhere — filled its pictures and was told to go and check its
+spelling.
+
+### Fixed — a chart could draw one number while Edit Data showed another
+
+A data-sheet cell holding a placeholder that does not resolve to a number is
+left alone on purpose, so the chart goes on drawing the template's value. Where
+that cell read the FIRST entry of the workbook's string table — which is where
+a one-string workbook keeps its only string — the text pass rewrote the entry
+underneath it anyway. The chart then showed the template's number while Edit
+Data showed the row's words, and closing Excel refreshed the chart from the
+sheet: the bar changed on its own.
+
+### Fixed — the undo card was offered after the deck changed under the merge
+
+A slide arriving between the moment a run is planned and the moment it inserts
+— a co-author, or AutoSave — left the run unable to say which of the deck's
+slides were its own, while every count still agreed. The card offered to take
+them back, and the undo then refused, correctly and too late. The run says so up
+front now, and does not offer.
+
+
 ### Fixed — a chart could stop the merge dead, with nothing on screen
 
 Two placeholders sitting next to each other in a chart's data sheet, both

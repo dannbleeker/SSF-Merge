@@ -110,7 +110,9 @@ describe("what blocks a step", () => {
      * 4" correctly — and both callers appended a verb written for a range.
      */
     const one: PaneState = { ...ready, block: { from: 4, to: 4 }, fields: [] };
-    expect(blockedReason(one, "merge")).toBe("Slide 4 carries no fields yet. Go back a step and put one on a slide.");
+    expect(blockedReason(one, "merge")).toBe(
+      "Slide 4 carries no fields yet. Go back to Fields and put one on a slide.",
+    );
     expect(noFieldsHere(one)).toContain("Slide 4 carries no fields yet.");
 
     const many: PaneState = { ...ready, fields: [] };
@@ -314,6 +316,43 @@ describe("reading the two slide-number boxes", () => {
 
   it("ignores the whitespace a paste brings with it", () => {
     expect(readBlockDraft({ from: " 4 ", to: "\t6" }).block).toEqual({ from: 4, to: 6 });
+  });
+
+  it("refuses a number too large to count exactly, and says which refusal it is", () => {
+    /**
+     * Twenty-one digits pass the decimal shape and `Number.isInteger`, and the
+     * pane then showed a slide number appearing nowhere in what was typed —
+     * "Slide 1e+21 is past the end of the deck" — beside a live "Use slides 1
+     * to 1e+21". Pressing it took the merge step down with `RangeError: Invalid
+     * array length` out of `blockSlides`: a BLANK PANE rather than a sentence.
+     *
+     * And the refusal has to be the right one. "1000000000000000000000 is not a
+     * whole number" is false — it IS one, it is simply larger than this can
+     * count — and sending somebody to check a thing that is already right is
+     * the same defect as no message at all.
+     */
+    const read = readBlockDraft({ from: "1", to: "1000000000000000000000" });
+    expect(read.block, "a block this wide takes the pane down when it is used").toBeNull();
+    expect(read.why).toContain("1000000000000000000000");
+    expect(read.why, "it is a whole number").not.toContain("not one");
+    expect(read.why).toContain("bigger number than a deck can have");
+    // The other refusal still says what it says: `0x10` is not a decimal at
+    // all, and neither is 1.5.
+    expect(readBlockDraft({ from: "0x10", to: "9" }).why).toContain("not one");
+    expect(readBlockDraft({ from: "1.5", to: "9" }).why).toContain("not one");
+    // And two the first split got wrong, because `Number.isInteger` is asked of
+    // the double rather than of what was typed. A twenty-one-digit DECIMAL is
+    // `1e21` once read, which is an integer; a huge NEGATIVE is not bigger than
+    // anything, it is below 1.
+    expect(readBlockDraft({ from: "1000000000000000000000.5", to: "9" }).why, "a decimal").toContain("whole numbers");
+    // And a trailing fraction of ZEROS is a whole number at any size, which is
+    // the rule the small case already follows: `4.0` is admitted, so
+    // "1000000000000000000000.0 is not a whole number" is a false sentence.
+    expect(readBlockDraft({ from: "1000000000000000000000.0", to: "9" }).why, "a whole number").toContain(
+      "bigger number than a deck can have",
+    );
+    expect(readBlockDraft({ from: "4.0", to: "9" }).block, "the small case it follows").toEqual({ from: 4, to: 9 });
+    expect(readBlockDraft({ from: "-1000000000000000000000", to: "9" }).why, "a negative").toContain("numbered from 1");
   });
 
   it("refuses a block that ends before it starts, naming both slides", () => {

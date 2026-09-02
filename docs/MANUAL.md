@@ -65,8 +65,11 @@ your rows somewhere you can copy them from.
 [Installing it](#installing-it) for the four places you can do it from. If the
 **Mail merge** button is already on your Home tab, you are ready.
 
-Nothing in this manual deletes anything. A merge only ever **adds** slides
-after your template, and the last screen offers to take them straight back out.
+A merge only ever **adds** slides after your template, and the last screen
+offers to take them straight back out. That offer is the one thing here that
+deletes, it deletes only what it can show belongs to the run, and
+[Taking a merge back](#taking-a-merge-back) says exactly what it will and will
+not touch.
 
 ## Your first merge, end to end
 
@@ -149,8 +152,9 @@ as fresh as the last read.
 ![Step 3 of the pane: three column buttons, three matched chips under "On the slides now", and a button reading "Use 3 fields"](images/step-3-fields.png)
 
 Under **On the slides now** is what the pane actually found. Three plain chips
-means every placeholder has a column behind it. If it finds nothing at all, the
-braces are probably curly quotes — retype them.
+means every placeholder has a column behind it. If it finds nothing at all,
+check the braces: it looks for two plain `{` characters, so a single brace, a
+gap between them, or a placeholder split by an autocorrect will not be seen.
 
 ### Step 4 — Preview
 
@@ -332,6 +336,15 @@ Add a format after a pipe:
 on the text "n/a" gives you "n/a", not a blank and not an error marker. The cell
 is what you typed, and showing it is more useful than hiding it.
 
+**A format this list does not carry is ignored, silently.** `{{Total|currency}}`
+and `{{Total|percent:2}}` merge the cell as it stands, with no warning anywhere
+— the table above is the whole set, and a misspelling reads as one more format
+nobody has written. An argument on a format that takes none is dropped the same
+way: `{{Name|upper:2}}` is `ADA`. The one exception is a picture: anything
+starting with `image` is treated as a picture request, so a misspelled fit mode
+leaves the placeholder standing rather than printing a file name across the
+frame.
+
 ### Numbers
 
 Both European and American forms are read. `1,5` is one and a half; `1,500` is
@@ -361,11 +374,23 @@ rather than guessed at. A deck that draws perfectly and is two months wrong is
 the worse outcome. Write the date as `2026-03-01` in your source if you want it
 merged as a date.
 
-**Month names are read from a stated list**, in full or in the three-letter form
-a spreadsheet writes — `3 maj 2026`, `1 okt 2026`, `1 desember 2026`. The list
-is English, Danish, Norwegian, Swedish, German, Dutch, French, Spanish, Italian
-and Portuguese. Nothing outside it is read: a word the list does not carry
-leaves the cell exactly as you typed it.
+**A two-digit year is read the way Excel reads it.** `00`–`29` are the 2000s and
+`30`–`99` the 1900s, so `15/06/85` merges as 1985 and `15/06/25` as 2025. That
+window is a convention rather than a fact about the data — a birth year of `25`
+is 2025 here — so write the year in full where it matters.
+
+**Month names are read from a stated list**, in full or in the short form a
+spreadsheet writes — `3 maj 2026`, `1 okt 2026`, `1 desember 2026`, `1 dez
+2026`, `1 sept 2026`. The list is English, Danish, Norwegian, Swedish, German,
+Dutch, French, Spanish, Italian and Portuguese. Nothing outside it is read: a
+word the list does not carry leaves the cell exactly as you typed it.
+
+Short forms are mostly three letters and are four where the language writes
+four — French exports `janv`, `févr`, `juil` and `sept`. Until 2026-09-01 only
+the English and Scandinavian abbreviations were in the list, so a German column
+of `1 dez 2026` was recognised as a date column and then printed as the cell:
+half a deck formatted, half not, which is the exact outcome the list exists to
+prevent.
 
 Until 2026-08-27 there was no list and every name went to the browser, which
 matches an English three-letter prefix. So `marts` and `januar` worked and `maj`
@@ -390,8 +415,26 @@ months.
 **The month name written OUT is English**, whatever language it was read from:
 `{{Start|date:d MMM yyyy}}` gives `3 May 2026`. The output is the template
 author's to choose, so write the month yourself if you want it in another
-language — `{{Start|date:d}} maj {{Start|date:yyyy}}` — or use a numeric
-pattern like `dd-MM-yyyy`, which reads the same everywhere.
+language, inside the same pattern:
+
+```
+{{Start|date:d. maj yyyy}}          1. maj 2026
+{{Start|date:d. Dezember yyyy}}     1. Dezember 2026
+{{Start|date:d de mayo de yyyy}}    1 de mayo de 2026
+{{Start|date:den d. MMMM yyyy}}     den 1. March 2026
+{{Start|date:yyyy年MM月dd日}}        2026年03月01日
+```
+
+A word in a pattern is printed as written even when it begins with a token's
+letter — `den`, `dato`, `december` — because a run of letters is either all
+tokens or none of them. Text in another alphabet is never part of such a word,
+so `年`, `월` and `г` sit beside a token without disturbing it. A numeric
+pattern like `dd-MM-yyyy` reads the same everywhere and needs none of this.
+
+An apostrophe holds a word together — `d'échéance` prints itself rather than
+becoming `1'échéance` — and it still separates two tokens, so `MMM'yy` is
+`Mar'26`. Both apostrophes count, the straight one and the curly one Word's
+autocorrect produces.
 
 ## Pictures
 
@@ -508,9 +551,11 @@ PowerPoint answers with at that instant.
 - Slides must sit next to each other. Reorder them in the thumbnail pane first.
 - Records are emitted whole: all of record 1's slides, then all of record 2's.
 - A slide can be conditional, so a record gets two slides or three. Its position
-  never changes; it is skipped in place. Set it on **step 2**, under *Every
-  slide, every row* — one dropdown per slide in your block, offering the columns
-  in the data you attached.
+  never changes; it is skipped in place. Set it on the **merge screen**, under
+  the row list — one dropdown per slide in your block, offering the columns in
+  the data you attached. (It used to live on the fields step; it moved so that
+  every choice about which rows and slides go into the deck sits on the screen
+  with the button.)
 - A condition names a column. The slide is emitted when that column's cell has
   content. **A blank cell is false, and so are the words `false`, `falsk`, `no`,
   `nej`, `off` and `0`**, whatever their capitalisation. That short list exists
@@ -614,8 +659,12 @@ placeholder always stays on the slide, whatever this control says, so an
 author's typo is visible rather than hidden behind a gap — see "Placeholders".
 
 Each column's type is detected from its values: a column is a number only if
-every filled cell is one, and a date only if every filled cell is an
+every filled cell is one, and a date only if every filled cell is SHAPED like an
 unambiguous date. One "n/a" makes the column text, which is the safe answer.
+
+Shaped, not parsed — `2026-02-29` is shaped like a date and is not one, so the
+column still types as a date and that cell merges exactly as you typed it. See
+[when a cell is not what its format expects](#when-a-cell-is-not-what-its-format-expects).
 
 ### Choosing which slides are conditional
 
@@ -644,11 +693,12 @@ Search matches any cell in a row, not only the first column. It changes what the
 list SHOWS, never what is ticked — so you can search for a region, untick the
 three rows you do not want, clear the search, and those three stay out.
 
-The list shows at most 60 rows at a time and says how many it did not show.
-Search to reach the rest.
+The list shows at most 60 rows at a time and says how many matched — "Showing
+60 of 240 matches". Search to reach the rest.
 
 The merge button, the summary and the preview all count the ticked rows. Untick
-everything and the button says so instead of merging nothing. Pasting new data
+everything and the button goes dead, with a line above it saying why — "Every
+row is unticked, so there is nothing to merge." Pasting new data
 clears the filter, because a row number means nothing against different data.
 
 ## Where the merged slides go
@@ -720,8 +770,8 @@ them: it works because the template stays exactly where it is.
 | Tag | On | Meaning |
 | --- | --- | --- |
 | `SSF_MERGE_RUN` | a merged slide | Which merge produced it |
-| `SSF_MERGE_BLOCK` | a template or merged slide | Which template block it belongs to |
-| `SSF_MERGE_SEQ` | a template or merged slide | Its position within the block |
+| `SSF_MERGE_BLOCK` | a merged slide | Which template block it belongs to |
+| `SSF_MERGE_SEQ` | a merged slide | Its position within the block |
 | `SSF_MERGE_RECORD` | a merged slide | Which row it was made from |
 
 Tags that other tools wrote are kept. SSF Merge merges its own keys into an
@@ -820,8 +870,8 @@ pane is open needs the pane reopened.
 
 It reports in ROWS, not slides, because rows are what you pasted:
 
-> PowerPoint took only part of the merge: 2 of 3 rows landed complete; row 3 got
-> 1 of its 2 slides. Take the slides back and run it again.
+> PowerPoint took only part of the merge: 2 of 3 row(s) landed complete; row 3
+> got 1 of its 2 slide(s). Take the slides back and run it again.
 
 That last sentence is the advice. A row with some of its slides is worse than a
 row with none — it looks finished, and every row after it looks correct too, so
@@ -846,9 +896,18 @@ nothing you had before the run can be touched.
 Position decides which slides are even considered; the slides themselves decide
 which of those go. Every merged slide carries a mark inside the file saying
 which merge made it, and the undo removes only the ones that carry this merge's.
-Where PowerPoint will not answer that question — an older host, or one having a
-bad minute — the clamps above are the whole of the protection, which is why they
-are drawn as tightly as they are.
+
+Where PowerPoint will not answer that question — an older version, or one having
+a bad minute — the FIRST press falls back to the clamps above, which is what the
+add-in did before slide marks existed and is why they are drawn as tightly as
+they are. A LATER press does not: by then a press has happened, so the deck has
+changed shape and the range can hold a slide you made in between. It takes
+nothing it cannot show is the merge's. Where nothing can be shown — an older
+PowerPoint has no slide marks at all, and a newer one can stop answering for
+them — the card is withdrawn and the notice says the slides can be deleted from
+the thumbnail rail: at once for a PowerPoint that has no marks, and after a
+second fruitless press for one that has them and did not answer, since a single
+failed read is not the same as a PowerPoint stuck.
 
 **If your deck grew after the merge, the offer goes away.** Add slides yourself,
 or have a co-author add some, and the last slides in the deck are no longer the
@@ -861,7 +920,12 @@ The same applies if you take some of the merged slides out yourself: the card
 then offers the ones that are left, not the number the merge originally added.
 
 A sweep that removed only some of them keeps the offer up, because the rest are
-still there and only you can finish.
+still there and only you can finish. If pressing again proves nothing, the card
+goes rather than standing over slides it cannot remove, and the slides stay in
+the deck for you to delete by hand. The merge button stays disarmed while any of
+those slides are there — it reads "3 of 6 slides still there" after a partial
+sweep — until you change the block or the data, which is a different merge and
+arms it again.
 
 **If the pane closes before you take them back, the offer comes with you.**
 Reopen the add-in and it says which merge left slides in your deck and offers to
@@ -890,11 +954,11 @@ order, with how long each took:
 
 ```
 === SSF MERGE RUN LOG ===
-   0.0s  host  issued    call=counting the deck's slides budget=15000
+   0.0s  host  issued  call=counting the deck's slides budget=15000
    0.1s  host  answered  call=counting the deck's slides ms=94
-   0.1s  host  issued    call=exporting the template slides budget=90000
+   0.1s  host  issued  call=exporting the template slides budget=90000
    2.4s  host  answered  call=exporting the template slides ms=2311
-   2.4s  host  issued    call=inserting the merged deck budget=60000
+   2.4s  host  issued  call=inserting the merged deck budget=60000
   14.9s  host  answered  call=inserting the merged deck ms=12470
 === END ===
 ```
@@ -956,10 +1020,18 @@ The manifest declares no `<Requirements>` block, deliberately. SSF Merge needs
 them back again — and that is checked when the pane opens, not declared in the
 manifest.
 
-Two things sit above that floor and are simply absent on an older PowerPoint
+Three things sit above that floor and are simply absent on an older PowerPoint
 rather than blocking it: reading just the template slides instead of the whole
-file (1.10), and the **Use the slides I have selected** shortcut (1.5). Typing
-the two slide numbers works everywhere.
+file (1.10), the **Use the slides I have selected** shortcut (1.5), and the
+slide tags the undo reads to tell its own slides from yours (1.3). Typing the
+two slide numbers works everywhere.
+
+The last of those is worth knowing about, because it is the one that changes
+what a button does rather than whether it is there. Below 1.3 the undo cannot
+ask a slide whether this merge made it. The first press falls back to what it
+can prove from the deck's size; a second press takes nothing, and the card is
+withdrawn rather than left offering a removal that cannot happen — see
+[what the undo will not do](#taking-a-merge-back).
 
 A declared requirement set that your PowerPoint does not meet makes the add-in
 **vanish from the ribbon** with no message at all: nothing to see, nothing to

@@ -40,6 +40,12 @@ jobs:
         run: npm run build:lib
       - run: npm run coverage
       - run: npm run test:count
+      # The two `test` runs that this job claimed and skipped. The count gate
+      # RAISES its own floor on a run, so without the diff a release could ship
+      # a fixture the repo has not recorded; and the pane build is what a user
+      # actually loads, which no other step here compiles.
+      - run: git diff --exit-code -- test/fixtures/test-count.json
+      - run: npm run build
 
       # The manifests about to be attached are regenerated from their source and
       # compared. `test` already gates staleness — but "current in the tree" and

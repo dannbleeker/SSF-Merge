@@ -20,6 +20,30 @@ describe("parseDelimited", () => {
   it("reads a doubled quote as one quote", () => {
     expect(parseDelimited('a\n"say ""hi"""')).toEqual([["a"], ['say "hi"']]);
   });
+
+  it("leaves a ONE-COLUMN paste in one column, whatever it contains", () => {
+    /**
+     * `chooseDelimiter` scores each candidate and correctly finds that none of
+     * them separates anything here — and then fell back to the comma, which
+     * `splitOn` duly split on. A column of European decimals came apart:
+     * `1,5` became `1` and `5`, and every slide printed `1`. A column of
+     * company names did the same to `Contoso, Ltd`.
+     *
+     * Its own docstring already said what should happen — "a one-column paste
+     * has no separator to find, and every caller wants one column rather than a
+     * refusal" — and the fallback defeated it by choosing a character that is
+     * in the data. The asymmetry was visible in this file: the semicolon case
+     * was pinned as working while the identical comma case was not.
+     */
+    expect(parseDelimited("Bel\u00f8b\n1,5\n2,5")).toEqual([["Bel\u00f8b"], ["1,5"], ["2,5"]]);
+    expect(parseDelimited("Kunde\nContoso, Ltd")).toEqual([["Kunde"], ["Contoso, Ltd"]]);
+    expect(parseDelimited("Notes; extra\nfine\nalso")).toEqual([["Notes; extra"], ["fine"], ["also"]]);
+    // And a real comma-separated table is still read as one.
+    expect(parseDelimited("Name,Region\nAda,Nordics")).toEqual([
+      ["Name", "Region"],
+      ["Ada", "Nordics"],
+    ]);
+  });
 });
 
 describe("toRecordSet", () => {
@@ -96,6 +120,30 @@ describe("numericValue", () => {
     expect(numericValue("1,500")).toBe(1500);
   });
 
+  it("reads a LEADING ZERO group as a decimal, because no other reading exists", () => {
+    /**
+     * `1,500` is genuinely ambiguous — fifteen hundred or one-and-a-half — and
+     * this engine reads it as grouping, which is decided and written down.
+     * `0,500` is not ambiguous at all: no spreadsheet writes a leading `0`
+     * group for five hundred. It was read as 500.
+     *
+     * A factor of a thousand on ordinary Danish and German data — a rate, a
+     * share, a percentage shown to three decimals — and one column could hold
+     * both readings at once, which is the pathology this file's own docstrings
+     * say they exist to prevent. The value goes straight into charts too, so
+     * the bar plotted 250 where the sheet said a quarter.
+     */
+    expect(numericValue("0,500")).toBe(0.5);
+    expect(numericValue("0.500")).toBe(0.5);
+    expect(numericValue("-0,004")).toBeCloseTo(-0.004);
+    // The whole column reads one way now.
+    expect(numericValue("0,250")).toBe(0.25);
+    expect(numericValue("0,05")).toBe(0.05);
+    // And the ambiguous case is untouched, which is the decision that stands.
+    expect(numericValue("1,500")).toBe(1500);
+    expect(numericValue("1.234")).toBe(1234);
+  });
+
   it("reads a mixed form by whichever separator comes last", () => {
     expect(numericValue("1.234,56")).toBeCloseTo(1234.56);
     expect(numericValue("1,234.56")).toBeCloseTo(1234.56);
@@ -109,6 +157,108 @@ describe("numericValue", () => {
 describe("applyFormat", () => {
   it("groups a number and keeps the sign", () => {
     expect(formatNumber(-1234567.5, 2, " ", ",")).toBe("-1 234 567,50");
+  });
+
+  it("rounds the number the author typed, not the double underneath it", () => {
+    /**
+     * `toFixed` rounds the binary value. `1.005` is stored a hair below 1.005,
+     * so it answers "1.00" where Excel — and the cell the number was copied out
+     * of — says 1.01. Over a corpus of ordinary money and percentage values the
+     * two disagreed on 118 of 310, which is not a corner: it is every value
+     * whose last kept digit is followed by a 5.
+     *
+     * A slide that disagrees with the spreadsheet beside it about a price is
+     * the one arithmetic error nobody blames on the tool.
+     */
+    expect(formatNumber(1.005, 2, " ", ","), "toFixed says 1.00").toBe("1,01");
+    expect(formatNumber(2.675, 2, " ", ","), "toFixed says 2.67").toBe("2,68");
+    expect(formatNumber(-1.005, 2, " ", ",")).toBe("-1,01");
+    // Half AWAY from zero, both directions, which is what a spreadsheet does.
+    expect(formatNumber(2.5, 0, " ", ",")).toBe("3");
+    expect(formatNumber(-2.5, 0, " ", ",")).toBe("-3");
+  });
+
+  it("carries a rounding that runs out of columns", () => {
+    // 9.99 at one place is 10.0, and the carry needs a digit that was not
+    // there. All-nines is the case a carry loop gets wrong.
+    expect(formatNumber(9.99, 1, " ", ",")).toBe("10,0");
+    expect(formatNumber(0.999, 2, " ", ",")).toBe("1,00");
+    expect(formatNumber(99.995, 2, " ", ",")).toBe("100,00");
+    expect(formatNumber(999.5, 0, " ", ",")).toBe("1 000");
+  });
+
+  it("leaves a number too large to spell in full exactly as the cell has it", () => {
+    /**
+     * Above 1e21 JavaScript spells a number with an exponent, and there is no
+     * fixed-point form to group. `1e21` printed "1e+21"; a 25-digit integer
+     * printed "1,2345678901234568e+24" — a European decimal, on a slide, from
+     * a whole number. Unchanged is this function's own contract for a value
+     * that does not match its format.
+     */
+    expect(applyFormat("1000000000000000000000", "number:0")).toBe("1000000000000000000000");
+    // And BELOW 1e21, where the spelling is fine and the digits are not. A
+    // double cannot carry nineteen significant digits, so this printed
+    // "1 234 567 890 123 456 800" — not the number in the cell, with the
+    // confidence of a formatted one. An order number or a 19-digit identifier
+    // lands here, and changing one silently is worse than leaving it alone.
+    expect(applyFormat("1234567890123456789", "number:0")).toBe("1234567890123456789");
+    expect(applyFormat("9007199254740993", "number:0")).toBe("9007199254740993");
+    // And an exactly-representable magnitude still formats, however large. The
+    // first rule was `Number.isSafeInteger`, which refuses 2^53 itself and
+    // every exact power above it — a bound on the VALUE where the question is
+    // whether the double changed the CELL. Compare what was written with what
+    // came back, and refuse only a disagreement.
+    expect(applyFormat("9007199254740991", "number:0")).toBe("9 007 199 254 740 991");
+    expect(applyFormat("9007199254740992", "number:0")).toBe("9 007 199 254 740 992");
+    expect(applyFormat("-9007199254740992", "number:0")).toBe("-9 007 199 254 740 992");
+    expect(applyFormat("1000000000000000000", "number:0")).toBe("1 000 000 000 000 000 000");
+    expect(applyFormat("100000000000000000000", "number:0")).toBe("100 000 000 000 000 000 000");
+    // A grouped cell still reads, and a fraction still rounds.
+    expect(applyFormat("1.234.567", "number:0")).toBe("1 234 567");
+    expect(applyFormat("12345678901234.5", "number:0")).toBe("12 345 678 901 235");
+    // The comparison is on the INTEGER digits, which are the ones grouping
+    // prints in full. A cell carrying more PRECISION than a double holds is not
+    // a defect: the fraction is rounded to the places asked for either way.
+    // Comparing the whole decimal refused these — and the raw fall-through
+    // keeps the cell's own separator, so a Danish deck printed a dot.
+    expect(applyFormat("1234567890.12345678", "number:2")).toBe("1 234 567 890,12");
+    expect(applyFormat("0.3333333333333333333", "number:2")).toBe("0,33");
+    expect(applyFormat("2,5000000000000001", "number:2")).toBe("2,50");
+    // Including a magnitude JavaScript spells with an exponent at the SMALL
+    // end, which groups perfectly.
+    expect(applyFormat("0.0000001", "number:2")).toBe("0,00");
+    // And the ROUNDING is the cell's, not the double's. `2.4999999999999999999`
+    // is stored as 2.5, so rounding the double's spelling answers 3 where the
+    // cell answers 2 — a different number on the slide, grouped and formatted
+    // as though it were right. Measured at 814 wrong in 20 000 thirteen-digit
+    // cells before this; zero after.
+    expect(applyFormat("2.4999999999999999999", "number:0")).toBe("2");
+    expect(applyFormat("0.1249999999999999999", "number:2")).toBe("0,12");
+    expect(applyFormat("1.0049999999999999999", "number:2")).toBe("1,00");
+    // The ordinary half-away-from-zero cases still round up, which is the
+    // behaviour a spreadsheet shows and the reason this file rounds strings.
+    // (`1.0050` rather than `1.005`, which is a THOUSANDS group by this file's
+    // own rule — a lone three-digit run after a separator.)
+    expect(applyFormat("1.0050", "number:2")).toBe("1,01");
+    expect(applyFormat("-0.4", "number:0")).toBe("0");
+    expect(applyFormat("-1.5", "number:0")).toBe("-2");
+    // A ZERO-PADDED cell is canonicalised before it is grouped. `numericText`
+    // preserves whatever the cell spelled and `0007` is a number shape, so the
+    // zeros reached the grouping: `0000000001234` printed as `0 000 000 001
+    // 234`. Order numbers, article codes and postcodes are written this way and
+    // type as numbers, so it is an ordinary path rather than a corner.
+    expect(applyFormat("0007", "number:0")).toBe("7");
+    expect(applyFormat("0000000001234", "number:0")).toBe("1 234");
+    expect(applyFormat("-0007.5", "number:0")).toBe("-8");
+    expect(applyFormat("0000", "number:0")).toBe("0");
+    expect(applyFormat("1234567890123456789012345", "number:2")).toBe("1234567890123456789012345");
+    // And the ordinary case is untouched.
+    expect(applyFormat("1234567.891", "number:2")).toBe("1 234 567,89");
+    // The PUBLIC formatter has no cell to fall back to, and must not mangle it
+    // either: it answered "1,2345678901234568e+24", a European decimal made out
+    // of an exponent.
+    expect(formatNumber(1.234_567_890_123_456_8e24, 2, " ", ",")).toBe("1.2345678901234568e+24");
+    expect(formatNumber(Number.POSITIVE_INFINITY, 2, " ", ",")).toBe("Infinity");
   });
 
   it("formats a date to the pattern in the template", () => {
@@ -329,6 +479,38 @@ describe("a cell the engine must not quietly rewrite", () => {
     ]);
     expect(rs.columns.map((c) => c.name)).toEqual(["Name", "Town"]);
     expect(rs.rows[0]?.Name).toBe("Ada");
+  });
+
+  it("trims the header on the DEDUP side too, not only where the name is built", () => {
+    /**
+     * The same `.trim()` appears twice: once building the set of names the
+     * sheet DECLARES, and once building each column's name. Only the second had
+     * a test, so dropping the first left the whole suite green.
+     *
+     * It decides whether an INVENTED name may take a name a later column really
+     * owns. With `declared` holding `" Column 1 "`, an empty first header
+     * invents `Column 1` for itself and the real one is pushed to `Column 1 2`
+     * — so a template's `{{Column 1}}` binds to the empty column and prints
+     * nothing on every slide, which is the defect the set was added to prevent,
+     * reached by a padded header.
+     *
+     * Found by `scripts/mutate-core.mjs`.
+     */
+    const padded = toRecordSet([
+      ["", " Column 1 "],
+      ["a", "b"],
+    ]);
+    expect(padded.columns.map((c) => c.name)).toEqual(["Column 1 2", "Column 1"]);
+    // The row's data goes with the name, which is the half that matters.
+    expect(padded.rows[0]?.["Column 1"]).toBe("b");
+    // And a header with no padding answers the same way, which is what makes
+    // the pair a statement about the trim rather than about this input.
+    expect(
+      toRecordSet([
+        ["", "Column 1"],
+        ["a", "b"],
+      ]).columns.map((c) => c.name),
+    ).toEqual(["Column 1 2", "Column 1"]);
   });
 
   it("keeps the first row as data when told there is no header", () => {
@@ -740,6 +922,68 @@ describe("month names the date gate already admits", () => {
     expect(meaning.size).toBeGreaterThan(25);
   });
 
+  it("reads the SHORT month for every language the manual names", () => {
+    /**
+     * The manual claimed ten languages "in full or in the three-letter form a
+     * spreadsheet writes", and only the English and Scandinavian abbreviations
+     * were in the table. So a German column of `1 dez 2026` typed as a date on
+     * SHAPE and then printed as the raw cell — half a deck formatted and half
+     * not, with nothing saying why, which is the exact outcome the table was
+     * added to prevent, arriving through it rather than around it.
+     *
+     * Same property as the full names above, asserted the same way: no short
+     * form means a different month in a different language. `mar` is March in
+     * three of them, `dez` is December in two, `set` is September in two.
+     */
+    const shortForms = [
+      "jan feb mar apr may jun jul aug sep oct nov dec",
+      "jan feb mar apr maj jun jul aug sep okt nov dec",
+      "jan feb mar apr mai jun jul aug sep okt nov des",
+      // German as Excel on Windows writes it. The accented `m\u00e4r` is CLDR's
+      // spelling and has its own line below; a German column pasted out of
+      // Excel carries `Mrz`, and the table read eleven of its twelve months
+      // until that was noticed — which is the half-formatted deck again,
+      // missing by one word. The row is here because the list below had eight
+      // lines for ten languages and German was never one of them.
+      "jan feb mrz apr mai jun jul aug sep okt nov dez",
+      // Dutch, Spanish, Italian, Portuguese.
+      "jan feb mrt apr mei jun jul aug sep okt nov dez",
+      "ene feb mar abr may jun jul ago sep oct nov dic",
+      "gen feb mar apr mag giu lug ago set ott nov dic",
+      "jan fev mar abr mai jun jul ago set out nov dez",
+      // French writes four letters for four of them, and a three-letter
+      // truncation is not a form anybody exports.
+      "janv f\u00e9vr mars avr mai juin juil ao\u00fbt sept oct nov d\u00e9c",
+    ];
+    const meaning = new Map<string, number>();
+    for (const line of shortForms) {
+      line.split(" ").forEach((word, i) => {
+        const already = meaning.get(word);
+        expect(already ?? i + 1, `${word} means two different months`).toBe(i + 1);
+        meaning.set(word, i + 1);
+        expect(parseDate(`1 ${word} 2026`)?.getUTCMonth(), `1 ${word} 2026`).toBe(i);
+      });
+    }
+    expect(parseDate("1 m\u00e4r 2026")?.getUTCMonth(), "the German March, CLDR's spelling").toBe(2);
+    expect(parseDate("1 Mrz 2026")?.getUTCMonth(), "the German March, Excel's spelling").toBe(2);
+    // And a whole column of one language formats, rather than half of it.
+    expect(applyFormat("1 dez 2026", "date")).toBe("01-12-2026");
+    expect(applyFormat("1 gen 2026", "date")).toBe("01-01-2026");
+    expect(applyFormat("1 out 2026", "date")).toBe("01-10-2026");
+  });
+
+  it("does not turn an ordinary English phrase into a date", () => {
+    // `out` is October in Portuguese and an English word, and `set` and `ago`
+    // are the same shape. They are safe because `NAMED_DATE` admits a month
+    // word only between a one-or-two-digit number and a two-to-four-digit
+    // year — so the phrase has to look exactly like a date before the table is
+    // ever asked.
+    expect(parseDate("2 out 3")).toBeUndefined();
+    expect(parseDate("5 set 9")).toBeUndefined();
+    expect(parseDate("2 days ago")).toBeUndefined();
+    expect(detectType(["2 out 3", "5 set 9"])).toBe("text");
+  });
+
   it("still refuses a day that month does not have, whatever the language", () => {
     // The table must not become a way round the guard added with it.
     expect(parseDate("31 apr 2026")).toBeUndefined();
@@ -1100,5 +1344,190 @@ describe("a data cell cannot reach Object's prototype", () => {
     // And an abbreviation, which is in the table like everything else — there
     // is no `new Date` branch behind it any more.
     expect(applyFormat("1 Mar 2026", "date:d MMM yyyy")).toBe("1 Mar 2026");
+  });
+});
+
+describe("dates a spreadsheet actually writes", () => {
+  it("reads a two-digit year in the window Excel uses", () => {
+    /**
+     * Excel reads 00-29 as the 2000s and 30-99 as the 1900s, and `dd/mm/yy` is
+     * an ordinary cell format there. This added 2000 to everything, so
+     * `15/06/85` merged as 2085 — a birth date or a contract history a century
+     * out on every slide, silently, with the column still typed a clean date.
+     * The tests only ever used 24 and 26, which are on the right side of the
+     * cutoff under either rule.
+     */
+    expect(applyFormat("15/06/85", "date:dd-MM-yyyy")).toBe("15-06-1985");
+    expect(applyFormat("15 juni 85", "date:d MMMM yyyy")).toBe("15 June 1985");
+    // The boundary, from both sides.
+    expect(applyFormat("01/01/29", "date:yyyy")).toBe("2029");
+    expect(applyFormat("01/01/30", "date:yyyy")).toBe("1930");
+    // A four-digit year is untouched.
+    expect(applyFormat("15/06/1985", "date:yyyy")).toBe("1985");
+  });
+
+  it("refuses an ISO date with something other than a time after it", () => {
+    /**
+     * The tail was `.*`, so a PERIOD — an ordinary way to write a range — was
+     * typed as a date and formatted as its first half, with the rest discarded
+     * and nothing to say so.
+     */
+    expect(applyFormat("2026-03-01 - 2026-03-31", "date:d MMM yyyy")).toBe("2026-03-01 - 2026-03-31");
+    expect(applyFormat("2026-03-01 (provisional)", "date")).toBe("2026-03-01 (provisional)");
+    expect(looksLikeDate("2026-03-01 - 2026-03-31")).toBe(false);
+    // A real time still reads, which is what the tail was for.
+    expect(applyFormat("2026-03-01T10:00", "date:d MMM yyyy")).toBe("1 Mar 2026");
+    expect(applyFormat("2026-03-01 10:00:00", "date:d MMM yyyy")).toBe("1 Mar 2026");
+    expect(applyFormat("2026-03-01", "date:d MMM yyyy")).toBe("1 Mar 2026");
+  });
+
+  it("prints text in a date pattern as written, including words holding dd", () => {
+    // The manual promises exactly this. Only the single `d` was bounded, and
+    // `dd` sits inside add, odd, middle, wedding and address.
+    expect(applyFormat("2026-03-01", "date:Odds: d MMM yyyy")).toBe("Odds: 1 Mar 2026");
+    expect(applyFormat("2026-03-01", "date:Wedding on d MMMM")).toBe("Wedding on 1 March");
+    // And the tokens themselves still work, longest first.
+    expect(applyFormat("2026-03-01", "date:dd/MM/yyyy")).toBe("01/03/2026");
+    expect(applyFormat("2026-03-01", "date:d MMMM yy")).toBe("1 March 26");
+  });
+
+  it("reads a pattern made of nothing but tokens", () => {
+    /**
+     * The other direction, and the one the bound broke. Written as a lookbehind
+     * for "not next to any letter", a pattern of ADJACENT tokens refused to
+     * match at all: `yyyyMMdd` — the ISO-basic spelling used for file names,
+     * and every token in it one the manual lists — printed itself. A pattern of
+     * nothing but tokens printed as written is exactly what the manual says
+     * will not happen.
+     */
+    expect(applyFormat("2026-03-01", "date:yyyyMMdd")).toBe("20260301");
+    expect(applyFormat("2026-03-01", "date:ddMMyyyy")).toBe("01032026");
+    expect(applyFormat("2026-03-01", "date:yyMMdd")).toBe("260301");
+    // A run that is part token and part word is a WORD. `ddTHH` holds letters
+    // that are not tokens, so it prints as written — which is the manual's own
+    // rule, and the price of it is that `yyyy-MM-ddTHH:mm` does not read as an
+    // ISO datetime. Taking the other trade ("starts with a token, tail printed
+    // as written") turns `den` into `1en`, and `den` is the ordinary Danish,
+    // German and Swedish long-date word.
+    expect(applyFormat("2026-03-01", "date:yyyy-MM-ddTHH:mm")).toBe("2026-03-ddTHH:mm");
+  });
+
+  it("prints a month name written into the pattern, in any language", () => {
+    /**
+     * The output month is English, so a template author writes their own — and
+     * the manual now shows it inside ONE placeholder rather than splitting the
+     * date across three. It works because a run of letters is either all tokens
+     * or none: `maj`, `Dezember` and `de` are words, and `d` and `yyyy` beside
+     * them are not.
+     *
+     * These are the four examples the manual prints. A doc that shows an output
+     * nobody checked is the same defect as a stale comment.
+     */
+    expect(applyFormat("2026-03-01", "date:d. maj yyyy")).toBe("1. maj 2026");
+    expect(applyFormat("2026-03-01", "date:d. Dezember yyyy")).toBe("1. Dezember 2026");
+    expect(applyFormat("2026-03-01", "date:d de mayo de yyyy")).toBe("1 de mayo de 2026");
+    expect(applyFormat("2026-03-01", "date:den d. MMMM yyyy")).toBe("den 1. March 2026");
+  });
+
+  it("leaves an ACCENTED word that begins with a token's letter alone", () => {
+    /**
+     * The rule is about words, and matching ASCII letters alone cut a word into
+     * runs at its own accent — leaving a one-character run of `d`, which is a
+     * whole token. `día d de MMMM` printed `1ía 1 de March` and
+     * `Date d'échéance dd/MM/yyyy` printed `Date 1'échéance 01/03/2026`.
+     *
+     * Spanish, French, Danish and Swedish all write ordinary date words that
+     * begin with a token's letter and continue past ASCII, and the manual
+     * promises text in a pattern prints as written.
+     */
+    expect(applyFormat("2026-03-01", "date:día d de MMMM")).toBe("día 1 de March");
+    expect(applyFormat("2026-03-01", "date:décembre yyyy")).toBe("décembre 2026");
+    expect(applyFormat("2026-03-01", "date:Date d'échéance dd/MM/yyyy")).toBe("Date d'échéance 01/03/2026");
+    expect(applyFormat("2026-03-01", "date:dåb d MMM")).toBe("dåb 1 Mar");
+    expect(applyFormat("2026-03-01", "date:död d MMM")).toBe("död 1 Mar");
+    // U+2019 as well as U+0027: the typographic apostrophe is what Word's
+    // autocorrect produces and what a paste from a document carries.
+    expect(applyFormat("2026-03-01", "date:Date d\u2019échéance dd/MM/yyyy")).toBe("Date d\u2019échéance 01/03/2026");
+    // And nothing that used to tokenize stopped: the tokens are ASCII, so
+    // widening what counts as a word can only make a run stop matching.
+    expect(applyFormat("2026-03-01", "date:yyyyMMdd")).toBe("20260301");
+    expect(applyFormat("2026-03-01", "date:dd-MM-yyyy")).toBe("01-03-2026");
+  });
+
+  it("reads a pattern whose own tokens are joined by an apostrophe", () => {
+    /**
+     * Holding an apostrophe inside a word is what leaves `d'échéance` alone,
+     * and it welds `MMM'yy` — `Mar'26`, the commonest abbreviated pattern
+     * there is — into a single run that is not a token, so the whole thing
+     * printed itself. Word's autocorrect turns the straight apostrophe into
+     * U+2019, so `{{Signed|date:MMM’yy}}` reached it by simply being typed in
+     * Word.
+     *
+     * A run that is not all tokens is retried piece by piece, and every piece
+     * has to be one: `MMM'yy` reads, `d'échéance` does not, because `échéance`
+     * is not a token.
+     */
+    expect(applyFormat("2026-03-01", "date:MMM'yy")).toBe("Mar'26");
+    expect(applyFormat("2026-03-01", "date:MMM\u2019yy")).toBe("Mar\u201926");
+    expect(applyFormat("2026-03-01", "date:dd'MM'yyyy")).toBe("01'03'2026");
+    expect(applyFormat("2026-03-01", "date:d\u2019MMM")).toBe("1\u2019Mar");
+    // One piece that is not a token fails the whole run, which is what keeps
+    // the accented-word case above working.
+    expect(applyFormat("2026-03-01", "date:Date d'échéance MMM'yy")).toBe("Date d'échéance Mar'26");
+    expect(applyFormat("2026-03-01", "date:l'an yyyy")).toBe("l'an 2026");
+  });
+
+  it("reads a pattern written in another script", () => {
+    /**
+     * The tokens are Latin and every other script's date words are not, so a
+     * word rule of "any Unicode letter" — the first fix for the accent case
+     * above — swept `年`, `월` and `г` into the run beside a token and made the
+     * whole thing literal. `yyyy年MM月dd日` is the ordinary Japanese and Chinese
+     * pattern; it printed itself, on every merged slide.
+     *
+     * Latin is the line because it is where the tokens live: a letter from
+     * another script cannot be part of a word a token is hiding inside, so it
+     * does not need to end one. The manual invites writing the month in your
+     * own language, and this is what that means for languages not written in
+     * this alphabet.
+     */
+    expect(applyFormat("2026-03-01", "date:yyyy年MM月dd日")).toBe("2026年03月01日");
+    expect(applyFormat("2026-03-01", "date:yyyy년 MM월 dd일")).toBe("2026년 03월 01일");
+    expect(applyFormat("2026-03-01", "date:dd MMMM yyyyг.")).toBe("01 March 2026г.");
+    // The example the manual prints. A doc showing an output nobody checked is
+    // the same defect as a stale comment.
+    expect(applyFormat("2026-03-01", "date:yyyy年MM月dd日")).toBe("2026年03月01日");
+  });
+
+  it("leaves an ordinary word that begins with a token's letter alone", () => {
+    /**
+     * `den`, `dato`, `due` and `deadline` all start with a `d`, and `M` and `y`
+     * begin plenty more. A rule that tokenizes the head of a run and prints its
+     * tail as written turns `Berlin, den d. MMMM yyyy` — a perfectly ordinary
+     * long-date pattern — into `Berlin, 1en 1. March 2026`, on every merged
+     * slide.
+     */
+    expect(applyFormat("2026-03-01", "date:Berlin, den d. MMMM yyyy")).toBe("Berlin, den 1. March 2026");
+    expect(applyFormat("2026-03-01", "date:dato d MMM yyyy")).toBe("dato 1 Mar 2026");
+    expect(applyFormat("2026-03-01", "date:d MMM yyyy deadline")).toBe("1 Mar 2026 deadline");
+    expect(applyFormat("2026-03-01", "date:MMMM d yyyy due")).toBe("March 1 2026 due");
+  });
+
+  it("leaves a weekday spelling alone rather than reading it as two days", () => {
+    // `dddd` is how Excel and .NET spell a weekday name, and this add-in has no
+    // such token. Read greedily it is `dd` twice and prints "0101" — a number
+    // that means nothing, where the pattern printed as written at least shows
+    // the author what was not understood.
+    expect(applyFormat("2026-03-01", "date:dddd")).toBe("dddd");
+    expect(applyFormat("2026-03-01", "date:dddd d MMM")).toBe("dddd 1 Mar");
+    expect(applyFormat("2026-03-01", "date:yyyyyy")).toBe("yyyyyy");
+    // The ODD-length repeats too, which the "same letter twice" rule alone does
+    // not cover: `MMMMM` is `MMMM` plus a stray `M`, and printing `MarchM` is
+    // the `MMM` → `MarM` failure this file's history already names.
+    expect(applyFormat("2026-03-01", "date:MMMMM")).toBe("MMMMM");
+    expect(applyFormat("2026-03-01", "date:MMMMMM")).toBe("MMMMMM");
+    expect(applyFormat("2026-03-01", "date:ddd")).toBe("ddd");
+    expect(applyFormat("2026-03-01", "date:yyy")).toBe("yyy");
+    expect(applyFormat("2026-03-01", "date:yyyyy")).toBe("yyyyy");
   });
 });

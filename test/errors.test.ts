@@ -165,4 +165,27 @@ describe("a raise with nothing in it", () => {
     // The other direction: the guard must not cost the ordinary case.
     expect(readable(new Error("the deck is open elsewhere"))).toBe("the deck is open elsewhere");
   });
+
+  it("does not raise when the error's own message raises", () => {
+    // `readable` is the `whenItRaises` handler, so it runs inside a catch — a
+    // throw of its own escapes `duringRun` and leaves the pane holding
+    // "Merging…" for ever, which is the state the caller exists to survive.
+    // Reading `.message` is the risk: it is a property, and a getter may throw.
+    const hostile = {
+      get message(): string {
+        throw new Error("boom");
+      },
+    };
+    expect(() => readable(hostile)).not.toThrow();
+    expect(readable(hostile)).toContain("could not read");
+
+    // And the same shape as a real Error, which takes the earlier branch.
+    const asError = Object.create(Error.prototype) as Error;
+    Object.defineProperty(asError, "message", {
+      get(): string {
+        throw new Error("boom");
+      },
+    });
+    expect(() => readable(asError)).not.toThrow();
+  });
 });

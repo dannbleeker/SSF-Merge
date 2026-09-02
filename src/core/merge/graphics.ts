@@ -37,8 +37,19 @@ import { withinInflatedBudget, workbookParts } from "./workbook.js";
 export interface GraphicOutcome {
   /** Placeholders filled in chart and SmartArt parts. */
   merged: number;
-  /** Workbooks behind a chart whose strings were filled too. */
+  /** Workbooks behind a chart that the merge could OPEN. Not a count of fills — see `workbookText`. */
   workbooks: number;
+  /**
+   * Placeholders filled in the workbooks behind charts.
+   *
+   * Counted because nothing else can see them. A placeholder that lives only in
+   * a chart's embedded workbook — the ordinary shape for a chart label — fills
+   * correctly and appears in no other counter, so the pane's "no {{fields}}
+   * were filled — check the spelling in your template" fired on a merge that
+   * had just filled every one of them. `workbooks` could not stand in: it
+   * counts workbooks that opened, including ones with nothing to fill.
+   */
+  workbookText: number;
   /** Workbooks the merge could not open, by part path. Reported, never thrown on. */
   unreadable: string[];
   /** Chart VALUES filled from the row, and the ones that refused to be numbers. */
@@ -46,7 +57,7 @@ export interface GraphicOutcome {
 }
 
 export function emptyGraphicOutcome(): GraphicOutcome {
-  return { merged: 0, workbooks: 0, unreadable: [], numbers: emptyNumberOutcome() };
+  return { merged: 0, workbooks: 0, workbookText: 0, unreadable: [], numbers: emptyNumberOutcome() };
 }
 
 /**
@@ -98,8 +109,15 @@ export async function mergeGraphics(pkg: Pkg, sites: FieldSite[], resolve: Resol
 
   for (const part of parts) out.merged += mergeDocument(await pkg.doc(part), resolve);
   for (const path of workbooks) {
-    if (await mergeWorkbook(pkg, path, resolve, held.get(path) ?? [])) out.workbooks++;
-    else out.unreadable.push(path);
+    // NULL is unreadable; a number is how many placeholders it filled, which
+    // may be zero for a workbook that simply had none.
+    const filled = await mergeWorkbook(pkg, path, resolve, held.get(path) ?? []);
+    if (filled === null) {
+      out.unreadable.push(path);
+      continue;
+    }
+    out.workbooks++;
+    out.workbookText += filled;
   }
 
   // Written back and dropped, the way `runPlan` drops a finished slide: nothing
@@ -198,7 +216,7 @@ function liftHeld(
  * with the merge about what a placeholder is, which is the disagreement this
  * whole seam exists to prevent.
  */
-export async function workbookFields(pkg: Pkg, path: string): Promise<string[]> {
+export async function workbookFields(pkg: Pkg, path: string, shared?: JSZip): Promise<string[]> {
   const seen: string[] = [];
   await mergeWorkbook(
     pkg,
@@ -208,22 +226,30 @@ export async function workbookFields(pkg: Pkg, path: string): Promise<string[]> 
       return null;
     },
     [],
+    shared,
   );
   return seen;
 }
 
-async function mergeWorkbook(pkg: Pkg, path: string, resolve: Resolve, held: HeldCell[]): Promise<boolean> {
+async function mergeWorkbook(
+  pkg: Pkg,
+  path: string,
+  resolve: Resolve,
+  held: HeldCell[],
+  /** An already-inflated workbook, for a DRY RUN only. See `mergeChartNumbers`. */
+  shared?: JSZip,
+): Promise<number | null> {
   let zip: JSZip;
   try {
-    zip = await JSZip.loadAsync(await pkg.bytes(path));
+    zip = shared ?? (await JSZip.loadAsync(await pkg.bytes(path)));
   } catch {
-    return false;
+    return null;
   }
   // Refused before a byte is inflated, and reported as unreadable — which is
   // what an unparseable workbook already gets. See `withinInflatedBudget`: this
   // read happens once per merged row, so a bomb costs the row count times its
   // inflated size.
-  if (!withinInflatedBudget(zip)) return false;
+  if (!withinInflatedBudget(zip)) return null;
 
   // The parts that hold text a merge can fill, taken from what the workbook
   // DECLARES rather than from their names.
@@ -246,7 +272,15 @@ async function mergeWorkbook(pkg: Pkg, path: string, resolve: Resolve, held: Hel
   // definition of the range the chart reads; rewriting any of those would
   // change what the chart plots, where this pass only changes what it says.
   const parts = await workbookParts(zip);
-  let changed = false;
+  // A workbook whose own declaration will not parse is UNREADABLE, not empty.
+  // Both merge nothing, and reporting the second as a success counted a chart
+  // among the ones this run had filled while every label in it still read
+  // `{{Name}}` in Edit Data.
+  if (!parts.readable) return null;
+  // COUNTED, not merely flagged. `changed` said whether to write the workbook
+  // back; the number says whether the merge did anything, and they are
+  // different questions — the pane speaks from the second.
+  let filled = 0;
   for (const name of [...(parts.sharedStrings ? [parts.sharedStrings] : []), ...parts.sheets]) {
     const file = zip.file(name);
     if (!file) continue;
@@ -283,22 +317,23 @@ async function mergeWorkbook(pkg: Pkg, path: string, resolve: Resolve, held: Hel
     // catch: no slides, no notice, an unhandled rejection.
     for (const { node, parent, next } of [...lifted].reverse()) parent.insertBefore(node, next);
     if (merged === 0) continue;
+    filled += merged;
     zip.file(name, serializeXml(doc));
-    changed = true;
   }
-  if (!changed) return true;
+  if (filled === 0) return 0;
 
   // DEFLATE, because the original is: a workbook written back stored would
   // roughly double the deck's weight per record, on a package the host has to
   // swallow as one base64 string.
   pkg.setBytes(path, await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" }));
-  return true;
+  return filled;
 }
 
 /** Pool one slide's outcome into a run's. */
 export function tallyGraphics(into: GraphicOutcome, from: GraphicOutcome): void {
   into.merged += from.merged;
   into.workbooks += from.workbooks;
+  into.workbookText += from.workbookText;
   tallyNumbers(into.numbers, from.numbers);
   for (const path of from.unreadable) if (!into.unreadable.includes(path)) into.unreadable.push(path);
 }

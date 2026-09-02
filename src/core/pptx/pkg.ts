@@ -39,11 +39,22 @@ const MAX_SLIDE_ID = 2_147_483_647;
  * the loop could never run. An adversarial review of the commit that added it
  * said so — a comment claiming a line is load-bearing when nothing can reach it
  * is worse than no comment, because the next reader trusts it.
+ *
+ * `countable` leaves ONE hole, and this is where it is closed. A package
+ * holding both `slide9007199254740991.xml` and `slide9007199254740992.xml`
+ * counts the first — it is exactly `MAX_SAFE_INTEGER` — and ignores the second,
+ * so `max + 1` answers a name that is already in the package: the collision the
+ * whole guard exists to prevent, one step further out. There is no larger safe
+ * number to offer, so this refuses rather than answering, the same way
+ * `addSlideId` refuses a deck that has run out of ids. Unreachable by any real
+ * deck, whose part numbers are three digits.
  */
 function nextFree(used: Set<number>): number {
   let max = 0;
   for (const n of used) if (n > max) max = n;
-  return max + 1;
+  const next = max + 1;
+  if (!Number.isSafeInteger(next)) throw new Error("ssf-merge: this package's part numbers are too large to extend");
+  return next;
 }
 
 /** Every whole number a path matched, ignoring any too large to count exactly. */
@@ -399,6 +410,20 @@ export class Pkg {
    * One hop is enough for what asks: a chart and a SmartArt diagram are both
    * related directly from the slide that shows them.
    */
+  /**
+   * A relationship target, in the spelling THIS package holds.
+   *
+   * The as-written name first, because that is what OPC says a part name maps
+   * to; the percent-decoded one when the package does not hold the first. See
+   * `resolveTargetSpellings` — a package that names a chart
+   * `my%20chart.xml` was invisible to every reader here, and the merge went on
+   * pointing every copy at the template's own chart with nothing said.
+   */
+  resolved(ownerPart: string, target: string): string {
+    const [asWritten, decoded] = resolveTargetSpellings(ownerPart, target);
+    return asWritten !== decoded && this.has(asWritten) ? asWritten : decoded;
+  }
+
   async relatedParts(ownerPart: string): Promise<string[]> {
     const path = Pkg.relsPathFor(ownerPart);
     if (!this.has(path)) return [];
@@ -408,7 +433,7 @@ export class Pkg {
       if ((rel.getAttribute("TargetMode") ?? "") === "External") continue;
       const target = rel.getAttribute("Target");
       if (!target) continue;
-      const resolved = resolveTarget(ownerPart, target);
+      const resolved = this.resolved(ownerPart, target);
       if (!out.includes(resolved)) out.push(resolved);
     }
     return out;
@@ -440,7 +465,7 @@ export class Pkg {
       const id = rel.getAttribute("Id");
       const target = rel.getAttribute("Target");
       if (!id || !target) continue;
-      out.set(id, resolveTarget(ownerPart, target));
+      out.set(id, this.resolved(ownerPart, target));
     }
     return out;
   }
@@ -453,7 +478,7 @@ export class Pkg {
     const rel = elements(doc, PKG_REL_NS, "Relationship").find((r) => r.getAttribute("Id") === rId);
     const target = rel?.getAttribute("Target");
     if (!target) return undefined;
-    return resolveTarget(ownerPart, target);
+    return this.resolved(ownerPart, target);
   }
 
   // ---- content types -------------------------------------------------------
@@ -567,7 +592,7 @@ export class Pkg {
         if (type !== REL_TYPE.notesSlide && !COMMENT_REL_TYPES.includes(type)) continue;
         const target = rel.getAttribute("Target");
         if (!target) continue;
-        const related = resolveTarget(slidePath, target);
+        const related = this.resolved(slidePath, target);
         // The TARGET comes out of the deck, and a deck can come from anywhere.
         // `resolveTarget` honours a leading `/` and any number of `..`, so a
         // crafted notes relationship naming `/[Content_Types].xml` — or
@@ -888,9 +913,35 @@ function decodeSegment(segment: string): string {
   }
 }
 
+/**
+ * Resolve a relationship target, which may be relative, against the part that
+ * holds it — in BOTH spellings the package may use.
+ *
+ * OPC maps a part name to a ZIP item name by stripping the leading `/` and
+ * nothing else, so a part legitimately named `ppt/charts/my%20chart.xml` is
+ * stored under exactly that name. This resolver percent-DECODED every segment,
+ * so it answered `ppt/charts/my chart.xml`, `pkg.has` said no, and
+ * `cloneSlideGraphics` reads "not in the package" as "skip" — every merged copy
+ * silently kept pointing at the template's chart.
+ *
+ * Decoding is not simply wrong either: writers exist whose ZIP entries carry the
+ * decoded spelling. So both are produced, in the order the spec puts them, and
+ * the PACKAGE decides which it holds (`Pkg.resolved`). `resolveTarget` keeps the
+ * decoded answer as its own, because that is what every caller that cannot ask a
+ * package has always been given.
+ */
+export function resolveTargetSpellings(ownerPart: string, target: string): [asWritten: string, decoded: string] {
+  return [resolvePath(ownerPart, target, false), resolvePath(ownerPart, target, true)];
+}
+
 /** Resolve a relationship target, which may be relative, against the part that holds it. */
 export function resolveTarget(ownerPart: string, target: string): string {
-  if (target.startsWith("/")) return target.slice(1).split("/").map(decodeSegment).join("/");
+  return resolvePath(ownerPart, target, true);
+}
+
+function resolvePath(ownerPart: string, target: string, decode: boolean): string {
+  const segment = (seg: string): string => (decode ? decodeSegment(seg) : seg);
+  if (target.startsWith("/")) return target.slice(1).split("/").map(segment).join("/");
   const slash = ownerPart.lastIndexOf("/");
   // The same root-part trap `relsPathFor` documents, and here it had a
   // consequence. `lastIndexOf` answers -1 for a part at the package root, and
@@ -905,7 +956,7 @@ export function resolveTarget(ownerPart: string, target: string): string {
     if (seg === "..") parts.pop();
     else if (seg !== ".") parts.push(seg);
   }
-  return parts.map(decodeSegment).join("/");
+  return parts.map(segment).join("/");
 }
 
 /**

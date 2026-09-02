@@ -49,6 +49,20 @@ export function short(s: string, max = ERROR_CHARS): string {
  * "[object Object]" is not.
  */
 export function readable(e: unknown): string {
+  // NOTHING here may raise. This is the `whenItRaises` handler — it runs inside
+  // a catch — so a throw of its own escapes `duringRun` entirely and takes the
+  // pane's "Merging…" state with it, which is the failure the caller was
+  // written to survive. Reading `.message` is the risk: it is a property, and a
+  // getter may throw. Office.js is not known to produce one; the guard costs a
+  // wrapper and removes the whole class.
+  try {
+    return describe(e);
+  } catch {
+    return "the host raised something this pane could not read.";
+  }
+}
+
+function describe(e: unknown): string {
   // The MESSAGE having content, not merely the value being an Error. An
   // `OfficeExtension.Error` routinely carries an empty message and puts the
   // content in `debugInfo`, and this answered "" for it — so the sentence the

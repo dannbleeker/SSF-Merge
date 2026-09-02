@@ -23,6 +23,8 @@ import {
   fieldToken,
   pictureColumns,
   clashingPicturesNote,
+  imageNameClashes,
+  imagesNamedAnywhere,
   emptyCellSummary,
   skippedRows,
   imageTally,
@@ -44,6 +46,7 @@ import {
   statusOf,
   visibleRows,
   unmatchedFields,
+  undoCardShows,
   DISCLOSURES,
 } from "./steps.js";
 import type { DisclosureKind, OrangeHolder, PaneState, StepId } from "./steps.js";
@@ -212,15 +215,15 @@ export function render(root: HTMLElement, state: PaneState, current: StepId): vo
   //
   // Phrased as the SLIDES rather than as "undo", because this deletes part of
   // a presentation and the sentence should say which part.
+  // `undoCardShows` carries the three conditions the orange budget also has to
+  // ask — the slides, the withdrawal, and where the card lives. The deck size
+  // is asked here, because only the drawing has it.
   if (
     state.added &&
+    undoCardShows(state, current) &&
     state.deckSize !== undefined &&
     state.deckAtStart !== undefined &&
-    undoIsPossible(state.added, state.deckSize, state.deckAtStart) &&
-    // Where a merge is pressed from — or wherever the user is, when the run
-    // that landed lost its pane and this is all that is left of it. See
-    // `recovered` in `steps.ts`.
-    (current === "merge" || state.recovered === true)
+    undoIsPossible(state.added, state.deckSize, state.deckAtStart)
   ) {
     const card = el(doc, "div", { class: "card undo" });
     card.append(el(doc, "p", { text: undoSummary(state.added, state.deckSize, state.deckAtStart) }));
@@ -433,6 +436,36 @@ function body(doc: Document, state: PaneState, current: StepId, orange: OrangeHo
     // the only report the clipboard fallback has — an insert lands visibly on
     // the slide, a copy lands nowhere the user can see.
     if (state.fieldNote) out.push(el(doc, "p", { class: "muted note", text: state.fieldNote }));
+    // A picture field somewhere a picture cannot go. Said HERE, on the step
+    // where the fields are, because the merge cannot fix it and the printout is
+    // where it would otherwise be discovered: `{{Photo|image}}` on a notes page
+    // is filled by nothing and printed as written, on presenter view and every
+    // handout.
+    // A field on a slide AND in its notes is still named here, because
+    // `placeImages` runs on the slide document alone: the notes copy is printed
+    // verbatim whatever the slide does. Filtering it out was a defect of its
+    // own — the warning went silent about a placeholder that reaches presenter
+    // view and every handout. What is dropped is only the closing ADVICE, which
+    // tells the user to do a thing they have already done.
+    const onSlide = new Set(state.imageFields ?? []);
+    const offSlide = state.imageFieldsOffSlide ?? [];
+    // EVERY, not some. With `some`, one field that happens to be in a shape
+    // dropped the advice for all the others — including a field that exists
+    // only on a notes page, for which that sentence is the only thing to do
+    // about it.
+    const placedToo = offSlide.every((f) => onSlide.has(f));
+    if (offSlide.length > 0) {
+      out.push(
+        el(doc, "p", {
+          class: "blocked",
+          text:
+            `${offSlide.map((f) => `{{${f}}}`).join(", ")} ${offSlide.length === 1 ? "asks" : "ask"} for a picture ` +
+            `somewhere a picture cannot go — a notes page, a chart or SmartArt. ${offSlide.length === 1 ? "It" : "They"} ` +
+            `will be printed as written.` +
+            (placedToo ? "" : " Put the field in a shape on the slide instead."),
+        }),
+      );
+    }
     const missing = new Set(unmatchedFields(state));
     const list = el(doc, "ul", { class: "fields" });
     for (const field of state.fields) {
@@ -695,14 +728,30 @@ function imageControl(doc: Document, state: PaneState): HTMLElement {
   // unticked. Nothing was matched and nothing was asked for, and the sentence
   // claimed a success over an empty set, directly above "1 file no row refers
   // to — ignored", which is the fact that actually applies.
+  //
+  // TWO zeroes, and they were one sentence. `imagesWanted` reads the TICKED
+  // rows — correctly, because that is what the merge runs on — so an author who
+  // unticks the row holding the photo was told "no row names a picture", which
+  // sends them to the spreadsheet rather than to the row picker one control
+  // above.
+  const namedAnywhere = imagesNamedAnywhere(state).length;
+  // And "All 2 pictures matched" was printed under the clash warning, which
+  // says two of those names get the SAME file. A success sentence directly
+  // below the notice that one of the slides will carry the wrong picture: the
+  // pane says both things and the reader believes the cheerful one.
+  const clashes = imageNameClashes(state).length > 0;
   wrap.append(
     el(doc, "p", {
-      class: tally.missing.length > 0 ? "blocked" : "muted",
+      class: tally.missing.length > 0 || (tally.wanted > 0 && clashes) ? "blocked" : "muted",
       text:
         tally.wanted === 0
-          ? "No row names a picture, so none of these files will be placed."
+          ? namedAnywhere > 0
+            ? "The rows you have ticked name no pictures — the rows that do are not included."
+            : "No row names a picture, so none of these files will be placed."
           : tally.missing.length === 0
-            ? `All ${plural(tally.wanted, "picture")} matched.`
+            ? clashes
+              ? `${plural(tally.wanted, "picture")} matched a file, and the clashing names above matched the same one.`
+              : `All ${plural(tally.wanted, "picture")} matched.`
             : `${tally.matched} of ${tally.wanted} matched. Missing: ${tally.missing.slice(0, 6).join(", ")}${tally.missing.length > 6 ? `, and ${tally.missing.length - 6} more` : ""}.`,
     }),
   );

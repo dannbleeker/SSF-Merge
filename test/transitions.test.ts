@@ -14,6 +14,7 @@ const FULL: PaneState = {
   block: { from: 3, to: 5 },
   fields: ["Name", "Photo"],
   imageFields: ["Photo"],
+  imageFieldsOffSlide: ["Headshot"],
   conditions: { 5: "Renewal" },
   slideFields: [["Name"], ["Photo"]],
   added: 12,

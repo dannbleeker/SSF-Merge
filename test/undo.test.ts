@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { provenSweep, sweepPlan } from "../src/host/undo.js";
+import { nextSweepOffer, provenSweep, sweepPlan } from "../src/host/undo.js";
 
 describe("sweepPlan", () => {
   it("removes only what this run added", () => {
@@ -200,5 +200,101 @@ describe("proving a slide is this run's before deleting it", () => {
     // what is left at those positions is the user's. Nothing is offered, and
     // nothing is worse than that.
     expect(provenSweep(plan, [undefined, undefined, undefined, undefined, undefined, "x"], "r1")).toEqual([17]);
+  });
+});
+
+describe("what a second press may ask for", () => {
+  /**
+   * The rule the pane used to work out inline, in two places, differently — and
+   * the difference deleted somebody's slides.
+   *
+   * `sweepPlan` produces a WINDOW from deck sizes. Carrying `added - removed`
+   * forward widens that window back over the slides the first press declined;
+   * they are then the only ones in it, all untagged, and `provenSweep`'s "a
+   * host that answers nothing takes the whole plan" rule — which is right for a
+   * host that cannot read tags at all — takes them. Carrying the smaller count
+   * instead is the deadlock: `sweepPlan` refuses a count below the deck's
+   * growth, so every later press answers null on the one screen that withholds
+   * the way forward.
+   *
+   * Neither number is right, because the question is not how many. A run that
+   * has met a slide it cannot claim has lost positional identity for the rest
+   * of the range.
+   */
+  it("stops offering once a press has DECLINED a slide", () => {
+    expect(nextSweepOffer({ added: 4, removed: 1, disowned: 2 })).toBeNull();
+    expect(nextSweepOffer({ added: 4, removed: 0, disowned: 4 })).toBeNull();
+  });
+
+  it("stops offering after a press that moved nothing", () => {
+    // The same press repeated answers the same way, and offering it again is a
+    // button that cannot work.
+    expect(nextSweepOffer({ added: 4, removed: 0, disowned: 0 })).toBeNull();
+  });
+
+  it("offers what is left when slides came out and none was declined", () => {
+    expect(nextSweepOffer({ added: 4, removed: 1 })).toBe(3);
+    expect(nextSweepOffer({ added: 4, removed: 4 })).toBeNull();
+  });
+
+  it("is what stands between a second press and the user's own slides", () => {
+    /**
+     * The scenario end to end, in the pure code, because the pane's own tests
+     * mock the sweep away and cannot see it.
+     *
+     * A four-slide preview on a twelve-slide deck. The user deletes three of
+     * the preview slides by hand and appends two of their own: the deck holds
+     * fifteen, and the last three are [ours, theirs, theirs].
+     */
+    const deckAtStart = 12;
+    const first = sweepPlan({ deckAtStart, deckNow: 15, added: 4 })!;
+    expect(first).toEqual({ from: 12, count: 3 });
+    const removedFirst = provenSweep(first, ["r1", undefined, undefined], "r1");
+    expect(removedFirst, "only the tagged one comes out").toEqual([12]);
+    const disowned = first.count - removedFirst.length;
+    expect(disowned).toBe(2);
+
+    // What `added - removed` would ask for next, against a deck of fourteen.
+    const wrong = sweepPlan({ deckAtStart, deckNow: 14, added: 4 - removedFirst.length })!;
+    expect(wrong, "a window holding nothing but the user's own slides").toEqual({ from: 12, count: 2 });
+    expect(
+      provenSweep(wrong, [undefined, undefined], "r1"),
+      "and an all-untagged plan is taken whole — two of the user's slides",
+    ).toEqual([13, 12]);
+
+    // What the rule asks for instead.
+    expect(nextSweepOffer({ added: 4, removed: removedFirst.length, disowned }), "no second press").toBeNull();
+  });
+});
+
+describe("a repeat press may not fall back to position", () => {
+  /**
+   * `provenSweep` takes the whole plan when the tag read comes back empty or
+   * short, and that is right for a FIRST press: the size clamps are the only
+   * evidence anybody ever had, and a host below PowerPointApi 1.3 has no tags
+   * to offer. It is not right for a later one.
+   *
+   * By then the deck has provably changed shape, because a press happened. A
+   * six-slide merge, three removed on the first press, the host then stops
+   * answering tags, and the user deletes one merged slide and adds one of their
+   * own: the deck's growth still equals what is owed, so the clamps pass, the
+   * read comes back empty, the whole window goes — and the slide they just made
+   * goes with it.
+   */
+  it("takes nothing when the host will not answer and this is not the first press", () => {
+    const plan = sweepPlan({ deckAtStart: 12, deckNow: 15, added: 3 })!;
+    expect(plan).toEqual({ from: 12, count: 3 });
+    // The host answers nothing at all — below 1.3, or refusing.
+    expect(provenSweep(plan, [], "r1"), "a first press keeps the pre-tags answer").toEqual([14, 13, 12]);
+    expect(provenSweep(plan, [], "r1", { requireProof: true }), "a repeat press takes nothing").toEqual([]);
+    // And a SHORT read, which is the same fact one step less obvious.
+    expect(provenSweep(plan, [undefined, undefined], "r1", { requireProof: true })).toEqual([]);
+    expect(provenSweep(plan, [undefined, undefined, undefined], "r1", { requireProof: true })).toEqual([]);
+  });
+
+  it("still takes what the tags prove, whichever press it is", () => {
+    // The guard refuses an absence of evidence, not the evidence itself.
+    const plan = sweepPlan({ deckAtStart: 12, deckNow: 15, added: 3 })!;
+    expect(provenSweep(plan, ["r1", "r1", undefined], "r1", { requireProof: true })).toEqual([13, 12]);
   });
 });

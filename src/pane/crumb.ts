@@ -29,6 +29,80 @@
 
 const KEY = "ssf-merge.run.v1";
 
+/**
+ * How many decks' records the store will hold.
+ *
+ * One key per deck the user has merged in, so a run in one deck cannot
+ * overwrite another's — the single key was a choice between destroying a
+ * stranger's record and denying them one, and both are losses. Bounded because
+ * `localStorage` is not: a user who merges into a hundred decks should not
+ * carry a hundred records for ever.
+ *
+ * Something still has to go when the bound is reached, and WHICH is the whole
+ * question. `merge()` writes a pending marker on every press in every deck, so
+ * markers are the population that grows; a record still holding slides is the
+ * one thing here worth keeping. See `deckKeys`.
+ */
+const KEEP_DECKS = 8;
+
+/** The key a deck's record lives under. */
+function keyFor(doc: string): string {
+  return `${KEY}:${doc}`;
+}
+
+/**
+ * Every deck key this store holds, in the order they may be evicted.
+ *
+ * Records HOLDING NOTHING first — a pending marker for a run that may never
+ * have landed anything — then the oldest merge. Sorting by date alone evicted
+ * exactly the wrong record: a swept run's record is cleared and one that a
+ * press proved unremovable is deliberately never cleared and never re-stamped,
+ * so the record with the oldest date is systematically the one still describing
+ * slides that are in a deck.
+ *
+ * The date is the MERGE's, carried through a re-write, so this is not write
+ * order and must not be described as one.
+ *
+ * One consequence worth stating: `added: 0` is also the crash-mid-insert
+ * marker, so that record is now first out once a ninth deck is touched, where
+ * before it aged out normally. What that costs is a SENTENCE — `main.ts`'s
+ * third recovery notice is reached only by a record with `added: 0`, and it
+ * tells the user a merge did not finish and how big the deck was either side of
+ * it. It costs nothing else: a marker does not stop the next merge writing a
+ * fresh one, because `holding` requires `added > 0` too. Evicted ahead of a
+ * record that can still offer slides back, which is the right way round, and a
+ * trade rather than a free win.
+ *
+ * This paragraph was rewritten once to say the eviction costs nothing a user
+ * can see, on a count of two recovery notices where there are three — and the
+ * third is the marker's own. The sentence it replaced was right.
+ */
+function deckKeys(s: Storage): string[] {
+  const keys: string[] = [];
+  for (let i = 0; i < s.length; i++) {
+    const k = s.key(i);
+    if (k !== null && k.startsWith(`${KEY}:`)) keys.push(k);
+  }
+  const read = (k: string): Partial<Crumb> | undefined => {
+    try {
+      const parsed: unknown = JSON.parse(s.getItem(k) ?? "");
+      return typeof parsed === "object" && parsed !== null ? parsed : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+  const holds = (k: string): number => {
+    const added = read(k)?.added;
+    return typeof added === "number" && added > 0 ? 1 : 0;
+  };
+  const at = (k: string): number => {
+    const when = read(k)?.startedAt;
+    const t = typeof when === "string" ? Date.parse(when) : Number.NaN;
+    return Number.isFinite(t) ? t : 0;
+  };
+  return keys.sort((a, b) => holds(a) - holds(b) || at(a) - at(b));
+}
+
 /** What a run left behind, if it did not get to finish. */
 export interface Crumb {
   /** Names the shape for whatever reads it, and dates it for whoever changes it. */
@@ -64,6 +138,62 @@ export interface Crumb {
    * created. The missing question was never "how big" but "which deck".
    */
   doc: string;
+  /**
+   * Whether a sweep has already been pressed for this run.
+   *
+   * Recorded because the guard it feeds is about the DECK's history, not about
+   * one pane session: a press having happened is what makes the size clamps
+   * insufficient — see `provenSweep`'s `requireProof`. Without it here, a
+   * partial undo followed by the pane closing and reopening would offer the
+   * next press as a first one, and the deck has changed shape all the same.
+   *
+   * Optional, because a crumb written by an older build does not carry it. That
+   * is NOT the same as "not yet pressed" — an older build re-wrote the crumb
+   * after a partial press too — so upgrading across one gives that run a single
+   * un-proofed press. The alternative is refusing every older crumb, which
+   * throws away the dead-tab recovery this file exists for; the exposure is one
+   * press on a deck the user has just watched change, and the press that
+   * follows it carries the mark.
+   */
+  pressed?: boolean;
+  /**
+   * A press has established that this add-in cannot remove these slides.
+   *
+   * Written when the sweep gave up — a host with no `Slide.tags` to prove
+   * ownership with, or one that answered nothing on two presses running. The
+   * crumb is KEPT rather than cleared, because it is what stops the next merge
+   * overwriting the record of slides that are still in the deck; the mark is
+   * what stops it lying about them. Without it every future open of this deck
+   * said "the pane closed before you could take them back" — about a press that
+   * happened and was refused — over a card that died the moment it was pressed.
+   */
+  unremovable?: boolean;
+  /**
+   * How many presses in a row have proved nothing, carried across a reopen.
+   *
+   * `pressed` and `unremovable` both survive the pane closing, and this is the
+   * third fact of the same kind: without it a reopen silently handed the run a
+   * fresh budget, so a host stuck refusing could be pressed twice more per
+   * open, for ever.
+   */
+  fruitless?: number;
+}
+
+/** This build's own spelling of a moment, which is the only one it carries forward. */
+function now(): string {
+  return new Date().toISOString();
+}
+
+/**
+ * Whether a stored date is one this build wrote.
+ *
+ * `Date.parse` was the first test and it is far looser than the writer: it
+ * takes "2026", "0" and "Mar 2026 junk", each of which the recovery notice then
+ * prints through `.slice(0, 10)` as a date. The shape is checked first, and the
+ * parse second so that "2026-13-45T…" is refused as well.
+ */
+function isStamp(s: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(s) && Number.isFinite(Date.parse(s));
 }
 
 /** The store, or null where there is not one. Never throws. */
@@ -79,13 +209,50 @@ function store(): Storage | null {
   }
 }
 
-/** Remember what an undo would need, before the insert that makes it necessary. */
+/**
+ * Remember what an undo would need, before the insert that makes it necessary.
+ *
+ * `startedAt` dates the MERGE, not the write. The crumb is re-written after a
+ * partial press — the count it carries has changed — and stamping the clock
+ * each time moved the merge's date forward, so the recovery notice read "a
+ * merge from <today>, and the pane closed before you could take them back"
+ * about a run from last week whose pane had not closed. A re-write for the same
+ * run in the same deck keeps the date it already had.
+ */
 export function dropCrumb(c: Omit<Crumb, "kind" | "startedAt">): void {
   const s = store();
   if (!s) return;
   try {
-    const crumb: Crumb = { kind: "ssf-merge-run", startedAt: new Date().toISOString(), ...c };
-    s.setItem(KEY, JSON.stringify(crumb));
+    // ONE KEY PER DECK. A single key made every write a choice between
+    // destroying another deck's record of slides still sitting in it and
+    // denying this deck one at all — the first was the defect, and refusing the
+    // write was the fix that produced the second: a deck whose merge was never
+    // swept locked every other deck out of crash recovery for the life of the
+    // browser profile. Keyed by document, neither happens.
+    const prior = readCrumb(c.doc);
+    // The SAME run, and a date that is one. Two of the pane's writes use a
+    // shared id — "pending" before an insert answers, and "recovered" for a run
+    // rebuilt from a crumb — so matching on the id alone let a merge inherit
+    // the date of an unrelated one days earlier, which is the defect this
+    // carry-over was written to fix. `deckAtStart` is the run's other half and
+    // separates them. A stored date that is not a date is replaced rather than
+    // carried, or a corrupt one would outlive every re-write.
+    const sameRun = prior !== undefined && prior.runId === c.runId && prior.deckAtStart === c.deckAtStart;
+    const startedAt = sameRun && prior !== undefined && isStamp(prior.startedAt) ? prior.startedAt : now();
+    const crumb: Crumb = { kind: "ssf-merge-run", startedAt, ...c };
+    s.setItem(keyFor(c.doc), JSON.stringify(crumb));
+    // The single-key record this deck may have been READ from is retired here,
+    // or it outlives the per-deck one and answers again the moment that is
+    // pruned — with the pre-press `added` and no `pressed`, which is the exact
+    // state the mark exists to prevent.
+    const legacy = s.getItem(KEY);
+    if (legacy && !belongsToAnotherDeck(legacy, c.doc)) s.removeItem(KEY);
+    // NEVER the record this call just wrote. `startedAt` dates the merge and is
+    // carried through a re-write, so a press on an older run writes a record
+    // with an old date — and the prune, sorting by date, deleted it on the very
+    // next line.
+    const keys = deckKeys(s).filter((k) => k !== keyFor(c.doc));
+    for (const key of keys.slice(0, Math.max(0, keys.length + 1 - KEEP_DECKS))) s.removeItem(key);
   } catch {
     /* a merge does not fail because a browser would not remember something */
   }
@@ -111,11 +278,13 @@ export function clearCrumb(here: string): void {
   const s = store();
   if (!s) return;
   try {
+    s.removeItem(keyFor(here));
+    // The build before this one kept every deck's record under ONE key, so a
+    // crumb written then may still be sitting there. Removed only when it names
+    // THIS deck — or cannot be identified at all, because a record nothing can
+    // match would otherwise sit in the store for ever.
     const raw = s.getItem(KEY);
-    // Read through `readCrumb` rather than re-implementing the shape check, so
-    // "a crumb this build understands" cannot come to mean two different things
-    // in the two functions that ask it.
-    if (raw && readCrumb(here) === undefined && belongsToAnotherDeck(raw, here)) return;
+    if (raw && belongsToAnotherDeck(raw, here)) return;
     s.removeItem(KEY);
   } catch {
     /* nothing to be done, and nothing worth failing over */
@@ -152,7 +321,9 @@ export function readCrumb(here: string): Crumb | undefined {
   const s = store();
   if (!s) return undefined;
   try {
-    const raw = s.getItem(KEY);
+    // This deck's own key, and — for a crumb written by the build that kept one
+    // key for every deck — the old one, which `doc` still has to match below.
+    const raw = s.getItem(keyFor(here)) ?? s.getItem(KEY);
     if (!raw) return undefined;
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed !== "object" || parsed === null) return undefined;
@@ -192,6 +363,9 @@ export function readCrumb(here: string): Crumb | undefined {
       runId: typeof c.runId === "string" ? c.runId : "unknown",
       startedAt: typeof c.startedAt === "string" ? c.startedAt : "unknown",
       doc: c.doc,
+      ...(c.pressed === true ? { pressed: true } : {}),
+      ...(c.unremovable === true ? { unremovable: true } : {}),
+      ...(typeof c.fruitless === "number" && c.fruitless > 0 ? { fruitless: c.fruitless } : {}),
     };
   } catch {
     return undefined;

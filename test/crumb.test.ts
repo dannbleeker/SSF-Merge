@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { clearCrumb, dropCrumb, readCrumb } from "../src/pane/crumb.js";
 
 const KEY = "ssf-merge.run.v1";
+/** Where one deck's record lives — one key per deck. */
+const keyOf = (doc: string): string => `${KEY}:${doc}`;
 const real = globalThis.localStorage;
 
 /** Put a hostile Storage in place, and take it away again. */
@@ -34,6 +36,98 @@ describe("the numbers an undo cannot be done without", () => {
     expect(readCrumb(DECK)).toMatchObject({ deckAtStart: 12, added: 720, runId: "r12-240-abc" });
   });
 
+  it("dates the MERGE, not the write, when a press re-writes it", () => {
+    // A partial press re-drops the crumb with the count that is left, and the
+    // date was re-stamped with it — so the recovery notice said "a merge from
+    // <today> … and the pane closed before you could take them back" about a
+    // run that was older and whose pane had not closed. The date is the
+    // merge's; only the numbers change.
+    // Seeded rather than written twice: two writes in the same millisecond
+    // carry the same stamp, so the test would pass against the defect roughly
+    // whenever the machine was quick.
+    const WHEN = "2026-08-20T09:15:00.000Z";
+    real.setItem(
+      KEY,
+      JSON.stringify({ kind: "ssf-merge-run", deckAtStart: 12, added: 6, runId: "r1", startedAt: WHEN, doc: DECK }),
+    );
+    dropCrumb({ deckAtStart: 12, added: 4, runId: "r1", doc: DECK, pressed: true });
+    expect(readCrumb(DECK)).toMatchObject({ added: 4, pressed: true, startedAt: WHEN });
+
+    // A DIFFERENT run is a different merge and takes its own date, whatever is
+    // in the store.
+    dropCrumb({ deckAtStart: 12, added: 6, runId: "r2", doc: DECK });
+    expect(readCrumb(DECK)?.runId).toBe("r2");
+    expect(readCrumb(DECK)?.startedAt, "a new run keeps none of the old one's").not.toBe(WHEN);
+  });
+
+  it("keeps the mark that says a press already proved these slides cannot go", () => {
+    // The crumb outlives the withdrawal on purpose — it is what stops the next
+    // merge overwriting a run whose slides are still in the deck — so it has to
+    // carry what the press learned, or the pane offers the same dead button on
+    // every open under a sentence that is not true.
+    dropCrumb({ deckAtStart: 12, added: 6, runId: "r1", doc: DECK, pressed: true, unremovable: true });
+    expect(readCrumb(DECK)).toMatchObject({ added: 6, pressed: true, unremovable: true });
+    // An older build's crumb carries neither, and reads as neither. Written
+    // under the OLD single key, which is where that build put it — and the
+    // per-deck one has to be out of the way, or it answers first.
+    real.clear();
+    real.setItem(KEY, JSON.stringify({ kind: "ssf-merge-run", deckAtStart: 12, added: 6, runId: "r1", doc: DECK }));
+    expect(readCrumb(DECK)?.unremovable).toBeUndefined();
+  });
+
+  it("refuses a stored date that is not one this build wrote", () => {
+    // `Date.parse` was the first test and it is far looser than the writer:
+    // "2026", "0" and "Mar 2026 junk" all parse, and the recovery notice prints
+    // the first ten characters of whatever is carried — so a corrupt record
+    // outlived every re-write and reached the user as a date.
+    for (const junk of ["2026", "0", "1", "Mar 2026 junk", "2026-13-45T00:00:00.000Z"]) {
+      real.setItem(
+        KEY,
+        JSON.stringify({ kind: "ssf-merge-run", deckAtStart: 12, added: 6, runId: "r1", startedAt: junk, doc: DECK }),
+      );
+      dropCrumb({ deckAtStart: 12, added: 4, runId: "r1", doc: DECK });
+      expect(readCrumb(DECK)?.startedAt, `carried ${junk}`).not.toBe(junk);
+    }
+  });
+
+  it("does not carry a date across two runs that share an id", () => {
+    // Two of the pane's writes use a shared id rather than a run's own —
+    // "pending", before an insert has answered, and "recovered", for a run
+    // rebuilt from a crumb. Matching on the id alone made a merge inherit the
+    // date of an unrelated one days earlier, which is the very thing the
+    // carry-over exists to prevent.
+    const WHEN = "2026-08-20T09:15:00.000Z";
+    real.setItem(
+      KEY,
+      JSON.stringify({
+        kind: "ssf-merge-run",
+        deckAtStart: 18,
+        added: 6,
+        runId: "pending",
+        startedAt: WHEN,
+        doc: DECK,
+      }),
+    );
+    dropCrumb({ deckAtStart: 40, added: 0, runId: "pending", doc: DECK });
+    expect(readCrumb(DECK)?.startedAt, "a different deck size is a different run").not.toBe(WHEN);
+
+    // And a stored date that is not one is replaced rather than carried, or a
+    // corrupt record would outlive every re-write.
+    real.setItem(
+      KEY,
+      JSON.stringify({
+        kind: "ssf-merge-run",
+        deckAtStart: 12,
+        added: 6,
+        runId: "r1",
+        startedAt: "gibberish",
+        doc: DECK,
+      }),
+    );
+    dropCrumb({ deckAtStart: 12, added: 4, runId: "r1", doc: DECK });
+    expect(readCrumb(DECK)?.startedAt).not.toBe("gibberish");
+  });
+
   it("is gone once the slides are", () => {
     dropCrumb({ deckAtStart: 12, added: 720, runId: "r1", doc: DECK });
     clearCrumb(DECK);
@@ -54,6 +148,129 @@ describe("the numbers an undo cannot be done without", () => {
     dropCrumb({ deckAtStart: 3, added: 6, runId: "r3-3-huqtal", doc: DECK });
     expect(readCrumb(DECK), "the deck it was written on still answers").toMatchObject({ added: 6 });
     expect(readCrumb(OTHER_DECK)).toBeUndefined();
+  });
+
+  it("gives every deck a record of its own", () => {
+    // ONE KEY PER DECK. A single key made every write a choice between
+    // destroying another deck's record of slides still sitting in it and
+    // refusing to write at all — and the refusal was its own defect: a deck
+    // whose merge was never swept locked every other deck out of crash
+    // recovery for the life of the browser profile.
+    dropCrumb({ deckAtStart: 12, added: 6, runId: "r1", doc: DECK, unremovable: true });
+    dropCrumb({ deckAtStart: 3, added: 2, runId: "r2", doc: OTHER_DECK });
+    expect(readCrumb(DECK), "the first deck keeps its record").toMatchObject({ added: 6, runId: "r1" });
+    expect(readCrumb(OTHER_DECK), "and the second deck gets one").toMatchObject({ added: 2, runId: "r2" });
+    // Clearing one leaves the other alone.
+    clearCrumb(DECK);
+    expect(readCrumb(DECK)).toBeUndefined();
+    expect(readCrumb(OTHER_DECK)).toMatchObject({ added: 2 });
+  });
+
+  it("never prunes the record it has just written", () => {
+    /**
+     * `startedAt` dates the MERGE and is carried through a re-write, so a press
+     * on an older run writes a record with an old date — and a prune sorting by
+     * date deleted it on the very next line. `readCrumb` then fell back to the
+     * single-key record the previous build left behind, which still said six
+     * slides and carried no `pressed`: the next press asks for no proof, over a
+     * deck that has provably changed shape, which is the deletion the mark
+     * exists to prevent.
+     */
+    for (let i = 0; i < 8; i++) {
+      real.setItem(
+        `ssf-merge.run.v1:recent-${i}`,
+        JSON.stringify({
+          kind: "ssf-merge-run",
+          deckAtStart: 1,
+          added: 1,
+          runId: `r${i}`,
+          startedAt: `2026-09-0${i + 1}T09:00:00.000Z`,
+          doc: `recent-${i}`,
+        }),
+      );
+    }
+    real.setItem(
+      KEY,
+      JSON.stringify({
+        kind: "ssf-merge-run",
+        deckAtStart: 12,
+        added: 6,
+        runId: "r1",
+        startedAt: "2026-08-01T09:00:00.000Z",
+        doc: DECK,
+      }),
+    );
+    dropCrumb({ deckAtStart: 12, added: 3, runId: "r1", doc: DECK, pressed: true });
+
+    expect(readCrumb(DECK), "the press's own record").toMatchObject({ added: 3, pressed: true });
+    // And the record it was read FROM is retired, or it answers again the
+    // moment the per-deck one is pruned.
+    expect(real.getItem(KEY), "a stale single-key record left standing").toBeNull();
+  });
+
+  it("does not keep a record for every deck the user has ever merged in", () => {
+    // `localStorage` is not unbounded and neither is this. The oldest goes,
+    // because a record whose deck has not been opened in a hundred merges is
+    // the one least likely to still describe slides that are there.
+    for (let i = 0; i < 12; i++) {
+      real.setItem(
+        `ssf-merge.run.v1:deck-${i}`,
+        JSON.stringify({
+          kind: "ssf-merge-run",
+          deckAtStart: 1,
+          added: 1,
+          runId: `r${i}`,
+          startedAt: `2026-08-${String(i + 1).padStart(2, "0")}T09:00:00.000Z`,
+          doc: `deck-${i}`,
+        }),
+      );
+    }
+    dropCrumb({ deckAtStart: 12, added: 6, runId: "new", doc: DECK });
+    const keys = Object.keys(real).filter((k) => k.startsWith("ssf-merge.run.v1:"));
+    expect(keys.length, "the store grew without bound").toBeLessThanOrEqual(8);
+    expect(readCrumb(DECK), "and the newest is kept").toMatchObject({ runId: "new" });
+    expect(readCrumb("deck-0"), "the oldest went first").toBeUndefined();
+  });
+
+  it("evicts a record holding nothing before one holding slides", () => {
+    // `merge()` writes a pending marker on every press in every deck, so
+    // markers are the population that grows — and a record still describing
+    // slides in somebody's deck is the one thing here worth keeping. Sorting by
+    // date alone evicted exactly that one: a swept run's record is cleared, and
+    // one a press proved unremovable is never cleared and never re-stamped, so
+    // it always carries the oldest date.
+    real.setItem(
+      keyOf(DECK),
+      JSON.stringify({
+        kind: "ssf-merge-run",
+        deckAtStart: 12,
+        added: 6,
+        runId: "r1",
+        startedAt: "2026-07-01T09:00:00.000Z",
+        doc: DECK,
+        unremovable: true,
+      }),
+    );
+    for (let i = 0; i < 10; i++) dropCrumb({ deckAtStart: 3, added: 0, runId: `pending-${i}`, doc: `other-${i}` });
+    expect(readCrumb(DECK), "the one record holding slides").toMatchObject({ added: 6, unremovable: true });
+  });
+
+  it("does not overwrite another deck's record of slides that are still there", () => {
+    // The read side refuses a stranger's crumb at length, and `clearCrumb` was
+    // taught the same check — but the WRITE side had none. So opening a second
+    // deck and pressing Merge erased the first deck's only record of six slides
+    // still sitting in it, which is the asymmetry that makes a careful check on
+    // one side worth nothing.
+    dropCrumb({ deckAtStart: 12, added: 6, runId: "r1", doc: DECK });
+    dropCrumb({ deckAtStart: 3, added: 0, runId: "pending-1", doc: OTHER_DECK });
+    expect(readCrumb(DECK), "the first deck's slides are still recorded").toMatchObject({ added: 6 });
+
+    // A pending marker holds nothing, so another deck may take the key — or it
+    // could never be reclaimed.
+    localStorage.clear();
+    dropCrumb({ deckAtStart: 12, added: 0, runId: "pending-1", doc: DECK });
+    dropCrumb({ deckAtStart: 3, added: 0, runId: "pending-2", doc: OTHER_DECK });
+    expect(readCrumb(OTHER_DECK), "a pending marker does not lock the key").toMatchObject({ deckAtStart: 3 });
   });
 
   it("refuses when the host will not name the document", () => {

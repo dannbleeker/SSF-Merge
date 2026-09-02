@@ -16,6 +16,7 @@ import {
   slideCount,
 } from "../office/powerpoint.js";
 import { inspectBlock, runMerge, undoMerge, type MergeOutcome } from "../office/merge.js";
+import { nextSweepOffer } from "../host/undo.js";
 import { readable } from "../host/errors.js";
 import { clearCrumb, dropCrumb, readCrumb } from "./crumb.js";
 import { blockDrafted, blockMoved, dataChanged } from "./transitions.js";
@@ -80,6 +81,46 @@ function root(): HTMLElement {
  * the press did not advance — "Preview the first row" becoming "Remove the
  * preview" — and matches nothing when it did, which is the honest answer.
  */
+/**
+ * How many presses that prove NOTHING the pane will go on offering.
+ *
+ * One is too few: a host that failed a single tag read, and a host that
+ * accepted a delete and performed none, both answer "nothing removed, nothing
+ * proved" and both come good on the next press — withdrawing on the first
+ * threw away slides that were still removable. Unbounded is too many: a host
+ * stuck in that mode leaves a delete button standing over slides no press can
+ * take, for the rest of the session.
+ *
+ * Two is the smallest number that tells a hiccup from a state.
+ */
+const FRUITLESS_LIMIT = 2;
+
+/**
+ * The id of the pending marker THIS pane wrote, if it has written one.
+ *
+ * The boot deck count can answer minutes after it was issued, by which time the
+ * user may have pressed Merge — and the crumb it then reads is that run's own
+ * marker. Recognising it by id is what lets the recovery notice stay silent
+ * about a run that is happening, without going silent about a genuine one.
+ */
+let pendingRunId: string | undefined;
+
+/**
+ * An id for a crumb written by a run that has no id of its own yet.
+ *
+ * "pending" is written before the insert answers, "recovered" after a raise —
+ * both used to be written as those bare words, and a bare word is not an
+ * identity: `dropCrumb` carries a date forward for the same run, and two
+ * crashed merges on decks of the same size then shared one, so a merge that
+ * failed today was dated weeks ago in the notice offering it back. Anything
+ * downstream still treats these as placeholders — `provenSweep` falls back
+ * whenever the id is not among the slides' own marks, which no generated id
+ * ever is.
+ */
+function placeholderRunId(kind: "pending" | "recovered"): string {
+  return `${kind}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 const FOCUS_KEYS = ["data-field", "data-condition", "data-empty", "data-row", "data-insert", "data-action"] as const;
 
 /** A selector for the element focused now, or null if it has no stable name. */
@@ -522,6 +563,7 @@ async function useBlock(from: StepId): Promise<void> {
           block,
           fields: report.fields,
           imageFields: report.imageFields,
+          imageFieldsOffSlide: report.imageFieldsOffSlide,
           // Per slide, because `skippedRows` cannot answer from the flat list.
           slideFields: report.slideFields,
           notice: undefined,
@@ -542,8 +584,15 @@ async function useBlock(from: StepId): Promise<void> {
     // step onto a preview that cannot run, where the only thing to do is come
     // back. `blockedReason` is the same question the screen asks, so the pane
     // cannot advance onto a step it would immediately draw as blocked.
+    //
+    // And only if the user is still WHERE THEY ASKED FROM. The read takes
+    // seconds, the Back link stays live throughout, and this moved the step
+    // whenever the answer arrived: walk back to Data while the template is
+    // being read and the pane jumped you forward two steps to Preview, over
+    // work you had gone back to change. The block's own staleness is already
+    // re-checked above; this is the other half of the same question.
     const next = nextStep(from);
-    if (report.ok && next && blockedReason(state, next) === null) step = next;
+    if (report.ok && next && step === from && blockedReason(state, next) === null) step = next;
   });
 }
 
@@ -562,7 +611,17 @@ async function useBlock(from: StepId): Promise<void> {
  */
 async function takeImages(files: FileList | null): Promise<void> {
   if (!files || files.length === 0) return;
-  const images = new Map<string, Uint8Array>();
+  // ADDED to what is already held, not put in its place. A browser's picker
+  // returns one directory's selection, and a spreadsheet built from a photo
+  // library routinely names files in several — so picking the second folder
+  // threw the first one away and the tally then reported every name from it as
+  // missing, with the files sitting on the disk the author had just chosen
+  // them from. There is no other way to attach two folders.
+  //
+  // Same-name-wins-last inside the map, which is the rule a single pick
+  // already follows and the one `clashingPicturesNote` exists to warn about.
+  const images = new Map<string, Uint8Array>(state.images ?? []);
+  const held = images.size;
   let refused = 0;
   for (const file of Array.from(files)) {
     try {
@@ -582,7 +641,11 @@ async function takeImages(files: FileList | null): Promise<void> {
     changedSinceMerge: true,
     ...(refused > 0
       ? { notice: `${refused} of the ${files.length} file(s) could not be read and were left out.` }
-      : { notice: undefined }),
+      : held > 0
+        ? // Said only when there was something to add TO, because a reader who
+          // expects the picker to replace needs telling once that it did not.
+          { notice: `Added to the pictures already attached — ${plural(images.size, "file")} now.` }
+        : { notice: undefined }),
   };
   draw();
 }
@@ -787,8 +850,10 @@ async function merge(): Promise<void> {
       // no record of them anywhere.
       const outstanding = readCrumb(documentKey());
       const holding = outstanding !== undefined && outstanding.added > 0;
-      if (deckBefore !== undefined && !holding)
-        dropCrumb({ deckAtStart: deckBefore, added: 0, runId: "pending", doc: documentKey() });
+      if (deckBefore !== undefined && !holding) {
+        pendingRunId = placeholderRunId("pending");
+        dropCrumb({ deckAtStart: deckBefore, added: 0, runId: pendingRunId, doc: documentKey() });
+      }
       const outcome = await runMerge({
         from: block.from,
         to: block.to,
@@ -822,7 +887,11 @@ async function merge(): Promise<void> {
       }
       state = {
         ...state,
-        deckSize: outcome.deckAtStart + outcome.added,
+        // From where the slides LANDED, not from where the run was planned. The
+        // two differ only when something added a slide under the merge, and
+        // there this was short by exactly that slide — which then feeds
+        // `readBlockDraft`'s "past the end of the deck" advice.
+        deckSize: (outcome.landedAfter ?? outcome.deckAtStart) + outcome.added,
         // The fields the RUN found, which is the authority: `inspectBlock` read
         // them before the merge and this is the same read after it.
         ...(outcome.fields.length > 0
@@ -836,8 +905,14 @@ async function merge(): Promise<void> {
         ...(outcome.added > 0 && outcome.accountable
           ? {
               added: outcome.added,
+              // What the run did, kept apart from what is left to sweep. See
+              // `addedByRun`.
+              addedByRun: outcome.added,
               deckAtStart: outcome.deckAtStart,
               changedSinceMerge: undefined,
+              // A NEW merge, so a withdrawal earned by the last one does not
+              // hide this one's way back.
+              undoWithdrawn: undefined,
               // This run's slides are not a recovered run's, so the card goes
               // back to living on the merge step. `recovered` says WHERE the
               // offer may be drawn, and it was set at boot and never cleared —
@@ -887,7 +962,8 @@ async function merge(): Promise<void> {
       const grew = deckAfter !== undefined && before !== undefined ? Math.max(0, deckAfter - before) : 0;
       const added = Math.min(grew, couldHaveAdded);
       if (added > 0 && before !== undefined) {
-        dropCrumb({ deckAtStart: before, added, runId: "recovered", doc: documentKey() });
+        const recoveredId = placeholderRunId("recovered");
+        dropCrumb({ deckAtStart: before, added, runId: recoveredId, doc: documentKey() });
         last = {
           ok: false,
           detail: readable(e),
@@ -897,7 +973,7 @@ async function merge(): Promise<void> {
           // for. See the cap two lines above.
           accountable: true,
           deckAtStart: before,
-          runId: "recovered",
+          runId: recoveredId,
           fields: [],
           imageFields: [],
           slideFields: [],
@@ -912,7 +988,12 @@ async function merge(): Promise<void> {
         // written for a host that performs a call and then raises on it was the
         // one branch that left the slides in the deck with no way to remove
         // them.
-        ...(added > 0 && before !== undefined ? { added, deckAtStart: before, changedSinceMerge: undefined } : {}),
+        // `undoWithdrawn` goes with them, exactly as on the success path: a
+        // withdrawal is about the merge that earned it, and carrying it into
+        // the next one hid the only way back to slides that had just landed.
+        ...(added > 0 && before !== undefined
+          ? { added, addedByRun: added, deckAtStart: before, changedSinceMerge: undefined, undoWithdrawn: undefined }
+          : {}),
         notice:
           added > 0
             ? `The merge raised, and ${added} slide${added === 1 ? "" : "s"} landed anyway: ${readable(e)}`
@@ -986,12 +1067,28 @@ async function preview(): Promise<void> {
       shown = outcome;
       // Where they landed, so the card can name them. The insert is anchored
       // after the last slide, so they are the last `added` in the deck.
-      const from = outcome.deckAtStart + 1;
+      //
+      // From `landedAfter` — the deck's size when the call actually went out —
+      // not from `deckAtStart`, which is its size when the run was PLANNED. A
+      // slide arriving in between moves every number here by one, and this card
+      // exists so a user who closes the pane can find those slides and delete
+      // them by hand: it named the co-author's slide and omitted the last of
+      // the preview's own. The merge summary was given this anchor and its
+      // sibling one function up was not.
+      //
+      // `accountable` is deliberately NOT checked here, where the merge step
+      // checks it before arming its card. A preview whose run cannot say which
+      // slides are its own has still put slides in the deck, and the user has
+      // to be told; the button then meets `sweepPlan`'s refusal on its first
+      // press and ends the preview with a sentence saying so, which is a better
+      // outcome than a preview that is on screen with no way to end it.
+      const anchor = outcome.landedAfter ?? outcome.deckAtStart;
+      const from = anchor + 1;
       state = {
         ...state,
         previewing: true,
-        previewSlides: { from, to: outcome.deckAtStart + outcome.added },
-        deckSize: outcome.deckAtStart + outcome.added,
+        previewSlides: { from, to: anchor + outcome.added },
+        deckSize: anchor + outcome.added,
         ...(outcome.fields.length > 0
           ? { fields: outcome.fields, imageFields: outcome.imageFields, slideFields: outcome.slideFields }
           : {}),
@@ -1023,34 +1120,150 @@ async function undoRun(): Promise<void> {
     "undo",
     { entering: { notice: undefined }, whenItRaises: (e) => `The slides could not be removed: ${readable(e)}` },
     async () => {
-      const { removed, detail } = await undoMerge(outcome);
+      const { removed, disowned, detail, unprovable, refusedShape } = await undoMerge(outcome);
       if (removed <= 0) {
         // A refusal is an OUTCOME and the detail already says why — usually that
         // the deck changed underneath the run, which is a thing the user can
         // check and act on rather than a failure of the pane.
-        state = { ...state, notice: `Nothing was removed — ${detail}` };
+        //
+        // The deck is RE-COUNTED, and that is what withdraws the offer on a
+        // refusal. The card's arithmetic went on believing the size it had at
+        // merge time, so a refusal printed "nothing to take back (deck was 12,
+        // is 19)" beside a live "Remove slides 13 to 18" that would refuse for
+        // ever — two deck sizes on one screen, and a destructive button that
+        // could not work. `undoIsPossible` asks `sweepPlan` on every draw, so a
+        // truthful count takes the card down by itself, and puts it back if the
+        // deck comes back.
+        //
+        // The press is LATCHED whatever it achieved. `pressed` was set only
+        // where slides came out, so a press that moved nothing left the next
+        // one looking like a first — no proof asked, the whole positional
+        // window taken, and a slide the user made in between deleted. A press
+        // that moved nothing is still a press.
+        //
+        // The card comes down on two answers, and neither is "nothing was
+        // removed". A host with no `Slide.tags` at all can never prove
+        // anything, so the first such press is the last one worth offering; and
+        // a host that could prove and did not gets `FRUITLESS_LIMIT` tries,
+        // because a failed tag read and a delete the host swallowed both look
+        // exactly like this and both come good on the next press. Withdrawing
+        // on the first was a defect of its own: it threw away slides the very
+        // next press would have removed.
+        //
+        // `added` and `deckAtStart` STAY in every case. They say what is in the
+        // deck, not what may be pressed: `added` is what disarms the merge
+        // button, so clearing it re-armed "Add 6 slides" over six slides that
+        // were still there.
+        const deckNow = await slideCount().catch(() => undefined);
+        // EVERY press that reaches here is fruitless — nothing came out. The
+        // first version counted only the presses that also disowned something,
+        // which left out the other case `FRUITLESS_LIMIT` was written for: a
+        // host that accepts the deletes and performs none answers `removed: 0,
+        // disowned: 0`, so the offer stood over slides no press could take for
+        // the rest of the session. Resetting belongs on the path that actually
+        // removed something, and is done there.
+        // A refused SHAPE is not a fruitless press. `sweepPlan` declined before
+        // anything was asked of PowerPoint — the deck grew past what this run
+        // added — so it says nothing about the host, and spending a press from
+        // a budget that exists to tell a hiccup from a state would let a
+        // co-author's slide use one up. The card comes down anyway while the
+        // deck stays that shape, because `undoIsPossible` asks the same
+        // question on every draw.
+        const fruitless = refusedShape === true ? (outcome.fruitless ?? 0) : (outcome.fruitless ?? 0) + 1;
+        const done = unprovable === true || fruitless >= FRUITLESS_LIMIT;
+        last = done ? undefined : { ...outcome, pressed: true, fruitless };
+        // The crumb is KEPT — it is the record that stops the next merge
+        // overwriting a run whose slides are still in the deck — and marked
+        // with what this press learned. Without the mark, every future open of
+        // this deck said "the pane closed before you could take them back"
+        // about a press that was refused, over a card that dies as soon as it
+        // is pressed. See `Crumb.unremovable`.
+        dropCrumb({
+          deckAtStart: outcome.deckAtStart,
+          added: outcome.added,
+          runId: outcome.runId,
+          doc: documentKey(),
+          pressed: true,
+          ...(fruitless > 0 ? { fruitless } : {}),
+          ...(done ? { unremovable: true } : {}),
+        });
+        state = {
+          ...state,
+          notice: done
+            ? `Nothing was removed — ${detail}. Delete them from the thumbnail rail if you want them gone.`
+            : `Nothing was removed — ${detail}`,
+          ...(done ? { undoWithdrawn: true } : {}),
+          ...(deckNow !== undefined ? { deckSize: deckNow } : {}),
+        };
         return;
       }
-      const remaining = outcome.added - removed;
-      last = remaining > 0 ? { ...outcome, added: remaining } : undefined;
+      // What a SECOND press may ask for, decided in one place for this screen
+      // and the preview's — see `nextSweepOffer`. A press that DECLINED a slide
+      // ends the offer, because carrying any count forward re-submits that
+      // slide to a window it is now alone in, where `provenSweep` takes an
+      // all-untagged plan whole. A press that took slides and declined none may
+      // be pressed again.
+      const offer = nextSweepOffer({ added: outcome.added, removed, disowned });
+      const declined = (disowned ?? 0) > 0;
+      // `pressed`, so the next sweep refuses the pre-tags fall-through: the deck
+      // has provably changed shape by now, and the window a size clamp produces
+      // can hold a slide the user made since. See `provenSweep`.
+      // `fruitless: 0`, because this press removed slides. Spreading the old
+      // outcome carried the count through a success, so one fruitless press
+      // before a working one and one after it withdrew the card on the second
+      // — a press short of the budget the changelog and the manual both
+      // promise, with merged slides still in the deck.
+      last = offer !== null ? { ...outcome, added: offer, pressed: true, fruitless: 0 } : undefined;
       // The slides are the crumb's whole reason. Gone, and it is noise that would
       // offer a stale recovery on the next open.
-      if (remaining > 0)
-        dropCrumb({ deckAtStart: outcome.deckAtStart, added: remaining, runId: outcome.runId, doc: documentKey() });
+      // `pressed` travels in the crumb too. The guard it feeds is about the
+      // DECK's history rather than this pane session's: close the pane after a
+      // partial undo and reopen it, and the next press is still not a first
+      // one, because a press has happened and the deck has changed shape.
+      if (offer !== null)
+        dropCrumb({
+          deckAtStart: outcome.deckAtStart,
+          added: offer,
+          runId: outcome.runId,
+          doc: documentKey(),
+          pressed: true,
+        });
       else clearCrumb(documentKey());
+      // ASKED, not computed. The sentence used to say the deck was "back to"
+      // the size it started at, which is only true when the sweep took
+      // everything — replace two merged slides with two of your own and it said
+      // "back to 12" over a deck of 14. Subtracting `removed` from the pane's
+      // cached size was the next answer and is wrong in the same place: the
+      // cache is stale precisely when the user has edited the deck by hand,
+      // which is the only way to reach the branch that prints it. The two
+      // sibling paths already re-count; this one guessed.
+      const deckNow =
+        (await slideCount().catch(() => undefined)) ??
+        (state.deckSize ?? outcome.deckAtStart + outcome.added) - removed;
       state = {
         ...state,
-        deckSize: (state.deckSize ?? outcome.deckAtStart + outcome.added) - removed,
-        // Only a COMPLETE sweep disarms the button. A partial one leaves slides
-        // in the deck and the user is the only one who can finish the job, so
-        // the way back has to stay on screen.
-        ...(remaining > 0
-          ? { added: remaining, deckAtStart: outcome.deckAtStart }
+        deckSize: deckNow,
+        // Only a sweep with nothing left to do disarms the button. One that
+        // left slides it CAN still take keeps the way back on screen; one that
+        // met a slide it will not claim has to stop offering, because it can no
+        // longer tell that slide from its own by position.
+        ...(offer !== null
+          ? { added: offer, deckAtStart: outcome.deckAtStart }
           : { added: undefined, deckAtStart: undefined }),
         notice:
-          remaining > 0
+          offer !== null
             ? `Some of the merge is still there — ${detail}`
-            : `${plural(removed, "slide")} removed. Your deck is back to ${outcome.deckAtStart}.`,
+            : declined
+              ? // The DECLINED slides, counted. "The rest" is every slide left
+                // in the range, and on a partial sweep most of them were shown
+                // to be the merge's — the press simply stopped when it met one
+                // it could not claim. Naming a count says what happened; the
+                // sentence before it said something false about slides it had
+                // never asked about.
+                `${plural(removed, "slide")} removed. ${plural(disowned ?? 0, "slide")} in that range could not ` +
+                `be shown to be this merge's and ${(disowned ?? 0) === 1 ? "was" : "were"} left alone — delete ` +
+                `them from the thumbnail rail if you want them gone.`
+              : `${plural(removed, "slide")} removed. Your deck holds ${deckNow}.`,
       };
     },
   );
@@ -1067,12 +1280,86 @@ async function endPreview(): Promise<void> {
   const outcome = shown;
   if (!outcome) return;
   await duringRun("preview", { whenItRaises: (e) => `The preview could not be removed: ${readable(e)}` }, async () => {
-    const { removed, detail } = await undoMerge(outcome);
-    if (removed < outcome.added) {
-      // Said out loud rather than assumed. A sweep that removed fewer slides
-      // than it asked for leaves some of the preview in the deck, and the user
-      // is the only one who can finish the job.
-      state = { ...state, notice: `Some of the preview is still there — ${detail}` };
+    const { removed, disowned, detail } = await undoMerge(outcome);
+    // ONE decision for this screen and the merge undo's, so the two cannot
+    // answer differently — which they did, and the difference was a deletion.
+    // See `nextSweepOffer`.
+    const offer = nextSweepOffer({ added: outcome.added, removed, disowned });
+    // How many of the preview this run still believes are in the deck. It
+    // decides what to SAY; `offer` decides whether pressing again is worth
+    // offering, and the two are different questions — a slide the sweep
+    // declined is still in the deck and is not this run's to take.
+    const outstanding = Math.max(0, outcome.added - removed - (disowned ?? 0));
+    if (outstanding > 0) {
+      // ASK THE DECK before claiming anything. The commonest way to reach here
+      // is that the user did what the card told them the button does — deleted
+      // the preview slides themselves — so the deck never grew, the sweep
+      // refused, and this said "Some of the preview is still there" about
+      // slides that are gone.
+      //
+      // And every branch out of here CLEARS `previewing` unless another press
+      // could finish the job. While a preview is up the forward link is
+      // withheld, the rail is not clickable and the merge step refuses, so a
+      // preview that cannot be ended is a pane with no way on — a state this
+      // screen has now reached by three separate routes.
+      const deckNow = await slideCount().catch(() => undefined);
+      if (offer !== null) {
+        // Slides came out, none was declined, and some are still owed, so
+        // pressing again is worth offering. That is NOT the same as the window
+        // holding only this run's slides — this comment said it was, which is
+        // the claim `nextSweepOffer`'s docstring exists to retract: the user may
+        // have deleted merged slides by hand and made others, and every quantity
+        // here is a size. The next press asks `provenSweep` for proof, which is
+        // what makes the offer safe rather than the window being clean.
+        //
+        // The card stops NAMING them. After a partial removal it cannot: the
+        // ones that went took the numbering of the ones that stayed with them,
+        // so it went on saying "Slides 5 to 8 are a preview of the first row"
+        // over a deck where 5 is the user's own slide again, beside a button
+        // offering to delete them.
+        shown = { ...outcome, added: offer, pressed: true };
+        state = {
+          ...state,
+          previewSlides: undefined,
+          notice: `Some of the preview is still there — ${detail}`,
+          ...(deckNow !== undefined ? { deckSize: deckNow } : {}),
+        };
+        return;
+      }
+      // Nothing more this pane may do. Either the sweep declined a slide — and
+      // carrying any count forward re-submits it to a window it is now alone
+      // in, where an all-untagged plan is taken whole — or the press moved
+      // nothing and would answer the same way again.
+      //
+      // The sentence may not say the preview is gone. `deckNow` is a SIZE:
+      // a deck back to where it started is equally the user having deleted
+      // their own slides, with preview slides still in it.
+      shown = undefined;
+      state = {
+        ...state,
+        previewing: false,
+        previewSlides: undefined,
+        ...(deckNow !== undefined ? { deckSize: deckNow } : {}),
+        notice:
+          (removed > 0
+            ? // The slides the sweep DECLINED, counted. "The rest" spoke for
+              // every slide left in the range, most of which it never doubted
+              // — the same sentence the merge undo carried and the same reason
+              // it was replaced there.
+              `${plural(removed, "slide")} of the preview removed. ${plural(disowned ?? 0, "slide")} could not ` +
+              `be shown to be this run's. `
+            : `The preview could not be taken back — ${detail}. `) +
+          // The size is REPORTED, never read as an identity. A sentence saying
+          // the deck is no bigger than it was before the preview was here for
+          // one commit and it is the mistake the comment twelve lines above
+          // forbids: delete three of your own slides while a three-slide
+          // preview is up and the deck is back to its old size with every
+          // preview slide still in it — and that branch suppressed the only
+          // advice that would have helped. Both, always: the count, and what
+          // to do if the slides are still there.
+          (deckNow !== undefined ? `Your deck holds ${plural(deckNow, "slide")}. ` : "") +
+          "Any preview slides still in your deck can be deleted from the thumbnail rail.",
+      };
       return;
     }
     shown = undefined;
@@ -1080,8 +1367,29 @@ async function endPreview(): Promise<void> {
       ...state,
       previewing: false,
       previewSlides: undefined,
-      deckSize: outcome.deckAtStart,
-      notice: undefined,
+      // What the sweep DISOWNED is still in the deck — it is simply not the
+      // preview's, so the deck does not come all the way back. Counting it is
+      // arithmetic on numbers already in hand rather than another host call,
+      // and a deck size one too small makes the next undo's clamp refuse a
+      // sweep it should allow.
+      deckSize: outcome.deckAtStart + (disowned ?? 0),
+      // Silent when the whole preview came out, which is the ordinary case and
+      // wants no sentence. NOT silent when the sweep declined a slide: it is
+      // still in the deck, in the range the preview was on, and the user is
+      // about to look at a deck with a slide in it they did not expect and no
+      // account of where it came from.
+      // COULD NOT BE SHOWN, not "are not this run's". `disowned` cannot tell
+      // the two apart — a slide with no tag and a slide the host would not
+      // answer for are the same `undefined` — and its own docstring says
+      // nothing downstream may read it as ownership. On a host below
+      // PowerPointApi 1.3 the stronger sentence is false for every user, every
+      // time, over slides that ARE this run's.
+      notice:
+        (disowned ?? 0) > 0
+          ? `${removed > 0 ? `${plural(removed, "slide")} of the preview removed. ` : "None of the preview came back. "}` +
+            `${plural(disowned ?? 0, "slide")} in that range could not be shown to be this run's and ` +
+            `${(disowned ?? 0) === 1 ? "was" : "were"} left alone.`
+          : undefined,
     };
   });
 }
@@ -1189,7 +1497,21 @@ void Office.onReady(() => {
       // `sweepPlan` now, which is why `deckAtStart` is carried into the state
       // beside `added`: a positional offer needs both.
       const crumb = readCrumb(documentKey());
-      if (crumb && crumb.added > 0) {
+      if (crumb && crumb.added > 0 && crumb.unremovable === true) {
+        // A press already established that this add-in cannot take these slides
+        // back — see `Crumb.unremovable`. Offering the button again on every
+        // open, under "the pane closed before you could take them back", is a
+        // false sentence over a card that dies the moment it is pressed. The
+        // slides ARE there, so the user is told where they are and what to do,
+        // and the record is kept so the next merge does not overwrite it.
+        state = {
+          ...state,
+          notice:
+            `A merge from ${crumb.startedAt.slice(0, 10)} added ${plural(crumb.added, "slide")} that this add-in ` +
+            `could not take back. They are at the end of your deck — delete them from the thumbnail rail if you ` +
+            `want them gone.`,
+        };
+      } else if (crumb && crumb.added > 0) {
         last = {
           ok: false,
           detail: "recovered from a run that did not finish",
@@ -1197,6 +1519,11 @@ void Office.onReady(() => {
           // The crumb records what a finished run could account for; the sweep
           // re-checks it against the deck and the run tag at press time.
           accountable: true,
+          // Carried through, so a run already swept once does not get the
+          // pre-tags fall-through on the press after a reopen.
+          ...(crumb.pressed === true ? { pressed: true } : {}),
+          // The budget too, or a reopen hands a stuck host two more presses.
+          ...(crumb.fruitless !== undefined ? { fruitless: crumb.fruitless } : {}),
           deckAtStart: crumb.deckAtStart,
           runId: crumb.runId,
           fields: [],
@@ -1212,13 +1539,29 @@ void Office.onReady(() => {
           // pane is on step 1 and the run it is about is over. Without it the
           // sentence below named a button nothing rendered.
           recovered: true,
-          notice: `A merge from ${crumb.startedAt.slice(0, 10)} added ${crumb.added} slide(s) and the pane closed before you could take them back.`,
+          // `plural`, not the host layer's `slide(s)`. This sentence is on a
+          // user's screen; that spelling is a house convention for the run log.
+          notice: `A merge from ${crumb.startedAt.slice(0, 10)} added ${plural(crumb.added, "slide")} and the pane closed before you could take them back.`,
         };
-      } else if (crumb) {
+      } else if (crumb && crumb.runId !== pendingRunId) {
         // A run that died DURING the insert, which is the window the crumb was
         // built for and the one it served least: it is written with `added: 0`
         // before the call, and the tab never comes back to write the real
         // number.
+        //
+        // NOT the marker THIS pane's own run has just written. The deck count
+        // this handler waits on is issued at boot and can answer minutes later —
+        // long enough for the user to have walked the wizard and pressed Merge —
+        // and the crumb it then found was that run's pending marker. It told the
+        // user the merge "did not finish" while it was visibly running, and
+        // deleted the record in the one window it exists for.
+        //
+        // Named rather than gated on `state.running`, which was the first fix
+        // and is too wide: ANY run in flight — the "Reading the slides…" a user
+        // is most likely to start first — suppressed a genuine crash record for
+        // the whole session, because this branch is never retried.
+        // `placeholderRunId` makes the marker's id unique, so the pane can
+        // recognise its own.
         //
         // Told, not offered. The slides may well be in the deck, but nothing
         // here knows how many: taking the deck's growth as the answer would

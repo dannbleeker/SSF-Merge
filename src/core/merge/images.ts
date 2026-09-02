@@ -18,7 +18,7 @@ import type { FillMode } from "../image/fill.js";
 import type { Pkg } from "../pptx/pkg.js";
 import { REL_TYPE } from "../pptx/parts.js";
 import { A_NS, elements } from "../pptx/xml.js";
-import { editRuns, fieldsInText, type Edit } from "./text.js";
+import { editRuns, fieldsInText, textGroups, type Edit } from "./text.js";
 
 /**
  * The formats that mean "this is a picture", and which fill they ask for.
@@ -66,15 +66,34 @@ export function imageMode(format: string | undefined): FillMode | undefined {
     : undefined;
 }
 
-/** Every image field a part refers to, in first-seen order. */
-export function imageFieldsIn(doc: Document): string[] {
+/**
+ * Every image field a part refers to, in first-seen order.
+ *
+ * The SAME reader `mergeDocument` uses, never a second walk of its own. This
+ * had one — DrawingML paragraphs only — so it could not see the places a
+ * chart's text actually lives: a category label in a `<c:strCache>`, a series
+ * name written literally, a shared or inline string. A `{{Photo|image}}`
+ * written there was reported by nothing and printed verbatim onto the slide.
+ *
+ * NOT a chart's embedded workbook, which is a separate package this never
+ * opens: `workbookFields` reads that, and reads it without looking at formats.
+ * A picture field in a workbook cell is still reported by nothing.
+ *
+ * The PREDICATE is the caller's, because the two callers ask different
+ * questions. A slide's list is "which fields will be filled with a picture",
+ * and `placeImages` fills only an exact `imageMode` — so a misspelled
+ * `{{Photo|images}}` counted there turned off the pane's "the pictures you
+ * attached will not be placed" caution and offered a file picker for a field
+ * nothing would fill. A notes page's list is "which fields ASK for a picture
+ * somewhere one cannot go", and there the misspelling belongs in it: the merge
+ * leaves such a field visible, so the user should hear about it.
+ */
+export function imageFieldsIn(doc: Document, asks: (format: string | undefined) => boolean): string[] {
   const seen = new Set<string>();
-  for (const paragraph of elements(doc, A_NS, "p")) {
-    const joined = elements(paragraph, A_NS, "t")
-      .map((t) => t.textContent ?? "")
-      .join("");
+  for (const group of textGroups(doc)) {
+    const joined = group.map((node) => node.textContent ?? "").join("");
     for (const hit of fieldsInText(joined)) {
-      if (imageMode(hit.format)) seen.add(hit.name);
+      if (asks(hit.format)) seen.add(hit.name);
     }
   }
   return [...seen];

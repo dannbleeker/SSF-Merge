@@ -131,9 +131,12 @@ export function undoSummary(added: number, deckSize: number, deckAtStart: number
   // number in this file is the one the thumbnail rail shows.
   const from = plan.from + 1;
   const to = plan.from + plan.count;
-  return plan.count === 1
-    ? `Remove slide ${from}, which this merge added.`
-    : `Remove slides ${from} to ${to}, which this merge added.`;
+  // "which this merge added" was a PROVENANCE claim built from sizes, and
+  // `sweepPlan`'s own docstring says none of its quantities is an identity: the
+  // range is where the merge's slides should be, not proof that they are. The
+  // press itself asks the slides (`provenSweep`), so the button is safe — the
+  // label simply may not promise what only the press can establish.
+  return plan.count === 1 ? `Remove slide ${from} from this merge.` : `Remove slides ${from} to ${to} from this merge.`;
 }
 
 /**
@@ -152,6 +155,33 @@ export function undoIsPossible(added: number, deckSize: number, deckAtStart: num
 export interface MergeReport {
   added: number;
   deckAtStart: number;
+  /**
+   * The deck's size when the insert actually went out, where it is known.
+   *
+   * The same as `deckAtStart` on every ordinary run, and different in exactly
+   * one case: something added a slide between the moment the run was planned
+   * and the moment it inserted. `deckAtStart` then names the wrong slide — "6
+   * slides added after slide 12" when they landed after 13 — so where this is
+   * given it is the anchor.
+   */
+  landedAfter?: number;
+  /**
+   * Whether this run can say which of the deck's new slides are its own.
+   *
+   * Absent means yes, which is every ordinary run. False withholds the undo
+   * card — and without a sentence it withholds it SILENTLY, leaving a plain
+   * success above the space where the card used to be. The engine composes a
+   * sentence naming the two deck sizes for its own `detail`, and the pane
+   * discards `detail` on the success path, so that sentence was written, tested
+   * and shown to nobody.
+   *
+   * Said here in the pane's own voice rather than by carrying the engine's
+   * string through: the host layer writes `slide(s)` by house convention
+   * because its strings go to a run log, and the numbers are diagnostic where
+   * the fact is not. What the reader needs is that the deck moved and there is
+   * no way back.
+   */
+  accountable?: boolean;
   paragraphsMerged?: number;
   /**
    * Workbooks behind a chart that could not be opened.
@@ -161,6 +191,8 @@ export interface MergeReport {
    * placeholder. Silence would leave that to be discovered by a recipient.
    */
   workbooksUnreadable?: number;
+  /** Placeholders filled inside the workbooks behind charts — invisible to every other counter. */
+  workbookText?: number;
   skippedRecords?: number;
   skippedSlides?: number;
   /** Conditions naming a column the data did not have. */
@@ -202,7 +234,15 @@ export interface MergeReport {
  * short sentence and only an unusual one grows.
  */
 export function describeMerge(r: MergeReport): string {
-  const parts = [`${plural(r.added, "slide")} added after slide ${r.deckAtStart}`];
+  const parts = [`${plural(r.added, "slide")} added after slide ${r.landedAfter ?? r.deckAtStart}`];
+  // FIRST after the count, because it changes what the rest of the sentence is
+  // worth: the slides are there and there is no way to take them back.
+  if (r.accountable === false) {
+    parts.push(
+      "the deck also changed while the merge was being built, so this run cannot say which of the new " +
+        "slides are its own — there is no offer to take them back",
+    );
+  }
   if (r.paragraphsMerged !== undefined) {
     // The alarm is about a run that matched NOTHING, and `paragraphsMerged`
     // counts the text passes only — chart VALUES are counted separately and
@@ -215,7 +255,15 @@ export function describeMerge(r: MergeReport): string {
     // Suppressed rather than folded into the count: adding the values to
     // `paragraphsMerged` would report them twice in one sentence, and that
     // number means one thing now.
-    const filledElsewhere = (r.chartValues?.filled ?? 0) > 0;
+    //
+    // PICTURES are the same case and were not covered. A template whose only
+    // placeholder is a photo shape read "no {{fields}} were filled — check the
+    // spelling in your template · 2 pictures placed" — the same self-
+    // contradicting sentence, sending the author after a spelling mistake two
+    // clauses above the proof there is none. Every way a run can fill
+    // something belongs in this test, not the first two anybody met.
+    const filledElsewhere =
+      (r.chartValues?.filled ?? 0) > 0 || (r.pictures?.placed ?? 0) > 0 || (r.workbookText ?? 0) > 0;
     if (r.paragraphsMerged > 0) parts.push(`${plural(r.paragraphsMerged, "placeholder")} filled`);
     else if (!filledElsewhere) parts.push("no {{fields}} were filled — check the spelling in your template");
   }

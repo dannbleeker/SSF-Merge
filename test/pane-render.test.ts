@@ -835,7 +835,41 @@ describe("the picture picker", () => {
     // no row refers to — ignored", which is the fact that actually applies.
     const pane = paneFor({ ...withPhotos, excluded: [0, 1], images: files("ada.png") }, "data");
     expect(pane.textContent).not.toContain("All 0 pictures matched");
-    expect(pane.textContent).toContain("No row names a picture");
+  });
+
+  it("tells an empty tally caused by the row picker apart from one caused by the data", () => {
+    /**
+     * `imagesWanted` reads the TICKED rows, correctly — that is what the merge
+     * runs on. It makes two different facts arrive as one zero, and the pane
+     * said the wrong one: an author who unticks the row holding the photo was
+     * told their data names no pictures, which sends them to the spreadsheet
+     * rather than to the row picker one control above.
+     */
+    const unticked = paneFor({ ...withPhotos, excluded: [0, 1], images: files("ada.png") }, "data");
+    expect(unticked.textContent, "the rows are there; they are not included").toContain(
+      "the rows that do are not included",
+    );
+    expect(unticked.textContent).not.toContain("No row names a picture");
+
+    // And the other zero still reads as it did: no cell anywhere names a file.
+    // The column is a picture column because the AUTHOR asked for one —
+    // `{{Photo|image}}`, which `pictureColumns` honours whatever the detector
+    // made of the cells — so the picker is on screen with nothing to match.
+    const paste = "Name,Photo\nAda,\nBo,";
+    const blank = readPastedTable(paste);
+    const empty = paneFor(
+      {
+        ...ready,
+        paste,
+        records: blank.records ?? undefined,
+        columns: blank.columns,
+        rows: blank.rows,
+        imageFields: ["Photo"],
+        images: files("ada.png"),
+      },
+      "data",
+    );
+    expect(empty.textContent).toContain("No row names a picture");
   });
 
   it("says when two picture names differ only by their folder", () => {
@@ -857,8 +891,12 @@ describe("the picture picker", () => {
 
     // And still said once a file that matches both has been chosen, which is
     // the state the tally calls "All 2 pictures matched".
+    // And the tally line says so too. It read "All 2 pictures matched." —
+    // a success sentence directly below the notice that one of the two slides
+    // will carry the wrong logo, and the reader believes the cheerful one.
     const after = paneFor({ ...state, images: files("logo.png") }, "data").textContent ?? "";
-    expect(after).toContain("All 2 pictures matched.");
+    expect(after, "a success sentence under the warning that contradicts it").not.toContain("All 2 pictures matched.");
+    expect(after).toContain("2 pictures matched a file, and the clashing names above matched the same one.");
     expect(after, "which is true, and not the whole truth").toContain("same file name in different folders");
   });
 
@@ -1247,5 +1285,50 @@ describe("the collapsible controls agree with the table that names them", () => 
         else expect(body, `opening "${kind}" also opened "${other}"`).toBeNull();
       }
     }
+  });
+});
+describe("a picture field where a picture cannot go", () => {
+  const withFields = { ...ready, fields: ["Name", "Photo"], block: { from: 1, to: 2 } };
+
+  it("names it, so the user hears it before the merge rather than off a printout", () => {
+    // `placeImages` fills a shape on a slide. On a notes page, in a chart's
+    // text or inside SmartArt the field is filled by nothing and printed as
+    // written — onto presenter view and every handout.
+    const pane = paneFor({ ...withFields, imageFieldsOffSlide: ["Photo"] }, "fields");
+    expect(pane.textContent).toContain("{{Photo}}");
+    expect(pane.textContent).toContain("cannot go");
+  });
+
+  it("still names a field that is ALSO on a slide, and drops only the advice", () => {
+    // The same field in a shape and in that slide's notes. `placeImages` runs
+    // on the SLIDE document alone, so the notes copy is printed verbatim
+    // whatever the slide does — suppressing the warning went silent about a
+    // placeholder that reaches presenter view and every handout. Only the
+    // closing advice goes: the user has already put it in a shape.
+    const pane = paneFor({ ...withFields, imageFields: ["Photo"], imageFieldsOffSlide: ["Photo"] }, "fields");
+    expect(pane.textContent, "a placeholder that still reaches the handout").toContain("cannot go");
+    expect(pane.textContent, "advice about a field that is already placed").not.toContain("instead");
+  });
+
+  it("keeps the advice for a field that is on no slide, beside one that is", () => {
+    // `some` dropped the advice for ALL the named fields as soon as one of them
+    // happened to be in a shape — including a field that exists only on a notes
+    // page, for which that sentence is the only thing to do about it.
+    const pane = paneFor(
+      {
+        ...withFields,
+        fields: ["Name", "Photo", "Logo"],
+        imageFields: ["Photo"],
+        imageFieldsOffSlide: ["Photo", "Logo"],
+      },
+      "fields",
+    );
+    expect(pane.textContent).toContain("{{Logo}}");
+    expect(pane.textContent, "the only advice a notes-only field gets").toContain("instead");
+  });
+
+  it("is silent when every picture field is on a slide", () => {
+    const pane = paneFor({ ...withFields, imageFields: ["Photo"], imageFieldsOffSlide: [] }, "fields");
+    expect(pane.textContent).not.toContain("cannot go");
   });
 });

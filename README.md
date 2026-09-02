@@ -57,7 +57,9 @@ template block (the deck)   ─┘
 ```
 
 The engine imports nothing from Office.js, and a test enforces that. It runs in
-the task pane, in a Node CLI and in the suite with no PowerPoint anywhere.
+the task pane, in the build scripts and in the suite with no PowerPoint
+anywhere: `Pkg.open` → `prepareBlock` → `buildPlan` → `runPlan` → `toBytes`
+reproduces a merged package in Node.
 
 ## Template syntax
 

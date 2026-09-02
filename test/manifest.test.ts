@@ -385,9 +385,10 @@ describe("the store icons are the sizes AppSource asks for", () => {
 
 describe("the manifest version is not the package version", () => {
   it("is four parts and at least 1.0", () => {
-    // Office wants a.b.c.d and rejects below 1.0; npm wants semver and this
-    // package is 0.0.0. Tying them together would have shipped an invalid
-    // manifest on the first release.
+    // Office wants a.b.c.d and rejects below 1.0; npm wants three-part semver.
+    // Tying them together would have shipped an invalid manifest on the first
+    // release. (This comment quoted the package's version, and then outlived
+    // it by three releases; the two numbers being independent is the point.)
     expect(DEFINITION.version).toMatch(/^\d+\.\d+\.\d+\.\d+$/);
     expect(Number(DEFINITION.version.split(".")[0])).toBeGreaterThanOrEqual(1);
     const pkg = JSON.parse(read("package.json")) as { version: string };

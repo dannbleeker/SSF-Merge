@@ -5,3 +5,8 @@ coverage/
 *.local
 .DS_Store
 test-kit/out/
+
+# A review agent works in this tree and leaves scratch harnesses behind. They
+# are named so they cannot be committed by a `git add -A` on a distracted day —
+# which is how one reached CI and turned the branch red.
+test/zz*

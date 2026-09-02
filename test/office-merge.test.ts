@@ -13,11 +13,17 @@
  * unhandled one, and the user is left looking at a button that never comes back.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { InsertOutcome } from "../src/office/powerpoint.js";
 
 const host = vi.hoisted(() => ({
   readTemplate: vi.fn<(b: { from: number; to: number }) => Promise<{ base64: string; offset: number }>>(),
   slideCount: vi.fn<() => Promise<number>>(),
-  insertDeck: vi.fn(),
+  // TYPED, and the type is load-bearing. A bare `vi.fn()` let a test set
+  // `verdict: "ok"` — not a member of `Verdict` — so `"ok" !== "yes"` routed it
+  // into the REFUSAL branch and the test asserted the one path it was not
+  // about. The mock has to be as strict as the function it stands in for, or a
+  // fixture can put the code under test in a state production cannot reach.
+  insertDeck: vi.fn<(base64: string, expected: number) => Promise<InsertOutcome>>(),
   undoInsert: vi.fn(),
 }));
 
@@ -279,8 +285,8 @@ describe("a torn insert is reported in rows", () => {
         verdict: "no",
         detail: "5 of 6 slide(s) landed",
         landed: 5,
-        before: 2,
-        after: 7,
+        before: 3,
+        after: 8,
       });
 
       const out = await runMerge({ from: 1, to: 2, records: rows });
@@ -294,7 +300,7 @@ describe("a torn insert is reported in rows", () => {
 
   it("carries the row counts for anything else that reports", async () => {
     host.readTemplate.mockResolvedValueOnce({ base64: await block(), offset: 0 });
-    host.insertDeck.mockResolvedValueOnce({ verdict: "no", detail: "5 of 6", landed: 5, before: 2, after: 7 });
+    host.insertDeck.mockResolvedValueOnce({ verdict: "no", detail: "5 of 6", landed: 5, before: 3, after: 8 });
 
     const out = await runMerge({ from: 1, to: 2, records: rows });
     expect(out).toMatchObject({ rowsComplete: 2, rowsTorn: 1, rowsAbsent: 0 });
@@ -308,8 +314,8 @@ describe("a torn insert is reported in rows", () => {
       verdict: "no",
       detail: "the call raised nothing and the deck did not grow",
       landed: 0,
-      before: 2,
-      after: 2,
+      before: 3,
+      after: 3,
     });
 
     const out = await runMerge({ from: 1, to: 2, records: rows });
@@ -333,8 +339,8 @@ describe("a torn insert is reported in rows", () => {
       verdict: "unknown",
       detail: "the deck grew by 8 while the package held 6 slide(s), so this run cannot say which of them are its own",
       landed: 8,
-      before: 2,
-      after: 10,
+      before: 3,
+      after: 11,
     });
 
     const out = await runMerge({ from: 1, to: 2, records: rows });
@@ -345,6 +351,42 @@ describe("a torn insert is reported in rows", () => {
       "cannot say which of them are its own",
     );
     expect(out.accountable, "the pane may not offer to sweep slides this run cannot identify").toBe(false);
+  });
+
+  it("does not read a deck that grew BEFORE the insert as accountable", async () => {
+    /**
+     * The window nothing was watching. `deckAtStart` is measured when the run
+     * is planned and `insert.before` when the call goes out, with the package
+     * built in between — long enough for a co-author or AutoSave to land a
+     * slide. `landed` then equals what was sent, so every other term here says
+     * accountable, while the indices an undo would sweep have moved onto
+     * somebody else's slide.
+     *
+     * `sweepPlan` declines that, correctly and too late: the outcome has
+     * already offered the card. Found by an adversarial review.
+     */
+    host.slideCount.mockReset().mockResolvedValue(3);
+    host.readTemplate.mockResolvedValueOnce({ base64: await block(), offset: 0 });
+    host.insertDeck.mockResolvedValueOnce({
+      verdict: "yes",
+      detail: "all 6 slide(s) landed",
+      landed: 6,
+      // Three when the run was planned; four when it inserted.
+      before: 4,
+      after: 10,
+    });
+
+    const out = await runMerge({ from: 1, to: 2, records: rows });
+    expect(out.accountable, "the pane may not offer to sweep slides this run cannot identify").toBe(false);
+    // The slides all landed, so this is not a failure — what is gone is the way
+    // back, and the user has to be told that rather than shown a plain success
+    // above the space where the undo card would have been.
+    expect(out.ok, "every slide the package held is in the deck").toBe(true);
+    expect(out.detail).toContain("cannot say which of them are its own");
+    expect(out.detail, "and why there is no offer").toContain("no offer to take these slides back");
+    // Anchored where the slides actually landed. `deckAtStart` is 3 here and
+    // names the wrong slide in exactly this case.
+    expect(out.detail, "the anchor is the deck when the call went out").toContain("added after slide 4");
   });
 
   it("does not read an over-grown deck as accountable just because the call also raised", async () => {
@@ -364,8 +406,8 @@ describe("a torn insert is reported in rows", () => {
       verdict: "threw",
       detail: "the call threw: GeneralException, and 8 slide(s) landed anyway",
       landed: 8,
-      before: 2,
-      after: 10,
+      before: 3,
+      after: 11,
     });
 
     const out = await runMerge({ from: 1, to: 2, records: rows });
@@ -407,11 +449,15 @@ describe("a torn insert is reported in rows", () => {
      */
     return (async () => {
       host.readTemplate.mockResolvedValueOnce({ base64: await block(), offset: 0 });
-      host.insertDeck.mockResolvedValueOnce({ verdict: "yes", detail: "landed", landed: 6, before: 2, after: 8 });
+      // `before` matches the planned deck (the `slideCount` mock answers 3) on
+      // both sides, so neither outcome is unaccountable — the comparison is
+      // between two ordinary runs rather than between one that carries an extra
+      // field and one that does not.
+      host.insertDeck.mockResolvedValueOnce({ verdict: "yes", detail: "landed", landed: 6, before: 3, after: 9 });
       const whole = await runMerge({ from: 1, to: 2, records: rows });
 
       host.readTemplate.mockResolvedValueOnce({ base64: await block(), offset: 0 });
-      host.insertDeck.mockResolvedValueOnce({ verdict: "no", detail: "5 of 6", landed: 5, before: 2, after: 7 });
+      host.insertDeck.mockResolvedValueOnce({ verdict: "no", detail: "5 of 6", landed: 5, before: 3, after: 8 });
       const torn = await runMerge({ from: 1, to: 2, records: rows });
 
       // The premise: one of each. Without this the comparison below could be

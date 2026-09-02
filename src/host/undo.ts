@@ -53,6 +53,12 @@ export function sweepPlan(o: { deckAtStart: number; deckNow: number; added: numb
   // It is checked because the other two are, and because a reader comparing the
   // three has to be able to see one rule rather than guess which is trusted.
   if (!Number.isInteger(o.deckAtStart) || !Number.isInteger(o.deckNow) || !Number.isInteger(o.added)) return null;
+  // Two refusals on one line, and they are different kinds. A negative starting
+  // size is an INPUT that cannot be true of any deck — checked for the same
+  // reason as the line above, so a reader sees one rule rather than guessing
+  // which quantity is trusted. A deck SMALLER than it started is a real shape
+  // and the commonest of them: the user has been deleting slides by hand, and
+  // no window counted from the end can be shown to be this run's.
   if (o.deckAtStart < 0 || o.deckNow < o.deckAtStart) return null;
   const grew = o.deckNow - o.deckAtStart;
   // MORE arrived than this run added, so positional identity is gone.
@@ -87,6 +93,59 @@ export function sweepPlan(o: { deckAtStart: number; deckNow: number; added: numb
 }
 
 /**
+ * What a SECOND press may ask for, after a first one has run.
+ *
+ * The pane used to work this out inline, twice, and the two copies answered
+ * differently — which is how a fix for a stuck preview became a deletion of a
+ * stranger's slides. It is one decision and it is not arithmetic.
+ *
+ * **A press that DISOWNED anything ends the offer.** `sweepPlan` produces a
+ * WINDOW from deck sizes, and carrying `added - removed` widens that window
+ * back over the slides the first press just declined. They are then the only
+ * slides in it, all untagged — and `provenSweep`'s "a host that answers
+ * nothing takes the whole plan" rule, which is right for a host that cannot
+ * read tags at all, takes them. Reproduced end to end: preview four slides,
+ * delete three by hand, add two of your own, press twice, and the second press
+ * deletes the two you added, under a notice saying there was nothing to take
+ * back.
+ *
+ * Narrowing the window instead is what the pane did before, and it is the
+ * deadlock: `sweepPlan` refuses a count smaller than the deck's growth, so
+ * every later press returns null and the screen that withholds the way on
+ * never lets go. Neither number is right, because the question is not how many
+ * — it is that a run which has met a slide it cannot claim has lost positional
+ * identity for the rest of the range, and no count restores it.
+ *
+ * **A press that moved NOTHING is not this function's to decide.** It answers
+ * null, which is right for the PREVIEW: that screen withholds the way forward
+ * while it is up, so an offer that cannot finish is a wizard nobody can leave,
+ * and one wasted press is the better trade. The merge undo has no such
+ * constraint and takes the other one — it keeps the offer for a bounded number
+ * of fruitless presses (`FRUITLESS_LIMIT` in `src/pane/main.ts`), because a
+ * host that failed one tag read and a delete the host swallowed both answer
+ * this way and both come good on the next press. That branch never reaches
+ * here: `undoRun` returns before asking.
+ *
+ * The two screens differing is deliberate and stated because they have differed
+ * by ACCIDENT before, and that is how a fix for a stuck preview became a
+ * deletion of a stranger's slides.
+ *
+ * So the offer survives exactly one shape: slides came out, none was declined,
+ * and some are still owed. That does NOT mean the remaining window holds only
+ * this run's slides — the user may have deleted merged slides by hand, and the
+ * surplus then reaches theirs, which is the whole reason a second press asks
+ * `provenSweep` for proof rather than trusting the count. It means the sweep
+ * has not yet met anything it could not claim, so pressing again is worth
+ * offering.
+ */
+export function nextSweepOffer(o: { added: number; removed: number; disowned?: number }): number | null {
+  if ((o.disowned ?? 0) > 0) return null;
+  if (o.removed <= 0) return null;
+  const left = o.added - o.removed;
+  return left > 0 ? left : null;
+}
+
+/**
  * Which of a plan's slides this run may actually delete.
  *
  * `sweepPlan` bounds the RANGE from the deck's sizes. This bounds the SET
@@ -107,7 +166,13 @@ export function sweepPlan(o: { deckAtStart: number; deckNow: number; added: numb
  *   an empty slide — this repo's rule, learned from two signals agreeing at
  *   zero and both being wrong. A host that cannot read tags is not evidence
  *   that a slide is not ours, so the answer is what it was before anything was
- *   asked. This can only make an undo safer, never less capable.
+ *   asked. Adding the tag question therefore took nothing away from a host that
+ *   cannot answer it. (`requireProof` DOES, on every host, including one whose
+ *   API set has no `Slide.tags` at all. Sparing those was tried for a commit
+ *   and it is a guaranteed deletion rather than an intermittent one: a repeat
+ *   press there falls through to the whole positional window every time. What
+ *   a host with no proof to give gets instead is the button withdrawn — see
+ *   `undoRun` — which costs a press that could never have worked.)
  * - **A read that does not line up with the plan takes the whole plan.** A
  *   short answer is a read that failed, not a set of slides disowned. Deleting
  *   on it would be acting on an answer nobody gave.
@@ -118,11 +183,31 @@ export function sweepPlan(o: { deckAtStart: number; deckNow: number; added: numb
  *   on it would take back none of the slides that are sitting in the deck,
  *   which is the case recovery exists for.
  */
-export function provenSweep(plan: SweepPlan, tags: (string | undefined)[], runId: string): number[] {
+export function provenSweep(
+  plan: SweepPlan,
+  tags: (string | undefined)[],
+  runId: string,
+  opts: { requireProof?: boolean } = {},
+): number[] {
   const all: number[] = [];
   for (let i = plan.from + plan.count - 1; i >= plan.from; i--) all.push(i);
-  if (tags.length !== plan.count) return all;
-  if (tags.every((t) => t === undefined)) return all;
+  // The two fall-throughs below take the whole plan on the reasoning that an
+  // empty read is not an empty slide — sound for a FIRST press, where the size
+  // clamps are the only evidence anybody ever had and the answer is what it was
+  // before tags existed.
+  //
+  // It is not sound for a LATER one. By then the deck has provably changed
+  // shape — a press happened — and the window `sweepPlan` produces from sizes
+  // can hold a slide the user made in the meantime. Reproduced: a six-slide
+  // merge, three removed on the first press, the host then stops answering
+  // tags, and the user deletes one merged slide and adds one of their own. The
+  // deck's growth still equals what is owed, the read comes back empty, the
+  // whole window goes, and the slide they just made goes with it.
+  //
+  // So a repeat press asks for PROOF and takes nothing without it. The caller
+  // knows which press this is; this function only has to be told.
+  if (tags.length !== plan.count) return opts.requireProof ? [] : all;
+  if (tags.every((t) => t === undefined)) return opts.requireProof ? [] : all;
   // Only where the id actually appears can it tell two runs apart.
   const discriminates = tags.includes(runId);
   return all.filter((index) => {

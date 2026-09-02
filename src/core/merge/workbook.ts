@@ -34,7 +34,7 @@
  * always did.
  */
 import type JSZip from "jszip";
-import { Pkg, resolveTarget } from "../pptx/pkg.js";
+import { Pkg, resolveTargetSpellings } from "../pptx/pkg.js";
 import { PKG_REL_NS, R_NS, SSML_NS, elements, parseXml } from "../pptx/xml.js";
 
 const REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
@@ -121,6 +121,20 @@ export function withinInflatedBudget(book: JSZip, budget = INFLATED_BUDGET): boo
 }
 
 export interface WorkbookParts {
+  /**
+   * Whether the part that DECLARES the sheets could be read at all.
+   *
+   * False for a workbook whose `xl/workbook.xml` is absent or will not parse,
+   * which is a different fact from "declares no sheets" and had the same
+   * answer: `mergeWorkbook` merged nothing, reported success, and the pane
+   * counted the chart among the ones it had merged. A truncated embedding —
+   * the commonest way a deck arrives damaged — therefore left every chart
+   * label reading `{{Name}}` in Edit Data with nothing anywhere saying so.
+   *
+   * The `unreadable` list exists for exactly that, and already carries the
+   * neighbouring case where the embedding is not a zip at all.
+   */
+  readable: boolean;
   /** Worksheet parts, in the order the workbook declares its sheets. */
   sheets: string[];
   /** Worksheet path by the sheet's own TITLE — what a chart's `<c:f>` names. */
@@ -149,12 +163,17 @@ async function targetsOf(book: JSZip, ownerPart: string): Promise<Map<string, { 
     if ((rel.getAttribute("TargetMode") ?? "") === "External") continue;
     const target = rel.getAttribute("Target");
     if (!target) continue;
+    // The package's own resolver, never a second reading of what a relationship
+    // target means. This had `xl/` glued on by hand once, which is right for the
+    // target Excel writes and wrong for the two other shapes one is allowed to
+    // take.
+    //
+    // Both spellings, and the WORKBOOK decides — the same rule `Pkg.resolved`
+    // applies one level out. A percent-encoded sheet name is stored under
+    // exactly that name, and decoding it made the lookup miss.
+    const [asWritten, decoded] = resolveTargetSpellings(ownerPart, target);
     out.set(rel.getAttribute("Id") ?? "", {
-      // The package's own resolver, never a second reading of what a
-      // relationship target means. This had `xl/` glued on by hand once, which
-      // is right for the target Excel writes and wrong for the two other
-      // shapes one is allowed to take.
-      path: resolveTarget(ownerPart, target),
+      path: asWritten !== decoded && book.file(asWritten) ? asWritten : decoded,
       type: rel.getAttribute("Type") ?? "",
     });
   }
@@ -204,5 +223,5 @@ export async function workbookParts(book: JSZip): Promise<WorkbookParts> {
   const sharedStrings =
     related && book.file(related) ? related : book.file(CONVENTIONAL_SST) ? CONVENTIONAL_SST : undefined;
 
-  return { sheets, byTitle, ...(sharedStrings ? { sharedStrings } : {}) };
+  return { readable: doc !== undefined, sheets, byTitle, ...(sharedStrings ? { sharedStrings } : {}) };
 }
