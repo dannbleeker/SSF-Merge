@@ -7,6 +7,28 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a merge button that died with nothing said about it
+
+Found on a real host on 2026-09-02. Six slides merged, all six deleted from the
+thumbnail rail, then "Remove these slides" pressed. The pane answered correctly
+— *"Nothing was removed — nothing to take back (deck was 13, is 13)"* — and then
+sat there with the merge button reading "Added 6 slides", disabled, with no
+reason and no way on. Walking back to step 2 and forward again does not help,
+which is the first thing anybody tries; only closing the pane and reopening it
+did.
+
+**Disabled is right.** `added` is what disarms that button, and clearing it on a
+press that proved nothing would re-arm "Add 6 slides" over slides that may still
+be in the deck — size alone cannot tell "the user deleted them" from "the user
+deleted six others and added six of their own". What was wrong is that nothing
+said so.
+
+The notice now names both the state and the way out: the run's button stays
+disarmed, and changing the rows, the block or the pictures starts a new merge.
+The test asserts the advice as well as the sentence — it makes the edit and
+checks the button comes back — because a notice telling somebody to do something
+that did not help would be worse than the silence it replaced.
+
 ### Fixed — the local gate was red on Windows for a reason that was not a defect
 
 `test/is-main.test.ts` creates a symlink, and Windows refuses that without
