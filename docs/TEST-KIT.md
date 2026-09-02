@@ -319,12 +319,11 @@ This is the list to read when somebody asks what is open, so it is kept short
 and it is kept true. An item leaves it when a round has actually done the thing,
 not when the code looks right.
 
-**Touch-only operation.** Unticked in `docs/PUBLISHING.md` and not done. The
-machine has no digitizer, and reporting a pass from synthetic mouse clicks would
-be exactly the did-not-run/passed conflation this page exists to prevent. What
-IS established, without a device, is that nothing in the pane depends on hover,
-right-click, double-click or drag, and that hit areas are gated at 24 px — see
-the touch entry in `docs/PUBLISHING.md`.
+**Touch-only operation is confirmed**, by Dann on 2026-09-02, on a touch
+device. A human confirmation and recorded as one — the machine this repository
+is developed on has no digitizer, so no automation ran or could. It matched what
+the code already said: nothing in the pane depends on hover, right-click,
+double-click or drag, and hit areas are gated at 24 px.
 
 **Gecko is no longer unopened.** Dann opened the pane in **Firefox 155** by hand
 on 2026-09-02 and reported it looked fine: it rendered, and the merge flow
