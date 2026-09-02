@@ -29,6 +29,7 @@ import { insertDeck, readTemplate, slideCount, undoInsert, type UndoOutcome } fr
 import { readable } from "../host/errors.js";
 import { tornInsert } from "../host/verdicts.js";
 import { trace } from "../core/trace.js";
+import { slideRange } from "../core/phrase.js";
 
 export interface MergeRequest {
   /** The template block, in the numbering the thumbnail rail shows. */
@@ -273,7 +274,7 @@ export async function inspectBlock(req: { from: number; to: number }): Promise<B
     if (!prepared.ok) return { ok: false, detail: prepared.why, fields: [], imageFields: [], slideFields: [] };
     return {
       ok: true,
-      detail: `${prepared.fields.length} placeholder${prepared.fields.length === 1 ? "" : "s"} in slides ${req.from} to ${req.to}.`,
+      detail: `${prepared.fields.length} placeholder${prepared.fields.length === 1 ? "" : "s"} in ${slideRange(req.from, req.to)}.`,
       fields: prepared.fields,
       imageFields: prepared.imageFields,
       imageFieldsOffSlide: prepared.imageFieldsOffSlide,

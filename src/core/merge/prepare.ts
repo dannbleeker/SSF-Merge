@@ -16,6 +16,7 @@ import JSZip from "jszip";
 
 import { asksForImage, imageFieldsIn, imageMode } from "./images.js";
 import { fieldSites } from "./sites.js";
+import { slideRange } from "../phrase.js";
 
 export interface BlockRequest {
   /** First slide of the template, 1-based, as the thumbnail rail shows it. */
@@ -94,7 +95,7 @@ export async function prepareBlock(pkg: Pkg, req: BlockRequest, runId: string): 
   }
   if (req.from < 1) return { ok: false, why: "Slides are numbered from 1." };
   if (req.to < req.from) {
-    return { ok: false, why: `The block ends before it starts: slide ${req.from} to ${req.to}.` };
+    return { ok: false, why: `The block ends before it starts: ${slideRange(req.from, req.to)}.` };
   }
 
   const paths = await pkg.slidePaths();
@@ -119,7 +120,7 @@ export async function prepareBlock(pkg: Pkg, req: BlockRequest, runId: string): 
     const what = start > 0 ? "the deck that came back" : "the slides PowerPoint sent back";
     return {
       ok: false,
-      why: `The template block is slides ${req.from} to ${req.to}, and ${what} has ${paths.length}.`,
+      why: `The template block is ${slideRange(req.from, req.to)}, and ${what} has ${paths.length}.`,
     };
   }
 
