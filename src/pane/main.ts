@@ -1196,9 +1196,23 @@ async function undoRun(): Promise<void> {
         });
         state = {
           ...state,
+          // The merge button stays disarmed after this, and the sentence says
+          // so. `added` is what disarms it, and clearing it on a press that
+          // proved nothing would re-arm "Add 6 slides" over slides that may
+          // still be in the deck — size alone cannot tell "the user deleted
+          // them" from "the user deleted six others and added six of their
+          // own". So the button is right to stay dead, and what was missing was
+          // any way to find that out.
+          //
+          // On a real host on 2026-09-02 this left a deck back at its starting
+          // size, a pane saying nothing had been removed, and one greyed-out
+          // button with no reason and no way on. Walking back to step 2 and
+          // forward again does not help, which is the first thing anybody
+          // tries; changing anything about the merge does, because an edit is
+          // a different merge.
           notice: done
             ? `Nothing was removed — ${detail}. Delete them from the thumbnail rail if you want them gone.`
-            : `Nothing was removed — ${detail}`,
+            : `Nothing was removed — ${detail}. This run's button stays disarmed; change the rows, the block or the pictures to start a new merge.`,
           ...(done ? { undoWithdrawn: true } : {}),
           ...(deckNow !== undefined ? { deckSize: deckNow } : {}),
         };

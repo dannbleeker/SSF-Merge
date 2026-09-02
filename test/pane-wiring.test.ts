@@ -1803,6 +1803,48 @@ describe("taking a real merge back", () => {
     expect(primary().disabled, "and it is still disarmed").toBe(true);
   });
 
+  it("says why the merge button is dead after a press that removed nothing", async () => {
+    /**
+     * Found on a real host on 2026-09-02. The user merged six slides, deleted
+     * all six from the thumbnail rail, and pressed "Remove these slides". The
+     * pane answered correctly — nothing to take back, the deck is the size it
+     * started — and then sat there with the merge button reading "Added 6
+     * slides", disabled, for ever.
+     *
+     * Disabled is RIGHT: `added` is what disarms it, and clearing it on a press
+     * that proved nothing would re-arm "Add 6 slides" over slides that may
+     * still be in the deck. Size alone cannot tell "the user deleted them" from
+     * "the user deleted six others and added six of their own".
+     *
+     * What was wrong is that nothing said so. The deck was back to its starting
+     * size, the pane said nothing had been removed, and the one button that
+     * could move the run forward was greyed out with no reason and no way on
+     * except closing the pane and opening it again. Walking back to step 2 and
+     * forward does not help, which is the first thing anybody tries.
+     */
+    await afterMerge();
+    office.undoMerge.mockResolvedValueOnce({
+      removed: 0,
+      disowned: 0,
+      detail: "nothing to take back (deck was 12, is 12)",
+    });
+    office.slideCount.mockResolvedValueOnce(12);
+    undoButton()?.click();
+    await settle();
+
+    expect(primary().disabled, "still disarmed, which is correct").toBe(true);
+    expect(document.body.textContent, "and now it says why").toMatch(/start a new merge|new merge/i);
+
+    // And the way out it names actually works. A notice that told the user to
+    // do something that did not help would be worse than the silence it
+    // replaced — this is the assertion that stops it becoming that.
+    pane().querySelector<HTMLElement>('[data-action="rows"]')?.click();
+    await settle();
+    pane().querySelector<HTMLElement>("[data-row]")?.click();
+    await settle();
+    expect(primary().disabled, "an edit is a different merge, so the button comes back").toBe(false);
+  });
+
   it("marks a press that moved nothing as a press, so the next one still asks for proof", async () => {
     /**
      * `pressed` was set only where slides came out. A press that removed
