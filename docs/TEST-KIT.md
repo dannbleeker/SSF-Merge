@@ -319,13 +319,27 @@ This is the list to read when somebody asks what is open, so it is kept short
 and it is kept true. An item leaves it when a round has actually done the thing,
 not when the code looks right.
 
-**Touch-only operation, and Firefox.** Both are unticked in `docs/PUBLISHING.md`
-and neither has been done. The desktop round of 2026-08-31 could not: the machine
-it ran on has no digitizer, and reporting a pass from synthetic mouse clicks
-would be exactly the did-not-run/passed conflation this page exists to prevent.
-Firefox was not installed on it either, so Gecko remains the one engine the pane
-has never been opened in — Chromium is covered twice over, by the web rounds in
-Edge and by the desktop pane, which is WebView2.
+**Touch-only operation.** Unticked in `docs/PUBLISHING.md` and not done. The
+machine has no digitizer, and reporting a pass from synthetic mouse clicks would
+be exactly the did-not-run/passed conflation this page exists to prevent. What
+IS established, without a device, is that nothing in the pane depends on hover,
+right-click, double-click or drag, and that hit areas are gated at 24 px — see
+the touch entry in `docs/PUBLISHING.md`.
+
+**Gecko is no longer unopened.** Dann opened the pane in **Firefox 155** by hand
+on 2026-09-02 and reported it looked fine: it rendered, and the merge flow
+worked. That is a human observation and is recorded as one — no automation ran,
+because none can here. Firefox 155 speaks WebDriver BiDi and not CDP, which is
+what every script in `test-kit/driver/` talks; Playwright cannot drive a stock
+Firefox (it needs its own `-juggler-pipe` build), and its own build downloads to
+`%LOCALAPPDATA%` where AppLocker refuses to execute it — `spawn UNKNOWN`. All
+three were tested on 2026-09-02 rather than assumed.
+
+Two things in that run were NOT separately confirmed and stay open: the
+**clipboard copy** under "What this run did, step by step", which uses
+`navigator.clipboard` and is permission-gated inside a cross-origin iframe; and
+**EXIF photo rotation**, which fails soft by design, so a Gecko difference there
+puts the picture in sideways with no error at all.
 
 **Answered since, and no longer open.**
 
