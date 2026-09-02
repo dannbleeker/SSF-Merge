@@ -24,6 +24,7 @@ import type { EmptyPolicy } from "../core/merge/resolve.js";
 import { beginRun, onTrace, trace, traceText } from "../core/trace.js";
 import { render } from "./render.js";
 import { describeMerge, plural } from "./summary.js";
+import { upright } from "./upright.js";
 import {
   EMPTY,
   EMPTY_DRAFT,
@@ -625,7 +626,13 @@ async function takeImages(files: FileList | null): Promise<void> {
   let refused = 0;
   for (const file of Array.from(files)) {
     try {
-      images.set(file.name, new Uint8Array(await file.arrayBuffer()));
+      // Turned here, once, rather than at merge time. PowerPoint ignores a
+      // photo's EXIF orientation — established on a real host on 2026-09-02 —
+      // so a phone's portrait picture lands in the deck lying on its side
+      // unless the pixels are turned first. `upright` returns the bytes
+      // unchanged for everything that does not need it, which is nearly
+      // everything, and also whenever it cannot do the work at all.
+      images.set(file.name, await upright(new Uint8Array(await file.arrayBuffer())));
     } catch {
       // A file the browser will not read — moved, or on a disconnected drive.
       // Counted rather than thrown: the others are still worth having, and the
