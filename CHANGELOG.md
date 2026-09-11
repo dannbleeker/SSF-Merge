@@ -7,6 +7,53 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — the sibling sweep called an EMPTY table a broken one
+
+`sibling-watch` had been red every run since 2026-09-02, and the recorded
+diagnosis was wrong. Nothing upstream was renamed. `PENDING_QUESTIONS` is still
+exactly where it was; it is **empty**, deliberately, and the sibling's own
+comment on it reads *"EMPTY, AND THAT IS THE POINT OF THE REGISTER WORKING."*
+
+The defect was ours. `tableKeys` ended `return keys.length === 0 ? null : keys`,
+which collapsed two states into one: *reindented past this parser*, which is a
+broken sweep, and *genuinely holds nothing*, which is a normal week. The
+docstring defended the conflation on the grounds that a truly empty curated
+table is rare and that calling it broken "costs a person a minute". That
+reasoning does not survive contact with a WORK QUEUE — the sibling says an id
+belongs in `PENDING_QUESTIONS` only between the commit that adds it and the
+round that answers it, so empty is its resting state, and the cost was nine days
+of red, not a minute.
+
+The two are now told apart by a second look: no keys at the anchored two-space
+indentation but key-shaped lines elsewhere in the body means unreadable, `null`;
+nothing key-shaped anywhere means empty, `[]`. Comment lines are stripped first,
+or prose like "retired the way the register asks:" reads as a key.
+
+**A broken sweep hides findings, and this one was hiding three.** With the parse
+fixed, the sweep ran to completion and reported office-js#6329 plus two retired
+host questions, none of which anything here had answered. All three are now
+triaged:
+
+- **office-js#6329 is RELEVANT and is ours by call shape.** PowerPoint on the
+  web is reported to force a full presentation save on **every** `context.sync()`,
+  read-only syncs included. `deckSlideIds` costs `1 + ceil(slides / 20)`
+  read-only syncs — eleven on a 200-slide deck — and they are on the merge path.
+  Nothing changes today: the paging adopted for office-js#4272 already gives the
+  fewest syncs this read can take. The issue's status is **contested** — marked
+  fixed on 2026-08-10 and rebutted with video the same hour — so it must not be
+  built on in either direction, and what would settle it here is a measurement
+  rather than a reading.
+- `rotation-keeps-the-unrotated-box` and `named-preset-resolves` are **no
+  exposure**: both concern shapes added and read back through the API, and a
+  merge copies slide parts wholesale without asking the API about a shape.
+
+The error message was rewritten too. It asserted the table had been "renamed,
+moved, emptied or reformatted" — a list of causes offered as a finding, one of
+which had stopped being a failure at all. It now names the condition, says
+plainly that an empty table is not this error, and leaves the causes as
+candidates. A wrong cause in an error message is read as a diagnosis: this one
+sent a later session looking upstream for a rename that never happened.
+
 ### Added — our own terms of use, and the manifest points at them
 
 `public/terms.html` ships beside the privacy policy and the support page, and

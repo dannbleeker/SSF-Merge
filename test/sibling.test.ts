@@ -234,7 +234,7 @@ describe("the sibling sweep", () => {
     expect(tableKeys("export const OTHER = {\n  a: 1,\n};\n", "GONE")).toBeNull();
     expect(() => {
       tablesFrom((): string => "export const NOTHING = {\n};\n");
-    }).toThrow(/renamed, moved, emptied or reformatted/);
+    }).toThrow(/missing, renamed, moved, or/);
   });
 
   it("says a table it can no longer READ is missing too", () => {
@@ -244,16 +244,59 @@ describe("the sibling sweep", () => {
      * level of nesting — parses to an empty array, which is not null and was
      * therefore reported as a quiet week. The protection above covered a rename
      * and not a reformat.
-     *
-     * A curated table that genuinely holds nothing is not worth distinguishing
-     * here: saying so once costs a person a minute, and reading it as quiet
-     * costs every Monday after.
      */
     const reindented = ["export const T = {", '    bare: "a",', '    "with-dashes": "c",', "};", ""].join("\n");
     expect(tableKeys(reindented, "T"), "four spaces is a table this cannot read").toBeNull();
     expect(() => {
       tablesFrom((): string => reindented.replace("T", "FAKE_BASELINE"));
-    }).toThrow(/emptied or reformatted/);
+    }).toThrow(/reindented past this parser/);
+  });
+
+  it("says an EMPTY table is empty, not broken", () => {
+    /**
+     * The rule used to be "no keys means null", and this is the case it got
+     * wrong. It was argued on the grounds that a genuinely empty curated table
+     * is rare and that calling it broken costs a person a minute.
+     *
+     * `PENDING_QUESTIONS` is a WORK QUEUE. The sibling's own comment says an id
+     * belongs there only between the commit that adds it and the round that
+     * answers it, so EMPTY IS ITS RESTING STATE — and when it emptied on
+     * 2026-09-01 the weekly sweep went red every run for nine days. Not once,
+     * and not for a minute.
+     *
+     * The tell that separates the two is whether anything key-shaped survives
+     * anywhere in the body once comments are stripped. Nothing means empty.
+     */
+    const empty = ["export const T = {", "};", ""].join("\n");
+    expect(tableKeys(empty, "T"), "an empty table is readable and holds nothing").toEqual([]);
+
+    // Prose is not code. The real table's comment runs to fifteen lines and
+    // says things like "retired the way the register asks:" — a colon after a
+    // word, which is a key to a regex that has not been told otherwise.
+    const commented = [
+      "export const T = {",
+      "  // EMPTY, AND THAT IS THE POINT OF THE REGISTER WORKING.",
+      "  //",
+      "  // Both entries were retired the way the register asks: the code",
+      "  // deployed, the rounds asked, and the fixture was refreshed.",
+      "};",
+      "",
+    ].join("\n");
+    expect(tableKeys(commented, "T"), "a comment mentioning `asks:` is not a key").toEqual([]);
+
+    // And the whole point: every table empty sweeps CLEAN rather than throwing.
+    // This is the exact shape of the live failure — `PENDING_QUESTIONS` empty
+    // while the other four were populated — reduced to the case that isolates
+    // it from any question of which table.
+    const allEmpty = ["KNOWN_ISSUES", "FAKE_BASELINE", "KNOWN_DIVERGENCES", "UNSTABLE_ANSWERS", "PENDING_QUESTIONS"]
+      .map((t) => `export const ${t} = {\n};\n`)
+      .join("\n");
+    const tables = tablesFrom((): string => allEmpty) as { keys: string[] }[];
+    expect(
+      tables.every((t) => t.keys.length === 0),
+      "an all-empty sweep should not throw",
+    ).toBe(true);
+    expect(untriaged(tables), "nothing untriaged, because there is nothing at all").toEqual([]);
   });
 
   it("reports a finding with no row, and keeps which tables it was in", () => {
