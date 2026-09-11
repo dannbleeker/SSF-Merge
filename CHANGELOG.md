@@ -7,6 +7,48 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added — our own terms of use, and the manifest points at them
+
+`public/terms.html` ships beside the privacy policy and the support page, and
+`termsOfUseUrl` names it. **This is a manifest change: it bumps `VERSION` to
+`1.0.2.0` and costs a re-sideload.**
+
+It replaces Microsoft's standard EULA, chosen on 2026-08-30 and a reasonable
+stopgap — it resolved, and it was honest. What it could not do is describe this
+product. It is written for an app in general, and says nothing about a tool that
+**writes into the presentation you have open**, which is the only real risk a
+user of this one carries. Our page says to keep a copy of anything you cannot
+afford to lose before merging into it, and a test now holds that sentence in
+place: if it ever leaves, the drift back to a generic document has happened by
+accident.
+
+Three things went in with it, none of them optional:
+
+- **The publisher name was wrong in four places, including the manifest.**
+  Partner Center ▸ Developer ▸ Windows publisher ID reads
+  `StruktureretSundFornuft ApS`. The privacy policy, `docs/PUBLISHING.md` and
+  the manifests' `provider` all said `StruktureretSundFornuft` — three copies
+  consistent with each other and none of them right about the one place
+  Microsoft publishes the name.
+
+  The manifest was the copy that matters and the one the first sweep missed,
+  because that sweep grepped for the CORRECT string: searching for
+  `StruktureretSundFornuft ApS` finds every place already right and no place
+  wrong. `ProviderName` is what a validator reads and what a listing shows, so
+  disagreeing with the account it is submitted from is a reviewer's question
+  rather than a typo. All four now agree, the two pages also carry the CVR
+  number, and `docs.test.ts` holds every spelling against the others in one
+  test.
+- **Nothing linked to the new page.** It was live, in `public/`, named by the
+  manifest, and reachable only by typing the filename. Every page now links to
+  every other, checked as a mesh rather than a list: the landing page already
+  carried Support and Privacy, so "has some links" would have passed while the
+  third one was missing from all four footers.
+- **The other three pages were guarded by almost nothing.** `manifest.test.ts`
+  asks whether a page a manifest names exists; it cannot see language, icon or
+  absolute `og:` URLs, each of which was written once for the landing page and
+  then hand-copied into three more files.
+
 ### Changed — touch-only is confirmed, on a device
 
 Dann confirmed it on 2026-09-02 on a touch device. A human confirmation and

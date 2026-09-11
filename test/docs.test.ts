@@ -373,3 +373,106 @@ describe("the page a visitor actually lands on", () => {
     expect(page).toMatch(/<html lang="[a-z]{2}"/);
   });
 });
+
+describe("the four pages the site is made of", () => {
+  /**
+   * `public/` is copied verbatim by the Pages workflow, so every file in it is
+   * live the moment it merges, with nothing between the push and the reader.
+   *
+   * `manifest.test.ts` already asks whether a page a MANIFEST names exists.
+   * That covers the pane, support, privacy and — since 2026-09-11 — terms. It
+   * cannot see any of what is below: a page can exist, be named, resolve, and
+   * still contradict its siblings or be reachable only by typing the URL.
+   */
+  const PAGES = ["index.html", "privacy.html", "support.html", "terms.html"] as const;
+  const site = (name: string): string => readFileSync(`public/${name}`, "utf8");
+
+  /**
+   * Partner Center ▸ Developer ▸ Windows publisher ID, read off the account on
+   * 2026-09-11. That string is what a store listing shows a user, so it is the
+   * one spelling the site has to match.
+   */
+  const PUBLISHER = "StruktureretSundFornuft ApS";
+  /** Partner ▸ Legal business profile, same reading. Also the CVR register. */
+  const COMPANY = "DBP Invest ApS";
+  const CVR = "36053925";
+
+  it("names the publisher the way Partner Center does, on every page that names it", () => {
+    // The privacy policy said "StruktureretSundFornuft", with no `ApS`, and
+    // `docs/PUBLISHING.md` said the same. Two documents agreeing with each
+    // other is not a check — they were both wrong about the one place
+    // Microsoft actually publishes the name. The terms page was written with
+    // the `ApS` and that disagreement is what surfaced it.
+    for (const name of ["privacy.html", "terms.html"] as const) {
+      const said = /under the publisher name <strong>([^<]*)<\/strong>/.exec(site(name))?.[1];
+      expect(said, `${name} names no publisher at all`).toBe(PUBLISHER);
+      expect(site(name), `${name} does not name the company`).toContain(COMPANY);
+      expect(site(name), `${name} does not carry the CVR number`).toContain(CVR);
+    }
+    expect(readFileSync("docs/PUBLISHING.md", "utf8")).toContain(PUBLISHER);
+
+    /**
+     * The manifests are the copy that matters most, and the one the first pass
+     * of this sweep missed: grepping for the CORRECT string finds every place
+     * already right and none of the places wrong. `ProviderName` is what a
+     * validator reads and what a listing shows, so disagreeing with the account
+     * it is submitted from is a reviewer's question rather than a typo.
+     */
+    const xml = readFileSync("manifest-prod.xml", "utf8");
+    expect(/<ProviderName>([^<]*)<\/ProviderName>/.exec(xml)?.[1]).toBe(PUBLISHER);
+    const json = JSON.parse(readFileSync("manifest-prod.json", "utf8")) as {
+      developer: { name: string };
+    };
+    expect(json.developer.name).toBe(PUBLISHER);
+  });
+
+  it("links every page to every other, so none is reachable only by URL", () => {
+    /**
+     * `terms.html` was written linked from nothing. It was in `public/`, it
+     * was live, it was in the manifest — and no page on the site pointed at
+     * it, so the only way to read it was to already know the filename.
+     *
+     * A mesh rather than a list because the failure is per-pair: the landing
+     * page carried Support and Privacy, and it was the third one, added later,
+     * that every footer missed. Checking "each page has SOME links" would have
+     * passed throughout.
+     */
+    for (const from of PAGES) {
+      for (const to of PAGES) {
+        if (from === to) continue;
+        const href = to === "index.html" ? 'href="/"' : `href="/${to}"`;
+        expect(site(from).includes(href), `${from} has no link to ${to}`).toBe(true);
+      }
+    }
+  });
+
+  it("says the one thing about this product a generic EULA cannot", () => {
+    // `termsOfUseUrl` pointed at Microsoft's standard EULA until 2026-09-11.
+    // It resolved and it was honest, and the reason for replacing it was that
+    // it describes an app in general: nothing in it tells you this one writes
+    // into the deck you have open. If that warning ever leaves the page, the
+    // move back to a generic document has happened by accident.
+    const terms = site("terms.html");
+    expect(terms).toMatch(/keep a copy/i);
+    expect(terms, "the as-is disclaimer is gone").toMatch(/as is/i);
+    expect(terms, "the privacy policy is no longer part of the terms").toContain("/privacy.html");
+  });
+
+  it("gives every page the furniture the landing page is already held to", () => {
+    // Each of these was written once for `index.html` and then copied by hand
+    // into three more files, which is the shape that ends with one of them
+    // missing it. og:url and og:image have to be absolute or they resolve
+    // against the SHARING service and unfurl to nothing.
+    for (const name of PAGES) {
+      const html = site(name);
+      expect(html, `${name} declares no language`).toMatch(/<html lang="[a-z]{2}"/);
+      expect(html, `${name} has no icon`).toMatch(/rel="icon"/);
+      for (const tag of ["og:title", "og:url", "og:image"]) {
+        expect(html, `${name} has no ${tag}`).toContain(tag);
+      }
+      for (const m of html.matchAll(/property="og:(?:url|image)" content="([^"]*)"/g)) {
+        expect(m[1], `${name} has a relative og URL`).toMatch(/^https:\/\//);
+      }
+    }
+  });
+});
