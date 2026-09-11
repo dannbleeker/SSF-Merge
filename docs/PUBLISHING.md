@@ -72,24 +72,55 @@ from you; they are here so a refusal is recognisable rather than mysterious.
       without a store listing to send people through.
 
       It names SSF Merge specifically rather than the site in general, names the
-      controller — **DBP Invest ApS**, publishing as StruktureretSundFornuft —
-      and is separate from any terms, which Microsoft requires: a Terms of Use
-      does not count as a privacy policy. Missing or invalid links here are one
-      of the top five reasons submissions fail.
+      controller — **DBP Invest ApS**, CVR 36053925, publishing as
+      **StruktureretSundFornuft ApS** — and is separate from the terms, which
+      Microsoft requires: a Terms of Use does not count as a privacy policy.
+      Missing or invalid links here are one of the top five reasons submissions
+      fail.
+
+      The publisher name carries the `ApS`, and it did not until 2026-09-11.
+      Partner Center's **Developer ▸ Windows publisher ID** reads
+      `StruktureretSundFornuft ApS`, and that is the string a store listing
+      shows a user. The privacy policy said `StruktureretSundFornuft`, this
+      entry said it too, and so did the manifests' `provider` — three copies
+      agreeing with each other and none with Microsoft.
+
+      **The manifest was the one that mattered and the one the first sweep
+      missed.** `ProviderName` is what the validator reads and what a listing
+      shows; a mismatch against the account the add-in is submitted from is a
+      reviewer's question, not a typo. It was missed because the sweep grepped
+      for the CORRECT string, which finds every place already right and no place
+      wrong — the search has to be for the SHAPE. `test/docs.test.ts` now holds
+      all four spellings together in one test.
 
       The honest answer was short because the product makes no network calls at
       all. The page says which single item is written to local storage, names
       the key and lists its fields, which is what makes "we collect nothing"
       checkable rather than a slogan.
 
-- [x] **An End User Licence Agreement, at an HTTPS URL.** Done. Microsoft's own
-      standard EULA, chosen by the owner on 2026-08-30:
-      `https://support.office.com/client/61994a3b-2c87-41c4-a88d-a6455efa362d`.
-      It is in the manifest's `termsOfUseUrl` and resolves.
+- [x] **An End User Licence Agreement, at an HTTPS URL.** Done —
+      `https://ssf-merge.struktureretsundfornuft.dk/terms.html`, shipping from
+      `public/terms.html` beside the privacy policy and the support page, and in
+      the manifest's `termsOfUseUrl` since 2026-09-11.
 
-      It previously pointed at the repository's MIT `LICENSE`, which governs the
-      SOURCE. A licence telling a developer they may fork the repository is not
-      one telling a user what they may do with the add-in.
+      It has pointed at three things, and each move was a correction. The MIT
+      `LICENSE` governs the SOURCE: a licence telling a developer they may fork
+      the repository is not one telling a user what they may do with the add-in.
+      Microsoft's own standard EULA replaced it on 2026-08-30 — the one they
+      offer publishers who have no lawyer — which resolved and was honest, but
+      describes a generic app. It says nothing about a tool that writes into the
+      presentation you have open.
+
+      Our own page says the thing only we can say: **keep a copy of anything you
+      cannot afford to lose before you merge into it.** It also states the "as
+      is", the liability limit, Danish law, and that the privacy policy forms
+      part of it — and it carries no warranty the product cannot honour, which
+      is the trap in writing your own.
+
+      Moving it bumped `VERSION` to `1.0.2.0`. A user opening Terms of use from
+      the listing now reads a different document, which is what the number is
+      for. **That is a manifest change, so it costs a re-sideload** — the page
+      itself would not have.
 
 - [ ] **Bump the manifest version on every submitted update.** `VERSION` in
       `scripts/manifest-source.mjs` is a hand-edited constant, moved when the

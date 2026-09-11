@@ -7,8 +7,8 @@
   xsi:type="TaskPaneApp">
 
   <Id>43ebbbac-44ad-42b2-a582-0ef079093e6c</Id>
-  <Version>1.0.1.0</Version>
-  <ProviderName>StruktureretSundFornuft</ProviderName>
+  <Version>1.0.2.0</Version>
+  <ProviderName>StruktureretSundFornuft ApS</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="SSF Merge" />
   <Description DefaultValue="Mail merge for PowerPoint. Mark a block of slides as your template, attach a table, and get one set of slides per row with every font, colour and placement intact." />

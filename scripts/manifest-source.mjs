@@ -41,8 +41,13 @@ export const ID = "43ebbbac-44ad-42b2-a582-0ef079093e6c";
  * user's PowerPoint would care about: `HighResolutionIconUrl` moved from the
  * 80px ribbon icon to the 64px one AppSource actually asks for, and the support
  * link stopped being a GitHub repository, which a submission refuses.
+ *
+ * 1.0.1.0 → 1.0.2.0 on 2026-09-11: `termsOfUseUrl` moved off Microsoft's
+ * standard EULA onto our own `terms.html`. A user who opens Terms of use from
+ * the store listing now reads a different document, which is exactly the kind
+ * of change the number exists to announce.
  */
-export const VERSION = "1.0.1.0";
+export const VERSION = "1.0.2.0";
 
 /**
  * The requirement floor, as the manifests' comment states it.
@@ -65,7 +70,18 @@ const DESCRIPTION =
 export const DEFINITION = {
   id: ID,
   version: VERSION,
-  provider: "StruktureretSundFornuft",
+  /**
+   * The publisher name exactly as Partner Center holds it — Developer ▸ Windows
+   * publisher ID reads `StruktureretSundFornuft ApS`.
+   *
+   * It said `StruktureretSundFornuft` here, in `public/privacy.html` and in
+   * `docs/PUBLISHING.md`, all three agreeing with each other and none of them
+   * with Microsoft. This one is the copy that matters most: it is the
+   * `ProviderName` a validator reads and the name a listing shows, so a
+   * mismatch against the account it is submitted from is a reviewer's question
+   * rather than a typo. `docs.test.ts` now holds all four together.
+   */
+  provider: "StruktureretSundFornuft ApS",
   displayName: "SSF Merge",
   shortDescription: "One template block of slides, one set per row of your data.",
   description: DESCRIPTION,
@@ -95,11 +111,21 @@ export const DEFINITION = {
   support: "https://ssf-merge.struktureretsundfornuft.dk/support.html",
   privacy: "https://ssf-merge.struktureretsundfornuft.dk/privacy.html",
   /**
-   * Microsoft's own standard EULA, which they offer to publishers who have no
-   * lawyer of their own and have taken the point up with one. Chosen
-   * deliberately on 2026-08-30 rather than left as a placeholder.
+   * Our own terms, on our own origin, from 2026-09-11.
+   *
+   * This was Microsoft's standard EULA — the one they offer publishers who have
+   * no lawyer of their own — chosen deliberately on 2026-08-30 rather than left
+   * as a placeholder. It was a reasonable stopgap and it resolved, but it
+   * describes a generic app: it says nothing about a tool that WRITES INTO the
+   * presentation you have open, which is the one risk a user of this add-in
+   * actually carries. `public/terms.html` says to keep a copy before merging,
+   * and a EULA that names the product's own hazard is worth more than one that
+   * does not.
+   *
+   * Same origin as `support` and `privacy` now, so all three move together and
+   * the page test below covers this one too.
    */
-  terms: "https://support.office.com/client/61994a3b-2c87-41c4-a88d-a6455efa362d",
+  terms: "https://ssf-merge.struktureretsundfornuft.dk/terms.html",
   /** Navy, the pane's own heading colour. */
   accent: "#00254C",
   button: {
