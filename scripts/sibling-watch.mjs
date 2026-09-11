@@ -67,14 +67,28 @@ export const SOURCES = [
  * forever, which is the failure this whole file exists to prevent, committed by
  * the file itself.
  *
- * **Null for a table that parses to NOTHING, too**, and that is the same rule
- * rather than a new one. The key pattern is anchored on two-space indentation,
- * so a reindent upstream — a formatter run, a nesting change — yields an empty
- * array, which is not null and therefore read as "nothing new". The protection
- * above covered a rename and not a reformat, which is the identical silence by
- * a likelier route. A curated table that genuinely holds nothing is not a state
- * worth distinguishing here: reporting it once as broken costs a person a
- * minute, and reading it as quiet costs every Monday after.
+ * **Null for a table this can no longer READ, too.** The key pattern is anchored
+ * on two-space indentation, so a reindent upstream — a formatter run, a nesting
+ * change — yields an empty array, which is not null and would therefore be read
+ * as "nothing new". The protection above covered a rename and not a reformat,
+ * which is the identical silence by a likelier route.
+ *
+ * **But an EMPTY table is not an unreadable one, and treating them alike was a
+ * defect this file carried from 2026-09-02 to 2026-09-11.** The rule used to be
+ * "no keys means null", argued on the grounds that a genuinely empty curated
+ * table is rare and that reporting it as broken "costs a person a minute". That
+ * reasoning does not survive contact with `PENDING_QUESTIONS`, which is a WORK
+ * QUEUE: the sibling's own comment says an id belongs there only between the
+ * commit that adds it and the round that answers it. **Empty is its resting
+ * state.** It emptied on 2026-09-01 and the weekly sweep went red every run
+ * afterwards — not once, and not for a minute.
+ *
+ * So the two states are told apart by asking a second question. No keys at the
+ * anchored indentation, but key-shaped lines somewhere else in the body, means
+ * the indentation moved: unreadable, null. No key-shaped lines anywhere means
+ * the table really is empty: `[]`, and the sweep reports a quiet week honestly.
+ * Comment lines are stripped before that second look, or a table whose prose
+ * happens to contain `something:` would read as code.
  *
  * The key charset takes `_` and `.` as well. It matched `[A-Za-z0-9-]` only, so
  * `brand_new_question` and `another.new.question` were dropped in silence —
@@ -92,7 +106,13 @@ export function tableKeys(source, table) {
   const end = rest.search(/^\};/m);
   const body = end < 0 ? rest : rest.slice(0, end);
   const keys = [...body.matchAll(/^ {2}"?([A-Za-z0-9][A-Za-z0-9._-]*)"?:/gm)].map((m) => String(m[1]));
-  return keys.length === 0 ? null : keys;
+  if (keys.length > 0) return keys;
+  // Nothing at two spaces. Look again at ANY indentation, past the opening
+  // brace and with comment lines removed: a hit means the table is populated
+  // and this parser has lost it, which is unreadable rather than empty.
+  const inner = body.slice(body.indexOf("{") + 1);
+  const code = inner.split("\n").filter((line) => !line.trim().startsWith("//"));
+  return /^\s*"?[A-Za-z0-9][A-Za-z0-9._-]*"?:/m.test(code.join("\n")) ? null : [];
 }
 
 /**
@@ -166,6 +186,18 @@ export const TRIAGED = {
   "issue:6363":
     "RELEVANT — `PowerPoint.run`'s batching fails to load properties reliably — properties not available after `context.sync()`, web only. HIGHLY RELEVANT: `deckSlideIds` batches a `load(\"id\")` across up to twenty `getItemAt` handles and reads them all after one sync, which is precisely the shape this describes. Asked by the `deckRead` probe question's `empty` arm.",
   "issue:2714": "NO EXPOSURE — setSelectedDataAsync converts points to pixels. NO EXPOSURE — never called.",
+  "issue:6329":
+    "RELEVANT — PowerPoint on the WEB forces a full presentation save on every `context.sync()`, read-only syncs included. " +
+    "THIS IS OUR HOST AND OUR EXACT CALL SHAPE, so it is live exposure rather than a recorded curiosity. `deckSlideIds` " +
+    "costs `1 + ceil(slides / 20)` syncs — one for `slideCount`, one per page of `ID_PAGE` — and every one of them is " +
+    "READ-ONLY: it loads `id` and writes nothing. On a 200-slide deck that is eleven syncs, and if this issue is right it " +
+    "is also eleven forced full saves, on the merge path, for a scan the user did not ask for. " +
+    "Nothing to change today, and the reason is worth writing down rather than leaving implicit: the paging design " +
+    "adopted for office-js#4272 already gives us the fewest syncs this read can be done in, one per twenty slides " +
+    "instead of one per slide, so the exposure is bounded by a constant we picked for another reason. " +
+    "**The status is CONTESTED and must not be built on either way** — Microsoft marked it fixed on 2026-08-10 and the " +
+    "reporter rebutted with video the same hour; it carries both `Status: fixed` and `Needs: author feedback`. The thing " +
+    "that would settle it here is a measurement, not a reading: sync count against wall-clock on a large deck.",
   "question:getcount-populates-same-sync":
     "RELEVANT: `deckSlideIds` calls `getCount()` and then reads `getItemAt` handles, and the sibling has recorded a host whose count is right while the list is empty. This is why the paging loop trusts the scalar count and not a collection load.",
   "question:getitemat-past-end":
@@ -222,6 +254,17 @@ export const TRIAGED = {
   "question:untrack-available":
     "NO EXPOSURE — a merge holds a handful of proxies for one batch, so there is nothing to untrack. The sibling measured it unavailable on this host anyway.",
   "question:untrack-available-on-shape": "NO EXPOSURE — see `untrack-available`.",
+  "question:rotation-keeps-the-unrotated-box":
+    "NO EXPOSURE — whether the host keeps reporting a shape's UNROTATED bounding box after `rotation` is set. Nothing " +
+    "here reads a shape's geometry, rotated or not; a merge copies slide parts wholesale and never asks the API about a " +
+    "shape. Worth noting what the sibling's own evidence says, because it is about the API surface we avoid rather than " +
+    "about rotation: the host would not answer AT ALL for a just-added shape in 31 of 36 passes. That is the same " +
+    "just-added-proxy wall as `shape-add-fresh-slide-proxy` and the rest, and it is the wall this engine is built to " +
+    "stay behind.",
+  "question:named-preset-resolves":
+    "NO EXPOSURE — whether a named `GeometricShapeType` preset resolves and draws. This add-in adds no shapes and names " +
+    "no presets. Surfaced here only because it was retired from the sibling's `PENDING_QUESTIONS` into its committed " +
+    "sheet, which moves the key rather than removing it.",
 };
 
 /**
@@ -287,7 +330,15 @@ export function tablesFrom(read) {
     const keys = tableKeys(cache.get(path), table);
     if (keys === null)
       throw new Error(
-        `${path}: no keys read from ${table} — it was renamed, moved, emptied or reformatted upstream. ` +
+        // Names the CONDITION — this parser cannot read the table — and offers
+        // the causes as candidates rather than as a finding. It used to assert
+        // "emptied" among them, which stopped being true when an empty table
+        // became a legitimate answer, and a wrong cause in an error message is
+        // read as a diagnosis: this one sent a later session looking upstream
+        // for a rename that had not happened.
+        `${path}: no keys could be read from ${table} — it is missing, renamed, moved, or ` +
+          `reindented past this parser. (A table that is genuinely EMPTY is NOT this error: ` +
+          `that reports zero findings and a quiet week.) ` +
           `A sweep that cannot read the table must say so rather than report a quiet week.`,
       );
     out.push({ path, table, kind, keys });
