@@ -124,12 +124,49 @@ is a real answer and the most common one worth writing down.
 | `PowerPoint.run` batching fails to load properties reliably after `sync()` (office-js#6363) | its central failure | **Highly relevant.** `deckSlideIds` batches `load("id")` across twenty `getItemAt` handles and reads them after one sync — precisely this shape. Asked by our `deckRead` probe's `empty` arm. |
 | `getcount-populates-same-sync` — the count is right while the list is empty | its `FAKE_BASELINE` | **Relevant.** Why the paging loop trusts the scalar `getCount()` and never a collection load. |
 | `getitemat-past-end` — what the host does past the end of the collection | its `FAKE_BASELINE` | **Relevant.** Bounds both `deckSlideIds` (paging by index) and `undoInsert` (deleting by index). |
-| `which-end-a-short-read-drops` | its `FAKE_BASELINE` | **Relevant.** A short read that is not a prefix makes a slide NUMBER wrong, not merely a list shorter. Our probe asks the same thing as `prefixOk`. |
+| `which-end-a-short-read-drops` | its `FAKE_BASELINE`, then its `RENAMED_ANSWERS` | **Relevant — and the sibling has RETRACTED its answer, which found the same defect in ours.** See below. |
 | `how-many-collection-reads-a-context-survives` | its `PENDING_QUESTIONS` | **Relevant.** `deckSlideIds` takes one `PowerPoint.run` per page deliberately, so no context accumulates reads. Recorded so the reason survives a refactor. |
 | `delete-then-lookup` — whether a deleted slide still resolves | its `FAKE_BASELINE` | **Relevant as doctrine.** Exactly what made by-id clean-up unsafe. Undo deletes by position, highest index first, and re-counts rather than believing the call. |
 | `scratch-slides-returned` — whether a probe gets its slides back | its positional sweep | **Adopted.** Our probe's sweep is positional and triple-clamped, each clamp proven load-bearing in `test/undo.test.ts`. |
 | PowerPoint on the WEB forces a full presentation save on every `context.sync()`, read-only syncs included (office-js#6329) | its `syncsSoFar` | **Relevant, and ours by call shape.** `deckSlideIds` costs `1 + ceil(slides / 20)` read-only syncs — eleven on a 200-slide deck — on the merge path. Nothing to change: the paging adopted for office-js#4272 already gives the fewest syncs this read can take. **Status is contested** (marked fixed 2026-08-10, rebutted with video the same hour), so it must not be built on either way; what would settle it here is a measurement, not a reading. |
 | `rotation-keeps-the-unrotated-box` and `named-preset-resolves` | its `KNOWN_DIVERGENCES` and committed sheet | **No exposure.** Both are about shapes added and read back through the API — geometry and preset names. A merge copies slide parts wholesale and never asks the API about a shape. Worth keeping the first one's evidence in view: the host would not answer at all for a just-added shape in 31 of 36 passes, which is the wall this engine is built to stay behind. |
+
+### A retraction upstream that found the same defect here
+
+**`which-end-a-short-read-drops` was answered for 87 rounds by a value that
+meant "the question did not arise".**
+
+The sibling's `RENAMED_ANSWERS` records the correction: `all` and `none` were
+that probe's way of reporting that nothing was dropped, or that the collection
+listed shapes which were not its own. Both ranked as named answers and locked
+the row, and `all` matched the fake's `all` — so 87 rounds recorded *agreement*
+about which end a short read drops, on a question neither side had put.
+
+**Reading that retraction is what found ours, on 2026-09-11.** It is the mirror
+image rather than the same slip. `prefixOk` was:
+
+```js
+out.prefixOk = loaded.every((id, i) => id === positional[i]);
+```
+
+`positional` is a SECOND read, taken by `getItemAt`, and it can come back short
+for the very reason the arm exists — office-js#6363, on the other code path.
+When it did, `positional[i]` was `undefined`, every comparison failed, `every`
+returned `false`, and `deckReadVerdict` reported the worst of its three
+sentences: *"NOT in deck order — indexOf on these ids returns the wrong slide
+number, silently, so the merge would clone slides nobody chose."* A definite,
+alarming claim about deck ordering, produced by a check that never ran.
+
+`byPosition` — the count that separates the two — was already being recorded by
+the probe and was read by **nothing**. `prefixOk` is now left `undefined` when
+the positional read did not cover the ids being checked, the verdict has three
+outcomes instead of two, and the did-not-arise case names itself and cites the
+count.
+
+Worth stating the limit this exposes: `sibling-watch` compares KEYS. It cannot
+see a meaning change under a key we already hold, which is exactly what a
+retraction is. This one was found by reading the table, not by the sweep
+reporting it.
 
 ### The one open risk this sweep surfaced
 

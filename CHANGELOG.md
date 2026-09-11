@@ -7,6 +7,58 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — a probe answer meaning "could not tell" was printed as "not in deck order"
+
+Adding the sibling's `RENAMED_ANSWERS` to the sweep meant reading it, and reading
+it found a defect of the same family in our own probe.
+
+Its one entry, dated 2026-09-01, retracts an answer: `all` and `none` were that
+probe's way of reporting its question **did not arise**, they ranked as named
+answers, and `all` matched the fake's `all` — so 87 rounds recorded *agreement*
+about which end a short read drops, on a question neither side had put.
+
+Ours was the mirror image. `prefixOk` was:
+
+```js
+out.prefixOk = loaded.every((id, i) => id === positional[i]);
+```
+
+`positional` comes from a **second** read, by `getItemAt`, and that read can come
+back short for the very reason the arm exists — office-js#6363, on the other
+code path. When it did, `positional[i]` was `undefined`, every comparison failed,
+`every` returned `false`, and `deckReadVerdict` printed the worst of its
+sentences: *"NOT in deck order — indexOf on these ids returns the wrong slide
+number, silently, so the merge would clone slides nobody chose."* A specific,
+alarming claim about deck ordering, produced by a check that never ran.
+
+`byPosition` — the count that tells the two apart — was already being recorded by
+the probe and was read by **nothing**. `prefixOk` is now left `undefined` when the
+positional read did not cover the ids being compared, the verdict has three
+outcomes rather than two, and the did-not-arise case names itself and cites that
+count. Nothing in the merge engine is affected: this is instrumentation, and its
+failure mode is a false diagnosis on a probe sheet rather than a wrong slide.
+
+**`RENAMED_ANSWERS` is watched now, and the earlier note about why was wrong.**
+It does not rename questions; it renames a probe's answer vocabulary. Its only
+key was triaged here long ago, so adding it reports nothing today — it earns its
+place because the next entry will arrive under a probe id. What it cannot do is
+report that a MEANING changed under a key we already hold, because `untriaged`
+compares keys and nothing else. That limit is written down beside `SOURCES` now
+rather than implied away.
+
+`FATAL_SCENARIO_RATE` is deliberately **not** watched, with the reason recorded
+next to the list: it is keyed by the sibling's own rendering scenarios and holds
+crash-rate thresholds for their product, not findings about the host. All nine
+keys would enter as "no exposure — their renderer's scenario", which is nine rows
+of noise in a table whose whole value is that a row means something.
+
+**And nothing guarded the source list itself** — found by mutation, after the rest
+of this change was written and green. Deleting a table from `SOURCES` left the
+suite passing, and a sweep watching five tables instead of six still runs, still
+exits 0 and still prints "Nothing new": a report indistinguishable from a real
+quiet week. Guarding the parser and not the list left the front door open. The
+tables are named in a test now.
+
 ### Fixed — the sibling sweep called an EMPTY table a broken one
 
 `sibling-watch` had been red every run since 2026-09-02, and the recorded

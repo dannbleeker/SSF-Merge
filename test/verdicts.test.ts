@@ -423,6 +423,38 @@ describe("whether a collection load of the deck answers in full", () => {
     expect(scrambled.detail).toContain("wrong slide number");
   });
 
+  it("says the order COULD NOT BE CHECKED rather than calling it scrambled", () => {
+    /**
+     * The third outcome, and it used to be spelled as the second.
+     *
+     * `prefixOk` compares the loaded ids against a positional read taken by
+     * `getItemAt`. That read can come back short for the very reason this arm
+     * exists — office-js#6363 on the other code path — and when it does the
+     * comparison runs against `undefined` and yields false. Anything that was
+     * not `true` got read as "NOT in deck order", so a check that never ran
+     * produced the most alarming sentence this function owns.
+     *
+     * The sibling lost 87 rounds to the mirror image, retracted 2026-09-01:
+     * `all` meant "the question did not arise", ranked as a named answer, and
+     * matched the fake.
+     */
+    const unchecked = deckReadVerdict({
+      deckSize: 60,
+      items: 50,
+      short: true,
+      byPosition: 12,
+      prefixOk: undefined,
+    });
+    expect(unchecked.verdict).toBe("no");
+    expect(unchecked.detail).toContain("COULD NOT BE CHECKED");
+    expect(unchecked.detail, "the count that says why is the evidence").toContain("12");
+    expect(unchecked.detail, "a check that did not run must not claim the ids are out of order").not.toContain(
+      "wrong slide number",
+    );
+    // It still points at the issue, because a short positional read IS one.
+    expect(unchecked.detail).toContain("6363");
+  });
+
   it("names the empty read as the sync-succeeded case", () => {
     const v = deckReadVerdict({ deckSize: 8, items: 0, short: true, empty: true });
     expect(v.verdict).toBe("no");
