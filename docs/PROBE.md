@@ -115,9 +115,16 @@ when the control did not run.
 This add-in reads its template through `exportAsBase64Presentation` on any host
 that has it, and then clones what comes back. office-js#6867 reports the
 slide-level `exportAsBase64` omitting modern comments and `ppt/authors.xml`.
-Nobody has checked whether the presentation-level call does the same — and if it
+Nobody had checked whether the presentation-level call does the same — and if it
 does, every merged slide is missing those parts, silently, in a file that opens
 cleanly.
+
+**It does. Answered 2026-08-28 on the sixth sheet:** four comment parts and
+`ppt/authors.xml` went in and none came out. The drop itself is harmless; what it
+exposed was not, and `cloneSlide` was the half that was wrong. Both are written
+up in `docs/SIBLING.md` and in the changelog. The question stays here because the
+arm still runs and a host can change its mind — but it is answered, and this
+paragraph went on saying "nobody has checked" for a fortnight after it was.
 
 The arm exports **every slide in the deck** and compares its part list against
 the same deck read through `getFileAsync`, which returns the package unfiltered.
