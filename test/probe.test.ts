@@ -234,6 +234,25 @@ describe("the questions the review added", () => {
     // code path from a collection load.
     expect(snippet).toContain("prefixOk");
     expect(snippet).toMatch(/getItemAt\(i\)/);
+
+    /**
+     * And REFUSES TO ANSWER when the positional read did not cover the ids it
+     * is comparing. `positional` comes from a second read that can itself come
+     * back short — office-js#6363 on the other code path — and the comparison
+     * then runs against `undefined` and returns false, which `deckReadVerdict`
+     * used to report as "NOT in deck order": a check that never ran, rendered
+     * as the worst answer available.
+     *
+     * This is a STRING check against a snippet that is pasted into Script Lab
+     * and cannot be executed here, so it is a floor and not a proof — it
+     * catches the guard being deleted, not every way of writing it wrongly.
+     * The consequence is tested for real in `verdicts.test.ts`, where the
+     * `undefined` case has an outcome of its own.
+     */
+    expect(snippet, "the bare every() is back, so a failed read reads as scrambled").not.toMatch(
+      /out\.prefixOk\s*=\s*loaded\.every/,
+    );
+    expect(snippet, "no guard on the positional read's length").toContain("positional.length >= loaded.length");
   });
 
   it("asks whether the read comes back EMPTY after a sync that succeeded", () => {

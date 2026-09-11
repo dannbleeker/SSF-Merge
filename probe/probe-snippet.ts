@@ -277,8 +277,29 @@ async function deckReadProbe(): Promise<Record<string, unknown>> {
         await context.sync();
         const positional = handles.map((h) => h.id);
         out.byPosition = positional.length;
-        // The load's answer is the first n of the deck, in order.
-        out.prefixOk = loaded.every((id, i) => id === positional[i]);
+        /**
+         * The load's answer is the first n of the deck, in order.
+         *
+         * **Left UNDEFINED when the positional read did not cover the ids being
+         * checked**, which is the difference between "they are not in deck
+         * order" and "I could not tell". `positional` comes from a SECOND read,
+         * by `getItemAt`, and that read can come back short or empty for the
+         * very reason this arm exists — office-js#6363. When it does,
+         * `positional[i]` is `undefined`, every comparison fails, and `every`
+         * returns FALSE: a confident "NOT in deck order" produced by a check
+         * that never ran.
+         *
+         * The sibling hit the mirror image and it cost 87 rounds: `all` and
+         * `none` were that probe's way of saying its question did not arise,
+         * they ranked as named answers, and the fake's `all` matched — so 87
+         * rounds recorded AGREEMENT on a question neither side had answered.
+         * Its retraction is dated 2026-09-01; see `RENAMED_ANSWERS` in its
+         * `host-baseline.mjs`.
+         *
+         * `byPosition` carries the evidence either way, and `deckReadVerdict`
+         * reads it now rather than discarding it.
+         */
+        out.prefixOk = positional.length >= loaded.length ? loaded.every((id, i) => id === positional[i]) : undefined;
       }),
       20000,
       "reading the deck's slide ids",

@@ -486,10 +486,31 @@ export function deckReadVerdict(o: DeckReadObservation): { verdict: Verdict; det
     };
   }
   if (o.short === true) {
+    /**
+     * Three outcomes, because the ordering check has a DID-NOT-ARISE case and
+     * it used to be spelled as the bad answer.
+     *
+     * `prefixOk` compares the loaded ids against a SECOND read taken by
+     * `getItemAt`. That read can itself come back short — office-js#6363, the
+     * failure this very arm exists to find — and when it does the comparison
+     * runs against `undefined` and returns false. The old code read anything
+     * that was not `true` as "NOT in deck order", and said so in the most
+     * alarming terms available: that `indexOf` returns the wrong slide number
+     * and the merge would clone slides nobody chose. A reader chasing that
+     * sentence is chasing a check that never ran.
+     *
+     * The sibling lost 87 rounds to the mirror image, retracted 2026-09-01 —
+     * see `RENAMED_ANSWERS` in its `host-baseline.mjs`, and the note on
+     * `prefixOk` in `probe/probe-snippet.ts`. `byPosition` was already being recorded and was
+     * read by NOTHING; it is the evidence that separates the two, so it is
+     * named here rather than discarded.
+     */
     const bounded =
-      o.prefixOk === true
-        ? "the slides it did answer are the first n IN DECK ORDER, so a block inside the prefix is right and one past it is refused"
-        : "and NOT in deck order — indexOf on these ids returns the wrong slide number, silently, so the merge would clone slides nobody chose";
+      o.prefixOk === undefined
+        ? `and the ORDER COULD NOT BE CHECKED: the positional read answered ${o.byPosition ?? 0}, fewer than the ${got} being checked, so it says nothing either way. That second read coming back short is itself office-js#6363, on the other code path`
+        : o.prefixOk
+          ? "the slides it did answer are the first n IN DECK ORDER, so a block inside the prefix is right and one past it is refused"
+          : "and NOT in deck order — indexOf on these ids returns the wrong slide number, silently, so the merge would clone slides nobody chose";
     return {
       verdict: "no",
       detail: `the load answered ${got} of ${size}; ${bounded}.`,

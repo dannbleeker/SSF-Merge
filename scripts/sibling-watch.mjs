@@ -52,7 +52,44 @@ export const SOURCES = [
   { path: "scripts/host-baseline.mjs", table: "KNOWN_DIVERGENCES", kind: "question" },
   { path: "scripts/host-baseline.mjs", table: "UNSTABLE_ANSWERS", kind: "question" },
   { path: "scripts/host-baseline.mjs", table: "PENDING_QUESTIONS", kind: "question" },
+  /**
+   * `RENAMED_ANSWERS` is keyed by probe id like the rest, and it is worth being
+   * exact about what it holds, because the first note written here was wrong.
+   *
+   * It does NOT rename questions. It renames a probe's ANSWER VOCABULARY: the
+   * one entry says `all` and `none` were that probe's way of reporting its
+   * question did not arise, and that they had been ranking as named answers.
+   * Its cost is recorded there — **87 rounds of agreement about which end a
+   * short read drops, on a question neither side had answered**, retracted
+   * upstream on 2026-09-01.
+   *
+   * Adding it therefore reports nothing today: its only key is one this repo
+   * triaged long ago. It earns its place anyway, because the NEXT entry will
+   * arrive under a probe id, and a new id here is a finding by the same
+   * definition as one appearing anywhere else.
+   *
+   * What it cannot do is tell us a MEANING changed under a key we already hold,
+   * because `untriaged` compares keys and nothing else. That is a real limit of
+   * this sweep and is stated rather than papered over: the retraction above was
+   * found by READING the table, not by the sweep reporting it.
+   */
+  { path: "scripts/host-baseline.mjs", table: "RENAMED_ANSWERS", kind: "question" },
 ];
+
+/**
+ * `FATAL_SCENARIO_RATE` is deliberately NOT a source, and the reason belongs
+ * next to the list rather than in a commit message.
+ *
+ * It is keyed by the sibling's own RENDERING SCENARIOS — "a big chart on a
+ * slide of its own", "stop a run mid-draw" — and its values are crash-rate
+ * thresholds per thousand runs. It is a regression gate on their product, not a
+ * register of findings about the host, and this add-in draws no charts, runs no
+ * per-shape loop and performs one insert. Every one of its nine keys would
+ * enter `TRIAGED` as "NO EXPOSURE — their renderer's scenario", which is nine
+ * rows of noise in the table whose whole value is that a row means something.
+ *
+ * If this add-in ever grows a drawing loop, this is the first table to add.
+ */
 
 /**
  * The keys of one `export const NAME = { … }` table.
@@ -203,7 +240,9 @@ export const TRIAGED = {
   "question:getitemat-past-end":
     "RELEVANT: both `deckSlideIds` (paging by index) and `undoInsert` (deleting by index, highest first) index into the collection. What the host does past the end bounds both.",
   "question:which-end-a-short-read-drops":
-    "RELEVANT: office-js#4272 again. Our own probe asks the same thing as `prefixOk` — whether a short read is the first n IN DECK ORDER — because a short read that is not a prefix makes a slide NUMBER wrong rather than merely a list shorter.",
+    "RELEVANT: office-js#4272 again. Our own probe asks the same thing as `prefixOk` — whether a short read is the first n IN DECK ORDER — because a short read that is not a prefix makes a slide NUMBER wrong rather than merely a list shorter. " +
+    "**THE SIBLING HAS SINCE RETRACTED ITS ANSWER, and reading that retraction found the same defect in ours (2026-09-11).** Its `RENAMED_ANSWERS` records that `all` and `none` were the probe's way of saying the question DID NOT ARISE, that they ranked as named answers, and that `all` matched the fake's `all` — so 87 rounds recorded agreement on a question neither side had answered. " +
+    "Ours was the mirror image: `prefixOk` was `loaded.every((id, i) => id === positional[i])`, and `positional` is a SECOND read that can come back short for the very reason this arm exists (office-js#6363). When it did, the comparison ran against `undefined`, returned false, and `deckReadVerdict` reported 'NOT in deck order — the merge would clone slides nobody chose' about a check that never ran. `prefixOk` is now left undefined in that case and the verdict names the condition, reading the `byPosition` count that was already being recorded and consulted by nothing.",
   "question:how-many-collection-reads-a-context-survives":
     "RELEVANT: `deckSlideIds` makes one `PowerPoint.run` per page, deliberately, so no context accumulates reads. Recorded so the reason survives if anyone tries to make it one batch.",
   "question:delete-then-lookup":

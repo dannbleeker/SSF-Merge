@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 // @ts-expect-error — plain .mjs with no types, and deliberately the SAME module
 // the weekly sweep runs. Two copies of the triage table is how a claim quietly
 // stops matching its check.
-import { TRIAGED, VERDICTS, tableKeys, tablesFrom, untriaged, verdictOf } from "../scripts/sibling-watch.mjs";
+import { SOURCES, TRIAGED, VERDICTS, tableKeys, tablesFrom, untriaged, verdictOf } from "../scripts/sibling-watch.mjs";
 // @ts-expect-error — plain .mjs with no types, shared with the scripts.
 import { withoutTsProse } from "../scripts/without-prose.mjs";
 
@@ -209,6 +209,40 @@ describe("the ledger is wired in", () => {
 describe("the sibling sweep", () => {
   const table = readFileSync("scripts/sibling-watch.mjs", "utf8");
 
+  it("watches every table it is meant to, and says so by name", () => {
+    /**
+     * Nothing held the source LIST, and removing an entry left this suite
+     * green — found by mutation on 2026-09-11, after the rest of that change
+     * was already written and passing.
+     *
+     * It is the quietest failure this file can have. A sweep watching five
+     * tables instead of six still runs, still exits 0, and still prints
+     * "Nothing new" — the report is indistinguishable from a real quiet week,
+     * which is the exact silence `tableKeys` returning null exists to prevent.
+     * Guarding the parser and not the list left the front door open.
+     *
+     * Named rather than counted, so adding a table is a deliberate edit here
+     * and deleting one cannot pass as a refactor.
+     */
+    const watched = new Set((SOURCES as { table: string }[]).map((s) => s.table));
+    expect([...watched].sort()).toEqual([
+      "FAKE_BASELINE",
+      "KNOWN_DIVERGENCES",
+      "KNOWN_ISSUES",
+      "PENDING_QUESTIONS",
+      "RENAMED_ANSWERS",
+      "UNSTABLE_ANSWERS",
+    ]);
+
+    // FATAL_SCENARIO_RATE is deliberately absent: it is keyed by the sibling's
+    // own rendering scenarios and holds crash-rate thresholds for THEIR
+    // product, not findings about the host. The reason is written out beside
+    // `SOURCES`, and this line is here so a future reader meets the decision
+    // rather than assuming an oversight.
+    expect(watched.has("FATAL_SCENARIO_RATE"), "added without the reason beside SOURCES being revisited").toBe(false);
+    expect(table).toContain("FATAL_SCENARIO_RATE");
+  });
+
   it("pulls the keys out of a table, quoted or bare", () => {
     const src = [
       "export const T = {",
@@ -288,7 +322,11 @@ describe("the sibling sweep", () => {
     // This is the exact shape of the live failure — `PENDING_QUESTIONS` empty
     // while the other four were populated — reduced to the case that isolates
     // it from any question of which table.
-    const allEmpty = ["KNOWN_ISSUES", "FAKE_BASELINE", "KNOWN_DIVERGENCES", "UNSTABLE_ANSWERS", "PENDING_QUESTIONS"]
+    // Built FROM `SOURCES` rather than from a list written out here. The first
+    // version of this test named the five tables by hand and went red the next
+    // time one was added — a test failing because the thing it guards grew is
+    // the same drift it exists to catch, one level up.
+    const allEmpty = [...new Set((SOURCES as { table: string }[]).map((s) => s.table))]
       .map((t) => `export const ${t} = {\n};\n`)
       .join("\n");
     const tables = tablesFrom((): string => allEmpty) as { keys: string[] }[];
