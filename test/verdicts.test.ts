@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   PROBE_RUN_TAG,
@@ -306,6 +308,42 @@ describe("whether the export drops parts the file route keeps", () => {
     // Older sheets under docs/host-answers/ carry no `exportParts` at all, and
     // an absent field is not a finding.
     expect(exportPartsVerdict({}).verdict).toBe("unknown");
+  });
+
+  it("does not let the docs call it open once a SHEET has answered it", () => {
+    /**
+     * `docs/SIBLING.md` carried a heading reading "The one open risk this sweep
+     * surfaced" and the line "Still open until a round answers it", and
+     * `docs/PROBE.md` said "Nobody has checked whether the presentation-level
+     * call does the same". A round had answered it on 2026-08-28 — the sixth
+     * sheet, four comment parts and `ppt/authors.xml` in and none out — and the
+     * answer reached the changelog, `PROBE.md`'s own round notes and the code,
+     * which was FIXED because of it.
+     *
+     * Both sentences survived a fortnight, and on 2026-09-11 they were read back
+     * and reported to the owner as a live outstanding risk. A stale doc is not
+     * inert: it is an instrument that keeps printing its old conclusion, which
+     * is the whole of `feedback_instruments_that_assert` applied to prose.
+     *
+     * So the SHEETS decide. If any committed sheet yields a definite verdict,
+     * no document may still be asking the question in the present tense.
+     */
+    const sheets = readdirSync("docs/host-answers")
+      .filter((f) => f.endsWith(".json"))
+      .map((f) => JSON.parse(readFileSync(join("docs/host-answers", f), "utf8")) as Record<string, unknown>);
+    expect(sheets.length, "no sheets to read at all").toBeGreaterThan(0);
+
+    const answered = sheets
+      .map((s) => exportPartsVerdict((s.exportParts ?? {}) as Parameters<typeof exportPartsVerdict>[0]))
+      .filter((v) => v.verdict === "yes" || v.verdict === "no");
+    if (answered.length === 0) return; // Nothing has answered it; the docs may ask.
+
+    for (const doc of ["docs/SIBLING.md", "docs/PROBE.md"] as const) {
+      const text = readFileSync(doc, "utf8");
+      for (const stale of ["Still open until a round answers it", "Nobody has checked whether"]) {
+        expect(text.includes(stale), `${doc} still says "${stale}" — a sheet answered it`).toBe(false);
+      }
+    }
   });
 });
 

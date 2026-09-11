@@ -118,7 +118,7 @@ is a real answer and the most common one worth writing down.
 | A slide add whose sync never resolves though the slide lands (office-js#1650) | its bounded slide-adds | **Adopted as doctrine.** We never call `slides.add`, but `insertSlidesFromBase64` is the same shape and gets the same answer: the deck delta decides. |
 | `addTextBox` deletes the SELECTED shape on the web (office-js#2775) | its `dropShapeSelection` | **No exposure to the call, but the class is ours.** The preview inserts when the user may have something selected, so `insertWhileSelectedProbe` asks rather than assuming. |
 | The web uppercases tag KEYS internally and needs the uppercased spelling to read them back (office-js#6079) | its tag writer | **Relevant, and already safe by luck.** Every key we write is uppercase (`SSF_MERGE_RUN`, `SSF_MERGE_RECORD`, `SSF_MERGE_BLOCK`). A lowercase key would go into the package fine and be unreadable on the web. |
-| `Slide.exportAsBase64` omits modern comments and `ppt/authors.xml` (office-js#6867) | its round evidence | **A finding for us that the sibling correctly marked no exposure — see below.** |
+| `Slide.exportAsBase64` omits modern comments and `ppt/authors.xml` (office-js#6867) | its round evidence | **A finding for us that the sibling correctly marked no exposure. ANSWERED 2026-08-28: the presentation-level call drops them too, and chasing it found a real defect in `cloneSlide` — see below.** |
 | Shape tags are lost on cut/paste on the web (office-js#3784) | its triage | **No exposure to the reported call, and the caveat it produced was wrong about why.** The sibling keeps its config in a SHAPE tag; every tag we write is on the SLIDE, in `ppt/tags/tagN.xml` related from `<p:cSld><p:custDataLst>`, so the loss this issue reports is not the mechanism. What is true, and stays in `docs/MANUAL.md`, is that a merged slide moved into another deck is beyond undo — because the offer is scoped to the presentation the merge ran in and sweeps by position, not because a tag went missing. Whether a slide's own tag part survives cut/paste on the web is unmeasured, and nothing turns on it. |
 | Inserted content may appear in the slide PREVIEW but not the main view (office-js#6498) | its visibility gate | **Relevant as a support answer.** A user reporting missing merged slides may be seeing this, and the deck delta will say they landed. Nothing here can read the canvas to tell them apart. |
 | `PowerPoint.run` batching fails to load properties reliably after `sync()` (office-js#6363) | its central failure | **Highly relevant.** `deckSlideIds` batches `load("id")` across twenty `getItemAt` handles and reads them after one sync — precisely this shape. Asked by our `deckRead` probe's `empty` arm. |
@@ -168,21 +168,53 @@ see a meaning change under a key we already hold, which is exactly what a
 retraction is. This one was found by reading the table, not by the sweep
 reporting it.
 
-### The one open risk this sweep surfaced
+### The risk this sweep surfaced — ANSWERED, and it found a real defect
 
-**`exportAsBase64Presentation` may be dropping parts, and nobody has checked.**
+**`exportAsBase64Presentation` does drop parts. Answered 2026-08-28, on the
+sixth sheet, and the entry below stayed marked "still open" until 2026-09-11.**
+
 office-js#6867 reports that `Slide.exportAsBase64` omits modern comments and
 `ppt/authors.xml`. PowerChart marked it no exposure and was right to: it calls
 that API to get a PICTURE of a slide. We call the presentation-level export to
 read the TEMPLATE WE THEN CLONE, so any part the export drops is a part every
 merged slide is missing — silently, in a file that opens cleanly.
 
-Different call in the same family, and the presentation-level one had never been
-tested for it. **The probe asks it now** (`exportParts`, added 2026-08-27): it
-exports every slide and diffs the part list against the same deck read through
-`getFileAsync`. It needs a deck with comments in it — `exportPartsVerdict` says
-NOT ASKED on one that has none, rather than reading the absence as a clean bill.
-Still open until a round answers it.
+Different call in the same family, and nobody had tested the presentation-level
+one. The probe asks it as `exportParts` (added 2026-08-27): it exports every
+slide and diffs the part list against the same deck read through `getFileAsync`.
+It needs a deck with comments in it, and `exportPartsVerdict` says NOT ASKED on
+one that has none rather than reading the absence as a clean bill — which is why
+three sheets in a row could not answer it.
+
+**The sixth sheet carried four comments. Four comment parts and
+`ppt/authors.xml` went in and NONE came out**, so office-js#6867 reaches the
+presentation-level call as well. See `docs/host-answers/2026-08-28T05-30-11-703Z.json`.
+
+**The drop is harmless. What it exposed was not.** The two template routes
+disagreed: the subset route produced comment-free clones because the host had
+already dropped them, while the file route — every host below 1.10 — copies the
+slide's relationships wholesale, so **every clone got a relationship to the
+TEMPLATE's comment part.** Measured on real bytes before anything changed: three
+slides, one shared `modernComment_101_AEAB9DA1.xml`. A reviewer's "check this
+with Legal" would have appeared on all 240 merged slides as one thread.
+
+Copying the part per clone would have been worse — the same note 240 times, on
+purpose. A comment is an annotation about the template, not content the template
+produces, which is the answer the 1.10 host had already made for us and what
+makes the two routes agree. `cloneSlide` drops comment relationships in both
+spellings, the classic `commentN.xml` and the modern
+`modernComment_<id>_<hash>.xml` PowerPoint on the web writes under a Microsoft
+namespace, and `removeSlide` takes a comment part away with its slide as it
+already did for notes. The user's own comments are untouched: this drops a
+COPY's inherited reference, never the template's own.
+
+**Why this heading was wrong for a fortnight, which is the lesson worth keeping.**
+The answer landed in `CHANGELOG.md`, in `docs/PROBE.md` and in the code on
+2026-08-28. This file was the only place that still said "still open until a
+round answers it", and on 2026-09-11 it was read back as a live risk and
+reported as outstanding — a stale doc is not inert, it is an instrument that
+keeps printing its old conclusion. See `feedback_instruments_that_assert` in the
+same spirit: **an answered question has to be closed everywhere it was asked.**
 
 ### What reading it found in OUR code
 
