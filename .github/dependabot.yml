@@ -8,9 +8,23 @@ updates:
     open-pull-requests-limit: 5
     groups:
       # One PR for the dev toolchain rather than five. A linter bump and a
-      # vitest bump reviewed together is one CI run and one decision.
+      # prettier bump reviewed together is one CI run and one decision.
+      #
+      # MINOR AND PATCH ONLY, so a major arrives on its own. Grouped by
+      # dependency type alone, this swept `vitest` 4 -> 5 into #233 welded to
+      # eight routine bumps, and a group like that is all-or-nothing: holding
+      # the major back means closing the pull request and losing the other
+      # eight with it. That major was taken on 2026-09-14 and the gate was
+      # wide enough to prove it — `test:count` reads vitest's own JSON
+      # reporter, so a schema change would have gone red — but that is a fact
+      # about this repository's gate rather than a property of the
+      # arrangement. A major is the one update that earns its own CI run and
+      # its own row in docs/DEPENDENCY-ALERTS.md.
       dev-tooling:
         dependency-type: development
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-patch"
     ignore:
       # @types/node's major tracks the Node major it describes, and this repo
       # pins Node 22 in three places: .nvmrc, the engines field, and the Pages

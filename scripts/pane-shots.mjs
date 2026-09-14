@@ -753,6 +753,19 @@ function audit() {
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
 const browser = await chromium.launch(EXECUTABLE ? { executablePath: EXECUTABLE } : {});
+// WHICH browser answered. The two branches above are not the same measurement
+// and nothing in the output could tell them apart, which is this repository's
+// own rule about a fallback reading broken in its own tooling: record how a
+// value was obtained rather than only what it was.
+//
+// It is not hypothetical. The pinned path drifts from what the installed
+// playwright expects every time playwright is bumped, and it drifts silently
+// because the launch keeps working: measured on 2026-09-14, playwright 1.63.0
+// wanted chromium revision 1243 and this container held 1194, 49 behind, and
+// all 176 shots came back clean. A sweep that is one browser behind is still
+// worth having; a sweep that is one browser behind WITHOUT SAYING SO is a
+// clean report about a browser nobody chose.
+console.log(`pane-shots: ${browser.version()} from ${EXECUTABLE ?? "playwright's own download"}`);
 let taken = 0;
 // Deduplicated across states: the same chip is on eight screens, and eight
 // copies of one finding is a report nobody reads to the end.
