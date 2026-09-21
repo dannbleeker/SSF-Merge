@@ -436,6 +436,18 @@ learn to satisfy without meaning it. The honest fix is the heading.
   floor, which CI then reads as tests having been deleted. Count against the
   committed tree — `git worktree add --detach /tmp/x HEAD` and run it there.
 
+- **A recorded number that depends on the MACHINE must not be re-recorded from
+  one machine.** `test-count --update` rewrote both of its numbers from the run
+  in front of it, and one of them — `maxSkipped` — counts what that machine
+  could not do. On 2026-09-21 two `--update`s on Linux, where the symlink
+  `is-main.test.ts` needs can be made, each rewrote a cap of 1 to 0; committed,
+  that fails the gate on Windows for a skip that has always been expected
+  there. Both were caught by hand, which is not a control. `--update` may only
+  RAISE the cap now, and lowering it is a hand edit where a reviewer sees it.
+  The floor beside it is platform-INDEPENDENT — it counts tests that exist — so
+  re-recording that anywhere stays honest. Ask of any number a tool re-records:
+  would a different machine write a different one?
+
 - **Held documents must not grow with the DECK either.** `Pkg.release` keeps the
   count flat against the record count and two tests pin that; nothing pinned it
   against the size of the template deck, and gathering the creation ids read

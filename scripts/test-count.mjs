@@ -31,6 +31,15 @@
  * machine, and a second recorded number caps how many may be skipped. Switching
  * off 23 tests leaves the total alone and blows the cap; deleting 23 drops the
  * total. Both still caught, and neither number depends on who ran it.
+ *
+ * **The cap is the one number `--update` may only raise**, and that asymmetry
+ * is the same lesson a third time. `min` is platform-independent, so
+ * re-recording it anywhere is honest. The cap is not: it describes what the
+ * machine running `--update` could not do, and writing that into a file every
+ * platform reads is how a Linux run came to lower a cap of 1 to 0 twice on
+ * 2026-09-21 — which, committed, fails the gate on Windows for the skip that
+ * has always been expected there. Lowering it is a hand edit, where a reviewer
+ * sees it.
  */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -82,16 +91,29 @@ export function verdict({ defined, skipped, record, update = false }) {
   // The floor rises on its own; the skip cap does NOT. A suite growing is
   // ordinary. A new skip is a decision somebody should be seen making.
   const raise = defined > min;
+
+  // **`--update` may RAISE the cap and never lowers it**, which is the one
+  // place these two numbers are not treated alike. `min` counts tests that
+  // EXIST, so every machine re-records the same number and a deliberate drop is
+  // a real decision. `maxSkipped` counts what THIS machine could not run, so
+  // re-recording it from one run writes one platform's answer into a file every
+  // platform reads — and on 2026-09-21 an `--update` on Linux, where the
+  // symlink `is-main.test.ts` needs can be made, rewrote a cap of 1 to 0 twice
+  // in one afternoon. Committed, that fails the gate on Windows for a skip that
+  // has always been expected there: exactly the platform-dependent floor this
+  // file's own docstring was written to warn about.
+  //
+  // Lowering the cap is a hand edit to a two-line file, which is the form a
+  // deliberate narrowing should take anyway — visible in the diff, with a
+  // reason beside it in the commit.
+  const cap = update ? Math.max(skipped, maxSkipped) : maxSkipped;
   return {
     ok: true,
-    write:
-      update || raise
-        ? { min: update ? defined : Math.max(defined, min), maxSkipped: update ? skipped : maxSkipped }
-        : null,
+    write: update || raise ? { min: update ? defined : Math.max(defined, min), maxSkipped: cap } : null,
     message: raise
       ? `floor raised to ${defined}. Commit ${RECORD}.`
       : update
-        ? `re-recorded: ${defined} tests, ${skipped} skipped, deliberately.`
+        ? `re-recorded: ${defined} tests, ${skipped} skipped, cap ${cap}, deliberately.`
         : `${defined} tests defined, floor ${min}.${skipped > 0 ? ` ${skipped} skipped, cap ${maxSkipped}.` : ""}`,
   };
 }
