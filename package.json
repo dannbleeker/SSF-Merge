@@ -21,7 +21,8 @@
     "icons": "node scripts/build-icons.mjs",
     "manifests": "node scripts/build-manifests.mjs",
     "release:check": "node scripts/check-release.mjs",
-    "sibling-watch": "node scripts/sibling-watch.mjs"
+    "sibling-watch": "node scripts/sibling-watch.mjs",
+    "audit-floors": "node scripts/audit-floors.mjs"
   },
   "dependencies": {
     "@xmldom/xmldom": "^0.9.12",

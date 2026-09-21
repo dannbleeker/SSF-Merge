@@ -1,0 +1,82 @@
+name: floor audit
+
+# `npm audit` reads the LOCKFILE, so it answers about one version per package:
+# the one that resolved. A caret is a promise about a whole interval, and its
+# lower bound is what a fresh `npm install` without a lockfile is entitled to
+# pick. Nothing looked at that bound until 2026-09-21, when `@xmldom/xmldom`
+# turned out to be declared `^0.9.8` — 17 advisories against that version, one
+# high severity, behind the parser that reads every part of a user-supplied
+# deck — with every check on this repository green, because the lockfile held
+# 0.9.12 and that is what `npm audit` had been reading.
+#
+# `test/floors.test.ts` holds the half of that finding which needs no network:
+# each declared floor IS the installed version, so a floor is always a version
+# the whole gate has already run. This job is the other half.
+#
+# NOT a required check, and deliberately not part of `test`, for the same
+# reason `ci.yml` keeps Microsoft's manifest validator out of it: this reaches
+# the registry and the advisory database, the database changes daily, and a
+# required check built on it goes red on a day nobody touched the code. Weekly
+# is the right cadence for a question whose answer changes when somebody else
+# publishes an advisory.
+#
+# An hour after `pane audit` and an hour before `sibling watch`, so a Monday
+# morning does not run three jobs at once.
+on:
+  schedule:
+    - cron: "29 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      # No `npm ci`. The sweep imports two of its own modules and shells out to
+      # npm; installing this repo's tree to ask about other trees would make it
+      # fail for reasons that have nothing to do with the floors.
+
+      - name: Audit the declared floors
+        id: sweep
+        run: |
+          set +e
+          node scripts/audit-floors.mjs > /tmp/floor-report.md
+          code=$?
+          set -e
+          # 3 means a floor carries advisories, or a range could not be pinned
+          # and so was not audited. 0 means every floor came back clean.
+          # ANYTHING ELSE is a broken sweep — an unreachable registry, a moved
+          # JSON schema, or the control arm failing to see advisories in a
+          # version that has them — and must never be reported as a clean week.
+          # The script refuses to look at the real floors at all in that case.
+          if [ "$code" != "0" ] && [ "$code" != "3" ]; then
+            echo "the sweep itself failed (exit $code)" >&2
+            cat /tmp/floor-report.md >&2 || true
+            exit "$code"
+          fi
+          echo "found=$([ "$code" = "3" ] && echo yes || echo no)" >> "$GITHUB_OUTPUT"
+          cat /tmp/floor-report.md
+
+      # One issue, reopened and updated, exactly as `sibling-watch.yml` does it.
+      # A weekly job that files a new issue every Monday is a spam bot with a
+      # cron entry, and the first thing anyone does about one is mute it.
+      - name: File or update the report
+        if: steps.sweep.outputs.found == 'yes'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          title="floor audit: a declared range admits a version with advisories"
+          existing=$(gh issue list --state all --search "$title in:title" --json number,state --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file /tmp/floor-report.md
+            gh issue reopen "$existing" || true
+          else
+            gh issue create --title "$title" --body-file /tmp/floor-report.md
+          fi
