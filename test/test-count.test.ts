@@ -78,6 +78,30 @@ describe("the floor under the suite", () => {
     expect(answer.write).toEqual({ min: 130, maxSkipped: 1 });
   });
 
+  /**
+   * The cap is PLATFORM-DEPENDENT and the floor is not, which is why `--update`
+   * treats them differently.
+   *
+   * `min` counts tests that exist, so any machine re-records the same number
+   * and a deliberate drop is a real decision. `maxSkipped` counts what THIS
+   * machine could not run, so re-recording it from one run writes one
+   * platform's answer into a file every platform reads. Twice on 2026-09-21 an
+   * `--update` on Linux — where the symlink `is-main.test.ts` needs can be
+   * made — rewrote a cap of 1 to 0, and the commit would have failed the gate
+   * on Windows for a skip that has always been expected there. Both were caught
+   * by hand, which is not a control.
+   *
+   * So `--update` may RAISE the cap and never lowers it. Lowering it is a hand
+   * edit to a two-line file, which is the form a deliberate narrowing should
+   * take anyway: visible in the diff, with a reason beside it in the commit.
+   */
+  it("never lowers the skip cap on --update, because the cap is what THIS machine could not run", () => {
+    const answer = verdict({ defined: 130, skipped: 0, record: { min: 100, maxSkipped: 1 }, update: true });
+
+    expect(answer.ok).toBe(true);
+    expect(answer.write).toEqual({ min: 130, maxSkipped: 1 });
+  });
+
   it("records a deliberate drop, and a deliberate skip, only with --update", () => {
     const answer = verdict({ defined: 90, skipped: 4, record, update: true });
     expect(answer.ok).toBe(true);
