@@ -27,6 +27,9 @@ import { readFileSync } from "node:fs";
 // @ts-expect-error — a plain .mjs tool with no types. The rules live THERE so
 // the suite and any tool asking the same question cannot read different ones.
 import { floorOf, floorProblems } from "../scripts/dependency-floors.mjs";
+// @ts-expect-error — the weekly sweep, same reason. Its network half is a
+// scheduled job; the refusals and the control arm are tested here.
+import { advisoryReport, floorManifest, main as mainSweep } from "../scripts/audit-floors.mjs";
 
 type Manifest = {
   dependencies?: Record<string, string>;
@@ -160,5 +163,149 @@ describe("what the check refuses", () => {
     const { problems, scanned } = check({}, { packages: { "": {} } });
     expect(problems).toEqual([]);
     expect(scanned).toBe(0);
+  });
+});
+
+/**
+ * The weekly sweep, in the half that can be tested at all.
+ *
+ * `scripts/audit-floors.mjs` asks the registry and the advisory database what
+ * the declared floors carry, which is why it is a scheduled job rather than a
+ * test. Everything below runs against injected answers instead: the shapes it
+ * must REFUSE, and the control arm it will not report without. Those are the
+ * parts a network outage would otherwise turn into a clean-looking sweep, and
+ * they are exactly what a live run cannot demonstrate on a good day.
+ */
+describe("the floor audit sweep", () => {
+  const CONTROL_PINS = JSON.stringify({ "@xmldom/xmldom": "0.9.8" });
+  const clean = { findings: [], counted: { total: 0 }, problems: [] };
+  const controlSaw = (n: number) => ({
+    findings: [{ name: "@xmldom/xmldom", severity: "high", direct: true, advisories: n, titles: [] }],
+    counted: { total: 1 },
+    problems: [],
+  });
+
+  /** A `main` wired to answers of our choosing, with both streams captured. */
+  const runSweep = async (manifest: unknown, answer: (pins: Record<string, string>) => unknown) => {
+    let out = "";
+    let err = "";
+    const code = (await mainSweep([], {
+      read: () => JSON.stringify(manifest),
+      audit: answer,
+      out: { write: (s: string) => (out += s) },
+      err: { write: (s: string) => (err += s) },
+    })) as number;
+    return { code, out, err };
+  };
+
+  it("pins every declared range to its own lower bound, and keeps the ones it cannot read", () => {
+    const { pinned, unreadable } = floorManifest({
+      dependencies: { "@xmldom/xmldom": "^0.9.12" },
+      devDependencies: { vitest: "~5.0.1", odd: ">=2" },
+    }) as { pinned: Record<string, string>; unreadable: { name: string; range: string }[] };
+
+    expect(pinned).toEqual({ "@xmldom/xmldom": "0.9.12", vitest: "5.0.1" });
+    expect(unreadable).toEqual([{ name: "odd", range: ">=2" }]);
+  });
+
+  it("refuses a report it cannot read, rather than calling it clean", () => {
+    const refusals = [
+      advisoryReport(null),
+      advisoryReport("not json"),
+      advisoryReport({ auditReportVersion: 3, metadata: { vulnerabilities: { total: 0 } } }),
+      advisoryReport({ auditReportVersion: 2 }),
+    ] as { problems: string[]; findings: unknown[] }[];
+
+    for (const refusal of refusals) {
+      expect(refusal.problems.length).toBeGreaterThan(0);
+      expect(refusal.findings).toEqual([]);
+    }
+  });
+
+  it("reads a version 2 report, counting only the advisory objects in `via`", () => {
+    // `via` holds advisory objects AND plain strings naming the package a
+    // finding came through. Counting the strings would inflate every number
+    // this sweep prints.
+    const parsed = advisoryReport({
+      auditReportVersion: 2,
+      metadata: { vulnerabilities: { total: 1 } },
+      vulnerabilities: {
+        thing: {
+          severity: "high",
+          isDirect: true,
+          via: ["some-other-package", { title: "a real advisory", url: "https://example.invalid/1" }],
+        },
+      },
+    }) as { problems: string[]; findings: { name: string; advisories: number; titles: string[]; direct: boolean }[] };
+
+    const [first] = parsed.findings;
+    expect(parsed.problems).toEqual([]);
+    expect(parsed.findings).toHaveLength(1);
+    expect(first?.advisories).toBe(1);
+    expect(first?.titles).toEqual(["a real advisory"]);
+    expect(first?.direct).toBe(true);
+  });
+
+  it("will not report at all when the control arm sees nothing, which is what an unreachable database looks like", async () => {
+    const { code, out, err } = await runSweep({ dependencies: { "@xmldom/xmldom": "^0.9.12" } }, () => clean);
+
+    expect(code).toBe(1);
+    // Not one word about the real floors. A sweep that cannot see advisories
+    // has no opinion about whether there are any.
+    expect(out).toBe("");
+    expect(err).toContain("control arm failed");
+  });
+
+  it("will not report when the control arm sees FEWER advisories than were measured", async () => {
+    const { code, err } = await runSweep({ dependencies: { "@xmldom/xmldom": "^0.9.12" } }, (pins) =>
+      JSON.stringify(pins) === CONTROL_PINS ? controlSaw(1) : clean,
+    );
+
+    expect(code).toBe(1);
+    expect(err).toContain("reported 1 advisories");
+  });
+
+  it("reports nothing wrong when the control passes and every floor is clean", async () => {
+    const { code, out } = await runSweep({ dependencies: { "@xmldom/xmldom": "^0.9.12" } }, (pins) =>
+      JSON.stringify(pins) === CONTROL_PINS ? controlSaw(17) : clean,
+    );
+
+    expect(code).toBe(0);
+    expect(out).toContain("No advisories against any declared floor");
+    expect(out).toContain("The sweep can see advisories");
+  });
+
+  it("reports a floor that carries advisories, and exits 3 rather than 0 or 1", async () => {
+    // A package OTHER than the control's, deliberately. Pinned at `^0.9.8`
+    // the manifest's own floor set is byte-identical to the control's pins,
+    // so a stub keyed on them answers the control twice and the assertion
+    // about the finding passes on the control's empty title list. The first
+    // draft of this test did exactly that.
+    const { code, out } = await runSweep({ dependencies: { "some-parser": "^1.0.0" } }, (pins) =>
+      JSON.stringify(pins) === CONTROL_PINS
+        ? controlSaw(17)
+        : {
+            findings: [
+              { name: "some-parser", severity: "high", direct: true, advisories: 17, titles: ["quadratic memory"] },
+            ],
+            counted: { total: 1 },
+            problems: [],
+          },
+    );
+
+    expect(code).toBe(3);
+    expect(out).toContain("Floors carrying advisories");
+    expect(out).toContain("17 advisories");
+    expect(out).toContain("quadratic memory");
+  });
+
+  it("treats a range it could not pin as a finding, because a package it skipped is one it did not audit", async () => {
+    const { code, out } = await runSweep({ dependencies: { odd: "*" } }, (pins) =>
+      JSON.stringify(pins) === CONTROL_PINS ? controlSaw(17) : clean,
+    );
+
+    expect(code).toBe(3);
+    expect(out).toContain("no readable floor");
+    expect(out).toContain("was NOT audited");
   });
 });
