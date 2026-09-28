@@ -146,8 +146,12 @@ export function auditPins(pins, { run = npmIn } = {}) {
   );
 
   const problems = [];
+  // `--loglevel=error`, not `--silent`. `execFileSync` appends npm's stderr to
+  // the message it throws, and `--silent` left that empty, so the first time
+  // this resolve broke in CI (2026-09-28) the log said "Command failed" and
+  // nothing else. The cause was one `npm error` line away.
   try {
-    run(dir, ["install", "--package-lock-only", "--no-audit", "--no-fund", "--silent"]);
+    run(dir, ["install", "--package-lock-only", "--no-audit", "--no-fund", "--loglevel=error"]);
   } catch (err) {
     return { findings: [], counted: null, problems: [`the scratch resolve failed: ${messageOf(err)}`], dir };
   }
