@@ -7,6 +7,16 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed — the probe no longer says nothing was selected when only the host said so
+
+The probe checks whether inserting slides still works while a shape is selected.
+When PowerPoint reported an empty selection, the probe said nothing *was*
+selected. PowerPoint can report an empty selection while a shape is selected
+(office-js#4222), so a tester who had clicked one was contradicted by their own
+sheet. It now says the host reported nothing selected and names that issue.
+The answer itself was already safe: an empty selection has always been
+recorded as "not asked", never as a pass.
+
 ### Changed — the Node version this repo asks for now matches what its tools need
 
 `package.json` said any Node 22 or later would do. The test tooling (jsdom and

@@ -267,9 +267,12 @@ weekly on its own and files one issue, reopened rather than duplicated.
   `load("items/id")`.
 - **Reading the selection and holding it are different things.** On the web
   `addTextBox` deletes the selected shape (office-js#2775) and
-  `setSelectedShapes` wedges the selection subsystem (#3083, #3698). Click-to-bind
-  reads, drops, then writes. Navigation uses `setSelectedSlides`; nothing calls
-  `setSelectedShapes`.
+  `setSelectedShapes` wedges the selection subsystem (#3083, #3698). This add-in
+  only READS the selection — `getSelectedSlides`, for the template block — and
+  never moves or holds it: nothing calls `setSelectedSlides` or
+  `setSelectedShapes`, and the product adds no text box. (The sibling's
+  click-to-bind and slide navigation are its features, not ours.) The probe
+  alone reads `getSelectedShapes` and adds text boxes, on its own scratch slide.
 - **Shape tags do not survive cut/paste on the web** (office-js#3784). A merged
   slide copied to another deck loses its run tag, so undo will not find it. Say
   so in the docs; do not try to detect it.
