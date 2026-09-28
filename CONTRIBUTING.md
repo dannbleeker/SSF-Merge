@@ -7,7 +7,9 @@ npm install
 npm test
 ```
 
-Node 22 (`.nvmrc`).
+Node 22.22.2 or later on the 22 line, 24.15 or later on 24, or any 26 and up
+(`engines` in `package.json`; `.nvmrc` names 22). Earlier 22s still install, but
+jsdom, which the pane tests run on, does not support them.
 
 `npm run dev` serves the pane over plain HTTP, which is what you want for
 looking at it in a browser. Sideloading it into PowerPoint needs HTTPS on
