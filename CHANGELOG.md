@@ -13,8 +13,10 @@ and this project uses [semantic versioning](https://semver.org/spec/v2.0.0.html)
 the packages it depends on) has needed Node 22.22.2 or later, 24.15 or later,
 or 26 and up for some time. On an older Node 22 the install still worked, and
 nothing said the tests were running on a version their tools do not support.
-The declared range now says the same thing the tools do. For contributors only;
-the add-in itself does not change.
+The declared range now says the same thing the tools do, and `.npmrc` turns on
+`engine-strict`: installing on an unsupported Node now stops with an error
+instead of printing a warning and carrying on. For contributors only; the add-in
+itself does not change.
 
 ### Fixed — a probe answer meaning "could not tell" was printed as "not in deck order"
 
