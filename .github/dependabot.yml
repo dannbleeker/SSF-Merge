@@ -27,8 +27,8 @@ updates:
           - "version-update:semver-patch"
     ignore:
       # @types/node's major tracks the Node major it describes, and this repo
-      # pins Node 22 in three places: .nvmrc, the engines field, and the Pages
-      # workflow. Types ahead of the runtime are the dangerous direction — they
+      # pins Node 22 in two places: .nvmrc, which every workflow reads, and the
+      # engines field. Types ahead of the runtime are the dangerous direction — they
       # typecheck an API the runtime may not have, so the failure lands at run
       # time with a green build behind it.
       #
