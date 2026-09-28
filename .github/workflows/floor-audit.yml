@@ -39,6 +39,15 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
+      # npm 11, not the npm 10 that ships with Node 22. The scratch tree pins
+      # vitest at its floor while its companions have moved on, and npm 10's
+      # resolver crashes on that peer set — `Cannot read properties of null
+      # (reading 'edgesOut')`, first seen 2026-09-28, three days after vitest
+      # 5.0.2 was published — where npm 11 resolves the same pins cleanly. The
+      # tree it builds is the one under test either way: the script checks
+      # every pin against the resolved lockfile before it believes an audit.
+      # Only this job's resolver changes; the repo's own installs do not.
+      - run: npm install -g npm@11
       # No `npm ci`. The sweep imports two of its own modules and shells out to
       # npm; installing this repo's tree to ask about other trees would make it
       # fail for reasons that have nothing to do with the floors.
