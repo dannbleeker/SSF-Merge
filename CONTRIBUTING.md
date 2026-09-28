@@ -8,8 +8,11 @@ npm test
 ```
 
 Node 22.22.2 or later on the 22 line, 24.15 or later on 24, or any 26 and up
-(`engines` in `package.json`; `.nvmrc` names 22). Earlier 22s still install, but
-jsdom, which the pane tests run on, does not support them.
+(`engines` in `package.json`; `.nvmrc` names 22). `.npmrc` sets
+`engine-strict`, so on any other version `npm install` and `npm ci` stop with
+`EBADENGINE` instead of installing. They also stop if a dependency's own
+`engines` range excludes your Node, which is how a later bump that raises the
+real floor shows up.
 
 `npm run dev` serves the pane over plain HTTP, which is what you want for
 looking at it in a browser. Sideloading it into PowerPoint needs HTTPS on
