@@ -516,6 +516,15 @@ describe("whether a slide insert survives a standing selection", () => {
     expect(v.detail).toContain("Re-run with a shape clicked");
   });
 
+  it("reports an empty selection as the host's answer, not as a fact", () => {
+    // office-js#4222: getSelectedShapes can answer [] while a shape IS
+    // selected. A tester who clicked one must not be told they did not.
+    const v = selectedInsertVerdict({ shapesSelected: 0, landed: 2, expected: 2 });
+    expect(v.detail).toContain("the host reported nothing selected");
+    expect(v.detail).toContain("office-js#4222");
+    expect(v.detail).not.toMatch(/^NOT ASKED — nothing was selected/);
+  });
+
   it("answers no when a selection was standing and the slides landed", () => {
     const v = selectedInsertVerdict({ shapesSelected: 3, landed: 2, expected: 2 });
     expect(v.verdict).toBe("no");

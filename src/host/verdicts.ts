@@ -567,7 +567,7 @@ export function selectedInsertVerdict(o: SelectedInsertObservation): {
   if (selected === 0) {
     return {
       verdict: "unknown",
-      detail: `NOT ASKED — nothing was selected when the arm ran, so the insert never met the condition. It landed ${landed} of ${o.expected}, which is the ordinary case being confirmed, not this question. Re-run with a shape clicked.`,
+      detail: `NOT ASKED — the host reported nothing selected when the arm ran, so as far as anyone can tell the insert never met the condition. It landed ${landed} of ${o.expected}, which is the ordinary case being confirmed, not this question. Re-run with a shape clicked; if one WAS clicked, this is office-js#4222, where getSelectedShapes answers empty while a shape is selected.`,
     };
   }
   if (!ok) {

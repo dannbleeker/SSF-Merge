@@ -304,6 +304,62 @@ export const TRIAGED = {
     "NO EXPOSURE — whether a named `GeometricShapeType` preset resolves and draws. This add-in adds no shapes and names " +
     "no presets. Surfaced here only because it was retired from the sibling's `PENDING_QUESTIONS` into its committed " +
     "sheet, which moves the key rather than removing it.",
+  "issue:6658":
+    "RELEVANT — there is no supported way to narrow a manifest to some PLATFORMS, and Partner Center derives the " +
+    "certified platform list from what the manifest declares. Not a runtime defect; a certification fact, and ours as " +
+    'much as the sibling\'s. `<Host Name="Presentation" />` is web, Windows, Mac and iPad as one unit, and our manifest ' +
+    "declares no `<Requirements>` at all (the floor is checked at runtime by `checkFloor`), so nothing in it narrows the " +
+    "surface a reviewer may test on. That is why `docs/PUBLISHING.md` treats touch-only, Gecko and WebKit as items to " +
+    "close rather than platforms to exclude. The reporter's own attempt to narrow the block produced `No Supported Office " +
+    "Products`, so there is no escape to reach for. Nothing to change.",
+  "issue:6183":
+    "NO EXPOSURE — PowerPoint on the web applies `left` and not `top` when both are set on a shape in one sync. Nothing " +
+    "here moves a shape through the API: a merge writes slide parts into the package and inserts them whole.",
+  "issue:6948":
+    "RELEVANT — `customXmlParts.getByNamespace(...).getItemOrNullObject` THROWS for a missing id instead of returning a " +
+    "null object (desktop). NO EXPOSURE to that call: custom XML lives in the package here and is never read through " +
+    "the API. The CLASS reaches us once: `runTagsAt` reads `slide.tags.getItemOrNullObject(TAG_RUN)`, and a slide the run " +
+    "did not make has no such tag, which is exactly the case this issue says can throw rather than answer null. " +
+    "ALREADY CONTAINED, and by design rather than luck: the whole batch is in a try/catch that returns no evidence, and " +
+    "`provenSweep` reads no evidence as it did before tags existed — the size-clamped plan on a first press, and NOTHING " +
+    "on a repeat press, which is what `requireProof` is for. What the host " +
+    "answers has been measured only for a tag that IS there; a missing key is unmeasured, and the guard must not be " +
+    "removed on the grounds that OrNullObject is documented not to throw.",
+  "issue:4121":
+    "NO EXPOSURE — `addLine` comes out bent when given a zero height or width. No line, and no shape of any kind, is ever " +
+    "added through the API here.",
+  "issue:4222":
+    "RELEVANT — `getSelectedShapes()` sometimes answers an EMPTY array while a shape is selected, web and desktop. The " +
+    "add-in itself never calls it (the block comes from `getSelectedSlides`, a different call), but the probe's " +
+    "`insertWhileSelectedProbe` does, to learn whether a slide insert survives a standing selection. A false empty " +
+    "answer there already FAILS SAFE: `selectedInsertVerdict` grades zero selected shapes as NOT ASKED, never as a pass. " +
+    "What it got wrong was the sentence: it said nothing WAS selected, which is the host's answer restated as a fact. It " +
+    "now says the host REPORTED nothing selected and names this issue, so a tester who did click a shape is told why the " +
+    "sheet disagrees with them.",
+  "issue:3552":
+    "NO EXPOSURE — `setSelectedSlides` throws when the notes pane holds the selection, desktop only. This add-in never " +
+    "calls `setSelectedSlides`; it READS the selection with `getSelectedSlides` and moves nothing.",
+  "issue:3715":
+    "NO EXPOSURE on the path we take — `insertSlidesFromBase64` loses centre alignment on inserted text boxes, but the " +
+    "repro passes `UseDestinationTheme` and `insertDeck` passes `KeepSourceFormatting`. The probe's " +
+    "`insertFreshDestTheme` arm does use `UseDestinationTheme`, and it asks only whether the insert lands, never how the " +
+    "text looks, so its answer is not evidence either way. If the product's insert is ever switched to follow the " +
+    "deck's theme, this issue is part of the price: a mail-merge template's centred title would come out left-aligned on " +
+    "every merged slide.",
+  "issue:6130":
+    "NO EXPOSURE — PowerPoint table cells read back no fill or border colour. Nothing here reads a table through the " +
+    "API; text in a template's table cells is merged in the package like any other text.",
+  "issue:6933":
+    "NO EXPOSURE — setting `font.color` or `font.underline` does not visually override hyperlink theme formatting " +
+    "(desktop). Nothing here writes font properties through the API; a hyperlink in a template is copied with its " +
+    "slide, untouched.",
+  "issue:4988":
+    "NO EXPOSURE — Excel table creation slows down while heavy workbooks are open. EXCEL, not PowerPoint; it reaches the " +
+    "sibling's sweep on a shared search term.",
+  "issue:5537":
+    "NO EXPOSURE — `Document.insertFileFromBase64()` strips web extension settings, WORD ON MAC. We call " +
+    "`Presentation.insertSlidesFromBase64`, a different method on a different host, and store nothing in document " +
+    "settings.",
 };
 
 /**
