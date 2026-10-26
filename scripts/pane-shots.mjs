@@ -33,8 +33,9 @@
  * which is what WCAG 1.4.3 says and not a convenience: a greyed-out button is
  * meant to read as unavailable.
  */
-import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import { chromium } from "playwright";
+import { launchChromium } from "./launch-chromium.mjs";
 
 /**
  * axe-core, read off disk and injected per page.
@@ -513,16 +514,6 @@ const STATES = [
   },
 ];
 
-// The bundled browser and the installed playwright can disagree on build
-// number in THIS environment, so the binary is named rather than discovered.
-//
-// Only when it is actually there. On a CI runner playwright installs its own
-// and knows where it put it, and naming a path that does not exist fails the
-// launch with an error about a missing executable rather than about anything
-// this script is for. `CHROMIUM` overrides both.
-const CONTAINER_CHROMIUM = "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
-const EXECUTABLE = process.env.CHROMIUM || (existsSync(CONTAINER_CHROMIUM) ? CONTAINER_CHROMIUM : undefined);
-
 /**
  * What the page can say about itself that a PNG cannot.
  *
@@ -752,20 +743,20 @@ function audit() {
 // answer that looks like a right one.
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
-const browser = await chromium.launch(EXECUTABLE ? { executablePath: EXECUTABLE } : {});
-// WHICH browser answered. The two branches above are not the same measurement
-// and nothing in the output could tell them apart, which is this repository's
+const { browser, source } = await launchChromium(chromium);
+// WHICH browser answered. `launchChromium` has three sources and they are not
+// the same measurement, and nothing in the output could tell them apart, which is this repository's
 // own rule about a fallback reading broken in its own tooling: record how a
 // value was obtained rather than only what it was.
 //
-// It is not hypothetical. The pinned path drifts from what the installed
-// playwright expects every time playwright is bumped, and it drifts silently
-// because the launch keeps working: measured on 2026-09-14, playwright 1.63.0
+// It is not hypothetical. A pinned path drifted from what the installed
+// playwright expected every time playwright was bumped, and it drifted silently
+// because the launch kept working: measured on 2026-09-14, playwright 1.63.0
 // wanted chromium revision 1243 and this container held 1194, 49 behind, and
 // all 176 shots came back clean. A sweep that is one browser behind is still
 // worth having; a sweep that is one browser behind WITHOUT SAYING SO is a
 // clean report about a browser nobody chose.
-console.log(`pane-shots: ${browser.version()} from ${EXECUTABLE ?? "playwright's own download"}`);
+console.log(`pane-shots: ${browser.version()} from ${source}`);
 let taken = 0;
 // Deduplicated across states: the same chip is on eight screens, and eight
 // copies of one finding is a report nobody reads to the end.
