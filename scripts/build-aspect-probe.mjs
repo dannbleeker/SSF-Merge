@@ -24,6 +24,7 @@
  */
 import { writeFileSync } from "node:fs";
 import { chromium } from "playwright";
+import { launchChromium } from "./launch-chromium.mjs";
 import { isMain } from "./is-main.mjs";
 
 const SIZE = 420;
@@ -141,9 +142,8 @@ run().catch((e) => console.error("the probe itself failed:", e));
 }
 
 export async function main() {
-  const browser = await chromium.launch({
-    executablePath: process.env.CHROMIUM ?? "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
-  });
+  const { browser, source } = await launchChromium(chromium);
+  console.log(`browser: ${browser.version()} from ${source}`);
   const page = await browser.newPage({ viewport: { width: SIZE, height: SIZE }, deviceScaleFactor: 1 });
   await page.setContent(`<!doctype html><meta charset="utf-8"><style>html,body{margin:0}</style>${cardSvg()}`);
   const png = await page.screenshot({ type: "png" });
